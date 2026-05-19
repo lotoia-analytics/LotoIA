@@ -34,4 +34,8 @@ reports/
 
 # Sistema
 .DS_Store
+
 Thumbs.db
+!src/lotoia/data/
+!src/lotoia/data/__init__.py
+!src/lotoia/data/loader.py
