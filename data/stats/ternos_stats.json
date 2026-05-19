@@ -1,0 +1,4002 @@
+{
+  "10-20-25": {
+    "frequency": 842,
+    "rank": 1
+  },
+  "10-11-20": {
+    "frequency": 835,
+    "rank": 2
+  },
+  "11-13-20": {
+    "frequency": 832,
+    "rank": 3
+  },
+  "10-12-25": {
+    "frequency": 826,
+    "rank": 4
+  },
+  "11-20-25": {
+    "frequency": 824,
+    "rank": 5
+  },
+  "10-14-20": {
+    "frequency": 821,
+    "rank": 6
+  },
+  "9-10-25": {
+    "frequency": 817,
+    "rank": 7
+  },
+  "4-11-20": {
+    "frequency": 815,
+    "rank": 8
+  },
+  "10-13-20": {
+    "frequency": 814,
+    "rank": 9
+  },
+  "13-18-20": {
+    "frequency": 813,
+    "rank": 10
+  },
+  "9-10-20": {
+    "frequency": 813,
+    "rank": 11
+  },
+  "10-11-25": {
+    "frequency": 812,
+    "rank": 12
+  },
+  "14-20-25": {
+    "frequency": 812,
+    "rank": 13
+  },
+  "11-18-20": {
+    "frequency": 811,
+    "rank": 14
+  },
+  "10-24-25": {
+    "frequency": 810,
+    "rank": 15
+  },
+  "5-11-20": {
+    "frequency": 810,
+    "rank": 16
+  },
+  "11-14-20": {
+    "frequency": 809,
+    "rank": 17
+  },
+  "10-12-20": {
+    "frequency": 808,
+    "rank": 18
+  },
+  "11-12-20": {
+    "frequency": 808,
+    "rank": 19
+  },
+  "10-18-20": {
+    "frequency": 805,
+    "rank": 20
+  },
+  "12-20-25": {
+    "frequency": 805,
+    "rank": 21
+  },
+  "1-10-25": {
+    "frequency": 804,
+    "rank": 22
+  },
+  "10-13-25": {
+    "frequency": 804,
+    "rank": 23
+  },
+  "10-20-24": {
+    "frequency": 804,
+    "rank": 24
+  },
+  "11-15-20": {
+    "frequency": 804,
+    "rank": 25
+  },
+  "4-10-11": {
+    "frequency": 804,
+    "rank": 26
+  },
+  "14-15-20": {
+    "frequency": 802,
+    "rank": 27
+  },
+  "9-13-20": {
+    "frequency": 802,
+    "rank": 28
+  },
+  "1-11-20": {
+    "frequency": 800,
+    "rank": 29
+  },
+  "1-13-20": {
+    "frequency": 800,
+    "rank": 30
+  },
+  "12-24-25": {
+    "frequency": 800,
+    "rank": 31
+  },
+  "4-13-20": {
+    "frequency": 800,
+    "rank": 32
+  },
+  "5-10-25": {
+    "frequency": 800,
+    "rank": 33
+  },
+  "11-19-20": {
+    "frequency": 799,
+    "rank": 34
+  },
+  "2-10-25": {
+    "frequency": 799,
+    "rank": 35
+  },
+  "2-11-20": {
+    "frequency": 799,
+    "rank": 36
+  },
+  "1-10-11": {
+    "frequency": 798,
+    "rank": 37
+  },
+  "13-14-20": {
+    "frequency": 798,
+    "rank": 38
+  },
+  "13-20-25": {
+    "frequency": 798,
+    "rank": 39
+  },
+  "2-20-25": {
+    "frequency": 798,
+    "rank": 40
+  },
+  "5-14-20": {
+    "frequency": 798,
+    "rank": 41
+  },
+  "1-10-20": {
+    "frequency": 797,
+    "rank": 42
+  },
+  "20-24-25": {
+    "frequency": 797,
+    "rank": 43
+  },
+  "7-11-20": {
+    "frequency": 797,
+    "rank": 44
+  },
+  "1-10-24": {
+    "frequency": 796,
+    "rank": 45
+  },
+  "10-14-25": {
+    "frequency": 796,
+    "rank": 46
+  },
+  "3-10-25": {
+    "frequency": 796,
+    "rank": 47
+  },
+  "11-20-24": {
+    "frequency": 795,
+    "rank": 48
+  },
+  "5-20-25": {
+    "frequency": 795,
+    "rank": 49
+  },
+  "10-19-20": {
+    "frequency": 794,
+    "rank": 50
+  },
+  "1-10-14": {
+    "frequency": 793,
+    "rank": 51
+  },
+  "10-18-25": {
+    "frequency": 793,
+    "rank": 52
+  },
+  "11-12-25": {
+    "frequency": 793,
+    "rank": 53
+  },
+  "8-10-25": {
+    "frequency": 793,
+    "rank": 54
+  },
+  "9-10-12": {
+    "frequency": 793,
+    "rank": 55
+  },
+  "13-20-22": {
+    "frequency": 792,
+    "rank": 56
+  },
+  "10-11-24": {
+    "frequency": 791,
+    "rank": 57
+  },
+  "10-12-24": {
+    "frequency": 791,
+    "rank": 58
+  },
+  "10-23-25": {
+    "frequency": 791,
+    "rank": 59
+  },
+  "12-13-20": {
+    "frequency": 791,
+    "rank": 60
+  },
+  "3-22-25": {
+    "frequency": 791,
+    "rank": 61
+  },
+  "5-13-20": {
+    "frequency": 791,
+    "rank": 62
+  },
+  "9-10-14": {
+    "frequency": 791,
+    "rank": 63
+  },
+  "11-20-22": {
+    "frequency": 790,
+    "rank": 64
+  },
+  "3-11-20": {
+    "frequency": 790,
+    "rank": 65
+  },
+  "4-11-24": {
+    "frequency": 790,
+    "rank": 66
+  },
+  "7-14-20": {
+    "frequency": 790,
+    "rank": 67
+  },
+  "1-10-12": {
+    "frequency": 789,
+    "rank": 68
+  },
+  "10-11-13": {
+    "frequency": 789,
+    "rank": 69
+  },
+  "11-20-21": {
+    "frequency": 789,
+    "rank": 70
+  },
+  "3-20-25": {
+    "frequency": 789,
+    "rank": 71
+  },
+  "4-10-12": {
+    "frequency": 789,
+    "rank": 72
+  },
+  "4-9-10": {
+    "frequency": 789,
+    "rank": 73
+  },
+  "1-15-20": {
+    "frequency": 788,
+    "rank": 74
+  },
+  "1-4-11": {
+    "frequency": 788,
+    "rank": 75
+  },
+  "10-19-25": {
+    "frequency": 788,
+    "rank": 76
+  },
+  "13-19-20": {
+    "frequency": 788,
+    "rank": 77
+  },
+  "2-24-25": {
+    "frequency": 788,
+    "rank": 78
+  },
+  "4-10-24": {
+    "frequency": 788,
+    "rank": 79
+  },
+  "5-10-24": {
+    "frequency": 788,
+    "rank": 80
+  },
+  "1-10-17": {
+    "frequency": 787,
+    "rank": 81
+  },
+  "10-11-12": {
+    "frequency": 787,
+    "rank": 82
+  },
+  "10-11-18": {
+    "frequency": 787,
+    "rank": 83
+  },
+  "5-10-11": {
+    "frequency": 787,
+    "rank": 84
+  },
+  "9-20-25": {
+    "frequency": 787,
+    "rank": 85
+  },
+  "10-14-24": {
+    "frequency": 786,
+    "rank": 86
+  },
+  "11-20-23": {
+    "frequency": 786,
+    "rank": 87
+  },
+  "2-10-20": {
+    "frequency": 786,
+    "rank": 88
+  },
+  "3-5-25": {
+    "frequency": 786,
+    "rank": 89
+  },
+  "10-11-23": {
+    "frequency": 785,
+    "rank": 90
+  },
+  "10-13-24": {
+    "frequency": 785,
+    "rank": 91
+  },
+  "10-14-15": {
+    "frequency": 785,
+    "rank": 92
+  },
+  "12-18-20": {
+    "frequency": 785,
+    "rank": 93
+  },
+  "2-4-25": {
+    "frequency": 785,
+    "rank": 94
+  },
+  "3-9-10": {
+    "frequency": 785,
+    "rank": 95
+  },
+  "5-10-20": {
+    "frequency": 785,
+    "rank": 96
+  },
+  "1-10-13": {
+    "frequency": 784,
+    "rank": 97
+  },
+  "9-10-13": {
+    "frequency": 784,
+    "rank": 98
+  },
+  "1-9-10": {
+    "frequency": 783,
+    "rank": 99
+  },
+  "10-11-14": {
+    "frequency": 783,
+    "rank": 100
+  },
+  "2-10-14": {
+    "frequency": 783,
+    "rank": 101
+  },
+  "3-11-22": {
+    "frequency": 783,
+    "rank": 102
+  },
+  "3-4-11": {
+    "frequency": 783,
+    "rank": 103
+  },
+  "3-9-25": {
+    "frequency": 783,
+    "rank": 104
+  },
+  "9-10-11": {
+    "frequency": 783,
+    "rank": 105
+  },
+  "9-10-19": {
+    "frequency": 783,
+    "rank": 106
+  },
+  "9-11-20": {
+    "frequency": 783,
+    "rank": 107
+  },
+  "9-14-20": {
+    "frequency": 783,
+    "rank": 108
+  },
+  "1-20-25": {
+    "frequency": 782,
+    "rank": 109
+  },
+  "13-20-24": {
+    "frequency": 782,
+    "rank": 110
+  },
+  "4-12-25": {
+    "frequency": 782,
+    "rank": 111
+  },
+  "10-20-23": {
+    "frequency": 781,
+    "rank": 112
+  },
+  "12-20-24": {
+    "frequency": 781,
+    "rank": 113
+  },
+  "18-24-25": {
+    "frequency": 781,
+    "rank": 114
+  },
+  "4-24-25": {
+    "frequency": 781,
+    "rank": 115
+  },
+  "8-11-25": {
+    "frequency": 781,
+    "rank": 116
+  },
+  "9-19-20": {
+    "frequency": 781,
+    "rank": 117
+  },
+  "1-11-24": {
+    "frequency": 780,
+    "rank": 118
+  },
+  "1-13-24": {
+    "frequency": 780,
+    "rank": 119
+  },
+  "1-24-25": {
+    "frequency": 780,
+    "rank": 120
+  },
+  "11-23-25": {
+    "frequency": 780,
+    "rank": 121
+  },
+  "13-15-20": {
+    "frequency": 780,
+    "rank": 122
+  },
+  "13-20-21": {
+    "frequency": 780,
+    "rank": 123
+  },
+  "13-24-25": {
+    "frequency": 780,
+    "rank": 124
+  },
+  "18-20-25": {
+    "frequency": 780,
+    "rank": 125
+  },
+  "2-11-25": {
+    "frequency": 780,
+    "rank": 126
+  },
+  "4-10-25": {
+    "frequency": 780,
+    "rank": 127
+  },
+  "5-11-24": {
+    "frequency": 780,
+    "rank": 128
+  },
+  "7-10-25": {
+    "frequency": 780,
+    "rank": 129
+  },
+  "8-11-20": {
+    "frequency": 780,
+    "rank": 130
+  },
+  "11-14-15": {
+    "frequency": 779,
+    "rank": 131
+  },
+  "11-24-25": {
+    "frequency": 779,
+    "rank": 132
+  },
+  "2-14-20": {
+    "frequency": 779,
+    "rank": 133
+  },
+  "2-9-20": {
+    "frequency": 779,
+    "rank": 134
+  },
+  "3-13-20": {
+    "frequency": 779,
+    "rank": 135
+  },
+  "4-13-24": {
+    "frequency": 779,
+    "rank": 136
+  },
+  "4-20-25": {
+    "frequency": 779,
+    "rank": 137
+  },
+  "7-10-11": {
+    "frequency": 779,
+    "rank": 138
+  },
+  "7-13-20": {
+    "frequency": 779,
+    "rank": 139
+  },
+  "7-20-25": {
+    "frequency": 779,
+    "rank": 140
+  },
+  "9-13-25": {
+    "frequency": 779,
+    "rank": 141
+  },
+  "10-20-21": {
+    "frequency": 778,
+    "rank": 142
+  },
+  "12-18-25": {
+    "frequency": 778,
+    "rank": 143
+  },
+  "12-22-25": {
+    "frequency": 778,
+    "rank": 144
+  },
+  "14-19-20": {
+    "frequency": 778,
+    "rank": 145
+  },
+  "14-20-24": {
+    "frequency": 778,
+    "rank": 146
+  },
+  "2-10-11": {
+    "frequency": 778,
+    "rank": 147
+  },
+  "20-21-25": {
+    "frequency": 778,
+    "rank": 148
+  },
+  "5-11-25": {
+    "frequency": 778,
+    "rank": 149
+  },
+  "1-10-18": {
+    "frequency": 777,
+    "rank": 150
+  },
+  "1-12-25": {
+    "frequency": 777,
+    "rank": 151
+  },
+  "1-18-20": {
+    "frequency": 777,
+    "rank": 152
+  },
+  "10-12-14": {
+    "frequency": 777,
+    "rank": 153
+  },
+  "10-15-20": {
+    "frequency": 777,
+    "rank": 154
+  },
+  "11-22-24": {
+    "frequency": 777,
+    "rank": 155
+  },
+  "4-11-21": {
+    "frequency": 777,
+    "rank": 156
+  },
+  "4-9-20": {
+    "frequency": 777,
+    "rank": 157
+  },
+  "11-18-25": {
+    "frequency": 776,
+    "rank": 158
+  },
+  "2-14-25": {
+    "frequency": 776,
+    "rank": 159
+  },
+  "3-10-11": {
+    "frequency": 776,
+    "rank": 160
+  },
+  "3-11-15": {
+    "frequency": 776,
+    "rank": 161
+  },
+  "3-13-25": {
+    "frequency": 776,
+    "rank": 162
+  },
+  "6-10-25": {
+    "frequency": 776,
+    "rank": 163
+  },
+  "7-10-20": {
+    "frequency": 776,
+    "rank": 164
+  },
+  "7-18-20": {
+    "frequency": 776,
+    "rank": 165
+  },
+  "1-10-19": {
+    "frequency": 775,
+    "rank": 166
+  },
+  "1-11-13": {
+    "frequency": 775,
+    "rank": 167
+  },
+  "1-3-10": {
+    "frequency": 775,
+    "rank": 168
+  },
+  "10-12-18": {
+    "frequency": 775,
+    "rank": 169
+  },
+  "12-19-20": {
+    "frequency": 775,
+    "rank": 170
+  },
+  "14-15-22": {
+    "frequency": 775,
+    "rank": 171
+  },
+  "3-4-22": {
+    "frequency": 775,
+    "rank": 172
+  },
+  "4-10-20": {
+    "frequency": 775,
+    "rank": 173
+  },
+  "4-11-19": {
+    "frequency": 775,
+    "rank": 174
+  },
+  "1-11-14": {
+    "frequency": 774,
+    "rank": 175
+  },
+  "1-4-13": {
+    "frequency": 774,
+    "rank": 176
+  },
+  "10-11-15": {
+    "frequency": 774,
+    "rank": 177
+  },
+  "11-13-24": {
+    "frequency": 774,
+    "rank": 178
+  },
+  "2-9-25": {
+    "frequency": 774,
+    "rank": 179
+  },
+  "3-15-22": {
+    "frequency": 774,
+    "rank": 180
+  },
+  "3-15-25": {
+    "frequency": 774,
+    "rank": 181
+  },
+  "3-4-25": {
+    "frequency": 774,
+    "rank": 182
+  },
+  "5-24-25": {
+    "frequency": 774,
+    "rank": 183
+  },
+  "9-12-20": {
+    "frequency": 774,
+    "rank": 184
+  },
+  "1-12-20": {
+    "frequency": 773,
+    "rank": 185
+  },
+  "10-16-25": {
+    "frequency": 773,
+    "rank": 186
+  },
+  "11-13-22": {
+    "frequency": 773,
+    "rank": 187
+  },
+  "11-14-25": {
+    "frequency": 773,
+    "rank": 188
+  },
+  "11-22-25": {
+    "frequency": 773,
+    "rank": 189
+  },
+  "19-20-25": {
+    "frequency": 773,
+    "rank": 190
+  },
+  "2-4-10": {
+    "frequency": 773,
+    "rank": 191
+  },
+  "2-4-11": {
+    "frequency": 773,
+    "rank": 192
+  },
+  "4-10-19": {
+    "frequency": 773,
+    "rank": 193
+  },
+  "4-11-25": {
+    "frequency": 773,
+    "rank": 194
+  },
+  "4-22-24": {
+    "frequency": 773,
+    "rank": 195
+  },
+  "4-22-25": {
+    "frequency": 773,
+    "rank": 196
+  },
+  "4-5-11": {
+    "frequency": 773,
+    "rank": 197
+  },
+  "5-14-25": {
+    "frequency": 773,
+    "rank": 198
+  },
+  "5-18-20": {
+    "frequency": 773,
+    "rank": 199
+  },
+  "7-10-14": {
+    "frequency": 773,
+    "rank": 200
+  },
+  "7-20-24": {
+    "frequency": 773,
+    "rank": 201
+  },
+  "8-10-11": {
+    "frequency": 773,
+    "rank": 202
+  },
+  "8-10-20": {
+    "frequency": 773,
+    "rank": 203
+  },
+  "1-10-15": {
+    "frequency": 772,
+    "rank": 204
+  },
+  "1-14-20": {
+    "frequency": 772,
+    "rank": 205
+  },
+  "1-14-24": {
+    "frequency": 772,
+    "rank": 206
+  },
+  "10-21-25": {
+    "frequency": 772,
+    "rank": 207
+  },
+  "12-14-20": {
+    "frequency": 772,
+    "rank": 208
+  },
+  "12-14-25": {
+    "frequency": 772,
+    "rank": 209
+  },
+  "12-15-20": {
+    "frequency": 772,
+    "rank": 210
+  },
+  "2-12-25": {
+    "frequency": 772,
+    "rank": 211
+  },
+  "20-23-25": {
+    "frequency": 772,
+    "rank": 212
+  },
+  "3-14-15": {
+    "frequency": 772,
+    "rank": 213
+  },
+  "3-24-25": {
+    "frequency": 772,
+    "rank": 214
+  },
+  "8-20-25": {
+    "frequency": 772,
+    "rank": 215
+  },
+  "1-15-24": {
+    "frequency": 771,
+    "rank": 216
+  },
+  "1-3-15": {
+    "frequency": 771,
+    "rank": 217
+  },
+  "10-11-19": {
+    "frequency": 771,
+    "rank": 218
+  },
+  "10-12-23": {
+    "frequency": 771,
+    "rank": 219
+  },
+  "10-15-24": {
+    "frequency": 771,
+    "rank": 220
+  },
+  "11-13-25": {
+    "frequency": 771,
+    "rank": 221
+  },
+  "13-22-24": {
+    "frequency": 771,
+    "rank": 222
+  },
+  "14-20-21": {
+    "frequency": 771,
+    "rank": 223
+  },
+  "3-15-24": {
+    "frequency": 771,
+    "rank": 224
+  },
+  "4-11-13": {
+    "frequency": 771,
+    "rank": 225
+  },
+  "5-20-21": {
+    "frequency": 771,
+    "rank": 226
+  },
+  "9-12-25": {
+    "frequency": 771,
+    "rank": 227
+  },
+  "1-13-18": {
+    "frequency": 770,
+    "rank": 228
+  },
+  "1-14-15": {
+    "frequency": 770,
+    "rank": 229
+  },
+  "1-4-20": {
+    "frequency": 770,
+    "rank": 230
+  },
+  "10-17-25": {
+    "frequency": 770,
+    "rank": 231
+  },
+  "10-19-24": {
+    "frequency": 770,
+    "rank": 232
+  },
+  "11-13-15": {
+    "frequency": 770,
+    "rank": 233
+  },
+  "11-15-24": {
+    "frequency": 770,
+    "rank": 234
+  },
+  "2-4-20": {
+    "frequency": 770,
+    "rank": 235
+  },
+  "3-10-20": {
+    "frequency": 770,
+    "rank": 236
+  },
+  "3-14-20": {
+    "frequency": 770,
+    "rank": 237
+  },
+  "3-15-20": {
+    "frequency": 770,
+    "rank": 238
+  },
+  "3-18-20": {
+    "frequency": 770,
+    "rank": 239
+  },
+  "4-21-25": {
+    "frequency": 770,
+    "rank": 240
+  },
+  "5-20-24": {
+    "frequency": 770,
+    "rank": 241
+  },
+  "6-10-20": {
+    "frequency": 770,
+    "rank": 242
+  },
+  "1-20-24": {
+    "frequency": 769,
+    "rank": 243
+  },
+  "1-5-20": {
+    "frequency": 769,
+    "rank": 244
+  },
+  "10-12-22": {
+    "frequency": 769,
+    "rank": 245
+  },
+  "11-14-24": {
+    "frequency": 769,
+    "rank": 246
+  },
+  "14-17-20": {
+    "frequency": 769,
+    "rank": 247
+  },
+  "22-24-25": {
+    "frequency": 769,
+    "rank": 248
+  },
+  "23-24-25": {
+    "frequency": 769,
+    "rank": 249
+  },
+  "3-18-25": {
+    "frequency": 769,
+    "rank": 250
+  },
+  "5-19-20": {
+    "frequency": 769,
+    "rank": 251
+  },
+  "8-13-20": {
+    "frequency": 769,
+    "rank": 252
+  },
+  "9-10-17": {
+    "frequency": 769,
+    "rank": 253
+  },
+  "1-13-25": {
+    "frequency": 768,
+    "rank": 254
+  },
+  "1-14-25": {
+    "frequency": 768,
+    "rank": 255
+  },
+  "1-2-25": {
+    "frequency": 768,
+    "rank": 256
+  },
+  "1-5-10": {
+    "frequency": 768,
+    "rank": 257
+  },
+  "10-18-24": {
+    "frequency": 768,
+    "rank": 258
+  },
+  "10-22-25": {
+    "frequency": 768,
+    "rank": 259
+  },
+  "11-13-23": {
+    "frequency": 768,
+    "rank": 260
+  },
+  "12-13-25": {
+    "frequency": 768,
+    "rank": 261
+  },
+  "2-10-12": {
+    "frequency": 768,
+    "rank": 262
+  },
+  "2-10-24": {
+    "frequency": 768,
+    "rank": 263
+  },
+  "3-10-14": {
+    "frequency": 768,
+    "rank": 264
+  },
+  "3-11-25": {
+    "frequency": 768,
+    "rank": 265
+  },
+  "3-19-25": {
+    "frequency": 768,
+    "rank": 266
+  },
+  "3-4-10": {
+    "frequency": 768,
+    "rank": 267
+  },
+  "3-9-20": {
+    "frequency": 768,
+    "rank": 268
+  },
+  "4-11-22": {
+    "frequency": 768,
+    "rank": 269
+  },
+  "4-19-20": {
+    "frequency": 768,
+    "rank": 270
+  },
+  "5-11-14": {
+    "frequency": 768,
+    "rank": 271
+  },
+  "5-13-24": {
+    "frequency": 768,
+    "rank": 272
+  },
+  "9-18-20": {
+    "frequency": 768,
+    "rank": 273
+  },
+  "1-3-25": {
+    "frequency": 767,
+    "rank": 274
+  },
+  "1-5-11": {
+    "frequency": 767,
+    "rank": 275
+  },
+  "11-13-18": {
+    "frequency": 767,
+    "rank": 276
+  },
+  "11-23-24": {
+    "frequency": 767,
+    "rank": 277
+  },
+  "12-15-25": {
+    "frequency": 767,
+    "rank": 278
+  },
+  "15-19-20": {
+    "frequency": 767,
+    "rank": 279
+  },
+  "15-20-25": {
+    "frequency": 767,
+    "rank": 280
+  },
+  "19-24-25": {
+    "frequency": 767,
+    "rank": 281
+  },
+  "2-3-25": {
+    "frequency": 767,
+    "rank": 282
+  },
+  "3-4-20": {
+    "frequency": 767,
+    "rank": 283
+  },
+  "3-5-11": {
+    "frequency": 767,
+    "rank": 284
+  },
+  "4-12-22": {
+    "frequency": 767,
+    "rank": 285
+  },
+  "4-5-20": {
+    "frequency": 767,
+    "rank": 286
+  },
+  "5-8-11": {
+    "frequency": 767,
+    "rank": 287
+  },
+  "9-10-24": {
+    "frequency": 767,
+    "rank": 288
+  },
+  "1-11-15": {
+    "frequency": 766,
+    "rank": 289
+  },
+  "1-11-19": {
+    "frequency": 766,
+    "rank": 290
+  },
+  "1-19-25": {
+    "frequency": 766,
+    "rank": 291
+  },
+  "10-13-18": {
+    "frequency": 766,
+    "rank": 292
+  },
+  "11-14-23": {
+    "frequency": 766,
+    "rank": 293
+  },
+  "13-20-23": {
+    "frequency": 766,
+    "rank": 294
+  },
+  "14-20-22": {
+    "frequency": 766,
+    "rank": 295
+  },
+  "18-20-21": {
+    "frequency": 766,
+    "rank": 296
+  },
+  "2-13-20": {
+    "frequency": 766,
+    "rank": 297
+  },
+  "2-9-10": {
+    "frequency": 766,
+    "rank": 298
+  },
+  "4-10-23": {
+    "frequency": 766,
+    "rank": 299
+  },
+  "4-19-24": {
+    "frequency": 766,
+    "rank": 300
+  },
+  "6-9-10": {
+    "frequency": 766,
+    "rank": 301
+  },
+  "6-9-25": {
+    "frequency": 766,
+    "rank": 302
+  },
+  "1-11-23": {
+    "frequency": 765,
+    "rank": 303
+  },
+  "1-2-10": {
+    "frequency": 765,
+    "rank": 304
+  },
+  "1-4-10": {
+    "frequency": 765,
+    "rank": 305
+  },
+  "10-11-17": {
+    "frequency": 765,
+    "rank": 306
+  },
+  "10-12-17": {
+    "frequency": 765,
+    "rank": 307
+  },
+  "14-20-23": {
+    "frequency": 765,
+    "rank": 308
+  },
+  "19-20-21": {
+    "frequency": 765,
+    "rank": 309
+  },
+  "2-7-10": {
+    "frequency": 765,
+    "rank": 310
+  },
+  "2-7-14": {
+    "frequency": 765,
+    "rank": 311
+  },
+  "3-11-13": {
+    "frequency": 765,
+    "rank": 312
+  },
+  "3-22-24": {
+    "frequency": 765,
+    "rank": 313
+  },
+  "3-4-19": {
+    "frequency": 765,
+    "rank": 314
+  },
+  "3-4-6": {
+    "frequency": 765,
+    "rank": 315
+  },
+  "4-13-25": {
+    "frequency": 765,
+    "rank": 316
+  },
+  "4-20-21": {
+    "frequency": 765,
+    "rank": 317
+  },
+  "6-13-20": {
+    "frequency": 765,
+    "rank": 318
+  },
+  "1-9-13": {
+    "frequency": 764,
+    "rank": 319
+  },
+  "10-11-21": {
+    "frequency": 764,
+    "rank": 320
+  },
+  "3-20-24": {
+    "frequency": 764,
+    "rank": 321
+  },
+  "3-6-25": {
+    "frequency": 764,
+    "rank": 322
+  },
+  "4-6-24": {
+    "frequency": 764,
+    "rank": 323
+  },
+  "4-9-19": {
+    "frequency": 764,
+    "rank": 324
+  },
+  "5-10-13": {
+    "frequency": 764,
+    "rank": 325
+  },
+  "1-10-23": {
+    "frequency": 763,
+    "rank": 326
+  },
+  "1-11-18": {
+    "frequency": 763,
+    "rank": 327
+  },
+  "1-13-15": {
+    "frequency": 763,
+    "rank": 328
+  },
+  "1-19-20": {
+    "frequency": 763,
+    "rank": 329
+  },
+  "1-3-13": {
+    "frequency": 763,
+    "rank": 330
+  },
+  "10-12-19": {
+    "frequency": 763,
+    "rank": 331
+  },
+  "11-19-25": {
+    "frequency": 763,
+    "rank": 332
+  },
+  "12-21-25": {
+    "frequency": 763,
+    "rank": 333
+  },
+  "13-18-25": {
+    "frequency": 763,
+    "rank": 334
+  },
+  "2-23-25": {
+    "frequency": 763,
+    "rank": 335
+  },
+  "20-22-25": {
+    "frequency": 763,
+    "rank": 336
+  },
+  "3-4-24": {
+    "frequency": 763,
+    "rank": 337
+  },
+  "4-13-22": {
+    "frequency": 763,
+    "rank": 338
+  },
+  "5-11-13": {
+    "frequency": 763,
+    "rank": 339
+  },
+  "6-9-20": {
+    "frequency": 763,
+    "rank": 340
+  },
+  "7-10-12": {
+    "frequency": 763,
+    "rank": 341
+  },
+  "7-10-18": {
+    "frequency": 763,
+    "rank": 342
+  },
+  "10-15-25": {
+    "frequency": 762,
+    "rank": 343
+  },
+  "10-17-20": {
+    "frequency": 762,
+    "rank": 344
+  },
+  "13-17-20": {
+    "frequency": 762,
+    "rank": 345
+  },
+  "13-18-22": {
+    "frequency": 762,
+    "rank": 346
+  },
+  "15-18-20": {
+    "frequency": 762,
+    "rank": 347
+  },
+  "2-12-20": {
+    "frequency": 762,
+    "rank": 348
+  },
+  "2-18-20": {
+    "frequency": 762,
+    "rank": 349
+  },
+  "2-22-25": {
+    "frequency": 762,
+    "rank": 350
+  },
+  "2-5-10": {
+    "frequency": 762,
+    "rank": 351
+  },
+  "2-7-20": {
+    "frequency": 762,
+    "rank": 352
+  },
+  "3-14-25": {
+    "frequency": 762,
+    "rank": 353
+  },
+  "3-4-13": {
+    "frequency": 762,
+    "rank": 354
+  },
+  "4-10-14": {
+    "frequency": 762,
+    "rank": 355
+  },
+  "4-11-23": {
+    "frequency": 762,
+    "rank": 356
+  },
+  "4-12-20": {
+    "frequency": 762,
+    "rank": 357
+  },
+  "4-20-23": {
+    "frequency": 762,
+    "rank": 358
+  },
+  "4-23-24": {
+    "frequency": 762,
+    "rank": 359
+  },
+  "4-9-11": {
+    "frequency": 762,
+    "rank": 360
+  },
+  "5-13-21": {
+    "frequency": 762,
+    "rank": 361
+  },
+  "5-19-25": {
+    "frequency": 762,
+    "rank": 362
+  },
+  "6-12-25": {
+    "frequency": 762,
+    "rank": 363
+  },
+  "9-19-25": {
+    "frequency": 762,
+    "rank": 364
+  },
+  "1-15-25": {
+    "frequency": 761,
+    "rank": 365
+  },
+  "11-14-22": {
+    "frequency": 761,
+    "rank": 366
+  },
+  "12-17-25": {
+    "frequency": 761,
+    "rank": 367
+  },
+  "14-18-20": {
+    "frequency": 761,
+    "rank": 368
+  },
+  "2-20-24": {
+    "frequency": 761,
+    "rank": 369
+  },
+  "2-4-12": {
+    "frequency": 761,
+    "rank": 370
+  },
+  "2-4-24": {
+    "frequency": 761,
+    "rank": 371
+  },
+  "2-6-25": {
+    "frequency": 761,
+    "rank": 372
+  },
+  "3-11-24": {
+    "frequency": 761,
+    "rank": 373
+  },
+  "5-10-19": {
+    "frequency": 761,
+    "rank": 374
+  },
+  "5-10-21": {
+    "frequency": 761,
+    "rank": 375
+  },
+  "5-11-23": {
+    "frequency": 761,
+    "rank": 376
+  },
+  "6-11-20": {
+    "frequency": 761,
+    "rank": 377
+  },
+  "6-20-24": {
+    "frequency": 761,
+    "rank": 378
+  },
+  "1-4-24": {
+    "frequency": 760,
+    "rank": 379
+  },
+  "1-9-25": {
+    "frequency": 760,
+    "rank": 380
+  },
+  "10-14-22": {
+    "frequency": 760,
+    "rank": 381
+  },
+  "12-19-25": {
+    "frequency": 760,
+    "rank": 382
+  },
+  "12-20-21": {
+    "frequency": 760,
+    "rank": 383
+  },
+  "13-22-25": {
+    "frequency": 760,
+    "rank": 384
+  },
+  "2-4-22": {
+    "frequency": 760,
+    "rank": 385
+  },
+  "2-4-9": {
+    "frequency": 760,
+    "rank": 386
+  },
+  "3-10-24": {
+    "frequency": 760,
+    "rank": 387
+  },
+  "3-4-9": {
+    "frequency": 760,
+    "rank": 388
+  },
+  "4-11-14": {
+    "frequency": 760,
+    "rank": 389
+  },
+  "4-23-25": {
+    "frequency": 760,
+    "rank": 390
+  },
+  "4-8-11": {
+    "frequency": 760,
+    "rank": 391
+  },
+  "5-14-24": {
+    "frequency": 760,
+    "rank": 392
+  },
+  "7-10-24": {
+    "frequency": 760,
+    "rank": 393
+  },
+  "1-4-25": {
+    "frequency": 759,
+    "rank": 394
+  },
+  "1-7-10": {
+    "frequency": 759,
+    "rank": 395
+  },
+  "1-9-20": {
+    "frequency": 759,
+    "rank": 396
+  },
+  "10-12-13": {
+    "frequency": 759,
+    "rank": 397
+  },
+  "10-12-21": {
+    "frequency": 759,
+    "rank": 398
+  },
+  "10-19-21": {
+    "frequency": 759,
+    "rank": 399
+  },
+  "10-23-24": {
+    "frequency": 759,
+    "rank": 400
+  },
+  "12-20-22": {
+    "frequency": 759,
+    "rank": 401
+  },
+  "14-22-25": {
+    "frequency": 759,
+    "rank": 402
+  },
+  "18-22-25": {
+    "frequency": 759,
+    "rank": 403
+  },
+  "3-13-24": {
+    "frequency": 759,
+    "rank": 404
+  },
+  "3-5-10": {
+    "frequency": 759,
+    "rank": 405
+  },
+  "4-14-24": {
+    "frequency": 759,
+    "rank": 406
+  },
+  "4-9-25": {
+    "frequency": 759,
+    "rank": 407
+  },
+  "5-15-20": {
+    "frequency": 759,
+    "rank": 408
+  },
+  "5-8-25": {
+    "frequency": 759,
+    "rank": 409
+  },
+  "7-11-24": {
+    "frequency": 759,
+    "rank": 410
+  },
+  "8-10-24": {
+    "frequency": 759,
+    "rank": 411
+  },
+  "9-10-15": {
+    "frequency": 759,
+    "rank": 412
+  },
+  "9-10-18": {
+    "frequency": 759,
+    "rank": 413
+  },
+  "1-2-4": {
+    "frequency": 758,
+    "rank": 414
+  },
+  "1-3-20": {
+    "frequency": 758,
+    "rank": 415
+  },
+  "10-11-22": {
+    "frequency": 758,
+    "rank": 416
+  },
+  "10-18-19": {
+    "frequency": 758,
+    "rank": 417
+  },
+  "12-13-18": {
+    "frequency": 758,
+    "rank": 418
+  },
+  "19-20-24": {
+    "frequency": 758,
+    "rank": 419
+  },
+  "2-11-13": {
+    "frequency": 758,
+    "rank": 420
+  },
+  "3-13-15": {
+    "frequency": 758,
+    "rank": 421
+  },
+  "3-5-15": {
+    "frequency": 758,
+    "rank": 422
+  },
+  "4-10-13": {
+    "frequency": 758,
+    "rank": 423
+  },
+  "4-12-13": {
+    "frequency": 758,
+    "rank": 424
+  },
+  "4-5-24": {
+    "frequency": 758,
+    "rank": 425
+  },
+  "4-6-25": {
+    "frequency": 758,
+    "rank": 426
+  },
+  "5-21-25": {
+    "frequency": 758,
+    "rank": 427
+  },
+  "5-7-20": {
+    "frequency": 758,
+    "rank": 428
+  },
+  "1-12-24": {
+    "frequency": 757,
+    "rank": 429
+  },
+  "1-13-22": {
+    "frequency": 757,
+    "rank": 430
+  },
+  "10-14-23": {
+    "frequency": 757,
+    "rank": 431
+  },
+  "10-15-21": {
+    "frequency": 757,
+    "rank": 432
+  },
+  "11-18-22": {
+    "frequency": 757,
+    "rank": 433
+  },
+  "12-18-22": {
+    "frequency": 757,
+    "rank": 434
+  },
+  "12-20-23": {
+    "frequency": 757,
+    "rank": 435
+  },
+  "13-23-25": {
+    "frequency": 757,
+    "rank": 436
+  },
+  "18-19-20": {
+    "frequency": 757,
+    "rank": 437
+  },
+  "19-21-25": {
+    "frequency": 757,
+    "rank": 438
+  },
+  "2-11-23": {
+    "frequency": 757,
+    "rank": 439
+  },
+  "3-11-23": {
+    "frequency": 757,
+    "rank": 440
+  },
+  "3-9-13": {
+    "frequency": 757,
+    "rank": 441
+  },
+  "4-11-12": {
+    "frequency": 757,
+    "rank": 442
+  },
+  "4-14-20": {
+    "frequency": 757,
+    "rank": 443
+  },
+  "5-10-14": {
+    "frequency": 757,
+    "rank": 444
+  },
+  "5-11-21": {
+    "frequency": 757,
+    "rank": 445
+  },
+  "5-9-10": {
+    "frequency": 757,
+    "rank": 446
+  },
+  "7-9-10": {
+    "frequency": 757,
+    "rank": 447
+  },
+  "7-9-20": {
+    "frequency": 757,
+    "rank": 448
+  },
+  "9-10-21": {
+    "frequency": 757,
+    "rank": 449
+  },
+  "1-11-25": {
+    "frequency": 756,
+    "rank": 450
+  },
+  "1-15-22": {
+    "frequency": 756,
+    "rank": 451
+  },
+  "1-2-20": {
+    "frequency": 756,
+    "rank": 452
+  },
+  "1-20-21": {
+    "frequency": 756,
+    "rank": 453
+  },
+  "1-23-25": {
+    "frequency": 756,
+    "rank": 454
+  },
+  "1-5-24": {
+    "frequency": 756,
+    "rank": 455
+  },
+  "10-13-14": {
+    "frequency": 756,
+    "rank": 456
+  },
+  "10-15-19": {
+    "frequency": 756,
+    "rank": 457
+  },
+  "11-15-22": {
+    "frequency": 756,
+    "rank": 458
+  },
+  "2-15-20": {
+    "frequency": 756,
+    "rank": 459
+  },
+  "3-19-20": {
+    "frequency": 756,
+    "rank": 460
+  },
+  "4-19-25": {
+    "frequency": 756,
+    "rank": 461
+  },
+  "4-20-22": {
+    "frequency": 756,
+    "rank": 462
+  },
+  "5-8-10": {
+    "frequency": 756,
+    "rank": 463
+  },
+  "6-10-12": {
+    "frequency": 756,
+    "rank": 464
+  },
+  "7-14-25": {
+    "frequency": 756,
+    "rank": 465
+  },
+  "1-11-22": {
+    "frequency": 755,
+    "rank": 466
+  },
+  "1-12-15": {
+    "frequency": 755,
+    "rank": 467
+  },
+  "1-12-17": {
+    "frequency": 755,
+    "rank": 468
+  },
+  "1-15-19": {
+    "frequency": 755,
+    "rank": 469
+  },
+  "1-15-21": {
+    "frequency": 755,
+    "rank": 470
+  },
+  "1-18-25": {
+    "frequency": 755,
+    "rank": 471
+  },
+  "1-3-22": {
+    "frequency": 755,
+    "rank": 472
+  },
+  "10-14-18": {
+    "frequency": 755,
+    "rank": 473
+  },
+  "10-20-22": {
+    "frequency": 755,
+    "rank": 474
+  },
+  "11-13-21": {
+    "frequency": 755,
+    "rank": 475
+  },
+  "13-15-24": {
+    "frequency": 755,
+    "rank": 476
+  },
+  "14-15-25": {
+    "frequency": 755,
+    "rank": 477
+  },
+  "14-24-25": {
+    "frequency": 755,
+    "rank": 478
+  },
+  "15-20-21": {
+    "frequency": 755,
+    "rank": 479
+  },
+  "16-20-25": {
+    "frequency": 755,
+    "rank": 480
+  },
+  "17-20-25": {
+    "frequency": 755,
+    "rank": 481
+  },
+  "2-14-15": {
+    "frequency": 755,
+    "rank": 482
+  },
+  "2-14-24": {
+    "frequency": 755,
+    "rank": 483
+  },
+  "2-3-20": {
+    "frequency": 755,
+    "rank": 484
+  },
+  "2-4-14": {
+    "frequency": 755,
+    "rank": 485
+  },
+  "3-10-13": {
+    "frequency": 755,
+    "rank": 486
+  },
+  "3-11-14": {
+    "frequency": 755,
+    "rank": 487
+  },
+  "3-13-18": {
+    "frequency": 755,
+    "rank": 488
+  },
+  "3-14-22": {
+    "frequency": 755,
+    "rank": 489
+  },
+  "3-23-25": {
+    "frequency": 755,
+    "rank": 490
+  },
+  "4-12-24": {
+    "frequency": 755,
+    "rank": 491
+  },
+  "4-20-24": {
+    "frequency": 755,
+    "rank": 492
+  },
+  "5-10-12": {
+    "frequency": 755,
+    "rank": 493
+  },
+  "5-11-18": {
+    "frequency": 755,
+    "rank": 494
+  },
+  "5-13-25": {
+    "frequency": 755,
+    "rank": 495
+  },
+  "6-20-25": {
+    "frequency": 755,
+    "rank": 496
+  },
+  "6-24-25": {
+    "frequency": 755,
+    "rank": 497
+  },
+  "7-14-24": {
+    "frequency": 755,
+    "rank": 498
+  },
+  "8-10-14": {
+    "frequency": 755,
+    "rank": 499
+  },
+  "9-20-21": {
+    "frequency": 755,
+    "rank": 500
+  },
+  "1-14-22": {
+    "frequency": 754,
+    "rank": 501
+  },
+  "1-2-11": {
+    "frequency": 754,
+    "rank": 502
+  },
+  "1-3-11": {
+    "frequency": 754,
+    "rank": 503
+  },
+  "1-4-9": {
+    "frequency": 754,
+    "rank": 504
+  },
+  "11-15-25": {
+    "frequency": 754,
+    "rank": 505
+  },
+  "11-19-21": {
+    "frequency": 754,
+    "rank": 506
+  },
+  "13-19-25": {
+    "frequency": 754,
+    "rank": 507
+  },
+  "14-15-24": {
+    "frequency": 754,
+    "rank": 508
+  },
+  "17-24-25": {
+    "frequency": 754,
+    "rank": 509
+  },
+  "18-20-24": {
+    "frequency": 754,
+    "rank": 510
+  },
+  "2-10-23": {
+    "frequency": 754,
+    "rank": 511
+  },
+  "2-15-25": {
+    "frequency": 754,
+    "rank": 512
+  },
+  "20-22-24": {
+    "frequency": 754,
+    "rank": 513
+  },
+  "20-23-24": {
+    "frequency": 754,
+    "rank": 514
+  },
+  "21-24-25": {
+    "frequency": 754,
+    "rank": 515
+  },
+  "3-10-15": {
+    "frequency": 754,
+    "rank": 516
+  },
+  "3-14-24": {
+    "frequency": 754,
+    "rank": 517
+  },
+  "3-7-20": {
+    "frequency": 754,
+    "rank": 518
+  },
+  "4-13-21": {
+    "frequency": 754,
+    "rank": 519
+  },
+  "5-10-18": {
+    "frequency": 754,
+    "rank": 520
+  },
+  "7-15-20": {
+    "frequency": 754,
+    "rank": 521
+  },
+  "1-10-21": {
+    "frequency": 753,
+    "rank": 522
+  },
+  "1-2-24": {
+    "frequency": 753,
+    "rank": 523
+  },
+  "1-5-13": {
+    "frequency": 753,
+    "rank": 524
+  },
+  "1-6-10": {
+    "frequency": 753,
+    "rank": 525
+  },
+  "10-14-17": {
+    "frequency": 753,
+    "rank": 526
+  },
+  "10-14-19": {
+    "frequency": 753,
+    "rank": 527
+  },
+  "10-16-20": {
+    "frequency": 753,
+    "rank": 528
+  },
+  "11-13-19": {
+    "frequency": 753,
+    "rank": 529
+  },
+  "12-13-24": {
+    "frequency": 753,
+    "rank": 530
+  },
+  "12-23-25": {
+    "frequency": 753,
+    "rank": 531
+  },
+  "13-15-22": {
+    "frequency": 753,
+    "rank": 532
+  },
+  "13-19-21": {
+    "frequency": 753,
+    "rank": 533
+  },
+  "2-5-11": {
+    "frequency": 753,
+    "rank": 534
+  },
+  "3-12-25": {
+    "frequency": 753,
+    "rank": 535
+  },
+  "3-13-22": {
+    "frequency": 753,
+    "rank": 536
+  },
+  "3-20-21": {
+    "frequency": 753,
+    "rank": 537
+  },
+  "3-6-9": {
+    "frequency": 753,
+    "rank": 538
+  },
+  "4-12-19": {
+    "frequency": 753,
+    "rank": 539
+  },
+  "4-19-21": {
+    "frequency": 753,
+    "rank": 540
+  },
+  "4-6-20": {
+    "frequency": 753,
+    "rank": 541
+  },
+  "4-9-12": {
+    "frequency": 753,
+    "rank": 542
+  },
+  "6-17-25": {
+    "frequency": 753,
+    "rank": 543
+  },
+  "7-12-20": {
+    "frequency": 753,
+    "rank": 544
+  },
+  "7-22-24": {
+    "frequency": 753,
+    "rank": 545
+  },
+  "8-11-14": {
+    "frequency": 753,
+    "rank": 546
+  },
+  "8-14-20": {
+    "frequency": 753,
+    "rank": 547
+  },
+  "9-10-23": {
+    "frequency": 753,
+    "rank": 548
+  },
+  "1-2-13": {
+    "frequency": 752,
+    "rank": 549
+  },
+  "1-2-15": {
+    "frequency": 752,
+    "rank": 550
+  },
+  "1-20-23": {
+    "frequency": 752,
+    "rank": 551
+  },
+  "10-13-17": {
+    "frequency": 752,
+    "rank": 552
+  },
+  "10-14-16": {
+    "frequency": 752,
+    "rank": 553
+  },
+  "10-17-24": {
+    "frequency": 752,
+    "rank": 554
+  },
+  "11-21-24": {
+    "frequency": 752,
+    "rank": 555
+  },
+  "11-21-25": {
+    "frequency": 752,
+    "rank": 556
+  },
+  "2-13-25": {
+    "frequency": 752,
+    "rank": 557
+  },
+  "2-14-22": {
+    "frequency": 752,
+    "rank": 558
+  },
+  "2-18-25": {
+    "frequency": 752,
+    "rank": 559
+  },
+  "2-7-25": {
+    "frequency": 752,
+    "rank": 560
+  },
+  "21-22-24": {
+    "frequency": 752,
+    "rank": 561
+  },
+  "4-13-19": {
+    "frequency": 752,
+    "rank": 562
+  },
+  "5-13-22": {
+    "frequency": 752,
+    "rank": 563
+  },
+  "5-7-10": {
+    "frequency": 752,
+    "rank": 564
+  },
+  "7-11-25": {
+    "frequency": 752,
+    "rank": 565
+  },
+  "7-13-18": {
+    "frequency": 752,
+    "rank": 566
+  },
+  "9-14-15": {
+    "frequency": 752,
+    "rank": 567
+  },
+  "1-12-19": {
+    "frequency": 751,
+    "rank": 568
+  },
+  "1-2-14": {
+    "frequency": 751,
+    "rank": 569
+  },
+  "1-4-15": {
+    "frequency": 751,
+    "rank": 570
+  },
+  "1-4-19": {
+    "frequency": 751,
+    "rank": 571
+  },
+  "1-4-23": {
+    "frequency": 751,
+    "rank": 572
+  },
+  "10-13-19": {
+    "frequency": 751,
+    "rank": 573
+  },
+  "11-12-19": {
+    "frequency": 751,
+    "rank": 574
+  },
+  "12-22-24": {
+    "frequency": 751,
+    "rank": 575
+  },
+  "15-20-22": {
+    "frequency": 751,
+    "rank": 576
+  },
+  "18-20-22": {
+    "frequency": 751,
+    "rank": 577
+  },
+  "2-10-18": {
+    "frequency": 751,
+    "rank": 578
+  },
+  "2-11-18": {
+    "frequency": 751,
+    "rank": 579
+  },
+  "2-5-24": {
+    "frequency": 751,
+    "rank": 580
+  },
+  "3-15-19": {
+    "frequency": 751,
+    "rank": 581
+  },
+  "4-10-22": {
+    "frequency": 751,
+    "rank": 582
+  },
+  "4-21-22": {
+    "frequency": 751,
+    "rank": 583
+  },
+  "4-9-13": {
+    "frequency": 751,
+    "rank": 584
+  },
+  "5-9-20": {
+    "frequency": 751,
+    "rank": 585
+  },
+  "6-10-19": {
+    "frequency": 751,
+    "rank": 586
+  },
+  "6-12-24": {
+    "frequency": 751,
+    "rank": 587
+  },
+  "8-11-22": {
+    "frequency": 751,
+    "rank": 588
+  },
+  "8-22-25": {
+    "frequency": 751,
+    "rank": 589
+  },
+  "9-24-25": {
+    "frequency": 751,
+    "rank": 590
+  },
+  "10-15-17": {
+    "frequency": 750,
+    "rank": 591
+  },
+  "10-16-19": {
+    "frequency": 750,
+    "rank": 592
+  },
+  "11-12-22": {
+    "frequency": 750,
+    "rank": 593
+  },
+  "12-18-24": {
+    "frequency": 750,
+    "rank": 594
+  },
+  "15-19-25": {
+    "frequency": 750,
+    "rank": 595
+  },
+  "2-11-14": {
+    "frequency": 750,
+    "rank": 596
+  },
+  "2-5-20": {
+    "frequency": 750,
+    "rank": 597
+  },
+  "2-7-11": {
+    "frequency": 750,
+    "rank": 598
+  },
+  "3-10-19": {
+    "frequency": 750,
+    "rank": 599
+  },
+  "3-5-24": {
+    "frequency": 750,
+    "rank": 600
+  },
+  "3-7-10": {
+    "frequency": 750,
+    "rank": 601
+  },
+  "5-19-21": {
+    "frequency": 750,
+    "rank": 602
+  },
+  "6-12-20": {
+    "frequency": 750,
+    "rank": 603
+  },
+  "7-18-25": {
+    "frequency": 750,
+    "rank": 604
+  },
+  "7-20-21": {
+    "frequency": 750,
+    "rank": 605
+  },
+  "9-13-15": {
+    "frequency": 750,
+    "rank": 606
+  },
+  "1-14-17": {
+    "frequency": 749,
+    "rank": 607
+  },
+  "1-18-24": {
+    "frequency": 749,
+    "rank": 608
+  },
+  "1-3-4": {
+    "frequency": 749,
+    "rank": 609
+  },
+  "1-5-15": {
+    "frequency": 749,
+    "rank": 610
+  },
+  "10-18-21": {
+    "frequency": 749,
+    "rank": 611
+  },
+  "11-17-25": {
+    "frequency": 749,
+    "rank": 612
+  },
+  "13-16-20": {
+    "frequency": 749,
+    "rank": 613
+  },
+  "13-21-25": {
+    "frequency": 749,
+    "rank": 614
+  },
+  "3-5-20": {
+    "frequency": 749,
+    "rank": 615
+  },
+  "5-11-15": {
+    "frequency": 749,
+    "rank": 616
+  },
+  "5-12-20": {
+    "frequency": 749,
+    "rank": 617
+  },
+  "5-13-18": {
+    "frequency": 749,
+    "rank": 618
+  },
+  "5-18-25": {
+    "frequency": 749,
+    "rank": 619
+  },
+  "6-10-24": {
+    "frequency": 749,
+    "rank": 620
+  },
+  "8-11-24": {
+    "frequency": 749,
+    "rank": 621
+  },
+  "8-14-25": {
+    "frequency": 749,
+    "rank": 622
+  },
+  "9-10-16": {
+    "frequency": 749,
+    "rank": 623
+  },
+  "9-10-22": {
+    "frequency": 749,
+    "rank": 624
+  },
+  "1-17-20": {
+    "frequency": 748,
+    "rank": 625
+  },
+  "1-17-25": {
+    "frequency": 748,
+    "rank": 626
+  },
+  "10-22-24": {
+    "frequency": 748,
+    "rank": 627
+  },
+  "11-12-14": {
+    "frequency": 748,
+    "rank": 628
+  },
+  "11-18-24": {
+    "frequency": 748,
+    "rank": 629
+  },
+  "15-20-24": {
+    "frequency": 748,
+    "rank": 630
+  },
+  "2-10-13": {
+    "frequency": 748,
+    "rank": 631
+  },
+  "2-11-24": {
+    "frequency": 748,
+    "rank": 632
+  },
+  "2-3-15": {
+    "frequency": 748,
+    "rank": 633
+  },
+  "2-5-25": {
+    "frequency": 748,
+    "rank": 634
+  },
+  "3-11-19": {
+    "frequency": 748,
+    "rank": 635
+  },
+  "3-4-15": {
+    "frequency": 748,
+    "rank": 636
+  },
+  "4-10-21": {
+    "frequency": 748,
+    "rank": 637
+  },
+  "4-11-15": {
+    "frequency": 748,
+    "rank": 638
+  },
+  "4-19-22": {
+    "frequency": 748,
+    "rank": 639
+  },
+  "4-6-9": {
+    "frequency": 748,
+    "rank": 640
+  },
+  "5-10-15": {
+    "frequency": 748,
+    "rank": 641
+  },
+  "5-14-21": {
+    "frequency": 748,
+    "rank": 642
+  },
+  "5-22-24": {
+    "frequency": 748,
+    "rank": 643
+  },
+  "6-19-20": {
+    "frequency": 748,
+    "rank": 644
+  },
+  "7-11-14": {
+    "frequency": 748,
+    "rank": 645
+  },
+  "8-10-12": {
+    "frequency": 748,
+    "rank": 646
+  },
+  "9-15-20": {
+    "frequency": 748,
+    "rank": 647
+  },
+  "1-23-24": {
+    "frequency": 747,
+    "rank": 648
+  },
+  "1-3-23": {
+    "frequency": 747,
+    "rank": 649
+  },
+  "1-3-24": {
+    "frequency": 747,
+    "rank": 650
+  },
+  "1-4-14": {
+    "frequency": 747,
+    "rank": 651
+  },
+  "10-13-15": {
+    "frequency": 747,
+    "rank": 652
+  },
+  "10-13-21": {
+    "frequency": 747,
+    "rank": 653
+  },
+  "10-13-23": {
+    "frequency": 747,
+    "rank": 654
+  },
+  "13-18-24": {
+    "frequency": 747,
+    "rank": 655
+  },
+  "13-21-24": {
+    "frequency": 747,
+    "rank": 656
+  },
+  "14-19-25": {
+    "frequency": 747,
+    "rank": 657
+  },
+  "14-22-24": {
+    "frequency": 747,
+    "rank": 658
+  },
+  "15-22-24": {
+    "frequency": 747,
+    "rank": 659
+  },
+  "15-24-25": {
+    "frequency": 747,
+    "rank": 660
+  },
+  "17-20-21": {
+    "frequency": 747,
+    "rank": 661
+  },
+  "2-3-4": {
+    "frequency": 747,
+    "rank": 662
+  },
+  "2-4-19": {
+    "frequency": 747,
+    "rank": 663
+  },
+  "2-4-23": {
+    "frequency": 747,
+    "rank": 664
+  },
+  "2-9-14": {
+    "frequency": 747,
+    "rank": 665
+  },
+  "3-5-13": {
+    "frequency": 747,
+    "rank": 666
+  },
+  "3-6-20": {
+    "frequency": 747,
+    "rank": 667
+  },
+  "3-7-11": {
+    "frequency": 747,
+    "rank": 668
+  },
+  "5-11-19": {
+    "frequency": 747,
+    "rank": 669
+  },
+  "5-11-22": {
+    "frequency": 747,
+    "rank": 670
+  },
+  "5-12-25": {
+    "frequency": 747,
+    "rank": 671
+  },
+  "5-21-24": {
+    "frequency": 747,
+    "rank": 672
+  },
+  "5-23-25": {
+    "frequency": 747,
+    "rank": 673
+  },
+  "5-8-20": {
+    "frequency": 747,
+    "rank": 674
+  },
+  "6-18-20": {
+    "frequency": 747,
+    "rank": 675
+  },
+  "7-10-19": {
+    "frequency": 747,
+    "rank": 676
+  },
+  "7-11-18": {
+    "frequency": 747,
+    "rank": 677
+  },
+  "8-11-15": {
+    "frequency": 747,
+    "rank": 678
+  },
+  "9-13-14": {
+    "frequency": 747,
+    "rank": 679
+  },
+  "9-17-25": {
+    "frequency": 747,
+    "rank": 680
+  },
+  "9-18-25": {
+    "frequency": 747,
+    "rank": 681
+  },
+  "1-10-22": {
+    "frequency": 746,
+    "rank": 682
+  },
+  "1-5-25": {
+    "frequency": 746,
+    "rank": 683
+  },
+  "1-7-20": {
+    "frequency": 746,
+    "rank": 684
+  },
+  "10-12-16": {
+    "frequency": 746,
+    "rank": 685
+  },
+  "11-14-21": {
+    "frequency": 746,
+    "rank": 686
+  },
+  "12-14-24": {
+    "frequency": 746,
+    "rank": 687
+  },
+  "13-15-25": {
+    "frequency": 746,
+    "rank": 688
+  },
+  "14-23-25": {
+    "frequency": 746,
+    "rank": 689
+  },
+  "18-21-25": {
+    "frequency": 746,
+    "rank": 690
+  },
+  "18-22-24": {
+    "frequency": 746,
+    "rank": 691
+  },
+  "2-12-22": {
+    "frequency": 746,
+    "rank": 692
+  },
+  "3-20-22": {
+    "frequency": 746,
+    "rank": 693
+  },
+  "4-21-24": {
+    "frequency": 746,
+    "rank": 694
+  },
+  "4-5-10": {
+    "frequency": 746,
+    "rank": 695
+  },
+  "4-5-13": {
+    "frequency": 746,
+    "rank": 696
+  },
+  "4-6-12": {
+    "frequency": 746,
+    "rank": 697
+  },
+  "4-6-13": {
+    "frequency": 746,
+    "rank": 698
+  },
+  "4-9-14": {
+    "frequency": 746,
+    "rank": 699
+  },
+  "5-13-15": {
+    "frequency": 746,
+    "rank": 700
+  },
+  "5-14-22": {
+    "frequency": 746,
+    "rank": 701
+  },
+  "5-18-21": {
+    "frequency": 746,
+    "rank": 702
+  },
+  "5-20-23": {
+    "frequency": 746,
+    "rank": 703
+  },
+  "5-7-14": {
+    "frequency": 746,
+    "rank": 704
+  },
+  "7-10-22": {
+    "frequency": 746,
+    "rank": 705
+  },
+  "9-13-19": {
+    "frequency": 746,
+    "rank": 706
+  },
+  "1-13-14": {
+    "frequency": 745,
+    "rank": 707
+  },
+  "1-3-5": {
+    "frequency": 745,
+    "rank": 708
+  },
+  "1-8-11": {
+    "frequency": 745,
+    "rank": 709
+  },
+  "10-15-18": {
+    "frequency": 745,
+    "rank": 710
+  },
+  "11-17-20": {
+    "frequency": 745,
+    "rank": 711
+  },
+  "12-15-24": {
+    "frequency": 745,
+    "rank": 712
+  },
+  "17-18-20": {
+    "frequency": 745,
+    "rank": 713
+  },
+  "2-6-10": {
+    "frequency": 745,
+    "rank": 714
+  },
+  "3-10-22": {
+    "frequency": 745,
+    "rank": 715
+  },
+  "3-20-23": {
+    "frequency": 745,
+    "rank": 716
+  },
+  "3-6-22": {
+    "frequency": 745,
+    "rank": 717
+  },
+  "3-7-24": {
+    "frequency": 745,
+    "rank": 718
+  },
+  "4-13-15": {
+    "frequency": 745,
+    "rank": 719
+  },
+  "4-13-23": {
+    "frequency": 745,
+    "rank": 720
+  },
+  "4-15-20": {
+    "frequency": 745,
+    "rank": 721
+  },
+  "4-18-25": {
+    "frequency": 745,
+    "rank": 722
+  },
+  "5-7-24": {
+    "frequency": 745,
+    "rank": 723
+  },
+  "6-9-19": {
+    "frequency": 745,
+    "rank": 724
+  },
+  "7-19-20": {
+    "frequency": 745,
+    "rank": 725
+  },
+  "7-20-22": {
+    "frequency": 745,
+    "rank": 726
+  },
+  "9-11-13": {
+    "frequency": 745,
+    "rank": 727
+  },
+  "9-12-13": {
+    "frequency": 745,
+    "rank": 728
+  },
+  "1-11-21": {
+    "frequency": 744,
+    "rank": 729
+  },
+  "1-15-18": {
+    "frequency": 744,
+    "rank": 730
+  },
+  "1-21-25": {
+    "frequency": 744,
+    "rank": 731
+  },
+  "1-22-25": {
+    "frequency": 744,
+    "rank": 732
+  },
+  "1-3-19": {
+    "frequency": 744,
+    "rank": 733
+  },
+  "1-7-14": {
+    "frequency": 744,
+    "rank": 734
+  },
+  "1-9-24": {
+    "frequency": 744,
+    "rank": 735
+  },
+  "10-17-18": {
+    "frequency": 744,
+    "rank": 736
+  },
+  "10-21-24": {
+    "frequency": 744,
+    "rank": 737
+  },
+  "11-15-19": {
+    "frequency": 744,
+    "rank": 738
+  },
+  "12-16-25": {
+    "frequency": 744,
+    "rank": 739
+  },
+  "13-21-22": {
+    "frequency": 744,
+    "rank": 740
+  },
+  "14-15-19": {
+    "frequency": 744,
+    "rank": 741
+  },
+  "2-11-15": {
+    "frequency": 744,
+    "rank": 742
+  },
+  "2-12-24": {
+    "frequency": 744,
+    "rank": 743
+  },
+  "2-13-18": {
+    "frequency": 744,
+    "rank": 744
+  },
+  "3-10-23": {
+    "frequency": 744,
+    "rank": 745
+  },
+  "3-7-25": {
+    "frequency": 744,
+    "rank": 746
+  },
+  "3-9-15": {
+    "frequency": 744,
+    "rank": 747
+  },
+  "4-14-22": {
+    "frequency": 744,
+    "rank": 748
+  },
+  "4-18-20": {
+    "frequency": 744,
+    "rank": 749
+  },
+  "4-6-11": {
+    "frequency": 744,
+    "rank": 750
+  },
+  "5-6-20": {
+    "frequency": 744,
+    "rank": 751
+  },
+  "7-17-20": {
+    "frequency": 744,
+    "rank": 752
+  },
+  "7-20-23": {
+    "frequency": 744,
+    "rank": 753
+  },
+  "7-8-11": {
+    "frequency": 744,
+    "rank": 754
+  },
+  "8-18-20": {
+    "frequency": 744,
+    "rank": 755
+  },
+  "1-14-19": {
+    "frequency": 743,
+    "rank": 756
+  },
+  "1-17-24": {
+    "frequency": 743,
+    "rank": 757
+  },
+  "1-2-22": {
+    "frequency": 743,
+    "rank": 758
+  },
+  "10-12-15": {
+    "frequency": 743,
+    "rank": 759
+  },
+  "11-12-18": {
+    "frequency": 743,
+    "rank": 760
+  },
+  "11-14-17": {
+    "frequency": 743,
+    "rank": 761
+  },
+  "11-17-21": {
+    "frequency": 743,
+    "rank": 762
+  },
+  "15-22-25": {
+    "frequency": 743,
+    "rank": 763
+  },
+  "17-21-25": {
+    "frequency": 743,
+    "rank": 764
+  },
+  "2-20-23": {
+    "frequency": 743,
+    "rank": 765
+  },
+  "2-22-24": {
+    "frequency": 743,
+    "rank": 766
+  },
+  "2-4-13": {
+    "frequency": 743,
+    "rank": 767
+  },
+  "3-11-18": {
+    "frequency": 743,
+    "rank": 768
+  },
+  "4-17-25": {
+    "frequency": 743,
+    "rank": 769
+  },
+  "4-5-19": {
+    "frequency": 743,
+    "rank": 770
+  },
+  "4-6-19": {
+    "frequency": 743,
+    "rank": 771
+  },
+  "6-14-20": {
+    "frequency": 743,
+    "rank": 772
+  },
+  "6-18-25": {
+    "frequency": 743,
+    "rank": 773
+  },
+  "7-10-13": {
+    "frequency": 743,
+    "rank": 774
+  },
+  "7-11-19": {
+    "frequency": 743,
+    "rank": 775
+  },
+  "7-14-23": {
+    "frequency": 743,
+    "rank": 776
+  },
+  "1-20-22": {
+    "frequency": 742,
+    "rank": 777
+  },
+  "1-22-24": {
+    "frequency": 742,
+    "rank": 778
+  },
+  "1-4-6": {
+    "frequency": 742,
+    "rank": 779
+  },
+  "10-17-19": {
+    "frequency": 742,
+    "rank": 780
+  },
+  "10-19-23": {
+    "frequency": 742,
+    "rank": 781
+  },
+  "11-12-24": {
+    "frequency": 742,
+    "rank": 782
+  },
+  "11-16-20": {
+    "frequency": 742,
+    "rank": 783
+  },
+  "11-19-24": {
+    "frequency": 742,
+    "rank": 784
+  },
+  "12-21-22": {
+    "frequency": 742,
+    "rank": 785
+  },
+  "16-20-21": {
+    "frequency": 742,
+    "rank": 786
+  },
+  "2-10-15": {
+    "frequency": 742,
+    "rank": 787
+  },
+  "2-20-21": {
+    "frequency": 742,
+    "rank": 788
+  },
+  "2-4-6": {
+    "frequency": 742,
+    "rank": 789
+  },
+  "2-5-14": {
+    "frequency": 742,
+    "rank": 790
+  },
+  "3-10-18": {
+    "frequency": 742,
+    "rank": 791
+  },
+  "4-12-21": {
+    "frequency": 742,
+    "rank": 792
+  },
+  "4-9-21": {
+    "frequency": 742,
+    "rank": 793
+  },
+  "5-7-11": {
+    "frequency": 742,
+    "rank": 794
+  },
+  "5-9-25": {
+    "frequency": 742,
+    "rank": 795
+  },
+  "7-10-16": {
+    "frequency": 742,
+    "rank": 796
+  },
+  "7-18-24": {
+    "frequency": 742,
+    "rank": 797
+  },
+  "7-24-25": {
+    "frequency": 742,
+    "rank": 798
+  },
+  "8-11-18": {
+    "frequency": 742,
+    "rank": 799
+  },
+  "8-9-10": {
+    "frequency": 742,
+    "rank": 800
+  },
+  "1-12-13": {
+    "frequency": 741,
+    "rank": 801
+  },
+  "1-3-14": {
+    "frequency": 741,
+    "rank": 802
+  },
+  "1-9-12": {
+    "frequency": 741,
+    "rank": 803
+  },
+  "1-9-15": {
+    "frequency": 741,
+    "rank": 804
+  },
+  "10-17-21": {
+    "frequency": 741,
+    "rank": 805
+  },
+  "11-12-13": {
+    "frequency": 741,
+    "rank": 806
+  },
+  "11-12-17": {
+    "frequency": 741,
+    "rank": 807
+  },
+  "11-12-23": {
+    "frequency": 741,
+    "rank": 808
+  },
+  "11-15-21": {
+    "frequency": 741,
+    "rank": 809
+  },
+  "11-19-23": {
+    "frequency": 741,
+    "rank": 810
+  },
+  "12-14-15": {
+    "frequency": 741,
+    "rank": 811
+  },
+  "13-14-22": {
+    "frequency": 741,
+    "rank": 812
+  },
+  "13-17-25": {
+    "frequency": 741,
+    "rank": 813
+  },
+  "14-15-21": {
+    "frequency": 741,
+    "rank": 814
+  },
+  "14-16-20": {
+    "frequency": 741,
+    "rank": 815
+  },
+  "14-18-25": {
+    "frequency": 741,
+    "rank": 816
+  },
+  "2-11-22": {
+    "frequency": 741,
+    "rank": 817
+  },
+  "2-17-25": {
+    "frequency": 741,
+    "rank": 818
+  },
+  "2-8-10": {
+    "frequency": 741,
+    "rank": 819
+  },
+  "2-9-13": {
+    "frequency": 741,
+    "rank": 820
+  },
+  "20-21-24": {
+    "frequency": 741,
+    "rank": 821
+  },
+  "3-11-21": {
+    "frequency": 741,
+    "rank": 822
+  },
+  "3-6-24": {
+    "frequency": 741,
+    "rank": 823
+  },
+  "4-9-22": {
+    "frequency": 741,
+    "rank": 824
+  },
+  "5-15-25": {
+    "frequency": 741,
+    "rank": 825
+  },
+  "5-20-22": {
+    "frequency": 741,
+    "rank": 826
+  },
+  "6-10-18": {
+    "frequency": 741,
+    "rank": 827
+  },
+  "6-12-13": {
+    "frequency": 741,
+    "rank": 828
+  },
+  "6-12-17": {
+    "frequency": 741,
+    "rank": 829
+  },
+  "9-13-17": {
+    "frequency": 741,
+    "rank": 830
+  },
+  "9-13-18": {
+    "frequency": 741,
+    "rank": 831
+  },
+  "9-14-19": {
+    "frequency": 741,
+    "rank": 832
+  },
+  "1-2-5": {
+    "frequency": 740,
+    "rank": 833
+  },
+  "1-4-22": {
+    "frequency": 740,
+    "rank": 834
+  },
+  "13-17-21": {
+    "frequency": 740,
+    "rank": 835
+  },
+  "18-20-23": {
+    "frequency": 740,
+    "rank": 836
+  },
+  "2-10-21": {
+    "frequency": 740,
+    "rank": 837
+  },
+  "2-11-19": {
+    "frequency": 740,
+    "rank": 838
+  },
+  "2-7-24": {
+    "frequency": 740,
+    "rank": 839
+  },
+  "2-8-25": {
+    "frequency": 740,
+    "rank": 840
+  },
+  "3-13-19": {
+    "frequency": 740,
+    "rank": 841
+  },
+  "3-17-20": {
+    "frequency": 740,
+    "rank": 842
+  },
+  "3-18-24": {
+    "frequency": 740,
+    "rank": 843
+  },
+  "3-19-24": {
+    "frequency": 740,
+    "rank": 844
+  },
+  "3-21-25": {
+    "frequency": 740,
+    "rank": 845
+  },
+  "3-7-14": {
+    "frequency": 740,
+    "rank": 846
+  },
+  "3-9-19": {
+    "frequency": 740,
+    "rank": 847
+  },
+  "5-15-24": {
+    "frequency": 740,
+    "rank": 848
+  },
+  "5-22-25": {
+    "frequency": 740,
+    "rank": 849
+  },
+  "5-6-25": {
+    "frequency": 740,
+    "rank": 850
+  },
+  "5-7-13": {
+    "frequency": 740,
+    "rank": 851
+  },
+  "6-13-25": {
+    "frequency": 740,
+    "rank": 852
+  },
+  "6-14-25": {
+    "frequency": 740,
+    "rank": 853
+  },
+  "6-19-25": {
+    "frequency": 740,
+    "rank": 854
+  },
+  "7-11-22": {
+    "frequency": 740,
+    "rank": 855
+  },
+  "8-11-13": {
+    "frequency": 740,
+    "rank": 856
+  },
+  "8-12-25": {
+    "frequency": 740,
+    "rank": 857
+  },
+  "8-20-21": {
+    "frequency": 740,
+    "rank": 858
+  },
+  "1-11-12": {
+    "frequency": 739,
+    "rank": 859
+  },
+  "1-2-18": {
+    "frequency": 739,
+    "rank": 860
+  },
+  "1-2-9": {
+    "frequency": 739,
+    "rank": 861
+  },
+  "1-4-12": {
+    "frequency": 739,
+    "rank": 862
+  },
+  "1-5-21": {
+    "frequency": 739,
+    "rank": 863
+  },
+  "1-9-19": {
+    "frequency": 739,
+    "rank": 864
+  },
+  "10-14-21": {
+    "frequency": 739,
+    "rank": 865
+  },
+  "11-14-19": {
+    "frequency": 739,
+    "rank": 866
+  },
+  "11-15-18": {
+    "frequency": 739,
+    "rank": 867
+  },
+  "11-17-22": {
+    "frequency": 739,
+    "rank": 868
+  },
+  "11-21-22": {
+    "frequency": 739,
+    "rank": 869
+  },
+  "12-16-20": {
+    "frequency": 739,
+    "rank": 870
+  },
+  "17-18-25": {
+    "frequency": 739,
+    "rank": 871
+  },
+  "19-22-25": {
+    "frequency": 739,
+    "rank": 872
+  },
+  "2-15-22": {
+    "frequency": 739,
+    "rank": 873
+  },
+  "2-23-24": {
+    "frequency": 739,
+    "rank": 874
+  },
+  "2-3-11": {
+    "frequency": 739,
+    "rank": 875
+  },
+  "2-3-14": {
+    "frequency": 739,
+    "rank": 876
+  },
+  "2-4-21": {
+    "frequency": 739,
+    "rank": 877
+  },
+  "2-5-21": {
+    "frequency": 739,
+    "rank": 878
+  },
+  "3-18-22": {
+    "frequency": 739,
+    "rank": 879
+  },
+  "3-5-14": {
+    "frequency": 739,
+    "rank": 880
+  },
+  "4-5-25": {
+    "frequency": 739,
+    "rank": 881
+  },
+  "5-14-15": {
+    "frequency": 739,
+    "rank": 882
+  },
+  "9-11-12": {
+    "frequency": 739,
+    "rank": 883
+  },
+  "9-11-25": {
+    "frequency": 739,
+    "rank": 884
+  },
+  "9-12-15": {
+    "frequency": 739,
+    "rank": 885
+  },
+  "9-14-25": {
+    "frequency": 739,
+    "rank": 886
+  },
+  "9-17-20": {
+    "frequency": 739,
+    "rank": 887
+  },
+  "1-13-21": {
+    "frequency": 738,
+    "rank": 888
+  },
+  "1-3-9": {
+    "frequency": 738,
+    "rank": 889
+  },
+  "1-9-11": {
+    "frequency": 738,
+    "rank": 890
+  },
+  "1-9-14": {
+    "frequency": 738,
+    "rank": 891
+  },
+  "11-13-14": {
+    "frequency": 738,
+    "rank": 892
+  },
+  "11-18-19": {
+    "frequency": 738,
+    "rank": 893
+  },
+  "12-13-22": {
+    "frequency": 738,
+    "rank": 894
+  },
+  "12-21-24": {
+    "frequency": 738,
+    "rank": 895
+  },
+  "13-19-24": {
+    "frequency": 738,
+    "rank": 896
+  },
+  "18-19-25": {
+    "frequency": 738,
+    "rank": 897
+  },
+  "2-15-24": {
+    "frequency": 738,
+    "rank": 898
+  },
+  "2-19-25": {
+    "frequency": 738,
+    "rank": 899
+  },
+  "2-20-22": {
+    "frequency": 738,
+    "rank": 900
+  },
+  "2-3-10": {
+    "frequency": 738,
+    "rank": 901
+  },
+  "21-22-25": {
+    "frequency": 738,
+    "rank": 902
+  },
+  "3-4-5": {
+    "frequency": 738,
+    "rank": 903
+  },
+  "3-5-23": {
+    "frequency": 738,
+    "rank": 904
+  },
+  "4-10-15": {
+    "frequency": 738,
+    "rank": 905
+  },
+  "4-13-18": {
+    "frequency": 738,
+    "rank": 906
+  },
+  "4-15-22": {
+    "frequency": 738,
+    "rank": 907
+  },
+  "4-5-21": {
+    "frequency": 738,
+    "rank": 908
+  },
+  "4-8-25": {
+    "frequency": 738,
+    "rank": 909
+  },
+  "5-23-24": {
+    "frequency": 738,
+    "rank": 910
+  },
+  "6-10-14": {
+    "frequency": 738,
+    "rank": 911
+  },
+  "6-13-24": {
+    "frequency": 738,
+    "rank": 912
+  },
+  "6-18-24": {
+    "frequency": 738,
+    "rank": 913
+  },
+  "7-10-17": {
+    "frequency": 738,
+    "rank": 914
+  },
+  "7-12-24": {
+    "frequency": 738,
+    "rank": 915
+  },
+  "7-13-22": {
+    "frequency": 738,
+    "rank": 916
+  },
+  "7-14-15": {
+    "frequency": 738,
+    "rank": 917
+  },
+  "7-22-25": {
+    "frequency": 738,
+    "rank": 918
+  },
+  "8-24-25": {
+    "frequency": 738,
+    "rank": 919
+  },
+  "1-12-18": {
+    "frequency": 737,
+    "rank": 920
+  },
+  "1-8-10": {
+    "frequency": 737,
+    "rank": 921
+  },
+  "12-13-21": {
+    "frequency": 737,
+    "rank": 922
+  },
+  "12-14-22": {
+    "frequency": 737,
+    "rank": 923
+  },
+  "12-15-21": {
+    "frequency": 737,
+    "rank": 924
+  },
+  "12-17-20": {
+    "frequency": 737,
+    "rank": 925
+  },
+  "13-14-25": {
+    "frequency": 737,
+    "rank": 926
+  },
+  "13-15-18": {
+    "frequency": 737,
+    "rank": 927
+  },
+  "13-23-24": {
+    "frequency": 737,
+    "rank": 928
+  },
+  "14-21-22": {
+    "frequency": 737,
+    "rank": 929
+  },
+  "17-22-24": {
+    "frequency": 737,
+    "rank": 930
+  },
+  "2-13-22": {
+    "frequency": 737,
+    "rank": 931
+  },
+  "2-3-22": {
+    "frequency": 737,
+    "rank": 932
+  },
+  "2-5-13": {
+    "frequency": 737,
+    "rank": 933
+  },
+  "20-21-23": {
+    "frequency": 737,
+    "rank": 934
+  },
+  "3-12-20": {
+    "frequency": 737,
+    "rank": 935
+  },
+  "3-13-17": {
+    "frequency": 737,
+    "rank": 936
+  },
+  "3-21-22": {
+    "frequency": 737,
+    "rank": 937
+  },
+  "3-6-10": {
+    "frequency": 737,
+    "rank": 938
+  },
+  "3-6-17": {
+    "frequency": 737,
+    "rank": 939
+  },
+  "4-11-18": {
+    "frequency": 737,
+    "rank": 940
+  },
+  "4-12-14": {
+    "frequency": 737,
+    "rank": 941
+  },
+  "4-15-19": {
+    "frequency": 737,
+    "rank": 942
+  },
+  "4-8-10": {
+    "frequency": 737,
+    "rank": 943
+  },
+  "5-11-12": {
+    "frequency": 737,
+    "rank": 944
+  },
+  "5-18-24": {
+    "frequency": 737,
+    "rank": 945
+  },
+  "5-7-25": {
+    "frequency": 737,
+    "rank": 946
+  },
+  "6-13-18": {
+    "frequency": 737,
+    "rank": 947
+  },
+  "6-9-13": {
+    "frequency": 737,
+    "rank": 948
+  },
+  "9-11-23": {
+    "frequency": 737,
+    "rank": 949
+  },
+  "9-12-19": {
+    "frequency": 737,
+    "rank": 950
+  },
+  "1-13-17": {
+    "frequency": 736,
+    "rank": 951
+  },
+  "1-13-19": {
+    "frequency": 736,
+    "rank": 952
+  },
+  "1-13-23": {
+    "frequency": 736,
+    "rank": 953
+  },
+  "1-2-17": {
+    "frequency": 736,
+    "rank": 954
+  },
+  "1-3-6": {
+    "frequency": 736,
+    "rank": 955
+  },
+  "1-4-21": {
+    "frequency": 736,
+    "rank": 956
+  },
+  "1-6-20": {
+    "frequency": 736,
+    "rank": 957
+  },
+  "10-13-16": {
+    "frequency": 736,
+    "rank": 958
+  },
+  "13-19-22": {
+    "frequency": 736,
+    "rank": 959
+  },
+  "14-17-22": {
+    "frequency": 736,
+    "rank": 960
+  },
+  "14-21-24": {
+    "frequency": 736,
+    "rank": 961
+  },
+  "15-19-24": {
+    "frequency": 736,
+    "rank": 962
+  },
+  "17-22-25": {
+    "frequency": 736,
+    "rank": 963
+  },
+  "19-20-22": {
+    "frequency": 736,
+    "rank": 964
+  },
+  "3-12-22": {
+    "frequency": 736,
+    "rank": 965
+  },
+  "3-17-25": {
+    "frequency": 736,
+    "rank": 966
+  },
+  "3-21-24": {
+    "frequency": 736,
+    "rank": 967
+  },
+  "3-8-25": {
+    "frequency": 736,
+    "rank": 968
+  },
+  "4-14-25": {
+    "frequency": 736,
+    "rank": 969
+  },
+  "4-5-14": {
+    "frequency": 736,
+    "rank": 970
+  },
+  "4-7-11": {
+    "frequency": 736,
+    "rank": 971
+  },
+  "4-9-24": {
+    "frequency": 736,
+    "rank": 972
+  },
+  "5-7-18": {
+    "frequency": 736,
+    "rank": 973
+  },
+  "7-11-12": {
+    "frequency": 736,
+    "rank": 974
+  },
+  "7-11-17": {
+    "frequency": 736,
+    "rank": 975
+  },
+  "7-14-22": {
+    "frequency": 736,
+    "rank": 976
+  },
+  "7-9-25": {
+    "frequency": 736,
+    "rank": 977
+  },
+  "8-10-18": {
+    "frequency": 736,
+    "rank": 978
+  },
+  "9-20-23": {
+    "frequency": 736,
+    "rank": 979
+  },
+  "1-2-3": {
+    "frequency": 735,
+    "rank": 980
+  },
+  "1-4-17": {
+    "frequency": 735,
+    "rank": 981
+  },
+  "1-9-17": {
+    "frequency": 735,
+    "rank": 982
+  },
+  "10-13-22": {
+    "frequency": 735,
+    "rank": 983
+  },
+  "10-18-22": {
+    "frequency": 735,
+    "rank": 984
+  },
+  "11-18-21": {
+    "frequency": 735,
+    "rank": 985
+  },
+  "11-19-22": {
+    "frequency": 735,
+    "rank": 986
+  },
+  "15-19-21": {
+    "frequency": 735,
+    "rank": 987
+  },
+  "15-21-25": {
+    "frequency": 735,
+    "rank": 988
+  },
+  "2-13-15": {
+    "frequency": 735,
+    "rank": 989
+  },
+  "2-4-5": {
+    "frequency": 735,
+    "rank": 990
+  },
+  "2-7-18": {
+    "frequency": 735,
+    "rank": 991
+  },
+  "3-10-17": {
+    "frequency": 735,
+    "rank": 992
+  },
+  "3-6-19": {
+    "frequency": 735,
+    "rank": 993
+  },
+  "4-6-10": {
+    "frequency": 735,
+    "rank": 994
+  },
+  "5-10-17": {
+    "frequency": 735,
+    "rank": 995
+  },
+  "5-10-22": {
+    "frequency": 735,
+    "rank": 996
+  },
+  "6-14-15": {
+    "frequency": 735,
+    "rank": 997
+  },
+  "6-17-20": {
+    "frequency": 735,
+    "rank": 998
+  },
+  "6-22-24": {
+    "frequency": 735,
+    "rank": 999
+  },
+  "9-21-25": {
+    "frequency": 735,
+    "rank": 1000
+  }
+}

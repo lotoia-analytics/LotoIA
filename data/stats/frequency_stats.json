@@ -1,0 +1,127 @@
+{
+  "1": {
+    "count": 2235,
+    "delta": 24,
+    "relative_strength": 1.011
+  },
+  "2": {
+    "count": 2211,
+    "delta": 0,
+    "relative_strength": 1.0
+  },
+  "3": {
+    "count": 2218,
+    "delta": 7,
+    "relative_strength": 1.003
+  },
+  "4": {
+    "count": 2232,
+    "delta": 21,
+    "relative_strength": 1.009
+  },
+  "5": {
+    "count": 2210,
+    "delta": -1,
+    "relative_strength": 1.0
+  },
+  "6": {
+    "count": 2166,
+    "delta": -45,
+    "relative_strength": 0.98
+  },
+  "7": {
+    "count": 2179,
+    "delta": -32,
+    "relative_strength": 0.986
+  },
+  "8": {
+    "count": 2137,
+    "delta": -74,
+    "relative_strength": 0.967
+  },
+  "9": {
+    "count": 2197,
+    "delta": -14,
+    "relative_strength": 0.994
+  },
+  "10": {
+    "count": 2299,
+    "delta": 88,
+    "relative_strength": 1.04
+  },
+  "11": {
+    "count": 2270,
+    "delta": 59,
+    "relative_strength": 1.027
+  },
+  "12": {
+    "count": 2216,
+    "delta": 5,
+    "relative_strength": 1.002
+  },
+  "13": {
+    "count": 2243,
+    "delta": 32,
+    "relative_strength": 1.014
+  },
+  "14": {
+    "count": 2226,
+    "delta": 15,
+    "relative_strength": 1.007
+  },
+  "15": {
+    "count": 2201,
+    "delta": -10,
+    "relative_strength": 0.995
+  },
+  "16": {
+    "count": 2108,
+    "delta": -103,
+    "relative_strength": 0.953
+  },
+  "17": {
+    "count": 2164,
+    "delta": -47,
+    "relative_strength": 0.979
+  },
+  "18": {
+    "count": 2193,
+    "delta": -18,
+    "relative_strength": 0.992
+  },
+  "19": {
+    "count": 2198,
+    "delta": -13,
+    "relative_strength": 0.994
+  },
+  "20": {
+    "count": 2305,
+    "delta": 94,
+    "relative_strength": 1.043
+  },
+  "21": {
+    "count": 2189,
+    "delta": -22,
+    "relative_strength": 0.99
+  },
+  "22": {
+    "count": 2205,
+    "delta": -6,
+    "relative_strength": 0.997
+  },
+  "23": {
+    "count": 2161,
+    "delta": -50,
+    "relative_strength": 0.977
+  },
+  "24": {
+    "count": 2239,
+    "delta": 28,
+    "relative_strength": 1.013
+  },
+  "25": {
+    "count": 2288,
+    "delta": 77,
+    "relative_strength": 1.035
+  }
+}
