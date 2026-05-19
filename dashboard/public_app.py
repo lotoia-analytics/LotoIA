@@ -351,7 +351,11 @@ def main() -> None:
                     )
                 )
 
-                st.json(result)
+            st.success(f'Você fez {response["hits"]} acertos.')
+
+acertos = " • ".join(response["correct_numbers"])
+
+st.write(f"Dezenas acertadas: {acertos}")
 
 
 if __name__ == "__main__":
