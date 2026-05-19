@@ -1,0 +1,19 @@
+{
+  "experiment_id": "wf-baseline-placeholder",
+  "created_at": "YYYY-MM-DDTHH:MM:SS-03:00",
+  "dataset_version": "dataset-version-placeholder",
+  "code_version": "git-sha-or-release-placeholder",
+  "temporal_split": {
+    "split_id": "wf_001",
+    "train_start": 1,
+    "train_end": 100,
+    "test_start": 101,
+    "test_end": 110
+  },
+  "benchmark_reference": "reports/benchmark/benchmark_result.json",
+  "reproducibility": {
+    "random_seed_policy": "declare fixed seed when stochastic generation is introduced",
+    "dataset_snapshot": "declare snapshot id or immutable path"
+  },
+  "notes": "Template only. No ML training, inference or score_ml is enabled."
+}

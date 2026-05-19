@@ -1,0 +1,37 @@
+# Ambiente virtual
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Banco
+*.db
+
+# Streamlit
+.streamlit/
+
+# ML / datasets
+data/
+datasets/
+models/
+artifacts/
+checkpoints/
+
+# Logs
+logs/
+*.log
+
+# Relatórios
+reports/
+*.pdf
+
+# Cache
+.pytest_cache/
+.mypy_cache/
+
+# Sistema
+.DS_Store
+Thumbs.db

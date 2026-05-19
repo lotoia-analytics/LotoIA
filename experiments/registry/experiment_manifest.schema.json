@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LotoIA Experiment Manifest Baseline",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "experiment_id",
+    "created_at",
+    "dataset_version",
+    "code_version",
+    "temporal_split",
+    "benchmark_reference",
+    "reproducibility"
+  ],
+  "properties": {
+    "experiment_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "dataset_version": { "type": "string" },
+    "code_version": { "type": "string" },
+    "benchmark_reference": { "type": "string" },
+    "temporal_split": {
+      "type": "object",
+      "required": ["split_id", "train_start", "train_end", "test_start", "test_end"],
+      "properties": {
+        "split_id": { "type": "string" },
+        "train_start": { "type": "integer", "minimum": 1 },
+        "train_end": { "type": "integer", "minimum": 1 },
+        "test_start": { "type": "integer", "minimum": 1 },
+        "test_end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "required": ["random_seed_policy", "dataset_snapshot"],
+      "properties": {
+        "random_seed_policy": { "type": "string" },
+        "dataset_snapshot": { "type": "string" }
+      }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["score_ml"] },
+      { "required": ["trained_model_path"] },
+      { "required": ["inference_enabled"] }
+    ]
+  }
+}

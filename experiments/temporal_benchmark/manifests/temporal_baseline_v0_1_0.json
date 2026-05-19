@@ -1,0 +1,60 @@
+{
+  "manifest_id": "temporal-baseline-manifest-v0.1.0",
+  "benchmark_id": "temporal-baseline-v0.1.0",
+  "benchmark_type": "temporal_baseline",
+  "created_at": "2026-05-16T00:00:00-03:00",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK"
+  ],
+  "dataset_snapshot": {
+    "dataset_version": "lotofacil-historico-v0.1.0-2026-05-16",
+    "source_path": "data/raw/historico_lotofacil.csv",
+    "contests_count": 3685,
+    "first_contest": 1,
+    "last_contest": 3685,
+    "content_hash": "bbfac438f47f6bdc71bf02903f9b64c8514d288937a3b20abafe2533b676fe02"
+  },
+  "temporal_split": {
+    "split_id": "tb_v0_1_0_holdout",
+    "train_start": 1,
+    "train_end": 3600,
+    "test_start": 3601,
+    "test_end": 3685
+  },
+  "walk_forward": {
+    "required": true,
+    "status": "declared_not_executed",
+    "policy": "future supervised benchmarks must use expanding historical train windows and future test windows"
+  },
+  "baseline_reference": {
+    "engine": "lotoia.benchmark.benchmark_engine",
+    "current_report": "reports/benchmark/benchmark_result.json",
+    "operational_engine_changed": false
+  },
+  "comparability": {
+    "statistical_baseline_required": true,
+    "same_dataset_snapshot_required": true,
+    "same_temporal_window_required": true,
+    "leakage_checks_required": true
+  },
+  "reproducibility": {
+    "random_seed_policy": "fixed seed required for stochastic candidate generation",
+    "code_version": "local-baseline-2026-05-16",
+    "dataset_version": "lotofacil-historico-v0.1.0-2026-05-16",
+    "rerun_command": "python scripts/run_benchmark.py"
+  },
+  "prohibitions": {
+    "ml_training": true,
+    "score_ml": true,
+    "supervised_inference": true,
+    "ranking_change": true,
+    "generator_change": true,
+    "benchmark_engine_change": true,
+    "backtester_change": true
+  }
+}

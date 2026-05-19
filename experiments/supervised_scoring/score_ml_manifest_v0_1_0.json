@@ -1,0 +1,72 @@
+{
+  "manifest_id": "score-ml-manifest-v0-1-0",
+  "schema_version": "0.1.0",
+  "created_at": "2026-05-16T00:00:00-03:00",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK",
+    "ADR_007_SUPERVISED_DATASET_GOVERNANCE",
+    "ADR_008_INCREMENTAL_SCORE_ML"
+  ],
+  "model": {
+    "model_id": "score-ml-linear-baseline-v0-1-0",
+    "model_version": "score-ml-linear-baseline-v0.1.0",
+    "model_family": "interpretable_linear_baseline",
+    "role": "auxiliary_incremental_rerank",
+    "replaces_statistical_ranking": false
+  },
+  "feature_schema": {
+    "feature_schema_version": "score-ml-features-v0.1.0",
+    "features": [
+      "final_score_norm",
+      "quadra_density",
+      "sum_balance",
+      "odd_balance",
+      "center_balance",
+      "frame_balance"
+    ],
+    "temporal_policy": "candidate_static_or_precomputed_before_scoring"
+  },
+  "attribution": {
+    "required": true,
+    "method": "linear_feature_contribution",
+    "output_field": "score_ml_details.attribution"
+  },
+  "calibration": {
+    "type": "supervised_covariance_weighted_baseline",
+    "default_mode": "institutional_linear_coefficients",
+    "requires_temporal_rows": true
+  },
+  "temporal_validation": {
+    "walk_forward_required": true,
+    "temporal_split": {
+      "split_id": "wf_score_ml_baseline_001",
+      "train_start": 1,
+      "train_end": 2000,
+      "test_start": 2001,
+      "test_end": 2010
+    },
+    "required_relation": "feature_cutoff_contest < scoring_contest"
+  },
+  "benchmark_comparability": {
+    "benchmark_required": true,
+    "benchmark_reference": "experiments/temporal_benchmark/manifests/temporal_baseline_v0_1_0.json",
+    "statistical_benchmark_replaced": false,
+    "comparison_role": "auxiliary_rerank_delta"
+  },
+  "reproducibility": {
+    "model_version": "score-ml-linear-baseline-v0.1.0",
+    "feature_schema_version": "score-ml-features-v0.1.0",
+    "random_seed_policy": "deterministic_no_random_training_in_default_baseline"
+  },
+  "operational_constraints": {
+    "no_deep_learning": true,
+    "no_automl": true,
+    "no_opaque_models": true,
+    "no_temporal_leakage": true
+  }
+}

@@ -1,0 +1,11 @@
+﻿
+dashboard\app.py:71:def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
+dashboard\app.py:80:                "ml_enabled": bool(game.get("ml_enabled", False)),
+dashboard\app.py:317:def _cached_generate_best_games(count: int, pool_size: int, ml_enabled: bool = False) -> 
+dict[str, Any]:
+dashboard\app.py:318:    return generate_best_games(count=count, pool_size=pool_size, ml_enabled=ml_enabled)
+dashboard\app.py:418:    ml_enabled = st.checkbox("ML (experimental)", value=False)
+dashboard\app.py:424:                payload = _cached_generate_best_games(int(count), int(pool_size), 
+ml_enabled=ml_enabled)
+
+

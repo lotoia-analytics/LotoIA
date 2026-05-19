@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    CheckEvent,
+    GenerationEvent,
+    Lead,
+    get_session,
+)
+
+
+def _model_to_dict(model) -> dict[str, Any]:
+    return {column.name: getattr(model, column.name) for column in model.__table__.columns}
+
+
+class LeadRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        first_name: str,
+        whatsapp: str,
+        source: str,
+        ip_hash: str,
+        user_agent: str,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            lead = Lead(
+                first_name=first_name,
+                whatsapp=whatsapp,
+                source=source,
+                ip_hash=ip_hash,
+                user_agent=user_agent,
+            )
+            session.add(lead)
+            session.commit()
+            return _model_to_dict(lead)
+
+    def get(self, lead_id: int) -> dict[str, Any] | None:
+        with get_session(self.db_path) as session:
+            lead = session.get(Lead, lead_id)
+            return _model_to_dict(lead) if lead else None
+
+    def find_by_first_name_and_whatsapp(self, first_name: str, whatsapp: str) -> dict[str, Any] | None:
+        with get_session(self.db_path) as session:
+            lead = (
+                session.query(Lead)
+                .filter(Lead.first_name == first_name, Lead.whatsapp == whatsapp)
+                .order_by(Lead.created_at.desc())
+                .first()
+            )
+            return _model_to_dict(lead) if lead else None
+
+
+class GenerationEventRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        lead_id: int,
+        generated_games: list[dict[str, Any]],
+        ml_enabled: bool,
+        seed: int,
+        strategy: str,
+        ranking_score: float,
+        execution_time_ms: float,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = GenerationEvent(
+                lead_id=lead_id,
+                generated_games=generated_games,
+                ml_enabled=int(ml_enabled),
+                seed=seed,
+                strategy=strategy,
+                ranking_score=ranking_score,
+                execution_time_ms=execution_time_ms,
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def list_by_lead(self, lead_id: int) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(GenerationEvent)
+                .filter(GenerationEvent.lead_id == lead_id)
+                .order_by(GenerationEvent.created_at.desc())
+                .all()
+            )
+            return [_model_to_dict(row) for row in rows]
+
+
+class CheckEventRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        lead_id: int,
+        contest_id: int,
+        selected_numbers: list[int],
+        hits: int,
+        result_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = CheckEvent(
+                lead_id=lead_id,
+                contest_id=contest_id,
+                selected_numbers=selected_numbers,
+                hits=hits,
+                result_payload=result_payload,
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def list_by_lead(self, lead_id: int) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(CheckEvent)
+                .filter(CheckEvent.lead_id == lead_id)
+                .order_by(CheckEvent.created_at.desc())
+                .all()
+            )
+            return [_model_to_dict(row) for row in rows]

@@ -1,0 +1,38 @@
+{
+  "contract_id": "temporal-feature-contract-v0.1.0",
+  "schema_version": "temporal-feature-contract-schema-v0.1.0",
+  "dataset_version": "lotofacil-supervised-governance-v0.1.0-2026-05-16",
+  "created_at": "2026-05-16T00:00:00-03:00",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK",
+    "ADR_007_SUPERVISED_DATASET_GOVERNANCE"
+  ],
+  "feature_cutoff_policy": {
+    "required": true,
+    "comparison": "feature_cutoff_contest < label_contest",
+    "description": "Every supervised row must declare a cutoff contest earlier than the label contest."
+  },
+  "allowed_source_window": {
+    "min_contest": "dataset_first_contest",
+    "max_contest": "feature_cutoff_contest",
+    "inclusive": false
+  },
+  "forbidden_sources": [
+    "label_contest",
+    "future_global_statistics",
+    "post_cutoff_draws",
+    "trained_model_outputs",
+    "score_ml"
+  ],
+  "validation_rules": [
+    "feature_cutoff_contest < label_contest",
+    "feature source contests must be lower than feature_cutoff_contest",
+    "target columns must not appear in feature columns",
+    "score_ml must not appear in governed datasets"
+  ]
+}

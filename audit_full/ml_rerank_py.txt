@@ -1,0 +1,7 @@
+﻿from __future__ import annotations
+from typing import Any
+
+def rerank_games(games: list[dict[str, Any]], *, enabled: bool = False) -> list[dict[str, Any]]:
+    for g in games:
+        g["ml_enabled"] = bool(enabled)
+    return games

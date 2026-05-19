@@ -1,0 +1,144 @@
+from random import sample
+import logging
+
+from lotoia.statistics.advanced import (
+    CENTER_NUMBERS,
+    EMPTY_FINAL_SCORE,
+    calculate_final_score,
+    calculate_quadra_score,
+    calculate_sequence_stats,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _build_game(numbers: list[int]) -> dict[str, object]:
+    ordered_numbers = sorted(numbers)
+    odd = sum(1 for number in ordered_numbers if number % 2 != 0)
+    center = sum(1 for number in ordered_numbers if number in CENTER_NUMBERS)
+
+    return {
+        "numbers": ordered_numbers,
+        "odd": odd,
+        "even": len(ordered_numbers) - odd,
+        "sum": sum(ordered_numbers),
+        "frame": len(ordered_numbers) - center,
+        "center": center,
+    }
+
+
+def _is_valid_game(game: dict[str, object]) -> bool:
+    sequence_stats = calculate_sequence_stats(game["numbers"])
+
+    return (
+        6 <= game["odd"] <= 9
+        and 170 <= game["sum"] <= 240
+        and 8 <= game["frame"] <= 12
+        and 3 <= game["center"] <= 7
+        and sequence_stats["sequence_count"] <= 3
+        and sequence_stats["largest_sequence"] <= 3
+    )
+
+
+def _attach_scores(game: dict[str, object]) -> dict[str, object]:
+    numbers = game["numbers"]
+    game["quadra_score"] = calculate_quadra_score(numbers)
+    try:
+        game["final_score"] = calculate_final_score(numbers)
+    except Exception as exc:
+        logger.warning("Falha ao calcular final_score; usando fallback zero: %s", exc)
+        game["final_score"] = {
+            "final_score": EMPTY_FINAL_SCORE["final_score"],
+            "components": EMPTY_FINAL_SCORE["components"].copy(),
+        }
+    return game
+
+
+def generate_filtered_game() -> dict[str, object]:
+    while True:
+        game = _build_game(sample(range(1, 26), 15))
+        if _is_valid_game(game):
+            return _attach_scores(game)
+
+
+def _repeated_count(first_game: dict[str, object], second_game: dict[str, object]) -> int:
+    return len(set(first_game["numbers"]) & set(second_game["numbers"]))
+
+
+def generate_multiple_games(count: int = 10, max_repeated: int = 9) -> list[dict[str, object]]:
+    if count < 1:
+        raise ValueError("A quantidade de jogos deve ser maior que zero.")
+    if max_repeated < 0 or max_repeated > 15:
+        raise ValueError("A repeticao maxima deve estar entre 0 e 15.")
+
+    games: list[dict[str, object]] = []
+    seen_games: set[tuple[int, ...]] = set()
+    max_attempts = count * 1000
+    attempts = 0
+
+    while len(games) < count and attempts < max_attempts:
+        attempts += 1
+        game = generate_filtered_game()
+        game_key = tuple(game["numbers"])
+
+        if game_key in seen_games:
+            continue
+        if any(_repeated_count(game, previous_game) > max_repeated for previous_game in games):
+            continue
+
+        games.append(game)
+        seen_games.add(game_key)
+
+    if len(games) < count:
+        raise RuntimeError("Nao foi possivel gerar jogos com os filtros informados.")
+
+    return games
+
+
+def _quadra_score_sort_key(game: dict[str, object]) -> tuple[object, object, object]:
+    quadra_score = game["quadra_score"]
+    return (
+        -quadra_score["found_quadras"],
+        -quadra_score["average_frequency"],
+        quadra_score["average_rank"],
+    )
+
+
+def _hybrid_score_sort_key(game: dict[str, object]) -> tuple[object, object, object]:
+    # Transitional ranking: final_score becomes the primary signal while quadra_score
+    # remains as a proven tie-breaker to avoid a sharp behavioral shift.
+    return (
+        -game["final_score"]["final_score"],
+        -game["quadra_score"]["found_quadras"],
+        game["quadra_score"]["average_rank"],
+    )
+
+
+def generate_best_games(count: int = 10, pool_size: int = 30) -> dict[str, object]:
+    if count < 1:
+        raise ValueError("A quantidade de jogos deve ser maior que zero.")
+    if pool_size < count:
+        raise ValueError("O pool de jogos deve ser maior ou igual a quantidade solicitada.")
+
+    games: list[dict[str, object]] = []
+    seen_games: set[tuple[int, ...]] = set()
+    max_attempts = pool_size * 1000
+    attempts = 0
+
+    while len(games) < pool_size and attempts < max_attempts:
+        attempts += 1
+        game = generate_filtered_game()
+        game_key = tuple(game["numbers"])
+
+        if game_key in seen_games:
+            continue
+
+        games.append(game)
+        seen_games.add(game_key)
+
+    if len(games) < pool_size:
+        raise RuntimeError("Nao foi possivel gerar o pool de jogos com os filtros informados.")
+
+    best_games = sorted(games, key=_hybrid_score_sort_key)[:count]
+
+    return {"count": len(best_games), "games": best_games}

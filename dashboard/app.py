@@ -1,0 +1,836 @@
+﻿# from dashboard.labels import PAGES, LABELS
+
+import json
+from pathlib import Path
+from typing import Any
+
+try:
+    from . import _bootstrap  # type: ignore[import-not-found]  # noqa: F401
+except ImportError:
+    import _bootstrap  # type: ignore[no-redef]  # noqa: F401
+
+import pandas as pd
+import plotly.graph_objects as go
+from PIL import Image
+
+try:
+    import starlette.middleware.gzip as starlette_gzip
+
+    if not hasattr(starlette_gzip, "DEFAULT_EXCLUDED_CONTENT_TYPES"):
+        starlette_gzip.DEFAULT_EXCLUDED_CONTENT_TYPES = ("text/event-stream",)
+    if not hasattr(starlette_gzip, "IdentityResponder"):
+
+        class IdentityResponder:
+            def __init__(self, app, minimum_size: int) -> None:
+                self.app = app
+                self.minimum_size = minimum_size
+                self.send = None
+                self.initial_message = {}
+                self.content_encoding_set = False
+                self.content_type_is_excluded = False
+
+            async def __call__(self, scope, receive, send) -> None:
+                self.send = send
+                await self.app(scope, receive, self.send_with_compression)
+
+            async def send_with_compression(self, message) -> None:
+                await self.send(message)
+
+        starlette_gzip.IdentityResponder = IdentityResponder
+except ImportError:
+    pass
+
+import streamlit as st
+
+from lotoia.backtesting import BacktestResult, run_backtest
+from lotoia.benchmark import BenchmarkResult, run_benchmark
+from lotoia.calibration.weight_calibrator import WeightConfiguration, compare_weight_configurations
+from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+from lotoia.database import list_runs
+from lotoia.generator.basic_generator import generate_best_games, generate_multiple_games
+from lotoia.reports import generate_backtest_report
+from lotoia.statistics.advanced import (
+    FINAL_SCORE_WEIGHTS,
+    calculate_hot_cold_numbers,
+    load_delay_stats,
+    load_duos_stats,
+    load_frequency_stats,
+    load_quadras_stats,
+    load_quinas_stats,
+    load_senas_stats,
+    load_ternos_stats,
+)
+from lotoia.statistics.basic import summarize_draws
+
+REPORTS_DIR = Path("reports")
+ASSETS_DIR = Path("assets")
+LOGO_PATH = ASSETS_DIR / "lotoia-logo-transparent.png"
+FAVICON_PATH = ASSETS_DIR / "favicon.ico"
+
+
+def _format_numbers(numbers: list[int]) -> str:
+    return " ".join(f"{number:02d}" for number in numbers)
+
+
+def _score_value(game: dict[str, Any]) -> float:
+    final_score = game.get("final_score", {})
+    return float(final_score.get("final_score", 0))
+
+
+def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
+    rows = []
+    for index, game in enumerate(games, start=1):
+        quadra_score = game.get("quadra_score", {})
+        rows.append(
+            {
+                "rank": index,
+                "dezenas": _format_numbers(game["numbers"]),
+                "final_score": _score_value(game),
+                "ml_enabled": bool(game.get("ml_enabled", False)),
+                "quadras": quadra_score.get("found_quadras", 0),
+                "rank_medio_quadra": round(float(quadra_score.get("average_rank", 0)), 2),
+                "soma": game.get("sum", sum(game["numbers"])),
+                "pares": game.get("even", 0),
+                "impares": game.get("odd", 0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _stats_table(stats: dict[str, dict[str, Any]], key_name: str, limit: int = 25) -> pd.DataFrame:
+    rows = []
+    for key, values in list(stats.items())[:limit]:
+        row = {key_name: key}
+        row.update(values)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _all_backtest_games(result: BacktestResult) -> list[dict[str, Any]]:
+    return [game for contest_result in result.contest_results for game in contest_result["games"]]
+
+
+def _backtest_games_dataframe(result: BacktestResult) -> pd.DataFrame:
+    rows = []
+    for contest_result in result.contest_results:
+        for game in contest_result["games"]:
+            rows.append(
+                {
+                    "concurso": contest_result["contest"],
+                    "dezenas": _format_numbers(game["numbers"]),
+                    "acertos": game["hits"],
+                    "final_score": _score_value(game),
+                    "quadras": game["quadra_score"]["found_quadras"],
+                    "rank_medio_quadra": round(float(game["quadra_score"]["average_rank"]), 2),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _distribution_chart(hit_distribution: dict[str, int]) -> go.Figure:
+    figure = go.Figure(
+        data=[
+            go.Bar(
+                x=list(hit_distribution.keys()),
+                y=list(hit_distribution.values()),
+                marker_color="#2563eb",
+            )
+        ]
+    )
+    figure.update_layout(
+        title="Distribuicao de acertos",
+        xaxis_title="Pontos",
+        yaxis_title="Quantidade",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _score_correlation_chart(result: BacktestResult) -> go.Figure:
+    games = _all_backtest_games(result)
+    figure = go.Figure(
+        data=[
+            go.Scatter(
+                x=[_score_value(game) for game in games],
+                y=[game["hits"] for game in games],
+                mode="markers",
+                marker={"color": "#7c3aed", "size": 9},
+            )
+        ]
+    )
+    figure.update_layout(
+        title="final_score x acertos",
+        xaxis_title="final_score",
+        yaxis_title="Acertos",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _hits_by_contest_chart(result: BacktestResult) -> go.Figure:
+    contests = [item["contest"] for item in result.contest_results]
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=contests,
+            y=[item["best_hits"] for item in result.contest_results],
+            mode="lines+markers",
+            name="Melhor jogo",
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=contests,
+            y=[item["average_hits"] for item in result.contest_results],
+            mode="lines+markers",
+            name="Media",
+        )
+    )
+    figure.update_layout(
+        title="Acertos por concurso",
+        xaxis_title="Concurso",
+        yaxis_title="Acertos",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _configuration_chart(calibration_result: dict[str, Any]) -> go.Figure:
+    evaluations = calibration_result.get("evaluations", [])
+    figure = go.Figure(
+        data=[
+            go.Bar(
+                x=[evaluation["configuration"] for evaluation in evaluations],
+                y=[evaluation["average_hits"] for evaluation in evaluations],
+                marker_color="#0f766e",
+            )
+        ]
+    )
+    figure.update_layout(
+        title="Media de acertos por configuracao",
+        xaxis_title="Configuracao",
+        yaxis_title="Media de acertos",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _benchmark_summary_dataframe(result: BenchmarkResult) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "estrategia": strategy,
+                "media_acertos": metrics["average_hits"],
+                "desvio_padrao": metrics["standard_deviation"],
+                "correlacao": metrics["final_score_hit_correlation"],
+                "total_jogos": metrics["total_games"],
+                "melhor": metrics["stability"]["max_hits"],
+                "pior": metrics["stability"]["min_hits"],
+            }
+            for strategy, metrics in result.strategies.items()
+        ]
+    )
+
+
+def _benchmark_comparison_dataframe(result: BenchmarkResult) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "comparacao": name,
+                "diferenca_media": metrics["average_hit_difference"],
+                "taxa_superioridade": metrics["superiority_rate"],
+                "ranking_medio_lotoia": metrics["lotoia_average_rank"],
+                "ranking_medio_competidor": metrics["competitor_average_rank"],
+            }
+            for name, metrics in result.comparisons.items()
+        ]
+    )
+
+
+def _benchmark_average_chart(result: BenchmarkResult) -> go.Figure:
+    dataframe = _benchmark_summary_dataframe(result)
+    figure = go.Figure(
+        data=[
+            go.Bar(
+                x=dataframe["estrategia"],
+                y=dataframe["media_acertos"],
+                marker_color=["#2563eb", "#0f766e", "#9f6f2f"],
+            )
+        ]
+    )
+    figure.update_layout(
+        title="Media de acertos por estrategia",
+        xaxis_title="Estrategia",
+        yaxis_title="Media de acertos",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _benchmark_evolution_chart(result: BenchmarkResult) -> go.Figure:
+    figure = go.Figure()
+    contests = [contest_result["contest"] for contest_result in result.contest_results]
+    for strategy in result.strategies:
+        figure.add_trace(
+            go.Scatter(
+                x=contests,
+                y=[
+                    contest_result["strategy_results"][strategy]["average_hits"]
+                    for contest_result in result.contest_results
+                ],
+                mode="lines+markers",
+                name=strategy,
+            )
+        )
+    figure.update_layout(
+        title="Evolucao historica do benchmark",
+        xaxis_title="Concurso",
+        yaxis_title="Media de acertos",
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+def _runs_dataframe(runs: list[dict[str, Any]], columns: list[str]) -> pd.DataFrame:
+    rows = []
+    for run in runs:
+        rows.append({column: run.get(column) for column in columns})
+    return pd.DataFrame(rows)
+
+
+def _historical_metric_chart(runs: list[dict[str, Any]], metric: str, title: str) -> go.Figure:
+    figure = go.Figure(
+        data=[
+            go.Scatter(
+                x=[run["created_at"] for run in runs],
+                y=[run.get(metric, 0) for run in runs],
+                mode="lines+markers",
+            )
+        ]
+    )
+    figure.update_layout(
+        title=title,
+        xaxis_title="Execucao",
+        yaxis_title=metric,
+        margin={"l": 20, "r": 20, "t": 50, "b": 20},
+    )
+    return figure
+
+
+@st.cache_data(show_spinner=False)
+def _load_draws():
+    return load_draws_csv(DEFAULT_HISTORY_PATH)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_generate_best_games(count: int, pool_size: int, ml_enabled: bool = False) -> dict[str, Any]:
+    return generate_best_games(count=count, pool_size=pool_size, ml_enabled=ml_enabled)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_generate_multiple_games(count: int, max_repeated: int) -> list[dict[str, Any]]:
+    return generate_multiple_games(count=count, max_repeated=max_repeated)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_backtest(contests: int, games_count: int, pool_size: int, history_window: int, seed: int) -> BacktestResult:
+    return run_backtest(
+        contests_analyzed=contests,
+        games_count=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+        seed=seed,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_calibration(
+    weights: dict[str, float],
+    contests: int,
+    games_count: int,
+    pool_size: int,
+    history_window: int,
+    seed: int,
+) -> dict[str, Any]:
+    official = WeightConfiguration(
+        name="oficial",
+        duo=FINAL_SCORE_WEIGHTS["duo_score"],
+        terno=FINAL_SCORE_WEIGHTS["terno_score"],
+        quadra=FINAL_SCORE_WEIGHTS["quadra_score"],
+        quina=FINAL_SCORE_WEIGHTS["quina_score"],
+        delay=FINAL_SCORE_WEIGHTS["delay_score"],
+        frequency=FINAL_SCORE_WEIGHTS["frequency_score"],
+        sum=FINAL_SCORE_WEIGHTS["sum_score"],
+        sequence=FINAL_SCORE_WEIGHTS["sequence_score"],
+    )
+    custom = WeightConfiguration(name="experimental", **weights)
+    return compare_weight_configurations(
+        [official, custom],
+        contests_analyzed=contests,
+        games_count=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+        seed=seed,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_stats() -> dict[str, dict[str, Any]]:
+    return {
+        "frequency": load_frequency_stats(),
+        "delay": load_delay_stats(),
+        "duos": load_duos_stats(),
+        "ternos": load_ternos_stats(),
+        "quadras": load_quadras_stats(),
+        "quinas": load_quinas_stats(),
+        "senas": load_senas_stats(),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _cached_benchmark(
+    contests: int,
+    games_count: int,
+    pool_size: int,
+    history_window: int,
+    seed: int,
+) -> BenchmarkResult:
+    return run_benchmark(
+        contests_analyzed=contests,
+        games_count=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+        seed=seed,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_runs() -> dict[str, list[dict[str, Any]]]:
+    return list_runs()
+
+
+def _metric_row(result: BacktestResult) -> None:
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Concursos", result.contests_analyzed)
+    col2.metric("Jogos avaliados", result.total_games)
+    col3.metric("Media de acertos", f"{result.average_hits:.2f}")
+    col4.metric("Correlacao", f"{result.final_score_hit_correlation:.3f}")
+
+
+def render_generation_page() -> None:
+    st.header("Geracao de Jogos")
+    col1, col2, col3 = st.columns(3)
+    count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
+    pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
+    max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
+
+    ml_enabled = st.checkbox("ML (experimental)", value=False)
+
+    mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
+    if st.button("Gerar jogos", type="primary"):
+        with st.spinner("Gerando jogos e anexando scores..."):
+            if mode == "Ranking hibrido":
+                payload = _cached_generate_best_games(int(count), int(pool_size), ml_enabled=ml_enabled)
+                games = payload["games"]
+            else:
+                games = _cached_generate_multiple_games(int(count), int(max_repeated))
+
+        dataframe = _games_dataframe(games)
+        st.dataframe(dataframe, hide_index=True, use_container_width=True)
+        st.plotly_chart(
+            go.Figure(data=[go.Bar(x=dataframe["rank"], y=dataframe["final_score"], marker_color="#2563eb")]).update_layout(
+                title="Ranking por final_score",
+                xaxis_title="Rank",
+                yaxis_title="final_score",
+            ),
+            use_container_width=True,
+        )
+
+
+def render_statistics_page(draws) -> None:
+    st.header("Estatisticas Historicas")
+    summary = summarize_draws(draws)
+    hot_cold = calculate_hot_cold_numbers(draws, window=20)
+    stats = _cached_stats()
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Concursos carregados", summary["total_draws"])
+    col2.metric("Ultimo concurso", summary["last_contest"]["contest"])
+    col3.metric("Dezenas rastreadas", summary["numbers_tracked"])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Dezenas quentes")
+        st.dataframe(pd.DataFrame(hot_cold["hot"]), hide_index=True, use_container_width=True)
+    with col2:
+        st.subheader("Dezenas frias")
+        st.dataframe(pd.DataFrame(hot_cold["cold"]), hide_index=True, use_container_width=True)
+
+    frequency = sorted(summary["frequencies"].items(), key=lambda item: item[1], reverse=True)
+    st.plotly_chart(
+        go.Figure(
+            data=[
+                go.Bar(
+                    x=[number for number, _ in frequency],
+                    y=[count for _, count in frequency],
+                    marker_color="#0f766e",
+                )
+            ]
+        ).update_layout(title="Frequencia historica", xaxis_title="Dezena", yaxis_title="Count"),
+        use_container_width=True,
+    )
+
+    tabs = st.tabs(["Frequencia", "Atrasos", "Duos", "Ternos", "Quadras", "Quinas", "Senas"])
+    tables = [
+        ("dezena", stats["frequency"]),
+        ("dezena", stats["delay"]),
+        ("duo", stats["duos"]),
+        ("terno", stats["ternos"]),
+        ("quadra", stats["quadras"]),
+        ("quina", stats["quinas"]),
+        ("sena", stats["senas"]),
+    ]
+    for tab, (key_name, table_stats) in zip(tabs, tables, strict=True):
+        with tab:
+            if table_stats:
+                st.dataframe(_stats_table(table_stats, key_name), hide_index=True, use_container_width=True)
+            else:
+                st.info("Arquivo estatistico ainda nao encontrado.")
+
+
+def render_backtesting_page() -> BacktestResult | None:
+    st.header("Backtesting")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5)
+    pool_size = col2.number_input("Pool", min_value=1, max_value=500, value=30)
+    games_count = col3.number_input("Jogos", min_value=1, max_value=100, value=10)
+    history_window = col4.number_input("Historico", min_value=1, max_value=1000, value=200)
+    seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42)
+
+    if games_count > pool_size:
+        st.warning("O pool precisa ser maior ou igual a quantidade de jogos.")
+        return None
+
+    if st.button("Executar backtest", type="primary"):
+        with st.spinner("Executando backtest historico..."):
+            result = _cached_backtest(
+                int(contests),
+                int(games_count),
+                int(pool_size),
+                int(history_window),
+                int(seed),
+            )
+        _metric_row(result)
+        st.plotly_chart(_distribution_chart(result.hit_distribution), use_container_width=True)
+        st.plotly_chart(_score_correlation_chart(result), use_container_width=True)
+        st.plotly_chart(_hits_by_contest_chart(result), use_container_width=True)
+        st.subheader("Jogos avaliados")
+        st.dataframe(_backtest_games_dataframe(result), hide_index=True, use_container_width=True)
+        return result
+
+    return None
+
+
+def render_calibration_page() -> None:
+    st.header("Calibracao Experimental")
+    st.caption("Os pesos oficiais nao sao alterados. A avaliacao usa pesos temporarios e restaurados.")
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="cal_contests")
+    games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="cal_games")
+    pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="cal_pool")
+    history_window = col4.number_input("Historico", min_value=1, max_value=1000, value=150, key="cal_hist")
+    seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="cal_seed")
+
+    weight_cols = st.columns(4)
+    weights = {
+        "duo": weight_cols[0].number_input("Duo", min_value=0.0, value=15.0),
+        "terno": weight_cols[1].number_input("Terno", min_value=0.0, value=20.0),
+        "quadra": weight_cols[2].number_input("Quadra", min_value=0.0, value=25.0),
+        "quina": weight_cols[3].number_input("Quina", min_value=0.0, value=20.0),
+        "delay": weight_cols[0].number_input("Delay", min_value=0.0, value=10.0),
+        "frequency": weight_cols[1].number_input("Frequencia", min_value=0.0, value=5.0),
+        "sum": weight_cols[2].number_input("Soma", min_value=0.0, value=3.0),
+        "sequence": weight_cols[3].number_input("Sequencia", min_value=0.0, value=2.0),
+    }
+    st.metric("Soma dos pesos", sum(weights.values()))
+
+    if games_count > pool_size:
+        st.warning("O pool precisa ser maior ou igual a quantidade de jogos.")
+        return
+
+    if st.button("Comparar configuracoes", type="primary"):
+        with st.spinner("Executando calibracao experimental..."):
+            result = _cached_calibration(
+                weights,
+                int(contests),
+                int(games_count),
+                int(pool_size),
+                int(history_window),
+                int(seed),
+            )
+
+        evaluations = result["evaluations"]
+        st.plotly_chart(_configuration_chart(result), use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "configuracao": evaluation["configuration"],
+                        "media_acertos": evaluation["average_hits"],
+                        "correlacao": evaluation["final_score_hit_correlation"],
+                        "desvio_padrao": evaluation["hit_standard_deviation"],
+                        "peso_total": evaluation["total_weight"],
+                    }
+                    for evaluation in evaluations
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.info(f"Melhor configuracao nesta amostra: {result['best_configuration']}")
+
+
+def render_reports_page() -> None:
+    st.header("Relatorios")
+    REPORTS_DIR.mkdir(exist_ok=True)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="rep_contests")
+    games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="rep_games")
+    pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="rep_pool")
+    history_window = col4.number_input("Historico", min_value=1, max_value=1000, value=150, key="rep_hist")
+    seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="rep_seed")
+
+    if st.button("Gerar relatorio", type="primary"):
+        with st.spinner("Gerando relatorio analitico..."):
+            result = _cached_backtest(
+                int(contests),
+                int(games_count),
+                int(pool_size),
+                int(history_window),
+                int(seed),
+            )
+            report = generate_backtest_report(result=result, output_dir=REPORTS_DIR)
+        st.success(f"Relatorio gerado em {report.output_dir}")
+
+    files = sorted(path for path in REPORTS_DIR.glob("*") if path.is_file())
+    if not files:
+        st.info("Nenhum relatorio gerado ainda.")
+        return
+
+    st.subheader("Arquivos disponiveis")
+    for path in files:
+        col1, col2 = st.columns([3, 1])
+        col1.write(str(path))
+        col2.download_button(
+            "Baixar",
+            data=path.read_bytes(),
+            file_name=path.name,
+            key=f"download_{path.name}",
+        )
+
+    html_files = [path for path in files if path.suffix.lower() == ".html"]
+    if html_files:
+        selected = st.selectbox("Grafico HTML", html_files, format_func=lambda path: path.name)
+        st.components.v1.html(selected.read_text(encoding="utf-8"), height=520, scrolling=True)
+
+    json_files = [path for path in files if path.suffix.lower() == ".json"]
+    if json_files:
+        selected_json = st.selectbox("JSON", json_files, format_func=lambda path: path.name)
+        st.json(json.loads(selected_json.read_text(encoding="utf-8")))
+
+
+def render_benchmark_page() -> None:
+    st.header("Benchmark Cientifico")
+    st.caption("Compara o motor LotoIA com aleatorio filtrado e aleatorio puro.")
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5, key="bench_contests")
+    games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="bench_games")
+    pool_size = col3.number_input("Pool LotoIA", min_value=1, max_value=500, value=20, key="bench_pool")
+    history_window = col4.number_input("Historico", min_value=1, max_value=1000, value=200, key="bench_hist")
+    seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="bench_seed")
+
+    if games_count > pool_size:
+        st.warning("O pool do LotoIA precisa ser maior ou igual a quantidade de jogos.")
+        return
+
+    if st.button("Executar benchmark", type="primary"):
+        with st.spinner("Executando comparacao controlada..."):
+            result = _cached_benchmark(
+                int(contests),
+                int(games_count),
+                int(pool_size),
+                int(history_window),
+                int(seed),
+            )
+
+        summary = _benchmark_summary_dataframe(result)
+        comparisons = _benchmark_comparison_dataframe(result)
+        lotoia = result.strategies["lotoia_engine"]
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Concursos", result.contests_analyzed)
+        col2.metric("Jogos por estrategia", result.games_per_contest)
+        col3.metric("Media LotoIA", f"{lotoia['average_hits']:.2f}")
+        col4.metric("Desvio LotoIA", f"{lotoia['standard_deviation']:.2f}")
+
+        st.plotly_chart(_benchmark_average_chart(result), use_container_width=True)
+        st.plotly_chart(_benchmark_evolution_chart(result), use_container_width=True)
+        st.subheader("Ranking das estrategias")
+        st.dataframe(summary, hide_index=True, use_container_width=True)
+        st.subheader("Comparacoes estatisticas")
+        st.dataframe(comparisons, hide_index=True, use_container_width=True)
+        st.info(f"Relatorios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
+
+
+def render_history_page() -> None:
+    st.header("Historico Experimental")
+    runs = _cached_runs()
+
+    benchmark_runs = runs["benchmark"]
+    backtest_runs = runs["backtest"]
+    calibration_runs = runs["calibration"]
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Benchmarks", len(benchmark_runs))
+    col2.metric("Backtests", len(backtest_runs))
+    col3.metric("Calibracoes", len(calibration_runs))
+
+    tabs = st.tabs(["Benchmarks", "Backtests", "Calibracoes"])
+
+    with tabs[0]:
+        if benchmark_runs:
+            st.plotly_chart(
+                _historical_metric_chart(benchmark_runs, "lotoia_average_hits", "Media LotoIA por benchmark"),
+                use_container_width=True,
+            )
+            st.dataframe(
+                _runs_dataframe(
+                    benchmark_runs,
+                    [
+                        "id",
+                        "created_at",
+                        "contests",
+                        "games_per_contest",
+                        "lotoia_average_hits",
+                        "filtered_average_hits",
+                        "random_average_hits",
+                        "superiority_rate",
+                        "average_advantage",
+                        "report_path",
+                    ],
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhum benchmark persistido ainda.")
+
+    with tabs[1]:
+        if backtest_runs:
+            st.plotly_chart(_historical_metric_chart(backtest_runs, "average_hits", "Media por backtest"), use_container_width=True)
+            st.dataframe(
+                _runs_dataframe(
+                    backtest_runs,
+                    [
+                        "id",
+                        "created_at",
+                        "contests",
+                        "games_per_contest",
+                        "average_hits",
+                        "correlation",
+                        "report_path",
+                    ],
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhum backtest persistido ainda.")
+
+    with tabs[2]:
+        if calibration_runs:
+            st.plotly_chart(
+                _historical_metric_chart(calibration_runs, "average_hits", "Media por calibracao"),
+                use_container_width=True,
+            )
+            st.dataframe(
+                _runs_dataframe(
+                    calibration_runs,
+                    ["id", "created_at", "average_hits", "correlation", "report_path"],
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhuma calibracao persistida ainda.")
+
+
+try:
+    from dashboard.labels import PAGES, LABELS  # type: ignore
+except Exception:
+    PAGES = [
+        "geracao_jogos",
+        "estatisticas_historicas",
+        "backtesting",
+        "calibracao_experimental",
+        "benchmark_cientifico",
+        "historico_experimental",
+        "relatorios",
+    ]
+    LABELS = {
+        "geracao_jogos": "Criar jogos",
+        "estatisticas_historicas": "Resultados passados",
+        "backtesting": "Testar estratégia",
+        "calibracao_experimental": "Ajustar estratégia",
+        "benchmark_cientifico": "Comparar métodos",
+        "historico_experimental": "Meus testes",
+        "relatorios": "Relatórios",
+    }
+
+
+def main() -> None:
+    icon = Image.open(FAVICON_PATH)
+    st.set_page_config(page_title="LotoIA", page_icon=icon, layout="wide")
+    st.image(
+        "assets/lotoia-logo-transparent.png",
+        use_container_width=False,
+        width=700,
+    )
+    st.caption("Plataforma analítica para LOTOFÁCIL")
+
+    try:
+        draws = _load_draws()
+    except FileNotFoundError:
+        st.warning(
+            "Arquivo historico da LOTOFACIL nao encontrado. "
+            f"Coloque o CSV em `{DEFAULT_HISTORY_PATH}` usando as colunas "
+            "`concurso,data,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15`."
+        )
+        st.stop()
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+
+    page = st.sidebar.radio("Navegação", options=PAGES, format_func=lambda k: LABELS.get(k, k))
+
+    if page == "geracao_jogos":
+        render_generation_page()
+    elif page == "estatisticas_historicas":
+        render_statistics_page(draws)
+    elif page == "backtesting":
+        render_backtesting_page()
+    elif page == "calibracao_experimental":
+        render_calibration_page()
+    elif page == "benchmark_cientifico":
+        render_benchmark_page()
+    elif page == "historico_experimental":
+        render_history_page()
+    elif page == "relatorios":
+        render_reports_page()
+
+
+if __name__ == "__main__":
+    main()

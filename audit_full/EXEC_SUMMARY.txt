@@ -1,0 +1,12 @@
+﻿STATUS ATUAL (resumo):
+- Dashboard Streamlit operacional.
+- Menus amigáveis (labels).
+- ML integrado como flag (checkbox -> ml_enabled -> generate_best_games).
+- rerank_games existe, mas ainda é placeholder (não usa modelo treinado).
+- Relatórios/backtests/benchmarks gerados e indexados em /reports + runs em SQLite.
+
+PRÓXIMO SALTO (ML real):
+1) dataset histórico (features) sem vazamento temporal
+2) treino walk-forward + métricas
+3) salvar modelo (joblib) + metadata
+4) rerank_games calcular score_ml e reordenar pool

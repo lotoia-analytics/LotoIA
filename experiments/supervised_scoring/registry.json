@@ -1,0 +1,36 @@
+{
+  "registry_version": "0.1.0",
+  "status": "incremental_score_ml_baseline",
+  "created_at": "2026-05-16T00:00:00-03:00",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK",
+    "ADR_007_SUPERVISED_DATASET_GOVERNANCE",
+    "ADR_008_INCREMENTAL_SCORE_ML"
+  ],
+  "score_ml_manifests": [
+    {
+      "manifest_id": "score-ml-manifest-v0-1-0",
+      "path": "experiments/supervised_scoring/score_ml_manifest_v0_1_0.json",
+      "status": "active_incremental_baseline"
+    }
+  ],
+  "models": [
+    {
+      "model_id": "score-ml-linear-baseline-v0-1-0",
+      "model_version": "score-ml-linear-baseline-v0.1.0",
+      "model_family": "interpretable_linear_baseline",
+      "supervised_role": "auxiliary_rerank_only",
+      "feature_schema_version": "score-ml-features-v0.1.0"
+    }
+  ],
+  "benchmark_comparability": {
+    "benchmark_reference": "experiments/temporal_benchmark/manifests/temporal_baseline_v0_1_0.json",
+    "statistical_benchmark_replaced": false,
+    "walk_forward_required": true
+  }
+}

@@ -1,0 +1,18 @@
+﻿
+Name                                       Length LastWriteTime      
+----                                       ------ -------------      
+lotoia_backtest_report_contests.csv            82 15/05/2026 21:43:45
+lotoia_backtest_report_configurations.csv      76 15/05/2026 21:43:45
+lotoia_backtest_report_games.csv             1224 15/05/2026 21:43:45
+lotoia_backtest_report.json                 43575 15/05/2026 21:43:45
+lotoia_backtest_report_summary.csv            230 15/05/2026 21:43:45
+hits_by_contest.html                      4850818 15/05/2026 21:43:45
+weight_comparison.html                    4850721 15/05/2026 21:43:45
+correlation.html                          4850840 15/05/2026 21:43:45
+final_score_evolution.html                4850725 15/05/2026 21:43:45
+hit_distribution.html                     4850719 15/05/2026 21:43:45
+SESSION_SNAPSHOT.md                          6445 15/05/2026 17:55:12
+benchmark                                         15/05/2026 17:36:20
+.gitkeep                                        1 15/05/2026 10:33:25
+
+

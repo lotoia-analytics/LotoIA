@@ -1,0 +1,36 @@
+{
+  "manifest_id": "target-manifest-v0.1.0",
+  "schema_version": "target-manifest-schema-v0.1.0",
+  "dataset_version": "lotofacil-supervised-governance-v0.1.0-2026-05-16",
+  "created_at": "2026-05-16T00:00:00-03:00",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK",
+    "ADR_007_SUPERVISED_DATASET_GOVERNANCE"
+  ],
+  "target_schema_version": "supervised-targets-v0.1.0",
+  "targets": [
+    {
+      "name": "hits_against_label_contest",
+      "dtype": "integer",
+      "label_source": "future draw identified by label_contest",
+      "temporal_relation": "after_feature_cutoff",
+      "allowed_for_features": false,
+      "description": "Number of candidate dezenas that match the future label contest."
+    }
+  ],
+  "temporal_policy": {
+    "requires_label_contest": true,
+    "label_window": "future_after_feature_cutoff",
+    "comparison": "feature_cutoff_contest < label_contest"
+  },
+  "prohibitions": {
+    "target_as_feature": true,
+    "label_contest_in_feature_generation": true,
+    "score_ml": true
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LotoIA Supervised Feature Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "manifest_id",
+    "schema_version",
+    "dataset_version",
+    "created_at",
+    "adr_references",
+    "feature_schema_version",
+    "features",
+    "temporal_policy",
+    "prohibitions"
+  ],
+  "properties": {
+    "manifest_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "dataset_version": { "type": "string" },
+    "created_at": { "type": "string" },
+    "adr_references": { "type": "array", "items": { "type": "string" } },
+    "feature_schema_version": { "type": "string" },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "dtype", "source", "temporal_scope", "uses_label_contest"],
+        "properties": {
+          "name": { "type": "string" },
+          "dtype": { "type": "string" },
+          "source": { "type": "string" },
+          "temporal_scope": {
+            "type": "string",
+            "enum": ["historical_before_cutoff", "candidate_static"]
+          },
+          "uses_label_contest": { "const": false }
+        }
+      }
+    },
+    "temporal_policy": {
+      "type": "object",
+      "required": ["requires_feature_cutoff_contest", "feature_window"],
+      "properties": {
+        "requires_feature_cutoff_contest": { "const": true },
+        "feature_window": { "const": "strictly_before_label_contest" }
+      }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["score_ml"] },
+      { "required": ["trained_model_path"] },
+      { "required": ["inference_enabled"] }
+    ]
+  }
+}

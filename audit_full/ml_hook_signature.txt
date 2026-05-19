@@ -1,0 +1,2 @@
+﻿basic_generator= C:\Projetos\LotoIA\src\lotoia\generator\basic_generator.py
+sig= (count: int = 10, pool_size: int = 30, ml_enabled: bool = False) -> dict[str, object]

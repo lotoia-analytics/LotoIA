@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LotoIA Supervised Target Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "manifest_id",
+    "schema_version",
+    "dataset_version",
+    "created_at",
+    "adr_references",
+    "target_schema_version",
+    "targets",
+    "temporal_policy",
+    "prohibitions"
+  ],
+  "properties": {
+    "manifest_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "dataset_version": { "type": "string" },
+    "created_at": { "type": "string" },
+    "adr_references": { "type": "array", "items": { "type": "string" } },
+    "target_schema_version": { "type": "string" },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "dtype", "label_source", "temporal_relation", "allowed_for_features"],
+        "properties": {
+          "name": { "type": "string" },
+          "dtype": { "type": "string" },
+          "label_source": { "type": "string" },
+          "temporal_relation": { "const": "after_feature_cutoff" },
+          "allowed_for_features": { "const": false }
+        }
+      }
+    },
+    "temporal_policy": {
+      "type": "object",
+      "required": ["requires_label_contest", "label_window"],
+      "properties": {
+        "requires_label_contest": { "const": true },
+        "label_window": { "const": "future_after_feature_cutoff" }
+      }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["score_ml"] },
+      { "required": ["trained_model_path"] },
+      { "required": ["inference_enabled"] }
+    ]
+  }
+}

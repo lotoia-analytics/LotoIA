@@ -1,0 +1,28 @@
+{
+  "registry_version": "0.1.0",
+  "status": "scientific_temporal_benchmark_baseline",
+  "created_at": "2026-05-16",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK"
+  ],
+  "datasets": [
+    {
+      "dataset_version": "lotofacil-historico-v0.1.0-2026-05-16",
+      "path": "experiments/temporal_benchmark/datasets/lotofacil_historico_v0_1_0_2026_05_16.json",
+      "source_path": "data/raw/historico_lotofacil.csv"
+    }
+  ],
+  "benchmarks": [
+    {
+      "benchmark_id": "temporal-baseline-v0.1.0",
+      "manifest_path": "experiments/temporal_benchmark/manifests/temporal_baseline_v0_1_0.json",
+      "benchmark_type": "temporal_baseline",
+      "status": "declared_baseline"
+    }
+  ]
+}

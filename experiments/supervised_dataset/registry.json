@@ -1,0 +1,32 @@
+{
+  "registry_version": "0.1.0",
+  "status": "supervised_dataset_governance_baseline",
+  "created_at": "2026-05-16",
+  "adr_references": [
+    "ADR_001_PARADIGMA_HIBRIDO",
+    "ADR_002_NAMESPACE_OFICIAL",
+    "ADR_003_IMPORT_RESOLUTION",
+    "ADR_004_RERANK_CONSOLIDATION",
+    "ADR_005_TEMPORAL_GOVERNANCE",
+    "ADR_006_TEMPORAL_BENCHMARK",
+    "ADR_007_SUPERVISED_DATASET_GOVERNANCE"
+  ],
+  "datasets": [
+    {
+      "dataset_id": "supervised-dataset-baseline-v0.1.0",
+      "dataset_version": "lotofacil-supervised-governance-v0.1.0-2026-05-16",
+      "manifest_path": "experiments/supervised_dataset/datasets/lotofacil_supervised_governance_v0_1_0.json",
+      "status": "declared_governance_baseline"
+    }
+  ],
+  "manifests": {
+    "feature": "experiments/supervised_dataset/manifests/feature_manifest_v0_1_0.json",
+    "target": "experiments/supervised_dataset/manifests/target_manifest_v0_1_0.json",
+    "temporal_contract": "experiments/supervised_dataset/manifests/temporal_feature_contract_v0_1_0.json"
+  },
+  "schemas": {
+    "feature_manifest": "experiments/supervised_dataset/schemas/feature_manifest.schema.json",
+    "target_manifest": "experiments/supervised_dataset/schemas/target_manifest.schema.json",
+    "temporal_feature_contract": "experiments/supervised_dataset/schemas/temporal_feature_contract.schema.json"
+  }
+}

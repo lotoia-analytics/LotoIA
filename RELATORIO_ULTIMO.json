@@ -1,0 +1,1672 @@
+{
+  "metrics": {
+    "summary": {
+      "contests_analyzed": 3,
+      "games_per_contest": 5,
+      "pool_size": 15,
+      "history_window": 150,
+      "total_games": 15
+    },
+    "average_hits": 8.733333333333333,
+    "hit_distribution": {
+      "11": 0,
+      "12": 1,
+      "13": 0,
+      "14": 0,
+      "15": 0
+    },
+    "final_score_hit_correlation": -0.6626023027928114,
+    "best_games": [
+      {
+        "contest": 3685,
+        "numbers": [
+          1,
+          3,
+          6,
+          8,
+          10,
+          11,
+          12,
+          14,
+          17,
+          19,
+          20,
+          21,
+          23,
+          24,
+          25
+        ],
+        "final_score": {
+          "final_score": 47.51,
+          "components": {
+            "duo_score": 52.642140468227424,
+            "terno_score": 51.71689554464673,
+            "quadra_score": 51.03082176210487,
+            "quina_score": 50.27273666811396,
+            "delay_score": 8.88888888888889,
+            "frequency_score": 57.53086419753086,
+            "sum_score": 57.77777777777777,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22391,
+          "average_frequency": 16.403663003663002,
+          "average_rank": 6195.1113553113555,
+          "top_quadras": []
+        },
+        "hits": 12
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          1,
+          2,
+          3,
+          5,
+          7,
+          9,
+          10,
+          11,
+          14,
+          16,
+          18,
+          20,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 47.78,
+          "components": {
+            "duo_score": 49.99203694855869,
+            "terno_score": 50.220497206143136,
+            "quadra_score": 50.87709086444164,
+            "quina_score": 51.573375334409796,
+            "delay_score": 11.111111111111112,
+            "frequency_score": 56.00000000000001,
+            "sum_score": 77.77777777777779,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22077,
+          "average_frequency": 16.173626373626373,
+          "average_rank": 6214.556776556777,
+          "top_quadras": []
+        },
+        "hits": 10
+      },
+      {
+        "contest": 3685,
+        "numbers": [
+          1,
+          3,
+          6,
+          8,
+          9,
+          10,
+          12,
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 46.63,
+          "components": {
+            "duo_score": 49.86462812549769,
+            "terno_score": 49.320822717951906,
+            "quadra_score": 49.39110274393697,
+            "quina_score": 49.65053454955392,
+            "delay_score": 6.666666666666667,
+            "frequency_score": 55.55555555555556,
+            "sum_score": 86.66666666666667,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22117,
+          "average_frequency": 16.202930402930402,
+          "average_rank": 6402.519413919414,
+          "top_quadras": []
+        },
+        "hits": 10
+      },
+      {
+        "contest": 3685,
+        "numbers": [
+          2,
+          3,
+          4,
+          6,
+          8,
+          10,
+          12,
+          13,
+          14,
+          17,
+          19,
+          21,
+          22,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 46.18,
+          "components": {
+            "duo_score": 48.71157827679568,
+            "terno_score": 47.7283482068171,
+            "quadra_score": 47.14122096840098,
+            "quina_score": 46.66017789547312,
+            "delay_score": 17.77777777777778,
+            "frequency_score": 54.8148148148148,
+            "sum_score": 91.11111111111111,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 21612,
+          "average_frequency": 15.832967032967034,
+          "average_rank": 6687.10695970696,
+          "top_quadras": []
+        },
+        "hits": 10
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          2,
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          12,
+          15,
+          17,
+          19,
+          21,
+          22,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 54.93,
+          "components": {
+            "duo_score": 56.486701704093,
+            "terno_score": 57.85267364214732,
+            "quadra_score": 58.2142068014469,
+            "quina_score": 57.78526028295457,
+            "delay_score": 20.0,
+            "frequency_score": 60.266666666666644,
+            "sum_score": 93.33333333333333,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23613,
+          "average_frequency": 17.298901098901098,
+          "average_rank": 5286.484981684982,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          12,
+          14,
+          15,
+          16,
+          18,
+          20,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 53.43,
+          "components": {
+            "duo_score": 53.59133620003185,
+            "terno_score": 54.77192663795534,
+            "quadra_score": 55.89652079809404,
+            "quina_score": 57.0641113922561,
+            "delay_score": 26.666666666666668,
+            "frequency_score": 60.55555555555555,
+            "sum_score": 80.0,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23286,
+          "average_frequency": 17.05934065934066,
+          "average_rank": 5579.649084249084,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          2,
+          3,
+          4,
+          6,
+          8,
+          10,
+          11,
+          12,
+          14,
+          15,
+          17,
+          19,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 50.68,
+          "components": {
+            "duo_score": 52.349100175187125,
+            "terno_score": 52.51915548566266,
+            "quadra_score": 53.14539625394239,
+            "quina_score": 53.84251603265702,
+            "delay_score": 17.77777777777778,
+            "frequency_score": 57.333333333333314,
+            "sum_score": 88.88888888888889,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22668,
+          "average_frequency": 16.606593406593408,
+          "average_rank": 5927.638827838828,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          1,
+          2,
+          3,
+          5,
+          6,
+          7,
+          9,
+          11,
+          14,
+          15,
+          16,
+          18,
+          20,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 47.99,
+          "components": {
+            "duo_score": 48.77846790890269,
+            "terno_score": 50.186368655268176,
+            "quadra_score": 52.010064934406785,
+            "quina_score": 53.704184476455744,
+            "delay_score": 15.555555555555555,
+            "frequency_score": 54.133333333333326,
+            "sum_score": 55.55555555555556,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22209,
+          "average_frequency": 16.27032967032967,
+          "average_rank": 6071.2468864468865,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          4,
+          6,
+          8,
+          10,
+          12,
+          13,
+          14,
+          16,
+          17,
+          19,
+          20,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 54.37,
+          "components": {
+            "duo_score": 55.35594839942666,
+            "terno_score": 56.48925237441984,
+            "quadra_score": 57.208616876574816,
+            "quina_score": 57.35586227972684,
+            "delay_score": 28.888888888888893,
+            "frequency_score": 61.66666666666666,
+            "sum_score": 68.88888888888889,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23691,
+          "average_frequency": 17.356043956043955,
+          "average_rank": 5413.682051282051,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          2,
+          4,
+          6,
+          7,
+          8,
+          11,
+          12,
+          13,
+          15,
+          16,
+          17,
+          19,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 53.66,
+          "components": {
+            "duo_score": 55.234910017518715,
+            "terno_score": 55.800467475108626,
+            "quadra_score": 55.44500035764168,
+            "quina_score": 54.47233349132501,
+            "delay_score": 26.666666666666668,
+            "frequency_score": 61.944444444444414,
+            "sum_score": 91.11111111111111,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23056,
+          "average_frequency": 16.89084249084249,
+          "average_rank": 5636.761904761905,
+          "top_quadras": []
+        },
+        "hits": 8
+      }
+    ],
+    "worst_games": [
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          2,
+          4,
+          6,
+          8,
+          10,
+          13,
+          15,
+          17,
+          18,
+          19,
+          21,
+          22,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 59.45,
+          "components": {
+            "duo_score": 62.306099697404036,
+            "terno_score": 63.24192553857626,
+            "quadra_score": 63.22231962045386,
+            "quina_score": 62.627885499711844,
+            "delay_score": 24.444444444444446,
+            "frequency_score": 66.38888888888891,
+            "sum_score": 80.0,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 24497,
+          "average_frequency": 17.946520146520147,
+          "average_rank": 4653.008791208791,
+          "top_quadras": []
+        },
+        "hits": 5
+      },
+      {
+        "contest": 3685,
+        "numbers": [
+          1,
+          3,
+          5,
+          7,
+          8,
+          10,
+          11,
+          12,
+          14,
+          15,
+          16,
+          18,
+          20,
+          22,
+          25
+        ],
+        "final_score": {
+          "final_score": 46.54,
+          "components": {
+            "duo_score": 48.90906195254021,
+            "terno_score": 47.8206004521794,
+            "quadra_score": 47.24967182394647,
+            "quina_score": 47.17089958295326,
+            "delay_score": 22.222222222222225,
+            "frequency_score": 54.8148148148148,
+            "sum_score": 82.22222222222221,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 21557,
+          "average_frequency": 15.792673992673993,
+          "average_rank": 6673.389010989011,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3685,
+        "numbers": [
+          1,
+          3,
+          5,
+          6,
+          7,
+          9,
+          10,
+          12,
+          14,
+          16,
+          19,
+          20,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 47.56,
+          "components": {
+            "duo_score": 49.62573658225832,
+            "terno_score": 49.96754441730518,
+            "quadra_score": 50.41248102834,
+            "quina_score": 50.78833656070194,
+            "delay_score": 8.88888888888889,
+            "frequency_score": 55.55555555555556,
+            "sum_score": 91.11111111111111,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22092,
+          "average_frequency": 16.184615384615384,
+          "average_rank": 6273.3252747252745,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          1,
+          2,
+          4,
+          6,
+          7,
+          8,
+          10,
+          12,
+          14,
+          16,
+          18,
+          19,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 49.52,
+          "components": {
+            "duo_score": 54.27297340340817,
+            "terno_score": 52.9320440325225,
+            "quadra_score": 51.47359663289777,
+            "quina_score": 50.220855831727484,
+            "delay_score": 15.555555555555555,
+            "frequency_score": 59.19999999999999,
+            "sum_score": 80.0,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22278,
+          "average_frequency": 16.32087912087912,
+          "average_rank": 6139.104761904762,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          4,
+          6,
+          7,
+          8,
+          10,
+          12,
+          13,
+          14,
+          17,
+          19,
+          21,
+          23,
+          24,
+          25
+        ],
+        "final_score": {
+          "final_score": 51.72,
+          "components": {
+            "duo_score": 54.986462812549775,
+            "terno_score": 54.177019153095706,
+            "quadra_score": 53.231560386276165,
+            "quina_score": 52.12961419176481,
+            "delay_score": 24.444444444444446,
+            "frequency_score": 61.944444444444414,
+            "sum_score": 80.0,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22805,
+          "average_frequency": 16.706959706959708,
+          "average_rank": 5916.739926739927,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          2,
+          4,
+          6,
+          7,
+          8,
+          11,
+          12,
+          13,
+          15,
+          16,
+          17,
+          19,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 53.66,
+          "components": {
+            "duo_score": 55.234910017518715,
+            "terno_score": 55.800467475108626,
+            "quadra_score": 55.44500035764168,
+            "quina_score": 54.47233349132501,
+            "delay_score": 26.666666666666668,
+            "frequency_score": 61.944444444444414,
+            "sum_score": 91.11111111111111,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23056,
+          "average_frequency": 16.89084249084249,
+          "average_rank": 5636.761904761905,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          4,
+          6,
+          8,
+          10,
+          12,
+          13,
+          14,
+          16,
+          17,
+          19,
+          20,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 54.37,
+          "components": {
+            "duo_score": 55.35594839942666,
+            "terno_score": 56.48925237441984,
+            "quadra_score": 57.208616876574816,
+            "quina_score": 57.35586227972684,
+            "delay_score": 28.888888888888893,
+            "frequency_score": 61.66666666666666,
+            "sum_score": 68.88888888888889,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23691,
+          "average_frequency": 17.356043956043955,
+          "average_rank": 5413.682051282051,
+          "top_quadras": []
+        },
+        "hits": 8
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          1,
+          2,
+          3,
+          5,
+          6,
+          7,
+          9,
+          11,
+          14,
+          15,
+          16,
+          18,
+          20,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 47.99,
+          "components": {
+            "duo_score": 48.77846790890269,
+            "terno_score": 50.186368655268176,
+            "quadra_score": 52.010064934406785,
+            "quina_score": 53.704184476455744,
+            "delay_score": 15.555555555555555,
+            "frequency_score": 54.133333333333326,
+            "sum_score": 55.55555555555556,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22209,
+          "average_frequency": 16.27032967032967,
+          "average_rank": 6071.2468864468865,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3684,
+        "numbers": [
+          2,
+          3,
+          4,
+          6,
+          8,
+          10,
+          11,
+          12,
+          14,
+          15,
+          17,
+          19,
+          21,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 50.68,
+          "components": {
+            "duo_score": 52.349100175187125,
+            "terno_score": 52.51915548566266,
+            "quadra_score": 53.14539625394239,
+            "quina_score": 53.84251603265702,
+            "delay_score": 17.77777777777778,
+            "frequency_score": 57.333333333333314,
+            "sum_score": 88.88888888888889,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 22668,
+          "average_frequency": 16.606593406593408,
+          "average_rank": 5927.638827838828,
+          "top_quadras": []
+        },
+        "hits": 9
+      },
+      {
+        "contest": 3683,
+        "numbers": [
+          1,
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          12,
+          14,
+          15,
+          16,
+          18,
+          20,
+          23,
+          25
+        ],
+        "final_score": {
+          "final_score": 53.43,
+          "components": {
+            "duo_score": 53.59133620003185,
+            "terno_score": 54.77192663795534,
+            "quadra_score": 55.89652079809404,
+            "quina_score": 57.0641113922561,
+            "delay_score": 26.666666666666668,
+            "frequency_score": 60.55555555555555,
+            "sum_score": 80.0,
+            "sequence_score": 48
+          }
+        },
+        "quadra_score": {
+          "found_quadras": 1365,
+          "total_frequency": 23286,
+          "average_frequency": 17.05934065934066,
+          "average_rank": 5579.649084249084,
+          "top_quadras": []
+        },
+        "hits": 9
+      }
+    ],
+    "stability": {
+      "hit_standard_deviation": 1.4817407180595246,
+      "min_hits": 5,
+      "max_hits": 12
+    },
+    "contest_history": [
+      {
+        "contest": 3683,
+        "best_hits": 9,
+        "average_hits": 7.6,
+        "best_final_score": 59.45
+      },
+      {
+        "contest": 3684,
+        "best_hits": 10,
+        "average_hits": 9.0,
+        "best_final_score": 54.93
+      },
+      {
+        "contest": 3685,
+        "best_hits": 12,
+        "average_hits": 9.6,
+        "best_final_score": 47.56
+      }
+    ],
+    "configuration_metrics": []
+  },
+  "backtest": {
+    "contests_analyzed": 3,
+    "games_per_contest": 5,
+    "pool_size": 15,
+    "history_window": 150,
+    "total_games": 15,
+    "average_hits": 8.733333333333333,
+    "hit_distribution": {
+      "11": 0,
+      "12": 1,
+      "13": 0,
+      "14": 0,
+      "15": 0
+    },
+    "best_game": {
+      "contest": 3685,
+      "numbers": [
+        1,
+        3,
+        6,
+        8,
+        10,
+        11,
+        12,
+        14,
+        17,
+        19,
+        20,
+        21,
+        23,
+        24,
+        25
+      ],
+      "final_score": {
+        "final_score": 47.51,
+        "components": {
+          "duo_score": 52.642140468227424,
+          "terno_score": 51.71689554464673,
+          "quadra_score": 51.03082176210487,
+          "quina_score": 50.27273666811396,
+          "delay_score": 8.88888888888889,
+          "frequency_score": 57.53086419753086,
+          "sum_score": 57.77777777777777,
+          "sequence_score": 48
+        }
+      },
+      "quadra_score": {
+        "found_quadras": 1365,
+        "total_frequency": 22391,
+        "average_frequency": 16.403663003663002,
+        "average_rank": 6195.1113553113555,
+        "top_quadras": []
+      },
+      "hits": 12
+    },
+    "worst_game": {
+      "contest": 3683,
+      "numbers": [
+        1,
+        2,
+        4,
+        6,
+        8,
+        10,
+        13,
+        15,
+        17,
+        18,
+        19,
+        21,
+        22,
+        23,
+        25
+      ],
+      "final_score": {
+        "final_score": 59.45,
+        "components": {
+          "duo_score": 62.306099697404036,
+          "terno_score": 63.24192553857626,
+          "quadra_score": 63.22231962045386,
+          "quina_score": 62.627885499711844,
+          "delay_score": 24.444444444444446,
+          "frequency_score": 66.38888888888891,
+          "sum_score": 80.0,
+          "sequence_score": 48
+        }
+      },
+      "quadra_score": {
+        "found_quadras": 1365,
+        "total_frequency": 24497,
+        "average_frequency": 17.946520146520147,
+        "average_rank": 4653.008791208791,
+        "top_quadras": []
+      },
+      "hits": 5
+    },
+    "average_winner_final_score": 47.51,
+    "final_score_hit_correlation": -0.6626023027928114,
+    "contest_results": [
+      {
+        "contest": 3683,
+        "target_numbers": [
+          2,
+          3,
+          5,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          14,
+          16,
+          19,
+          20,
+          24,
+          25
+        ],
+        "games": [
+          {
+            "contest": 3683,
+            "numbers": [
+              1,
+              2,
+              4,
+              6,
+              8,
+              10,
+              13,
+              15,
+              17,
+              18,
+              19,
+              21,
+              22,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 59.45,
+              "components": {
+                "duo_score": 62.306099697404036,
+                "terno_score": 63.24192553857626,
+                "quadra_score": 63.22231962045386,
+                "quina_score": 62.627885499711844,
+                "delay_score": 24.444444444444446,
+                "frequency_score": 66.38888888888891,
+                "sum_score": 80.0,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 24497,
+              "average_frequency": 17.946520146520147,
+              "average_rank": 4653.008791208791,
+              "top_quadras": []
+            },
+            "hits": 5
+          },
+          {
+            "contest": 3683,
+            "numbers": [
+              1,
+              4,
+              6,
+              8,
+              10,
+              12,
+              13,
+              14,
+              16,
+              17,
+              19,
+              20,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 54.37,
+              "components": {
+                "duo_score": 55.35594839942666,
+                "terno_score": 56.48925237441984,
+                "quadra_score": 57.208616876574816,
+                "quina_score": 57.35586227972684,
+                "delay_score": 28.888888888888893,
+                "frequency_score": 61.66666666666666,
+                "sum_score": 68.88888888888889,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 23691,
+              "average_frequency": 17.356043956043955,
+              "average_rank": 5413.682051282051,
+              "top_quadras": []
+            },
+            "hits": 8
+          },
+          {
+            "contest": 3683,
+            "numbers": [
+              2,
+              4,
+              6,
+              7,
+              8,
+              11,
+              12,
+              13,
+              15,
+              16,
+              17,
+              19,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 53.66,
+              "components": {
+                "duo_score": 55.234910017518715,
+                "terno_score": 55.800467475108626,
+                "quadra_score": 55.44500035764168,
+                "quina_score": 54.47233349132501,
+                "delay_score": 26.666666666666668,
+                "frequency_score": 61.944444444444414,
+                "sum_score": 91.11111111111111,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 23056,
+              "average_frequency": 16.89084249084249,
+              "average_rank": 5636.761904761905,
+              "top_quadras": []
+            },
+            "hits": 8
+          },
+          {
+            "contest": 3683,
+            "numbers": [
+              1,
+              4,
+              5,
+              6,
+              8,
+              9,
+              10,
+              12,
+              14,
+              15,
+              16,
+              18,
+              20,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 53.43,
+              "components": {
+                "duo_score": 53.59133620003185,
+                "terno_score": 54.77192663795534,
+                "quadra_score": 55.89652079809404,
+                "quina_score": 57.0641113922561,
+                "delay_score": 26.666666666666668,
+                "frequency_score": 60.55555555555555,
+                "sum_score": 80.0,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 23286,
+              "average_frequency": 17.05934065934066,
+              "average_rank": 5579.649084249084,
+              "top_quadras": []
+            },
+            "hits": 9
+          },
+          {
+            "contest": 3683,
+            "numbers": [
+              1,
+              4,
+              6,
+              7,
+              8,
+              10,
+              12,
+              13,
+              14,
+              17,
+              19,
+              21,
+              23,
+              24,
+              25
+            ],
+            "final_score": {
+              "final_score": 51.72,
+              "components": {
+                "duo_score": 54.986462812549775,
+                "terno_score": 54.177019153095706,
+                "quadra_score": 53.231560386276165,
+                "quina_score": 52.12961419176481,
+                "delay_score": 24.444444444444446,
+                "frequency_score": 61.944444444444414,
+                "sum_score": 80.0,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22805,
+              "average_frequency": 16.706959706959708,
+              "average_rank": 5916.739926739927,
+              "top_quadras": []
+            },
+            "hits": 8
+          }
+        ],
+        "best_hits": 9,
+        "average_hits": 7.6
+      },
+      {
+        "contest": 3684,
+        "target_numbers": [
+          1,
+          3,
+          5,
+          6,
+          9,
+          10,
+          11,
+          12,
+          13,
+          17,
+          18,
+          19,
+          20,
+          21,
+          23
+        ],
+        "games": [
+          {
+            "contest": 3684,
+            "numbers": [
+              2,
+              4,
+              5,
+              6,
+              8,
+              9,
+              10,
+              12,
+              15,
+              17,
+              19,
+              21,
+              22,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 54.93,
+              "components": {
+                "duo_score": 56.486701704093,
+                "terno_score": 57.85267364214732,
+                "quadra_score": 58.2142068014469,
+                "quina_score": 57.78526028295457,
+                "delay_score": 20.0,
+                "frequency_score": 60.266666666666644,
+                "sum_score": 93.33333333333333,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 23613,
+              "average_frequency": 17.298901098901098,
+              "average_rank": 5286.484981684982,
+              "top_quadras": []
+            },
+            "hits": 9
+          },
+          {
+            "contest": 3684,
+            "numbers": [
+              2,
+              3,
+              4,
+              6,
+              8,
+              10,
+              11,
+              12,
+              14,
+              15,
+              17,
+              19,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 50.68,
+              "components": {
+                "duo_score": 52.349100175187125,
+                "terno_score": 52.51915548566266,
+                "quadra_score": 53.14539625394239,
+                "quina_score": 53.84251603265702,
+                "delay_score": 17.77777777777778,
+                "frequency_score": 57.333333333333314,
+                "sum_score": 88.88888888888889,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22668,
+              "average_frequency": 16.606593406593408,
+              "average_rank": 5927.638827838828,
+              "top_quadras": []
+            },
+            "hits": 9
+          },
+          {
+            "contest": 3684,
+            "numbers": [
+              1,
+              2,
+              4,
+              6,
+              7,
+              8,
+              10,
+              12,
+              14,
+              16,
+              18,
+              19,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 49.52,
+              "components": {
+                "duo_score": 54.27297340340817,
+                "terno_score": 52.9320440325225,
+                "quadra_score": 51.47359663289777,
+                "quina_score": 50.220855831727484,
+                "delay_score": 15.555555555555555,
+                "frequency_score": 59.19999999999999,
+                "sum_score": 80.0,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22278,
+              "average_frequency": 16.32087912087912,
+              "average_rank": 6139.104761904762,
+              "top_quadras": []
+            },
+            "hits": 8
+          },
+          {
+            "contest": 3684,
+            "numbers": [
+              1,
+              2,
+              3,
+              5,
+              6,
+              7,
+              9,
+              11,
+              14,
+              15,
+              16,
+              18,
+              20,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 47.99,
+              "components": {
+                "duo_score": 48.77846790890269,
+                "terno_score": 50.186368655268176,
+                "quadra_score": 52.010064934406785,
+                "quina_score": 53.704184476455744,
+                "delay_score": 15.555555555555555,
+                "frequency_score": 54.133333333333326,
+                "sum_score": 55.55555555555556,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22209,
+              "average_frequency": 16.27032967032967,
+              "average_rank": 6071.2468864468865,
+              "top_quadras": []
+            },
+            "hits": 9
+          },
+          {
+            "contest": 3684,
+            "numbers": [
+              1,
+              2,
+              3,
+              5,
+              7,
+              9,
+              10,
+              11,
+              14,
+              16,
+              18,
+              20,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 47.78,
+              "components": {
+                "duo_score": 49.99203694855869,
+                "terno_score": 50.220497206143136,
+                "quadra_score": 50.87709086444164,
+                "quina_score": 51.573375334409796,
+                "delay_score": 11.111111111111112,
+                "frequency_score": 56.00000000000001,
+                "sum_score": 77.77777777777779,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22077,
+              "average_frequency": 16.173626373626373,
+              "average_rank": 6214.556776556777,
+              "top_quadras": []
+            },
+            "hits": 10
+          }
+        ],
+        "best_hits": 10,
+        "average_hits": 9.0
+      },
+      {
+        "contest": 3685,
+        "target_numbers": [
+          1,
+          2,
+          4,
+          8,
+          10,
+          11,
+          14,
+          15,
+          17,
+          19,
+          20,
+          21,
+          23,
+          24,
+          25
+        ],
+        "games": [
+          {
+            "contest": 3685,
+            "numbers": [
+              1,
+              3,
+              5,
+              6,
+              7,
+              9,
+              10,
+              12,
+              14,
+              16,
+              19,
+              20,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 47.56,
+              "components": {
+                "duo_score": 49.62573658225832,
+                "terno_score": 49.96754441730518,
+                "quadra_score": 50.41248102834,
+                "quina_score": 50.78833656070194,
+                "delay_score": 8.88888888888889,
+                "frequency_score": 55.55555555555556,
+                "sum_score": 91.11111111111111,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22092,
+              "average_frequency": 16.184615384615384,
+              "average_rank": 6273.3252747252745,
+              "top_quadras": []
+            },
+            "hits": 8
+          },
+          {
+            "contest": 3685,
+            "numbers": [
+              1,
+              3,
+              6,
+              8,
+              10,
+              11,
+              12,
+              14,
+              17,
+              19,
+              20,
+              21,
+              23,
+              24,
+              25
+            ],
+            "final_score": {
+              "final_score": 47.51,
+              "components": {
+                "duo_score": 52.642140468227424,
+                "terno_score": 51.71689554464673,
+                "quadra_score": 51.03082176210487,
+                "quina_score": 50.27273666811396,
+                "delay_score": 8.88888888888889,
+                "frequency_score": 57.53086419753086,
+                "sum_score": 57.77777777777777,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22391,
+              "average_frequency": 16.403663003663002,
+              "average_rank": 6195.1113553113555,
+              "top_quadras": []
+            },
+            "hits": 12
+          },
+          {
+            "contest": 3685,
+            "numbers": [
+              1,
+              3,
+              6,
+              8,
+              9,
+              10,
+              12,
+              13,
+              14,
+              17,
+              19,
+              20,
+              21,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 46.63,
+              "components": {
+                "duo_score": 49.86462812549769,
+                "terno_score": 49.320822717951906,
+                "quadra_score": 49.39110274393697,
+                "quina_score": 49.65053454955392,
+                "delay_score": 6.666666666666667,
+                "frequency_score": 55.55555555555556,
+                "sum_score": 86.66666666666667,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 22117,
+              "average_frequency": 16.202930402930402,
+              "average_rank": 6402.519413919414,
+              "top_quadras": []
+            },
+            "hits": 10
+          },
+          {
+            "contest": 3685,
+            "numbers": [
+              1,
+              3,
+              5,
+              7,
+              8,
+              10,
+              11,
+              12,
+              14,
+              15,
+              16,
+              18,
+              20,
+              22,
+              25
+            ],
+            "final_score": {
+              "final_score": 46.54,
+              "components": {
+                "duo_score": 48.90906195254021,
+                "terno_score": 47.8206004521794,
+                "quadra_score": 47.24967182394647,
+                "quina_score": 47.17089958295326,
+                "delay_score": 22.222222222222225,
+                "frequency_score": 54.8148148148148,
+                "sum_score": 82.22222222222221,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 21557,
+              "average_frequency": 15.792673992673993,
+              "average_rank": 6673.389010989011,
+              "top_quadras": []
+            },
+            "hits": 8
+          },
+          {
+            "contest": 3685,
+            "numbers": [
+              2,
+              3,
+              4,
+              6,
+              8,
+              10,
+              12,
+              13,
+              14,
+              17,
+              19,
+              21,
+              22,
+              23,
+              25
+            ],
+            "final_score": {
+              "final_score": 46.18,
+              "components": {
+                "duo_score": 48.71157827679568,
+                "terno_score": 47.7283482068171,
+                "quadra_score": 47.14122096840098,
+                "quina_score": 46.66017789547312,
+                "delay_score": 17.77777777777778,
+                "frequency_score": 54.8148148148148,
+                "sum_score": 91.11111111111111,
+                "sequence_score": 48
+              }
+            },
+            "quadra_score": {
+              "found_quadras": 1365,
+              "total_frequency": 21612,
+              "average_frequency": 15.832967032967034,
+              "average_rank": 6687.10695970696,
+              "top_quadras": []
+            },
+            "hits": 10
+          }
+        ],
+        "best_hits": 12,
+        "average_hits": 9.6
+      }
+    ]
+  },
+  "calibration": null,
+  "charts": {
+    "hit_distribution": "reports\\hit_distribution.html",
+    "final_score_evolution": "reports\\final_score_evolution.html",
+    "correlation": "reports\\correlation.html",
+    "weight_comparison": "reports\\weight_comparison.html",
+    "hits_by_contest": "reports\\hits_by_contest.html"
+  },
+  "csv": {
+    "summary": "reports\\lotoia_backtest_report_summary.csv",
+    "games": "reports\\lotoia_backtest_report_games.csv",
+    "contests": "reports\\lotoia_backtest_report_contests.csv",
+    "configurations": "reports\\lotoia_backtest_report_configurations.csv"
+  }
+}

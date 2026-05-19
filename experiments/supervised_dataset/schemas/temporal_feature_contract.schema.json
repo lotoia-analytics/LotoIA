@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LotoIA Temporal Feature Contract",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_id",
+    "schema_version",
+    "dataset_version",
+    "created_at",
+    "adr_references",
+    "feature_cutoff_policy",
+    "allowed_source_window",
+    "forbidden_sources",
+    "validation_rules"
+  ],
+  "properties": {
+    "contract_id": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "dataset_version": { "type": "string" },
+    "created_at": { "type": "string" },
+    "adr_references": { "type": "array", "items": { "type": "string" } },
+    "feature_cutoff_policy": {
+      "type": "object",
+      "required": ["required", "comparison"],
+      "properties": {
+        "required": { "const": true },
+        "comparison": { "const": "feature_cutoff_contest < label_contest" }
+      }
+    },
+    "allowed_source_window": {
+      "type": "object",
+      "required": ["max_contest", "inclusive"],
+      "properties": {
+        "max_contest": { "const": "feature_cutoff_contest" },
+        "inclusive": { "const": false }
+      }
+    },
+    "forbidden_sources": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "label_contest" }
+    },
+    "validation_rules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "feature_cutoff_contest < label_contest" }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["score_ml"] },
+      { "required": ["trained_model_path"] },
+      { "required": ["inference_enabled"] }
+    ]
+  }
+}
