@@ -9,9 +9,9 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
-from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
-from lotoia.database.database import DEFAULT_DATABASE_PATH
-from lotoia.generator.basic_generator import generate_best_games
+from ..data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+from ..database.database import DEFAULT_DATABASE_PATH
+from ..generator.basic_generator import generate_best_games
 from lotoia.observability import MetricsRegistry, StructuredLogger
 from lotoia.public.persistence import (
     CheckEventRepository,
