@@ -41,3 +41,6 @@ Thumbs.db
 !src/lotoia/data/loader.py
 !src/lotoia/models/
 !src/lotoia/models/*.py
+!data/
+!data/raw/
+!data/raw/historico_lotofacil.csv
