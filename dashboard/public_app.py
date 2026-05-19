@@ -232,8 +232,6 @@ def main() -> None:
                         )
                     )
 
-                st.json(metadata)
-
     with tab_check:
         first_name = st.text_input(
             "Primeiro nome",
@@ -343,19 +341,20 @@ def main() -> None:
                     response["hits"],
                 )
 
-                st.write(
-                    _format_numbers(
-                        response[
-                            "correct_numbers"
-                        ]
-                    )
+                st.success(
+                    f'Você fez {response["hits"]} acertos.'
                 )
 
-            st.success(f'Você fez {response["hits"]} acertos.')
+                acertos = " • ".join(
+                    f"{n:02d}"
+                    for n in response[
+                        "correct_numbers"
+                    ]
+                )
 
-acertos = " • ".join(response["correct_numbers"])
-
-st.write(f"Dezenas acertadas: {acertos}")
+                st.write(
+                    f"Dezenas acertadas: {acertos}"
+                )
 
 
 if __name__ == "__main__":
