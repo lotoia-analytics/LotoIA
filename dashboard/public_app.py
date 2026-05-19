@@ -5,6 +5,7 @@ try:
 except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -82,6 +83,60 @@ def _format_numbers(numbers: list[int]) -> str:
     )
 
 
+def validate_name(name: str) -> bool:
+    cleaned = name.strip()
+
+    if len(cleaned) < 2:
+        return False
+
+    return bool(
+        re.fullmatch(
+            r"[A-Za-zÀ-ÿ\s]+",
+            cleaned,
+        )
+    )
+
+
+def validate_whatsapp(
+    whatsapp: str,
+) -> bool:
+    if not whatsapp.isdigit():
+        return False
+
+    return len(whatsapp) in [10, 11]
+
+
+def validate_numbers(
+    numbers: list[int],
+) -> tuple[bool, str]:
+
+    if len(numbers) != 15:
+        return (
+            False,
+            "Digite exatamente 15 dezenas.",
+        )
+
+    if len(set(numbers)) != 15:
+        return (
+            False,
+            "Existem dezenas repetidas.",
+        )
+
+    invalid = [
+        n
+        for n in numbers
+        if n < 1 or n > 25
+    ]
+
+    if invalid:
+        return (
+            False,
+            "As dezenas devem estar entre 1 e 25.",
+        )
+
+    return True, ""
+
+
 def persist_lead(
     first_name: str,
     whatsapp: str,
@@ -131,6 +186,7 @@ def main() -> None:
     )
 
     with tab_generate:
+
         first_name = st.text_input(
             "Primeiro nome",
             key="generate_first_name",
@@ -150,38 +206,71 @@ def main() -> None:
             "Gerar",
             type="primary",
         ):
+
+            if not validate_name(
+                first_name
+            ):
+                st.warning(
+                    "Digite um nome válido."
+                )
+                st.stop()
+
+            if not validate_whatsapp(
+                whatsapp
+            ):
+                st.warning(
+                    "WhatsApp inválido."
+                )
+                st.stop()
+
             try:
-                response = generate_public_games(
-                    PublicGenerationRequest(
-                        first_name=first_name.strip(),
-                        whatsapp=whatsapp.strip(),
-                        ml_enabled=ml_enabled,
-                    ),
-                    source="public_streamlit",
-                    user_agent="streamlit",
-                    limiter_key=(
-                        f"streamlit:generate:{whatsapp}"
-                    ),
+
+                response = (
+                    generate_public_games(
+                        PublicGenerationRequest(
+                            first_name=(
+                                first_name.strip()
+                            ),
+                            whatsapp=(
+                                whatsapp.strip()
+                            ),
+                            ml_enabled=(
+                                ml_enabled
+                            ),
+                        ),
+                        source=(
+                            "public_streamlit"
+                        ),
+                        user_agent="streamlit",
+                        limiter_key=(
+                            f"streamlit:generate:{whatsapp}"
+                        ),
+                    )
                 )
 
             except (
                 PublicRateLimitError,
                 ValueError,
             ) as exc:
+
                 st.warning(str(exc))
 
             except Exception as exc:
+
                 st.error(
                     f"Erro interno na geração: {exc}"
                 )
 
             else:
+
                 persist_lead(
                     first_name,
                     whatsapp,
                 )
 
-                metadata = response["metadata"]
+                metadata = response[
+                    "metadata"
+                ]
 
                 cursor.execute(
                     """
@@ -200,7 +289,9 @@ def main() -> None:
                         first_name,
                         whatsapp,
                         metadata.get("seed"),
-                        metadata.get("strategy"),
+                        metadata.get(
+                            "strategy"
+                        ),
                         metadata.get(
                             "ranking_score"
                         ),
@@ -222,6 +313,7 @@ def main() -> None:
                     response["games"],
                     start=1,
                 ):
+
                     st.subheader(
                         f"Jogo {index}"
                     )
@@ -233,6 +325,7 @@ def main() -> None:
                     )
 
     with tab_check:
+
         first_name = st.text_input(
             "Primeiro nome",
             key="check_first_name",
@@ -258,7 +351,25 @@ def main() -> None:
             "Conferir",
             type="primary",
         ):
+
+            if not validate_name(
+                first_name
+            ):
+                st.warning(
+                    "Digite um nome válido."
+                )
+                st.stop()
+
+            if not validate_whatsapp(
+                whatsapp
+            ):
+                st.warning(
+                    "WhatsApp inválido."
+                )
+                st.stop()
+
             try:
+
                 numbers = [
                     int(item)
                     for item in (
@@ -268,43 +379,70 @@ def main() -> None:
                     )
                 ]
 
-                response = check_public_contest(
-                    PublicCheckRequest(
-                        first_name=(
-                            first_name.strip()
+            except ValueError:
+
+                st.warning(
+                    "Digite apenas números válidos."
+                )
+                st.stop()
+
+            valid, message = (
+                validate_numbers(
+                    numbers
+                )
+            )
+
+            if not valid:
+                st.warning(message)
+                st.stop()
+
+            try:
+
+                response = (
+                    check_public_contest(
+                        PublicCheckRequest(
+                            first_name=(
+                                first_name.strip()
+                            ),
+                            whatsapp=(
+                                whatsapp.strip()
+                            ),
+                            contest_id=int(
+                                contest_id
+                            ),
+                            numbers=numbers,
                         ),
-                        whatsapp=(
-                            whatsapp.strip()
+                        source=(
+                            "public_streamlit"
                         ),
-                        contest_id=int(
-                            contest_id
+                        user_agent="streamlit",
+                        limiter_key=(
+                            f"streamlit:check:{whatsapp}"
                         ),
-                        numbers=numbers,
-                    ),
-                    source="public_streamlit",
-                    user_agent="streamlit",
-                    limiter_key=(
-                        f"streamlit:check:{whatsapp}"
-                    ),
+                    )
                 )
 
             except (
                 PublicContestNotFoundError
             ) as exc:
+
                 st.error(str(exc))
 
             except (
                 PublicRateLimitError,
                 ValueError,
             ) as exc:
+
                 st.warning(str(exc))
 
             except Exception as exc:
+
                 st.error(
                     f"Erro interno na conferência: {exc}"
                 )
 
             else:
+
                 result = response["result"]
 
                 cursor.execute(
