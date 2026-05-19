@@ -52,7 +52,6 @@ cursor.execute(
         seed INTEGER,
         strategy TEXT,
         ranking_score REAL,
-        generated_numbers TEXT,
         execution_time_ms REAL,
         ml_enabled INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -293,46 +292,40 @@ def main() -> None:
                     "metadata"
                 ]
 
-                for game in response["games"]:
-
-                    cursor.execute(
-                        """
-                        INSERT INTO generation_events (
-                            first_name,
-                            whatsapp,
-                            seed,
-                            strategy,
-                            ranking_score,
-                            generated_numbers,
-                            execution_time_ms,
-                            ml_enabled
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            first_name,
-                            whatsapp,
-                            metadata.get("seed"),
-                            metadata.get(
-                                "strategy"
-                            ),
-                            metadata.get(
-                                "ranking_score"
-                            ),
-                            _format_numbers(
-                                game["numbers"]
-                            ),
-                            metadata.get(
-                                "execution_time_ms"
-                            ),
-                            int(
-                                metadata.get(
-                                    "ml_enabled",
-                                    False,
-                                )
-                            ),
-                        ),
+                cursor.execute(
+                    """
+                    INSERT INTO generation_events (
+                        first_name,
+                        whatsapp,
+                        seed,
+                        strategy,
+                        ranking_score,
+                        execution_time_ms,
+                        ml_enabled
                     )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        first_name,
+                        whatsapp,
+                        metadata.get("seed"),
+                        metadata.get(
+                            "strategy"
+                        ),
+                        metadata.get(
+                            "ranking_score"
+                        ),
+                        metadata.get(
+                            "execution_time_ms"
+                        ),
+                        int(
+                            metadata.get(
+                                "ml_enabled",
+                                False,
+                            )
+                        ),
+                    ),
+                )
 
                 conn.commit()
 
