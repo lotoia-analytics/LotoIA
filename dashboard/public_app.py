@@ -1,3 +1,6 @@
+# Script Atualizado — Relatórios Completos LotoIA
+
+```python
 from __future__ import annotations
 
 try:
@@ -52,6 +55,7 @@ cursor.execute(
         seed INTEGER,
         strategy TEXT,
         ranking_score REAL,
+        generated_numbers TEXT,
         execution_time_ms REAL,
         ml_enabled INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -66,6 +70,8 @@ cursor.execute(
         first_name TEXT NOT NULL,
         whatsapp TEXT NOT NULL,
         contest_id INTEGER,
+        checked_numbers TEXT,
+        correct_numbers TEXT,
         hits INTEGER,
         execution_time_ms REAL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -292,40 +298,50 @@ def main() -> None:
                     "metadata"
                 ]
 
-                cursor.execute(
-                    """
-                    INSERT INTO generation_events (
-                        first_name,
-                        whatsapp,
-                        seed,
-                        strategy,
-                        ranking_score,
-                        execution_time_ms,
-                        ml_enabled
+                for game in response["games"]:
+
+                    generated_numbers = (
+                        _format_numbers(
+                            game["numbers"]
+                        )
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        first_name,
-                        whatsapp,
-                        metadata.get("seed"),
-                        metadata.get(
-                            "strategy"
-                        ),
-                        metadata.get(
-                            "ranking_score"
-                        ),
-                        metadata.get(
-                            "execution_time_ms"
-                        ),
-                        int(
+
+                    cursor.execute(
+                        """
+                        INSERT INTO generation_events (
+                            first_name,
+                            whatsapp,
+                            seed,
+                            strategy,
+                            ranking_score,
+                            generated_numbers,
+                            execution_time_ms,
+                            ml_enabled
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            first_name,
+                            whatsapp,
+                            metadata.get("seed"),
                             metadata.get(
-                                "ml_enabled",
-                                False,
-                            )
+                                "strategy"
+                            ),
+                            metadata.get(
+                                "ranking_score"
+                            ),
+                            generated_numbers,
+                            metadata.get(
+                                "execution_time_ms"
+                            ),
+                            int(
+                                metadata.get(
+                                    "ml_enabled",
+                                    False,
+                                )
+                            ),
                         ),
-                    ),
-                )
+                    )
 
                 conn.commit()
 
@@ -466,16 +482,30 @@ def main() -> None:
 
                 result = response["result"]
 
+                checked_numbers = (
+                    _format_numbers(numbers)
+                )
+
+                correct_numbers = (
+                    _format_numbers(
+                        response[
+                            "correct_numbers"
+                        ]
+                    )
+                )
+
                 cursor.execute(
                     """
                     INSERT INTO check_events (
                         first_name,
                         whatsapp,
                         contest_id,
+                        checked_numbers,
+                        correct_numbers,
                         hits,
                         execution_time_ms
                     )
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         first_name,
@@ -483,6 +513,8 @@ def main() -> None:
                         result.get(
                             "contest_id"
                         ),
+                        checked_numbers,
+                        correct_numbers,
                         response.get(
                             "hits"
                         ),
@@ -504,17 +536,11 @@ def main() -> None:
                     f'Você fez {response["hits"]} acertos.'
                 )
 
-                acertos = " • ".join(
-                    f"{n:02d}"
-                    for n in response[
-                        "correct_numbers"
-                    ]
-                )
-
                 st.write(
-                    f"Dezenas acertadas: {acertos}"
+                    f"Dezenas acertadas: {correct_numbers}"
                 )
 
 
 if __name__ == "__main__":
     main()
+```
