@@ -84,22 +84,41 @@ def _format_numbers(numbers: list[int]) -> str:
 
 
 def validate_name(name: str) -> bool:
+
     cleaned = name.strip()
 
-    if len(cleaned) < 2:
+    if len(cleaned) < 3:
         return False
 
-    return bool(
-        re.fullmatch(
-            r"[A-Za-zÀ-ÿ\s]+",
-            cleaned,
-        )
-    )
+    if not re.fullmatch(
+        r"[A-Za-zÀ-ÿ\s]+",
+        cleaned,
+    ):
+        return False
+
+    blocked_names = {
+        "teste",
+        "test",
+        "admin",
+        "usuario",
+        "user",
+        "aaa",
+        "abc",
+        "qwe",
+        "xxx",
+        "asdf",
+    }
+
+    if cleaned.lower() in blocked_names:
+        return False
+
+    return True
 
 
 def validate_whatsapp(
     whatsapp: str,
 ) -> bool:
+
     if not whatsapp.isdigit():
         return False
 
@@ -170,6 +189,7 @@ def render_logo() -> None:
 
 
 def main() -> None:
+
     st.set_page_config(
         page_title="LotoIA",
         page_icon="assets/favicon.ico",
@@ -393,6 +413,7 @@ def main() -> None:
             )
 
             if not valid:
+
                 st.warning(message)
                 st.stop()
 
