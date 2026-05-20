@@ -409,7 +409,7 @@ def _render_sidebar_logo() -> None:
     for logo_path in logo_candidates:
         try:
             if logo_path.exists() and logo_path.is_file():
-                st.sidebar.image(str(logo_path), width=180)
+                st.sidebar.image(str(logo_path), width=260)
                 return
         except Exception:
             continue
@@ -434,12 +434,15 @@ PAGES = [
 LABELS = {
     "geracao_jogos": "Criar Jogos",
     "conferir_jogos": "Conferir Jogos",
-    "estatisticas_historicas": "Resultados Passados",
+    "estatisticas_historicas": "Estatísticas",
     "backtesting": "Testar Estratégia",
     "calibracao_experimental": "Ajustar Estratégia",
     "benchmark_cientifico": "Comparar Métodos",
     "historico_experimental": "Meus Testes",
     "relatorios": "Relatórios",
+    "historical_intelligence": "Padrões",
+    "analytics_intelligence": "Heatmaps",
+    "ml_intelligence": "Inteligência Analítica",
 }
 
 
@@ -2174,10 +2177,10 @@ def _sidebar_navigation() -> str:
             letter-spacing: 0.12em;
         }
         section[data-testid="stSidebar"] img {
-            width: 80% !important;
-            max-width: 260px !important;
+            width: 92% !important;
+            max-width: 340px !important;
             display: block;
-            margin: 0 auto 0.7rem auto;
+            margin: 0 auto 0.4rem auto;
         }
         .lotoia-sidebar-divider {
             border-top: 1px solid rgba(18, 52, 86, 0.14);
@@ -2200,15 +2203,16 @@ def _sidebar_navigation() -> str:
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown("**Painel Estatístico**")
     return st.sidebar.radio(
         "Navega??o",
         options=[
-            "geracao_jogos",
-            "conferir_jogos",
             "estatisticas_historicas",
             "historical_intelligence",
             "analytics_intelligence",
             "ml_intelligence",
+            "geracao_jogos",
+            "conferir_jogos",
             "backtesting",
             "calibracao_experimental",
             "benchmark_cientifico",
@@ -2218,7 +2222,7 @@ def _sidebar_navigation() -> str:
             "observability",
             "reports_engine",
         ],
-        format_func=lambda key: {**LABELS, "historical_intelligence": "Historical Intelligence", "analytics_intelligence": "Analytics Intelligence", "ml_intelligence": "ML Intelligence", "ml_governance": "ML Governance", "observability": "Observability", "reports_engine": "Reports Engine"}.get(key, key),
+        format_func=lambda key: {**LABELS, "ml_governance": "ML Governance", "observability": "Observability", "reports_engine": "Reports Engine"}.get(key, key),
         label_visibility="collapsed",
     )
 
