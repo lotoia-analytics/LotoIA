@@ -5,7 +5,6 @@ try:
 except ImportError:
     import _bootstrap
 
-import re
 import sqlite3
 from pathlib import Path
 
@@ -18,7 +17,6 @@ from lotoia.public import (
 
 from lotoia.public.service import (
     PublicContestNotFoundError,
-    PublicRateLimitError,
     check_public_contest,
     find_historical_matches,
     generate_public_games,
@@ -70,6 +68,8 @@ st.set_page_config(
     layout="centered",
 )
 
+st.title("LotoIA")
+
 tab_generate, tab_check = st.tabs(
     [
         "Gerar Jogos",
@@ -77,14 +77,20 @@ tab_generate, tab_check = st.tabs(
     ]
 )
 
+# =========================================================
+# GERAR JOGOS
+# =========================================================
+
 with tab_generate:
 
     first_name = st.text_input(
-        "Primeiro nome"
+        "Primeiro nome",
+        key="generate_name",
     )
 
     whatsapp = st.text_input(
-        "WhatsApp"
+        "WhatsApp",
+        key="generate_whatsapp",
     )
 
     ml_enabled = st.toggle(
@@ -92,10 +98,12 @@ with tab_generate:
         value=False,
     )
 
-    if st.button(
+    generate_clicked = st.button(
         "Gerar",
         type="primary",
-    ):
+    )
+
+    if generate_clicked:
 
         try:
 
@@ -112,77 +120,87 @@ with tab_generate:
                 )
             )
 
+            games = response["games"]
+
             for index, game in enumerate(
-                response["games"],
+                games,
                 start=1,
             ):
 
-                st.subheader(
-                    f"Jogo {index}"
-                )
+                with st.container():
 
-                formatted_numbers = (
-                    _format_numbers(
-                        game["numbers"]
+                    st.divider()
+
+                    st.subheader(
+                        f"Jogo {index}"
                     )
-                )
 
-                st.write(
-                    formatted_numbers
-                )
-
-                history_result = (
-                    find_historical_matches(
-                        game["numbers"]
-                    )
-                )
-
-                if history_result[
-                    "is_repeated"
-                ]:
-
-                    st.warning(
-                        (
-                            f"⚠ Esta combinação "
-                            f"já ocorreu "
-                            f"{history_result['total_matches']} "
-                            f"vez(es)."
+                    formatted_numbers = (
+                        _format_numbers(
+                            game["numbers"]
                         )
                     )
 
-                    for match in history_result[
-                        "matches"
+                    st.code(
+                        formatted_numbers
+                    )
+
+                    history_result = (
+                        find_historical_matches(
+                            game["numbers"]
+                        )
+                    )
+
+                    if history_result[
+                        "is_repeated"
                     ]:
 
-                        st.write(
+                        st.warning(
                             (
-                                f"Concurso "
-                                f"{match['contest']} "
-                                f"- "
-                                f"{match['date']}"
+                                f"⚠ Esta combinação "
+                                f"já ocorreu "
+                                f"{history_result['total_matches']} "
+                                f"vez(es)."
                             )
                         )
 
-                else:
+                        for match in history_result[
+                            "matches"
+                        ]:
 
-                    st.success(
-                        "✔ Combinação inédita."
-                    )
+                            st.write(
+                                (
+                                    f"Concurso "
+                                    f"{match['contest']} "
+                                    f"- "
+                                    f"{match['date']}"
+                                )
+                            )
+
+                    else:
+
+                        st.success(
+                            "✔ Combinação inédita."
+                        )
 
         except Exception as exc:
 
             st.error(
-                f"Erro: {exc}"
+                f"Erro interno: {exc}"
             )
+
+# =========================================================
+# CONFERIR CONCURSO
+# =========================================================
 
 with tab_check:
 
-    first_name = st.text_input(
+    first_name_check = st.text_input(
         "Primeiro nome",
         key="check_name",
     )
 
-    whatsapp = st.text_input(
+    whatsapp_check = st.text_input(
         "WhatsApp",
         key="check_whatsapp",
     )
@@ -194,13 +212,16 @@ with tab_check:
     )
 
     numbers_text = st.text_input(
-        "Dezenas"
+        "Dezenas",
+        placeholder="01 02 03 04 ...",
     )
 
-    if st.button(
+    check_clicked = st.button(
         "Conferir",
         type="primary",
-    ):
+    )
+
+    if check_clicked:
 
         try:
 
@@ -228,8 +249,12 @@ with tab_check:
                 response = (
                     check_public_contest(
                         PublicCheckRequest(
-                            first_name=first_name,
-                            whatsapp=whatsapp,
+                            first_name=(
+                                first_name_check
+                            ),
+                            whatsapp=(
+                                whatsapp_check
+                            ),
                             contest_id=int(
                                 contest_id
                             ),
@@ -238,7 +263,7 @@ with tab_check:
                         source="streamlit",
                         user_agent="browser",
                         limiter_key=(
-                            f"check:{whatsapp}"
+                            f"check:{whatsapp_check}"
                         ),
                     )
                 )
@@ -256,6 +281,13 @@ with tab_check:
                     )
                 )
 
+                st.write(
+                    (
+                        "Dezenas sorteadas: "
+                        f"{_format_numbers(response['correct_numbers'])}"
+                    )
+                )
+
         except (
             PublicContestNotFoundError
         ) as exc:
@@ -265,5 +297,5 @@ with tab_check:
         except Exception as exc:
 
             st.error(
-                f"Erro: {exc}"
+                f"Erro interno: {exc}"
             )
