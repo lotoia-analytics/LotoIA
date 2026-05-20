@@ -14,6 +14,7 @@ if "matplotlib" not in sys.modules:
     sys.modules["matplotlib.pyplot"] = pyplot
 
 import dashboard.admin_app as admin_app
+from lotoia.models.draw import Draw
 
 
 class _DummyColumn:
@@ -83,6 +84,24 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
     page = admin_app._sidebar_navigation()
 
     assert page == "observability"
+
+
+def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_draws",
+        lambda: [
+            Draw(contest=1, date=None, numbers=list(range(1, 16))),
+            Draw(contest=2, date=None, numbers=list(range(2, 17))),
+        ],
+    )
+    admin_app._historical_dataset.clear()
+    admin_app._analytics_base_tables.clear()
+
+    tables = admin_app._analytics_base_tables()
+
+    assert not tables["history"].empty
+    assert list(tables["history"]["concurso"]) == [1, 2]
 
 
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:

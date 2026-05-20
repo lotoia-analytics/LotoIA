@@ -143,6 +143,26 @@ def test_backtest_is_stable_with_seed() -> None:
     assert first_result.to_dict() == second_result.to_dict()
 
 
+def test_backtest_degrades_when_candidate_pool_is_too_strict() -> None:
+    draws = [
+        make_draw(contest, list(range(1 + (contest % 5), 16 + (contest % 5))))
+        for contest in range(1, 5)
+    ]
+
+    result = run_backtest(
+        draws=draws,
+        contests_analyzed=[4],
+        games_count=2,
+        pool_size=2,
+        history_window=2,
+        seed=42,
+        persist=False,
+    )
+
+    assert result.total_games >= 2
+    assert result.contests_analyzed == 1
+
+
 def test_backtest_uses_explicit_score_weights() -> None:
     draws = [
         make_draw(contest, list(range(1 + (contest % 5), 16 + (contest % 5))))

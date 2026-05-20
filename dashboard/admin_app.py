@@ -26,6 +26,7 @@ from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.generator.basic_generator import generate_best_games, generate_multiple_games
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
+from lotoia.models.draw import Draw
 from lotoia.standards import (
     ArtifactKind,
     EventCategory,
@@ -239,6 +240,8 @@ def _normalize_numbers(numbers: list[int]) -> tuple[int, ...]:
 
 
 def _draw_numbers(draw: Any) -> list[int]:
+    if isinstance(draw, Draw):
+        return [int(item) for item in draw.numbers]
     if isinstance(draw, dict):
         if isinstance(draw.get("numbers"), list):
             return [int(item) for item in draw["numbers"]]
@@ -255,6 +258,20 @@ def _draw_numbers(draw: Any) -> list[int]:
     return []
 
 
+def _draw_contest(draw: Any) -> int:
+    if isinstance(draw, Draw):
+        return int(draw.contest)
+    if isinstance(draw, dict):
+        for key in ("concurso", "contest", "id"):
+            value = draw.get(key)
+            if value is not None:
+                try:
+                    return int(value)
+                except Exception:
+                    continue
+    return 0
+
+
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _historical_dataset() -> dict[str, Any]:
     draws = _load_draws()
@@ -265,15 +282,7 @@ def _historical_dataset() -> dict[str, Any]:
         if not numbers:
             continue
         all_numbers.extend(numbers)
-        contest_value = draw.get("concurso") if isinstance(draw, dict) else None
-        if contest_value is None and isinstance(draw, dict):
-            contest_value = draw.get("contest")
-        if contest_value is None and isinstance(draw, dict):
-            contest_value = draw.get("id")
-        try:
-            contest = int(contest_value) if contest_value is not None else 0
-        except Exception:
-            contest = 0
+        contest = _draw_contest(draw)
         historical_map.setdefault(numbers, []).append(contest)
     frequency = pd.Series(all_numbers).value_counts().sort_index().to_dict() if all_numbers else {}
     return {
@@ -371,7 +380,7 @@ def _analytics_base_tables() -> dict[str, pd.DataFrame]:
         normalized = _normalize_numbers(numbers)
         history_rows.append(
             {
-                "concurso": int(draw.get("concurso") or draw.get("contest") or draw.get("id") or 0),
+                "concurso": _draw_contest(draw),
                 "dezenas": _format_numbers(numbers),
                 "soma": sum(numbers),
                 "pares": sum(1 for value in numbers if value % 2 == 0),
@@ -527,9 +536,45 @@ def _distribution_chart_advanced() -> go.Figure:
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int = 24, history_window: int = 180, seed: int = 42) -> dict[str, Any]:
     start_time = time.monotonic()
-    result = _cached_backtest(contests, games_count, pool_size, history_window, seed)
+    result = _safe_backtest(contests=contests, games_count=games_count, pool_size=pool_size, history_window=history_window, seed=seed)
     rows: list[dict[str, Any]] = []
     all_contests = [item["contest"] for item in result.contest_results]
+    if not all_contests:
+        empty_model = InterpretableLinearScoreML()
+        validation_metrics = {
+            "rows": 0,
+            "splits": 0,
+            "temporal_valid": True,
+            "model_version": empty_model.model_version,
+            "feature_schema_version": empty_model.feature_schema_version,
+            "status": "degraded_no_backtest_candidates",
+        }
+        payload = {
+            "timestamp": _report_timestamp(),
+            "model_version": empty_model.model_version,
+            "feature_schema_version": empty_model.feature_schema_version,
+            "experiment_rows": 0,
+            "walk_forward_splits": 0,
+            "temporal_valid": True,
+            "validation_metrics": validation_metrics,
+            "training_summary": {},
+            "calibration": {},
+            "attribution": [],
+        }
+        ml_report_paths = _save_ml_report(payload, pd.DataFrame(columns=["feature", "weight"]))
+        ml_snapshot = _write_ml_snapshot("ml_model_snapshot", payload)
+        return {
+            "model": empty_model,
+            "validation_metrics": validation_metrics,
+            "scored_games": [],
+            "reranked_games": [],
+            "sample_row": {},
+            "splits": [],
+            "feature_rows": [],
+            "ml_report_paths": ml_report_paths,
+            "ml_snapshot": ml_snapshot,
+            "payload": payload,
+        }
     for contest_result in result.contest_results:
         contest = int(contest_result["contest"])
         for game in contest_result["games"]:
@@ -1521,6 +1566,69 @@ def _lead_analytics() -> dict[str, Any]:
     }
 
 
+def _empty_backtest_result(
+    *,
+    contests: int,
+    games_count: int,
+    pool_size: int,
+    history_window: int,
+) -> BacktestResult:
+    return BacktestResult(
+        contests_analyzed=0,
+        games_per_contest=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+        total_games=0,
+        average_hits=0.0,
+        hit_distribution={str(points): 0 for points in range(11, 16)},
+        best_game=None,
+        worst_game=None,
+        average_winner_final_score=0.0,
+        final_score_hit_correlation=0.0,
+        contest_results=[],
+    )
+
+
+def _safe_backtest(
+    *,
+    contests: int,
+    games_count: int,
+    pool_size: int,
+    history_window: int,
+    seed: int,
+) -> BacktestResult:
+    attempts = [
+        (contests, games_count, max(pool_size, games_count), history_window),
+        (max(1, contests), max(1, min(games_count, 5)), max(max(1, min(games_count, 5)), min(pool_size, 50)), history_window),
+        (max(1, min(contests, 3)), 1, 1, max(1, min(history_window, 120))),
+    ]
+    last_error = ""
+    for attempt_contests, attempt_games, attempt_pool, attempt_window in attempts:
+        try:
+            return _cached_backtest(attempt_contests, attempt_games, attempt_pool, attempt_window, seed)
+        except Exception as exc:
+            last_error = str(exc)
+            _record_operational_log(
+                "backtest",
+                "failed",
+                0.0,
+                {
+                    "contests": attempt_contests,
+                    "games_count": attempt_games,
+                    "pool_size": attempt_pool,
+                    "history_window": attempt_window,
+                    "error": last_error,
+                },
+            )
+    _record_operational_log("backtest", "degraded", 0.0, {"error": last_error})
+    return _empty_backtest_result(
+        contests=contests,
+        games_count=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+    )
+
+
 def _safe_count(table_name: str) -> int:
     try:
         row = _sqlite_execute_safe(f"SELECT COUNT(*) FROM {table_name}")
@@ -1989,8 +2097,11 @@ def render_backtesting_page() -> BacktestResult | None:
             return None
         if st.button("Executar backtest", type="primary"):
             with st.spinner("Executando backtest histórico..."):
-                result = _cached_backtest(int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
+                result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
             _metric_row(result)
+            if result.total_games == 0:
+                st.warning("Backtest em modo degradado: não foi possível gerar candidatos suficientes nesta configuração.")
+                return result
             st.plotly_chart(_distribution_chart(result.hit_distribution), use_container_width=True)
             st.plotly_chart(_score_correlation_chart(result), use_container_width=True)
             st.plotly_chart(_hits_by_contest_chart(result), use_container_width=True)
@@ -2027,6 +2138,9 @@ def render_calibration_page() -> None:
         if st.button("Comparar configurações", type="primary"):
             with st.spinner("Executando calibração experimental..."):
                 result = _cached_calibration(weights, int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
+            if not result.get("evaluations"):
+                st.warning("Calibração sem avaliações disponíveis nesta configuração.")
+                return
             evaluations = result["evaluations"]
             st.plotly_chart(_configuration_chart(result), use_container_width=True)
             st.dataframe(pd.DataFrame([{"configuracao": evaluation["configuration"], "media_acertos": evaluation["average_hits"], "correlacao": evaluation["final_score_hit_correlation"], "desvio_padrao": evaluation["hit_standard_deviation"], "peso_total": evaluation["total_weight"]} for evaluation in evaluations]), hide_index=True, use_container_width=True)
@@ -2117,7 +2231,10 @@ def render_reports_page() -> None:
         if st.button("Gerar relatório", type="primary"):
             start_time = time.monotonic()
             with st.spinner("Gerando relatório analítico..."):
-                result = _cached_backtest(int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
+                result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
+                if result.total_games == 0:
+                    st.warning("Relatório em modo degradado: backtest sem candidatos suficientes.")
+                    return
                 report = generate_backtest_report(result=result, output_dir=REPORTS_DIR)
                 snapshot = _write_snapshot(
                     "backtest_snapshot",

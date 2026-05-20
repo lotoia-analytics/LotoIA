@@ -111,14 +111,15 @@ def _generate_candidate_pool(
     pool_size: int,
     seed: int | None,
 ) -> list[list[int]]:
-    del history
+    history_games = [tuple(draw.numbers) for draw in history]
     random = Random(seed + target_draw.contest if seed is not None else None)
     candidates: list[list[int]] = []
     seen: set[tuple[int, ...]] = set()
     attempts = 0
-    max_attempts = max(pool_size, games_count) * 1000
+    target_pool_size = max(pool_size, games_count)
+    max_attempts = max(target_pool_size * 1000, 5000)
 
-    while len(candidates) < pool_size and attempts < max_attempts:
+    while len(candidates) < target_pool_size and attempts < max_attempts:
         attempts += 1
         game = _build_game(random.sample(range(1, 26), 15))
         game_key = tuple(game["numbers"])
@@ -127,8 +128,31 @@ def _generate_candidate_pool(
         candidates.append(game["numbers"])
         seen.add(game_key)
 
-    if len(candidates) < pool_size:
-        raise RuntimeError("Nao foi possivel gerar candidatos suficientes para o backtest.")
+    if len(candidates) < games_count:
+        for game_key in reversed(history_games):
+            if game_key in seen:
+                continue
+            candidates.append(sorted(game_key))
+            seen.add(game_key)
+            if len(candidates) >= games_count:
+                break
+
+    fallback_templates = (
+        (1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 18, 20, 22, 24),
+        (1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 17, 19, 21, 23, 25),
+        (2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 22, 25),
+    )
+    for fallback_key in fallback_templates:
+        if len(candidates) >= games_count:
+            break
+        if fallback_key not in seen:
+            candidates.append(list(fallback_key))
+            seen.add(fallback_key)
+
+    if len(candidates) < games_count:
+        raise RuntimeError(
+            "Nao foi possivel gerar o minimo operacional de candidatos para o backtest."
+        )
 
     return candidates
 
