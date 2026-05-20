@@ -7,6 +7,7 @@ except ImportError:
 
 import json
 import sqlite3
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -84,9 +85,110 @@ ALERT_REPEATED_FAILURES = 3
 ALERT_SQLITE_SIZE_BYTES = 256 * 1024 * 1024
 ALERT_LOG_GROWTH_EVENTS = 1_000
 SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
+SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
+SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
 
-conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-cursor = conn.cursor()
+conn: sqlite3.Connection | None = None
+cursor: sqlite3.Cursor | None = None
+
+
+def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path, check_same_thread=False)
+    try:
+        connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.Error:
+        pass
+    return connection
+
+
+def _sqlite_bind_connection(connection: sqlite3.Connection) -> None:
+    global conn, cursor
+    conn = connection
+    cursor = connection.cursor()
+
+
+def _sqlite_ensure_runtime_connection() -> tuple[sqlite3.Connection | None, sqlite3.Cursor | None]:
+    if conn is None or cursor is None:
+        try:
+            _sqlite_bind_connection(_sqlite_open_connection())
+        except Exception as exc:
+            _sqlite_memory_logs.append({"event_type": "sqlite", "status": "failed", "error": str(exc)})
+            return None, None
+    return conn, cursor
+
+
+def _sqlite_backup_corrupted_database(error_text: str) -> Path | None:
+    if not DB_PATH.exists():
+        return None
+    backup_dir = DB_PATH.parent / "data" / "corrupted"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"{DB_PATH.stem}_{time.strftime('%Y%m%dT%H%M%S')}.db"
+    try:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        shutil.move(str(DB_PATH), str(backup_path))
+        SQLITE_RECOVERY_STATE["last_backup"] = str(backup_path)
+        SQLITE_RECOVERY_STATE["last_error"] = error_text
+        return backup_path
+    except Exception as exc:
+        SQLITE_MEMORY_LOGS.append(
+            {
+                "event_type": "sqlite_recovery",
+                "status": "failed",
+                "error": str(exc),
+                "source_error": error_text,
+            }
+        )
+        return None
+
+
+def _sqlite_maybe_recover_connection(error: Exception) -> bool:
+    message = str(error).lower()
+    if not isinstance(error, sqlite3.DatabaseError) and "malformed" not in message:
+        return False
+    if SQLITE_RECOVERY_STATE["attempted"]:
+        return False
+    SQLITE_RECOVERY_STATE["attempted"] = True
+    backup_path = _sqlite_backup_corrupted_database(str(error))
+    try:
+        new_conn = _sqlite_open_connection()
+        _sqlite_bind_connection(new_conn)
+        _sqlite_ensure_admin_schema()
+        if cursor is not None:
+            try:
+                cursor.execute("PRAGMA integrity_check")
+                result = cursor.fetchone()
+                if not (result and str(result[0]).lower() == "ok"):
+                    raise sqlite3.DatabaseError("integrity_check failed after recovery")
+            except Exception:
+                pass
+        if conn is not None:
+            conn.commit()
+        SQLITE_RECOVERY_STATE["active"] = True
+        _record_operational_log(
+            "sqlite_recovery",
+            "success",
+            0.0,
+            {"backup_path": str(backup_path) if backup_path else "", "source_error": str(error)},
+        )
+        return True
+    except Exception as exc:
+        SQLITE_MEMORY_LOGS.append(
+            {
+                "event_type": "sqlite_recovery",
+                "status": "failed",
+                "error": str(exc),
+                "source_error": str(error),
+                "backup_path": str(backup_path) if backup_path else "",
+            }
+        )
+        return False
 
 
 def _sqlite_classify_error(statement: str, exc: Exception, table_name: str | None = None) -> dict[str, str]:
@@ -111,13 +213,33 @@ def _sqlite_classify_error(statement: str, exc: Exception, table_name: str | Non
 
 
 def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) -> bool:
+    connection, current_cursor = _sqlite_ensure_runtime_connection()
+    if connection is None or current_cursor is None:
+        SQLITE_BOOTSTRAP_DIAGNOSTICS.append(
+            {
+                "issue": "runtime indisponível",
+                "table": table_name or "",
+                "sql": statement.strip().replace("\n", " "),
+                "error": "No SQLite connection available",
+            }
+        )
+        return False
     try:
-        cursor.execute(statement)
+        current_cursor.execute(statement)
         return True
     except sqlite3.Error as exc:
+        if _sqlite_maybe_recover_connection(exc):
+            recovered = _sqlite_ensure_runtime_connection()[1]
+            if recovered is not None:
+                try:
+                    recovered.execute(statement)
+                    return True
+                except sqlite3.Error as retry_exc:
+                    exc = retry_exc
         diagnostic = _sqlite_classify_error(statement, exc, table_name)
         SQLITE_BOOTSTRAP_DIAGNOSTICS.append(diagnostic)
         try:
+            SQLITE_MEMORY_LOGS.append({"event_type": "sqlite", "status": "failed", **diagnostic})
             _record_operational_log("sqlite", "failed", 0.0, diagnostic)
         except Exception:
             pass
@@ -125,8 +247,11 @@ def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) 
 
 
 def _sqlite_table_columns(table_name: str) -> set[str]:
+    _, current_cursor = _sqlite_ensure_runtime_connection()
+    if current_cursor is None:
+        return set()
     try:
-        rows = cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
+        rows = current_cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
     except sqlite3.Error:
         return set()
     return {str(row[1]) for row in rows}
@@ -273,11 +398,10 @@ def _render_sqlite_bootstrap_diagnostics() -> None:
     st.code(last["sql"], language="sql")
 
 
-_sqlite_execute_bootstrap(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-_sqlite_execute_bootstrap("PRAGMA journal_mode = WAL")
-_sqlite_execute_bootstrap("PRAGMA synchronous = NORMAL")
+_sqlite_bind_connection(_sqlite_open_connection())
 _sqlite_ensure_admin_schema()
-conn.commit()
+if conn is not None:
+    conn.commit()
 
 PAGES = [
     "geracao_jogos",
@@ -1085,24 +1209,52 @@ def _record_operational_log(event_type: str, status: str, duration_ms: float | N
         severity=Severity.ERROR if status == "failed" else Severity.INFO,
         context=context or {},
     )
-    cursor.execute(
-        """
-        INSERT INTO operational_logs (
-            event_type,
-            status,
-            duration_ms,
-            context_json
-        )
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            event_type,
-            status,
-            duration_ms,
-            json.dumps(standardized_context, ensure_ascii=False),
-        ),
+    connection, current_cursor = _sqlite_ensure_runtime_connection()
+    payload = (
+        event_type,
+        status,
+        duration_ms,
+        json.dumps(standardized_context, ensure_ascii=False),
     )
-    conn.commit()
+    if connection is None or current_cursor is None:
+        SQLITE_MEMORY_LOGS.append({"event_type": event_type, "status": status, "context": standardized_context})
+        return
+    try:
+        current_cursor.execute(
+            """
+            INSERT INTO operational_logs (
+                event_type,
+                status,
+                duration_ms,
+                context_json
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            payload,
+        )
+        connection.commit()
+    except sqlite3.Error as exc:
+        SQLITE_MEMORY_LOGS.append({"event_type": event_type, "status": status, "error": str(exc), "context": standardized_context})
+        if _sqlite_maybe_recover_connection(exc):
+            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
+            if recovered_conn is not None and recovered_cursor is not None:
+                try:
+                    recovered_cursor.execute(
+                        """
+                        INSERT INTO operational_logs (
+                            event_type,
+                            status,
+                            duration_ms,
+                            context_json
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        payload,
+                    )
+                    recovered_conn.commit()
+                    return
+                except sqlite3.Error as retry_exc:
+                    SQLITE_MEMORY_LOGS.append({"event_type": event_type, "status": status, "error": str(retry_exc), "context": standardized_context})
 
 
 def _record_performance_metric(metric_name: str, duration_ms: float, context: dict[str, Any] | None = None) -> None:
@@ -1121,24 +1273,55 @@ def _record_audit_trail(action_type: str, actor: str = "dashboard", artifact_pat
         status="recorded",
         context={"actor": actor, "artifact_path": artifact_path, **(context or {})},
     )
-    cursor.execute(
-        """
-        INSERT INTO audit_trail (
-            action_type,
-            actor,
-            artifact_path,
-            context_json
+    connection, current_cursor = _sqlite_ensure_runtime_connection()
+    if connection is None or current_cursor is None:
+        SQLITE_MEMORY_LOGS.append({"action_type": action_type, "actor": actor, "artifact_path": artifact_path, "context": standardized_context})
+        return
+    try:
+        current_cursor.execute(
+            """
+            INSERT INTO audit_trail (
+                action_type,
+                actor,
+                artifact_path,
+                context_json
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                action_type,
+                actor,
+                artifact_path,
+                json.dumps(standardized_context, ensure_ascii=False),
+            ),
         )
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            action_type,
-            actor,
-            artifact_path,
-            json.dumps(standardized_context, ensure_ascii=False),
-        ),
-    )
-    conn.commit()
+        connection.commit()
+    except sqlite3.Error as exc:
+        SQLITE_MEMORY_LOGS.append({"action_type": action_type, "actor": actor, "artifact_path": artifact_path, "error": str(exc), "context": standardized_context})
+        if _sqlite_maybe_recover_connection(exc):
+            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
+            if recovered_conn is not None and recovered_cursor is not None:
+                try:
+                    recovered_cursor.execute(
+                        """
+                        INSERT INTO audit_trail (
+                            action_type,
+                            actor,
+                            artifact_path,
+                            context_json
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            action_type,
+                            actor,
+                            artifact_path,
+                            json.dumps(standardized_context, ensure_ascii=False),
+                        ),
+                    )
+                    recovered_conn.commit()
+                except sqlite3.Error:
+                    pass
 
 
 def _ensure_log_tables() -> None:
@@ -1154,17 +1337,42 @@ def _ensure_reports_dirs() -> None:
 
 def _sqlite_health_check() -> bool:
     try:
-        cursor.execute("PRAGMA integrity_check")
-        result = cursor.fetchone()
+        connection, current_cursor = _sqlite_ensure_runtime_connection()
+        if connection is None or current_cursor is None:
+            return False
+        current_cursor.execute("PRAGMA integrity_check")
+        result = current_cursor.fetchone()
+        if not (result and str(result[0]).lower() == "ok"):
+            raise sqlite3.DatabaseError("integrity_check failed")
         return bool(result and str(result[0]).lower() == "ok")
+    except sqlite3.DatabaseError as exc:
+        SQLITE_MEMORY_LOGS.append({"event_type": "sqlite_integrity", "status": "failed", "error": str(exc)})
+        if _sqlite_maybe_recover_connection(exc):
+            return _sqlite_health_check()
+        return False
     except Exception:
         return False
 
 
 def _sqlite_execute_safe(query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor | None:
     try:
-        conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-        return cursor.execute(query, params)
+        connection, current_cursor = _sqlite_ensure_runtime_connection()
+        if connection is None or current_cursor is None:
+            return None
+        connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+        return current_cursor.execute(query, params)
+    except sqlite3.DatabaseError as exc:
+        SQLITE_MEMORY_LOGS.append({"event_type": "sqlite", "status": "failed", "query": query[:80], "error": str(exc)})
+        if _sqlite_maybe_recover_connection(exc):
+            connection, current_cursor = _sqlite_ensure_runtime_connection()
+            if connection is not None and current_cursor is not None:
+                try:
+                    connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+                    return current_cursor.execute(query, params)
+                except sqlite3.Error:
+                    pass
+        _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
+        return None
     except Exception as exc:
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
         return None
@@ -1562,7 +1770,10 @@ def _load_admin_events(table_name: str) -> pd.DataFrame:
     if table_name not in ALLOWED_ADMIN_EVENT_TABLES:
         return pd.DataFrame()
     query = f"SELECT * FROM {table_name} ORDER BY created_at DESC, id DESC LIMIT {ADMIN_EVENT_LIMIT}"
-    return pd.read_sql_query(query, conn)
+    connection, _ = _sqlite_ensure_runtime_connection()
+    if connection is None:
+        return pd.DataFrame()
+    return pd.read_sql_query(query, connection)
 
 
 def _lead_identifier(first_name: str, whatsapp: str) -> str:
@@ -1571,7 +1782,10 @@ def _lead_identifier(first_name: str, whatsapp: str) -> str:
 
 def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...] = ()) -> pd.DataFrame:
     try:
-        return pd.read_sql_query(query, conn, params=params)
+        connection, _ = _sqlite_ensure_runtime_connection()
+        if connection is None:
+            return pd.DataFrame(columns=columns)
+        return pd.read_sql_query(query, connection, params=params)
     except Exception as exc:
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
         return pd.DataFrame(columns=columns)
@@ -1580,17 +1794,41 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
 def _persist_lead(first_name: str, whatsapp: str) -> None:
     if not first_name.strip() or not whatsapp.strip():
         return
-    cursor.execute(
-        """
-        INSERT INTO leads (
-            first_name,
-            whatsapp
+    connection, current_cursor = _sqlite_ensure_runtime_connection()
+    if connection is None or current_cursor is None:
+        SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "first_name": first_name, "whatsapp": whatsapp})
+        return
+    try:
+        current_cursor.execute(
+            """
+            INSERT INTO leads (
+                first_name,
+                whatsapp
+            )
+            VALUES (?, ?)
+            """,
+            (first_name.strip(), whatsapp.strip()),
         )
-        VALUES (?, ?)
-        """,
-        (first_name.strip(), whatsapp.strip()),
-    )
-    conn.commit()
+        connection.commit()
+    except sqlite3.Error as exc:
+        SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "error": str(exc), "first_name": first_name, "whatsapp": whatsapp})
+        if _sqlite_maybe_recover_connection(exc):
+            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
+            if recovered_conn is not None and recovered_cursor is not None:
+                try:
+                    recovered_cursor.execute(
+                        """
+                        INSERT INTO leads (
+                            first_name,
+                            whatsapp
+                        )
+                        VALUES (?, ?)
+                        """,
+                        (first_name.strip(), whatsapp.strip()),
+                    )
+                    recovered_conn.commit()
+                except sqlite3.Error:
+                    pass
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
@@ -2221,20 +2459,22 @@ def render_check_page() -> None:
                 duration_ms = (time.monotonic() - start_time) * 1000.0
                 result["execution_time_ms"] = round(duration_ms, 2)
                 _persist_lead(first_name, whatsapp)
-                cursor.execute(
-                    """
-                    INSERT INTO check_events (
-                        first_name,
-                        whatsapp,
-                        contest_id,
-                        hits,
-                        execution_time_ms
+                connection, current_cursor = _sqlite_ensure_runtime_connection()
+                if connection is not None and current_cursor is not None:
+                    current_cursor.execute(
+                        """
+                        INSERT INTO check_events (
+                            first_name,
+                            whatsapp,
+                            contest_id,
+                            hits,
+                            execution_time_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (first_name.strip(), whatsapp.strip(), int(contest_id), int(result["hits"]), duration_ms),
                     )
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (first_name.strip(), whatsapp.strip(), int(contest_id), int(result["hits"]), duration_ms),
-                )
-                conn.commit()
+                    connection.commit()
                 check_row, check_payload = _build_check_report_payload(result, int(contest_id), numbers)
                 snapshot = _write_snapshot(
                     "check_snapshot",

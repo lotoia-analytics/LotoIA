@@ -71,3 +71,26 @@ def test_sqlite_bootstrap_error_classification() -> None:
 
     assert diagnostic["issue"] == "table ausente"
     assert diagnostic["table"] == "missing_table"
+
+
+def test_sqlite_recovery_moves_corrupted_database(tmp_path: Path, monkeypatch) -> None:
+    corrupted_db = tmp_path / "lotoia.db"
+    corrupted_db.write_bytes(b"not a sqlite database")
+
+    monkeypatch.setattr(admin_app, "DB_PATH", corrupted_db)
+    monkeypatch.setattr(admin_app, "conn", type("DummyConn", (), {"close": lambda self: None})())
+    monkeypatch.setattr(admin_app, "cursor", None)
+    monkeypatch.setattr(admin_app, "_sqlite_ensure_admin_schema", lambda: None)
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+
+    fresh_db = tmp_path / "fresh.db"
+    fresh_conn = sqlite3.connect(fresh_db)
+    monkeypatch.setattr(admin_app, "_sqlite_open_connection", lambda path=admin_app.DB_PATH: fresh_conn)
+
+    recovered = admin_app._sqlite_maybe_recover_connection(sqlite3.DatabaseError("database disk image is malformed"))
+
+    assert recovered is True
+    assert not corrupted_db.exists()
+    backup_dir = tmp_path / "data" / "corrupted"
+    assert backup_dir.exists()
+    assert admin_app.SQLITE_RECOVERY_STATE["active"] is True
