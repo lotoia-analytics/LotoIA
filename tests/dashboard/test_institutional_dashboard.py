@@ -87,6 +87,8 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
 
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
+    success_messages = []
+    monkeypatch.setattr(admin_app.st, "success", lambda message, *args, **kwargs: success_messages.append(message))
     monkeypatch.setattr(admin_app, "_observability_tables", lambda: {"logs": admin_app.pd.DataFrame(), "audit": admin_app.pd.DataFrame()})
     monkeypatch.setattr(admin_app, "_runtime_health", lambda: {
         "response_time_ms": 0.0,
@@ -105,3 +107,4 @@ def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     admin_app.render_observability_page()
     admin_app.render_reports_engine_page()
     admin_app.main()
+    assert "INSTITUTIONAL DASHBOARD ACTIVE" in success_messages

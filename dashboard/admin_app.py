@@ -2239,6 +2239,8 @@ def main() -> None:
     except Exception:
         st.set_page_config(page_title="LotoIA", layout="wide")
 
+    st.success("INSTITUTIONAL DASHBOARD ACTIVE")
+
     st.markdown(
         """
         <style>
