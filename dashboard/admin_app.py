@@ -2202,8 +2202,6 @@ def _sidebar_navigation() -> str:
     )
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('**Painel Estatístico**')
     return st.sidebar.radio(
         "Navega??o",
         options=[
