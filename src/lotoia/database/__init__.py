@@ -8,12 +8,11 @@ from lotoia.database.database import (
     Lead,
     create_database,
 )
-from lotoia.database.contest_repository import ContestRepository
-from lotoia.database.public_repository import (
-    save_check_event,
-    save_generation_event,
-    save_lead,
+
+from lotoia.database.contest_repository import (
+    ContestRepository,
 )
+
 from lotoia.database.repository import (
     get_run_by_id,
     list_runs,
@@ -34,10 +33,7 @@ __all__ = [
     "create_database",
     "get_run_by_id",
     "list_runs",
-    "save_check_event",
     "save_backtest_run",
     "save_benchmark_run",
     "save_calibration_run",
-    "save_generation_event",
-    "save_lead",
 ]
