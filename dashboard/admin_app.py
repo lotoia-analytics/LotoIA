@@ -83,16 +83,45 @@ ALERT_DASHBOARD_LOAD_MS = 8_000.0
 ALERT_REPEATED_FAILURES = 3
 ALERT_SQLITE_SIZE_BYTES = 256 * 1024 * 1024
 ALERT_LOG_GROWTH_EVENTS = 1_000
+SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
 
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 
-def _sqlite_execute_bootstrap(statement: str) -> None:
+def _sqlite_classify_error(statement: str, exc: Exception, table_name: str | None = None) -> dict[str, str]:
+    message = str(exc)
+    lowered = message.lower()
+    if "no such table" in lowered:
+        issue = "table ausente"
+    elif "no such column" in lowered:
+        issue = "coluna ausente"
+    elif "syntax error" in lowered:
+        issue = "schema inválido"
+    elif "constraint" in lowered:
+        issue = "migration pendente"
+    else:
+        issue = "erro sqlite"
+    return {
+        "issue": issue,
+        "table": table_name or "",
+        "sql": statement.strip().replace("\n", " "),
+        "error": message,
+    }
+
+
+def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) -> bool:
     try:
         cursor.execute(statement)
-    except sqlite3.Error:
-        return
+        return True
+    except sqlite3.Error as exc:
+        diagnostic = _sqlite_classify_error(statement, exc, table_name)
+        SQLITE_BOOTSTRAP_DIAGNOSTICS.append(diagnostic)
+        try:
+            _record_operational_log("sqlite", "failed", 0.0, diagnostic)
+        except Exception:
+            pass
+        return False
 
 
 def _sqlite_table_columns(table_name: str) -> set[str]:
@@ -110,7 +139,7 @@ def _sqlite_ensure_column(table_name: str, column_name: str, ddl_type: str, defa
     statement = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_type}"
     if default_sql is not None:
         statement = f"{statement} DEFAULT {default_sql}"
-    _sqlite_execute_bootstrap(statement)
+    _sqlite_execute_bootstrap(statement, table_name=table_name)
 
 
 def _sqlite_ensure_admin_schema() -> None:
@@ -179,7 +208,12 @@ def _sqlite_ensure_admin_schema() -> None:
         ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL,
     )
     for statement in schema_statements:
-        _sqlite_execute_bootstrap(statement)
+        table_name = None
+        for candidate in ("generation_events", "check_events", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+            if candidate in statement:
+                table_name = candidate
+                break
+        _sqlite_execute_bootstrap(statement, table_name=table_name)
 
     _sqlite_ensure_column("generation_events", "first_name", "TEXT", "''")
     _sqlite_ensure_column("generation_events", "whatsapp", "TEXT", "''")
@@ -228,6 +262,15 @@ def _sqlite_ensure_admin_schema() -> None:
         ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
     ):
         _sqlite_execute_bootstrap(index_sql)
+
+
+def _render_sqlite_bootstrap_diagnostics() -> None:
+    if not SQLITE_BOOTSTRAP_DIAGNOSTICS:
+        return
+    last = SQLITE_BOOTSTRAP_DIAGNOSTICS[-1]
+    st.error(f"SQLite bootstrap {last['issue']}: {last['error']}")
+    st.caption(f"Tabela: {last['table'] or 'n/a'}")
+    st.code(last["sql"], language="sql")
 
 
 _sqlite_execute_bootstrap(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
@@ -2526,6 +2569,7 @@ def main() -> None:
         st.set_page_config(page_title="LotoIA", layout="wide")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
+    _render_sqlite_bootstrap_diagnostics()
 
     st.markdown(
         """

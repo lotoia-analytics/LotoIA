@@ -60,3 +60,14 @@ def test_sqlite_bootstrap_creates_institutional_tables(tmp_path: Path, monkeypat
     assert {"first_name", "whatsapp", "ml_enabled"} <= generation_columns
     assert {"first_name", "whatsapp", "contest_id", "hits"} <= check_columns
     assert {"snapshot_type", "artifact_path", "metadata_json"} <= snapshot_columns
+
+
+def test_sqlite_bootstrap_error_classification() -> None:
+    diagnostic = admin_app._sqlite_classify_error(
+        "SELECT * FROM missing_table",
+        sqlite3.OperationalError("no such table: missing_table"),
+        "missing_table",
+    )
+
+    assert diagnostic["issue"] == "table ausente"
+    assert diagnostic["table"] == "missing_table"
