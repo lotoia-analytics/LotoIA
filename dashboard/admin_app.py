@@ -1375,6 +1375,14 @@ def _lead_identifier(first_name: str, whatsapp: str) -> str:
     return f"{first_name.strip()} | {whatsapp.strip()}"
 
 
+def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...] = ()) -> pd.DataFrame:
+    try:
+        return pd.read_sql_query(query, conn, params=params)
+    except Exception as exc:
+        _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
+        return pd.DataFrame(columns=columns)
+
+
 def _persist_lead(first_name: str, whatsapp: str) -> None:
     if not first_name.strip() or not whatsapp.strip():
         return
@@ -1393,7 +1401,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _lead_history_dataframe() -> pd.DataFrame:
-    leads_df = pd.read_sql_query(
+    leads_df = _read_sql_query_safe(
         """
         SELECT
             id,
@@ -1404,10 +1412,10 @@ def _lead_history_dataframe() -> pd.DataFrame:
         ORDER BY created_at DESC, id DESC
         LIMIT ?
         """,
-        conn,
+        ["id", "first_name", "whatsapp", "created_at"],
         params=(LEAD_HISTORY_LIMIT,),
     )
-    gen_df = pd.read_sql_query(
+    gen_df = _read_sql_query_safe(
         """
         SELECT
             first_name,
@@ -1419,10 +1427,10 @@ def _lead_history_dataframe() -> pd.DataFrame:
         ORDER BY created_at DESC, id DESC
         LIMIT ?
         """,
-        conn,
+        ["first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
         params=(LEAD_HISTORY_LIMIT,),
     )
-    check_df = pd.read_sql_query(
+    check_df = _read_sql_query_safe(
         """
         SELECT
             first_name,
@@ -1434,7 +1442,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
         ORDER BY created_at DESC, id DESC
         LIMIT ?
         """,
-        conn,
+        ["first_name", "whatsapp", "created_at", "contest_id", "hits"],
         params=(LEAD_HISTORY_LIMIT,),
     )
     if leads_df.empty:
@@ -1470,7 +1478,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
 
     dataframe = base.merge(gen_summary, on=["first_name", "whatsapp"], how="left").merge(check_summary, on=["first_name", "whatsapp"], how="left")
     for column in ("generations", "checks", "ml_activations"):
-        dataframe[column] = dataframe[column].fillna(0).astype(int)
+        dataframe[column] = pd.to_numeric(dataframe[column], errors="coerce").fillna(0).astype(int)
     dataframe["lead"] = dataframe.apply(lambda row: _lead_identifier(str(row["first_name"]), str(row["whatsapp"])), axis=1)
     dataframe["origin"] = "dashboard_admin"
     dataframe["recurrence_score"] = dataframe["generations"] + dataframe["checks"]
