@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
 import types
 from pathlib import Path
@@ -35,3 +36,27 @@ def test_safe_dataframe_and_download_helpers_handle_missing_data(tmp_path: Path)
     existing = tmp_path / "existing.csv"
     pd.DataFrame([{"a": 1}]).to_csv(existing, index=False)
     assert admin_app._safe_download_bytes(existing) is not None
+
+
+def test_sqlite_bootstrap_creates_institutional_tables(tmp_path: Path, monkeypatch) -> None:
+    conn = sqlite3.connect(tmp_path / "bootstrap.db")
+    cursor = conn.cursor()
+    monkeypatch.setattr(admin_app, "conn", conn)
+    monkeypatch.setattr(admin_app, "cursor", cursor)
+
+    admin_app._sqlite_ensure_admin_schema()
+    conn.commit()
+
+    tables = {
+        row[0]
+        for row in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert {"generation_events", "check_events", "operational_logs", "audit_trail", "snapshots"} <= tables
+
+    generation_columns = {row[1] for row in cursor.execute("PRAGMA table_info(generation_events)").fetchall()}
+    check_columns = {row[1] for row in cursor.execute("PRAGMA table_info(check_events)").fetchall()}
+    snapshot_columns = {row[1] for row in cursor.execute("PRAGMA table_info(snapshots)").fetchall()}
+
+    assert {"first_name", "whatsapp", "ml_enabled"} <= generation_columns
+    assert {"first_name", "whatsapp", "contest_id", "hits"} <= check_columns
+    assert {"snapshot_type", "artifact_path", "metadata_json"} <= snapshot_columns

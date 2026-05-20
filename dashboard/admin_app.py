@@ -26,6 +26,11 @@ from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.generator.basic_generator import generate_best_games, generate_multiple_games
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
+from lotoia.governance.adaptive_governance_report import (
+    ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
+    ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL,
+    ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL,
+)
 from lotoia.models.draw import Draw
 from lotoia.standards import (
     ArtifactKind,
@@ -90,86 +95,145 @@ def _sqlite_execute_bootstrap(statement: str) -> None:
         return
 
 
+def _sqlite_table_columns(table_name: str) -> set[str]:
+    try:
+        rows = cursor.execute(f"PRAGMA table_info({table_name})").fetchall()
+    except sqlite3.Error:
+        return set()
+    return {str(row[1]) for row in rows}
+
+
+def _sqlite_ensure_column(table_name: str, column_name: str, ddl_type: str, default_sql: str | None = None) -> None:
+    columns = _sqlite_table_columns(table_name)
+    if column_name in columns:
+        return
+    statement = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_type}"
+    if default_sql is not None:
+        statement = f"{statement} DEFAULT {default_sql}"
+    _sqlite_execute_bootstrap(statement)
+
+
+def _sqlite_ensure_admin_schema() -> None:
+    schema_statements = (
+        """
+        CREATE TABLE IF NOT EXISTS generation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name TEXT NOT NULL,
+            whatsapp TEXT NOT NULL,
+            seed INTEGER,
+            strategy TEXT,
+            ranking_score REAL,
+            execution_time_ms REAL,
+            ml_enabled INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS check_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name TEXT NOT NULL,
+            whatsapp TEXT NOT NULL,
+            contest_id INTEGER,
+            hits INTEGER,
+            execution_time_ms REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS leads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name TEXT NOT NULL,
+            whatsapp TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS operational_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            duration_ms REAL,
+            context_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS audit_trail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_type TEXT NOT NULL,
+            actor TEXT,
+            artifact_path TEXT,
+            context_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_type TEXT NOT NULL,
+            artifact_path TEXT NOT NULL,
+            metadata_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL,
+    )
+    for statement in schema_statements:
+        _sqlite_execute_bootstrap(statement)
+
+    _sqlite_ensure_column("generation_events", "first_name", "TEXT", "''")
+    _sqlite_ensure_column("generation_events", "whatsapp", "TEXT", "''")
+    _sqlite_ensure_column("generation_events", "seed", "INTEGER")
+    _sqlite_ensure_column("generation_events", "strategy", "TEXT")
+    _sqlite_ensure_column("generation_events", "ranking_score", "REAL")
+    _sqlite_ensure_column("generation_events", "execution_time_ms", "REAL")
+    _sqlite_ensure_column("generation_events", "ml_enabled", "INTEGER", "0")
+    _sqlite_ensure_column("check_events", "first_name", "TEXT", "''")
+    _sqlite_ensure_column("check_events", "whatsapp", "TEXT", "''")
+    _sqlite_ensure_column("check_events", "contest_id", "INTEGER")
+    _sqlite_ensure_column("check_events", "hits", "INTEGER")
+    _sqlite_ensure_column("check_events", "execution_time_ms", "REAL")
+    _sqlite_ensure_column("leads", "first_name", "TEXT", "''")
+    _sqlite_ensure_column("leads", "whatsapp", "TEXT", "''")
+    _sqlite_ensure_column("leads", "created_at", "TIMESTAMP", "CURRENT_TIMESTAMP")
+    _sqlite_ensure_column("operational_logs", "event_type", "TEXT", "''")
+    _sqlite_ensure_column("operational_logs", "status", "TEXT", "''")
+    _sqlite_ensure_column("operational_logs", "duration_ms", "REAL")
+    _sqlite_ensure_column("operational_logs", "context_json", "TEXT")
+    _sqlite_ensure_column("audit_trail", "action_type", "TEXT", "''")
+    _sqlite_ensure_column("audit_trail", "actor", "TEXT")
+    _sqlite_ensure_column("audit_trail", "artifact_path", "TEXT")
+    _sqlite_ensure_column("audit_trail", "context_json", "TEXT")
+    _sqlite_ensure_column("snapshots", "snapshot_type", "TEXT", "''")
+    _sqlite_ensure_column("snapshots", "artifact_path", "TEXT", "''")
+    _sqlite_ensure_column("snapshots", "metadata_json", "TEXT")
+    _sqlite_ensure_column("snapshots", "created_at", "TIMESTAMP", "CURRENT_TIMESTAMP")
+    _sqlite_ensure_column("adaptive_governance_reports", "governance_id", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "created_at", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "source_intelligence_id", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "experiment_id", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "model_name", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "model_version", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "benchmark_id", "TEXT")
+    _sqlite_ensure_column("adaptive_governance_reports", "risk_score", "REAL", "0")
+    _sqlite_ensure_column("adaptive_governance_reports", "approval_status", "TEXT", "''")
+    _sqlite_ensure_column("adaptive_governance_reports", "change_action", "TEXT", "''")
+    _sqlite_ensure_column("adaptive_governance_reports", "summary_metrics_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("adaptive_governance_reports", "report_json", "TEXT", "'{}'")
+
+    for index_sql in (
+        "CREATE INDEX IF NOT EXISTS idx_snapshots_created_at ON snapshots(created_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_snapshots_type ON snapshots(snapshot_type, created_at DESC)",
+        ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL,
+        ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
+    ):
+        _sqlite_execute_bootstrap(index_sql)
+
+
 _sqlite_execute_bootstrap(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
 _sqlite_execute_bootstrap("PRAGMA journal_mode = WAL")
 _sqlite_execute_bootstrap("PRAGMA synchronous = NORMAL")
-
-cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS generation_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        first_name TEXT NOT NULL,
-        whatsapp TEXT NOT NULL,
-        seed INTEGER,
-        strategy TEXT,
-        ranking_score REAL,
-        execution_time_ms REAL,
-        ml_enabled INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """
-)
-cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS check_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        first_name TEXT NOT NULL,
-        whatsapp TEXT NOT NULL,
-        contest_id INTEGER,
-        hits INTEGER,
-        execution_time_ms REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """
-)
-cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS leads (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        first_name TEXT NOT NULL,
-        whatsapp TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """
-)
-cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS operational_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        status TEXT NOT NULL,
-        duration_ms REAL,
-        context_json TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """
-)
-cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS audit_trail (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action_type TEXT NOT NULL,
-        actor TEXT,
-        artifact_path TEXT,
-        context_json TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """
-)
-for index_sql in (
-    "CREATE INDEX IF NOT EXISTS idx_generation_events_created_at ON generation_events(created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_generation_events_lead ON generation_events(first_name, whatsapp, created_at DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_check_events_created_at ON check_events(created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_check_events_lead ON check_events(first_name, whatsapp, created_at DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_check_events_contest_id ON check_events(contest_id)",
-    "CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_leads_identity ON leads(first_name, whatsapp)",
-    "CREATE INDEX IF NOT EXISTS idx_operational_logs_created_at ON operational_logs(created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_operational_logs_type_status ON operational_logs(event_type, status, created_at DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_audit_trail_created_at ON audit_trail(created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_audit_trail_action_type ON audit_trail(action_type, created_at DESC)",
-):
-    _sqlite_execute_bootstrap(index_sql)
+_sqlite_ensure_admin_schema()
 conn.commit()
 
 PAGES = [
