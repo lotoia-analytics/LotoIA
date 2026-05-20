@@ -40,6 +40,7 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
     assert captured["label"] == "Navega??o"
     assert captured["options"] == [
         "geracao_jogos",
+        "conferir_jogos",
         "estatisticas_historicas",
         "historical_intelligence",
         "analytics_intelligence",

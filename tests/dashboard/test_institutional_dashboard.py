@@ -104,6 +104,17 @@ def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
     assert list(tables["history"]["concurso"]) == [1, 2]
 
 
+def test_check_helpers_validate_and_score_contest(monkeypatch) -> None:
+    draws = [Draw(contest=1234, date=None, numbers=list(range(1, 16)))]
+    monkeypatch.setattr(admin_app, "load_draws_csv", lambda path: draws)
+
+    numbers = admin_app._parse_check_numbers("01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
+    result = admin_app._check_game_against_contest(1234, numbers)
+
+    assert result["hits"] == 15
+    assert result["correct_numbers"] == list(range(1, 16))
+
+
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     success_messages = []

@@ -184,6 +184,7 @@ PAGES = [
 
 LABELS = {
     "geracao_jogos": "Criar Jogos",
+    "conferir_jogos": "Conferir Jogos",
     "estatisticas_historicas": "Resultados Passados",
     "backtesting": "Testar Estratégia",
     "calibracao_experimental": "Ajustar Estratégia",
@@ -1196,6 +1197,47 @@ def _build_check_report_payload(result: dict[str, Any], contest_id: int, numbers
     return row, payload
 
 
+def _parse_check_numbers(numbers_text: str) -> list[int]:
+    try:
+        numbers = [int(item) for item in numbers_text.replace(",", " ").replace(";", " ").split()]
+    except Exception as exc:
+        raise ValueError("Digite apenas dezenas numéricas separadas por espaço ou vírgula.") from exc
+    if len(numbers) != 15:
+        raise ValueError("Informe exatamente 15 dezenas para conferência.")
+    if len(set(numbers)) != 15:
+        raise ValueError("As dezenas da conferência não podem se repetir.")
+    invalid = [number for number in numbers if number < 1 or number > 25]
+    if invalid:
+        raise ValueError("As dezenas devem estar entre 01 e 25.")
+    return sorted(numbers)
+
+
+def _find_draw_for_check(contest_id: int) -> Draw:
+    draws = load_draws_csv(DEFAULT_HISTORY_PATH)
+    if not draws:
+        raise ValueError("Nenhum concurso histórico disponível para conferência.")
+    latest_contest = max(draw.contest for draw in draws)
+    if contest_id > latest_contest:
+        raise ValueError(f"Concurso {contest_id} ainda não disponível. Último concurso carregado: {latest_contest}.")
+    for draw in draws:
+        if draw.contest == contest_id:
+            return draw
+    raise ValueError(f"Concurso {contest_id} não encontrado na base histórica.")
+
+
+def _check_game_against_contest(contest_id: int, numbers: list[int]) -> dict[str, Any]:
+    draw = _find_draw_for_check(contest_id)
+    correct_numbers = sorted(set(numbers) & set(draw.numbers))
+    return {
+        "contest_id": contest_id,
+        "numbers": numbers,
+        "draw_numbers": sorted(draw.numbers),
+        "hits": len(correct_numbers),
+        "correct_numbers": correct_numbers,
+        "execution_time_ms": 0.0,
+    }
+
+
 def _score_value(game: dict[str, Any]) -> float:
     final_score = game.get("final_score", {})
     return float(final_score.get("final_score", 0))
@@ -1799,6 +1841,7 @@ def _sidebar_navigation() -> str:
         "Navega??o",
         options=[
             "geracao_jogos",
+            "conferir_jogos",
             "estatisticas_historicas",
             "historical_intelligence",
             "analytics_intelligence",
@@ -2052,6 +2095,68 @@ def render_generation_page() -> None:
             _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games)})
+
+
+def render_check_page() -> None:
+    with st.container(border=True):
+        _section_header("Conferir Jogos", "Conferência operacional contra concursos históricos carregados.")
+        lead_col1, lead_col2 = st.columns(2)
+        first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
+        whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
+        col1, col2 = st.columns([1, 3])
+        contest_id = col1.number_input("Concurso", min_value=1, step=1, value=max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1))
+        numbers_text = col2.text_input("Dezenas", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
+        if st.button("Conferir jogo", type="primary"):
+            start_time = time.monotonic()
+            try:
+                numbers = _parse_check_numbers(numbers_text)
+                result = _check_game_against_contest(int(contest_id), numbers)
+                duration_ms = (time.monotonic() - start_time) * 1000.0
+                result["execution_time_ms"] = round(duration_ms, 2)
+                _persist_lead(first_name, whatsapp)
+                cursor.execute(
+                    """
+                    INSERT INTO check_events (
+                        first_name,
+                        whatsapp,
+                        contest_id,
+                        hits,
+                        execution_time_ms
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (first_name.strip(), whatsapp.strip(), int(contest_id), int(result["hits"]), duration_ms),
+                )
+                conn.commit()
+                check_row, check_payload = _build_check_report_payload(result, int(contest_id), numbers)
+                snapshot = _write_snapshot(
+                    "check_snapshot",
+                    {
+                        "context": {"first_name": first_name.strip(), "whatsapp": whatsapp.strip(), "timestamp": _report_timestamp()},
+                        "check": check_payload,
+                    },
+                )
+                st.session_state["last_check_context"] = {
+                    "timestamp": _report_timestamp(),
+                    "contest_id": int(contest_id),
+                    "numbers": _format_numbers(numbers),
+                    "draw_numbers": _format_numbers(result["draw_numbers"]),
+                    "hits": int(result["hits"]),
+                    "correct_numbers": _format_numbers(result["correct_numbers"]),
+                }
+                _record_operational_log("check", "success", duration_ms, {"contest_id": int(contest_id), "hits": int(result["hits"])})
+                _record_performance_metric("check_ms", duration_ms, {"contest_id": int(contest_id), "hits": int(result["hits"])})
+                _record_audit_trail("check_snapshot", artifact_path=str(snapshot), context={"contest_id": int(contest_id), "hits": int(result["hits"])})
+                st.metric("Acertos", int(result["hits"]))
+                st.dataframe(check_row, hide_index=True, use_container_width=True)
+                st.subheader("Dezenas sorteadas")
+                st.write(_format_numbers(result["draw_numbers"]))
+                st.subheader("Dezenas acertadas")
+                st.write(_format_numbers(result["correct_numbers"]) if result["correct_numbers"] else "-")
+            except Exception as exc:
+                duration_ms = (time.monotonic() - start_time) * 1000.0
+                _record_operational_log("check", "failed", duration_ms, {"contest_id": int(contest_id), "error": str(exc)})
+                st.warning(str(exc))
 
 
 def render_statistics_page(draws) -> None:
@@ -2494,6 +2599,8 @@ def main() -> None:
         st.markdown("---")
         if page == "geracao_jogos":
             render_generation_page()
+        elif page == "conferir_jogos":
+            render_check_page()
         elif page == "estatisticas_historicas":
             render_statistics_page(draws)
         elif page == "backtesting":

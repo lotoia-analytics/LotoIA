@@ -90,7 +90,20 @@ def _temp_sqlite_module(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def test_generation_and_check_payloads_remain_institutional(tmp_path: Path) -> None:
+def test_generation_and_check_payloads_remain_institutional(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_historical_match_engine",
+        lambda numbers: {
+            "historical_score": 0.0,
+            "rarity": 1.0,
+            "occurrences": 0,
+            "is_unique": True,
+            "last_contest": None,
+            "proximity": 0.0,
+            "similar_contests": [],
+        },
+    )
     games = [{"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]}]
     dataframe, payload = admin_app._build_generation_report_payload(games)
     check_row, check_payload = admin_app._build_check_report_payload({"hits": 12, "correct_numbers": [1, 2, 3]}, 1234, [1, 2, 3])
