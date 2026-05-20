@@ -2204,6 +2204,10 @@ def _sidebar_navigation() -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
     st.sidebar.markdown("**Painel Estatístico**")
+    st.sidebar.markdown("├── Estatísticas")
+    st.sidebar.markdown("├── Padrões")
+    st.sidebar.markdown("├── Heatmaps")
+    st.sidebar.markdown("└── Inteligência Analítica")
     return st.sidebar.radio(
         "Navega??o",
         options=[
@@ -2222,7 +2226,16 @@ def _sidebar_navigation() -> str:
             "observability",
             "reports_engine",
         ],
-        format_func=lambda key: {**LABELS, "ml_governance": "ML Governance", "observability": "Observability", "reports_engine": "Reports Engine"}.get(key, key),
+        format_func=lambda key: {
+            **LABELS,
+            "estatisticas_historicas": "Estatísticas",
+            "historical_intelligence": "Padrões",
+            "analytics_intelligence": "Heatmaps",
+            "ml_intelligence": "Inteligência Analítica",
+            "ml_governance": "ML Governance",
+            "observability": "Observability",
+            "reports_engine": "Reports Engine",
+        }.get(key, key),
         label_visibility="collapsed",
     )
 
