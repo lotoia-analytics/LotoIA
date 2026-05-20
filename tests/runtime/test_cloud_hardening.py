@@ -73,6 +73,26 @@ def test_sqlite_bootstrap_error_classification() -> None:
     assert diagnostic["table"] == "missing_table"
 
 
+def test_sidebar_logo_falls_back_when_image_is_missing(monkeypatch) -> None:
+    captured = {}
+
+    class _Sidebar:
+        def image(self, path, use_container_width=False):
+            captured["image"] = path
+
+        def markdown(self, html, unsafe_allow_html=False):
+            captured["markdown"] = html
+
+    monkeypatch.setattr(admin_app.st, "sidebar", _Sidebar())
+    monkeypatch.setattr(admin_app, "LOGO_DIRECTORY", Path("does-not-exist"))
+    monkeypatch.setattr(admin_app, "LOGO_PATH", Path("also-missing.png"))
+
+    admin_app._render_sidebar_logo()
+
+    assert "markdown" in captured
+    assert "image" not in captured
+
+
 def test_sqlite_recovery_moves_corrupted_database(tmp_path: Path, monkeypatch) -> None:
     corrupted_db = tmp_path / "lotoia.db"
     corrupted_db.write_bytes(b"not a sqlite database")

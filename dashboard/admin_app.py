@@ -67,6 +67,7 @@ from lotoia.statistics.basic import summarize_draws
 
 DB_PATH = Path("lotoia.db")
 LOGO_PATH = Path("assets/logo.png")
+LOGO_DIRECTORY = Path("assets/logo")
 REPORTS_DIR = Path("reports")
 REPORTS_SNAPSHOTS_DIR = REPORTS_DIR / "snapshots"
 ML_REPORTS_DIR = REPORTS_DIR / "ml"
@@ -396,6 +397,22 @@ def _render_sqlite_bootstrap_diagnostics() -> None:
     st.error(f"SQLite bootstrap {last['issue']}: {last['error']}")
     st.caption(f"Tabela: {last['table'] or 'n/a'}")
     st.code(last["sql"], language="sql")
+
+
+def _render_sidebar_logo() -> None:
+    logo_candidates = (
+        LOGO_DIRECTORY / "logo.png",
+        LOGO_DIRECTORY / "logo.webp",
+        LOGO_PATH,
+    )
+    for logo_path in logo_candidates:
+        try:
+            if logo_path.exists() and logo_path.is_file():
+                st.sidebar.image(str(logo_path), use_container_width=True)
+                return
+        except Exception:
+            continue
+    st.sidebar.markdown('<div class="lotoia-sidebar-fallback">LotoIA</div>', unsafe_allow_html=True)
 
 
 _sqlite_bind_connection(_sqlite_open_connection())
@@ -2154,6 +2171,13 @@ def _sidebar_navigation() -> str:
             margin-bottom: 0.1rem;
             line-height: 1;
         }
+        .lotoia-sidebar-fallback {
+            font-size: 1.45rem;
+            font-weight: 900;
+            color: #123456;
+            margin-bottom: 0.2rem;
+            line-height: 1;
+        }
         .lotoia-sidebar-subtitle {
             color: #5a6b7e;
             font-size: 0.82rem;
@@ -2178,6 +2202,7 @@ def _sidebar_navigation() -> str:
         """,
         unsafe_allow_html=True,
     )
+    _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-subtitle">Dashboard institucional anal?tico<br/>Leitura operacional, benchmarking e hist?rico</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
