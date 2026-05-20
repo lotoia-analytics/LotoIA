@@ -496,10 +496,12 @@ def _draw_numbers(draw: Any) -> list[int]:
     if isinstance(draw, Draw):
         return [int(item) for item in draw.numbers]
     if isinstance(draw, dict):
-        if isinstance(draw.get("numbers"), list):
-            return [int(item) for item in draw["numbers"]]
-        if isinstance(draw.get("dezenas"), list):
-            return [int(item) for item in draw["dezenas"]]
+        numbers = draw.get("numbers")
+        if isinstance(numbers, list):
+            return [int(item) for item in numbers]
+        dezenas = draw.get("dezenas")
+        if isinstance(dezenas, list):
+            return [int(item) for item in dezenas]
         values = []
         for key in sorted(draw):
             if str(key).startswith("d"):

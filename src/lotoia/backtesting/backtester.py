@@ -20,6 +20,7 @@ from lotoia.statistics.temporal import (
     build_history_model,
     delay_component,
     frequency_component,
+    calculate_sequence_stats,
     sequence_component,
     sum_component,
 )
@@ -119,6 +120,26 @@ def _generate_candidate_pool(
     target_pool_size = max(pool_size, games_count)
     max_attempts = max(target_pool_size * 1000, 5000)
 
+    strict_limits = [
+        (9, 240, 12, 7, 3),
+        (10, 245, 12, 7, 3),
+        (10, 250, 13, 8, 4),
+        (11, 255, 13, 8, 4),
+        (12, 260, 14, 9, 5),
+        (15, 270, 15, 15, 15),
+    ]
+
+    def _is_acceptable(game: dict[str, object], odd_min: int, sum_max: int, frame_max: int, center_max: int, sequence_max: int) -> bool:
+        sequence_stats = calculate_sequence_stats(game["numbers"])
+        return (
+            odd_min <= game["odd"] <= 15 - odd_min
+            and 160 <= game["sum"] <= sum_max
+            and 7 <= game["frame"] <= frame_max
+            and 1 <= game["center"] <= center_max
+            and sequence_stats["sequence_count"] <= sequence_max
+            and sequence_stats["largest_sequence"] <= sequence_max
+        )
+
     while len(candidates) < target_pool_size and attempts < max_attempts:
         attempts += 1
         game = _build_game(random.sample(range(1, 26), 15))
@@ -127,6 +148,20 @@ def _generate_candidate_pool(
             continue
         candidates.append(game["numbers"])
         seen.add(game_key)
+
+    if len(candidates) < games_count:
+        for odd_min, sum_max, frame_max, center_max, sequence_max in strict_limits:
+            if len(candidates) >= target_pool_size:
+                break
+            relaxed_attempts = 0
+            while len(candidates) < target_pool_size and relaxed_attempts < 3000:
+                relaxed_attempts += 1
+                game = _build_game(random.sample(range(1, 26), 15))
+                game_key = tuple(game["numbers"])
+                if game_key in seen or not _is_acceptable(game, odd_min, sum_max, frame_max, center_max, sequence_max):
+                    continue
+                candidates.append(game["numbers"])
+                seen.add(game_key)
 
     if len(candidates) < games_count:
         for game_key in reversed(history_games):
@@ -150,9 +185,16 @@ def _generate_candidate_pool(
             seen.add(fallback_key)
 
     if len(candidates) < games_count:
-        raise RuntimeError(
-            "Nao foi possivel gerar o minimo operacional de candidatos para o backtest."
-        )
+        fallback_pool = []
+        for game_key in history_games:
+            if game_key not in seen:
+                fallback_pool.append(list(game_key))
+                seen.add(game_key)
+            if len(fallback_pool) + len(candidates) >= games_count:
+                break
+        candidates.extend(fallback_pool[: max(0, games_count - len(candidates))])
+    if len(candidates) < games_count:
+        raise RuntimeError("Nao foi possivel gerar o minimo operacional de candidatos para o backtest.")
 
     return candidates
 
