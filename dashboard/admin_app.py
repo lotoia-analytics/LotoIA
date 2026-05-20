@@ -65,10 +65,11 @@ from lotoia.statistics.advanced import (
 )
 from lotoia.statistics.basic import summarize_draws
 
-DB_PATH = Path("lotoia.db")
-LOGO_PATH = Path("assets/logo.png")
-LOGO_DIRECTORY = Path("assets/logo")
-REPORTS_DIR = Path("reports")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "lotoia.db"
+LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
+LOGO_DIRECTORY = PROJECT_ROOT / "assets" / "logo"
+REPORTS_DIR = PROJECT_ROOT / "reports"
 REPORTS_SNAPSHOTS_DIR = REPORTS_DIR / "snapshots"
 ML_REPORTS_DIR = REPORTS_DIR / "ml"
 ML_SNAPSHOTS_DIR = ML_REPORTS_DIR / "snapshots"
@@ -408,7 +409,7 @@ def _render_sidebar_logo() -> None:
     for logo_path in logo_candidates:
         try:
             if logo_path.exists() and logo_path.is_file():
-                st.sidebar.image(str(logo_path), use_container_width=True)
+                st.sidebar.image(str(logo_path), width=180)
                 return
         except Exception:
             continue
