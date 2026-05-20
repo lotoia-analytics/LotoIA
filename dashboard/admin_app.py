@@ -1249,7 +1249,7 @@ def _record_operational_log(event_type: str, status: str, duration_ms: float | N
                 duration_ms,
                 context_json
             )
-            VALUES (, , , )
+            VALUES (?, ?, ?, ?)
             """,
             payload,
         )
@@ -1268,7 +1268,7 @@ def _record_operational_log(event_type: str, status: str, duration_ms: float | N
                             duration_ms,
                             context_json
                         )
-                        VALUES (, , , )
+                        VALUES (?, ?, ?, ?)
                         """,
                         payload,
                     )
@@ -1307,7 +1307,7 @@ def _record_audit_trail(action_type: str, actor: str = "dashboard", artifact_pat
                 artifact_path,
                 context_json
             )
-            VALUES (, , , )
+            VALUES (?, ?, ?, ?)
             """,
             (
                 action_type,
@@ -1331,7 +1331,7 @@ def _record_audit_trail(action_type: str, actor: str = "dashboard", artifact_pat
                             artifact_path,
                             context_json
                         )
-                        VALUES (, , , )
+                        VALUES (?, ?, ?, ?)
                         """,
                         (
                             action_type,
@@ -1537,28 +1537,37 @@ def _parse_check_numbers(numbers_text: str) -> list[int]:
     try:
         numbers = [int(item) for item in numbers_text.replace(",", " ").replace(";", " ").split()]
     except Exception as exc:
-        raise ValueError("Digite apenas dezenas numéricas separadas por espaço ou vírgula.") from exc
+        raise ValueError("Digite apenas dezenas numericas separadas por espaco ou virgula.") from exc
     if len(numbers) != 15:
-        raise ValueError("Informe exatamente 15 dezenas para conferência.")
+        raise ValueError("Informe exatamente 15 dezenas para conferencia.")
     if len(set(numbers)) != 15:
-        raise ValueError("As dezenas da conferência não podem se repetir.")
+        raise ValueError("As dezenas da conferencia nao podem se repetir.")
     invalid = [number for number in numbers if number < 1 or number > 25]
     if invalid:
         raise ValueError("As dezenas devem estar entre 01 e 25.")
     return sorted(numbers)
 
 
+def _parse_check_games(games_text: str) -> list[list[int]]:
+    lines = [line.strip() for line in games_text.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("Informe ao menos 1 jogo para conferencia.")
+    if len(lines) > 10:
+        raise ValueError("O maximo permitido e de 10 jogos por conferencia.")
+    return [_parse_check_numbers(line) for line in lines]
+
+
 def _find_draw_for_check(contest_id: int) -> Draw:
     draws = load_draws_csv(DEFAULT_HISTORY_PATH)
     if not draws:
-        raise ValueError("Nenhum concurso histórico disponível para conferência.")
+        raise ValueError("Nenhum concurso historico disponivel para conferencia.")
     latest_contest = max(draw.contest for draw in draws)
     if contest_id > latest_contest:
-        raise ValueError(f"Concurso {contest_id} ainda não disponível. Último concurso carregado: {latest_contest}.")
+        raise ValueError(f"Concurso {contest_id} ainda nao disponivel. Ultimo concurso carregado: {latest_contest}.")
     for draw in draws:
         if draw.contest == contest_id:
             return draw
-    raise ValueError(f"Concurso {contest_id} não encontrado na base histórica.")
+    raise ValueError(f"Concurso {contest_id} nao encontrado na base historica.")
 
 
 def _check_game_against_contest(contest_id: int, numbers: list[int]) -> dict[str, Any]:
@@ -1572,6 +1581,7 @@ def _check_game_against_contest(contest_id: int, numbers: list[int]) -> dict[str
         "correct_numbers": correct_numbers,
         "execution_time_ms": 0.0,
     }
+
 
 
 def _score_value(game: dict[str, Any]) -> float:
@@ -1826,7 +1836,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                 first_name,
                 whatsapp
             )
-            VALUES (, )
+            VALUES (?, ?)
             """,
             (first_name.strip(), whatsapp.strip()),
         )
@@ -1843,7 +1853,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                             first_name,
                             whatsapp
                         )
-                        VALUES (, )
+                        VALUES (?, ?)
                         """,
                         (first_name.strip(), whatsapp.strip()),
                     )
@@ -2473,66 +2483,77 @@ def render_generation_page() -> None:
 
 def render_check_page() -> None:
     with st.container(border=True):
-        _section_header("Conferir Jogos", "Conferência operacional contra concursos históricos carregados.")
+        _section_header("Conferir Jogos", "Conferencia operacional contra concursos historicos carregados.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
         col1, col2 = st.columns([1, 3])
         contest_id = col1.number_input("Concurso", min_value=1, step=1, value=max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1))
-        numbers_text = col2.text_input("Dezenas", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
+        numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220)
         if st.button("Conferir jogo", type="primary"):
             start_time = time.monotonic()
             try:
-                numbers = _parse_check_numbers(numbers_text)
-                result = _check_game_against_contest(int(contest_id), numbers)
-                duration_ms = (time.monotonic() - start_time) * 1000.0
-                result["execution_time_ms"] = round(duration_ms, 2)
+                games = _parse_check_games(numbers_text)
+                contest_id_int = int(contest_id)
                 _persist_lead(first_name, whatsapp)
-                connection, current_cursor = _sqlite_ensure_runtime_connection()
-                if connection is not None and current_cursor is not None:
-                    current_cursor.execute(
-                        """
-                        INSERT INTO check_events (
-                            first_name,
-                            whatsapp,
-                            contest_id,
-                            hits,
-                            execution_time_ms
+                results = []
+                for index, numbers in enumerate(games, start=1):
+                    game_start = time.monotonic()
+                    result = _check_game_against_contest(contest_id_int, numbers)
+                    duration_ms = (time.monotonic() - game_start) * 1000.0
+                    result["execution_time_ms"] = round(duration_ms, 2)
+                    results.append({
+                        "jogo": index,
+                        "contest_id": contest_id_int,
+                        "acertos": int(result["hits"]),
+                        "dezenas": _format_numbers(numbers),
+                        "dezenas_sorteadas": _format_numbers(result["draw_numbers"]),
+                        "dezenas_acertadas": _format_numbers(result["correct_numbers"]) if result["correct_numbers"] else "-",
+                        "execution_time_ms": round(duration_ms, 2),
+                    })
+                    connection, current_cursor = _sqlite_ensure_runtime_connection()
+                    if connection is not None and current_cursor is not None:
+                        current_cursor.execute(
+                            """
+                            INSERT INTO check_events (
+                                first_name,
+                                whatsapp,
+                                contest_id,
+                                hits,
+                                execution_time_ms
+                            )
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (first_name.strip(), whatsapp.strip(), contest_id_int, int(result["hits"]), duration_ms),
                         )
-                        VALUES (, , , , )
-                        """,
-                        (first_name.strip(), whatsapp.strip(), int(contest_id), int(result["hits"]), duration_ms),
+                        connection.commit()
+                    check_row, check_payload = _build_check_report_payload(result, contest_id_int, numbers)
+                    snapshot = _write_snapshot(
+                        f"check_snapshot_{index}",
+                        {
+                            "context": {"first_name": first_name.strip(), "whatsapp": whatsapp.strip(), "timestamp": _report_timestamp(), "game_index": index},
+                            "check": check_payload,
+                        },
                     )
-                    connection.commit()
-                check_row, check_payload = _build_check_report_payload(result, int(contest_id), numbers)
-                snapshot = _write_snapshot(
-                    "check_snapshot",
-                    {
-                        "context": {"first_name": first_name.strip(), "whatsapp": whatsapp.strip(), "timestamp": _report_timestamp()},
-                        "check": check_payload,
-                    },
-                )
+                    _record_operational_log("check", "success", duration_ms, {"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
+                    _record_performance_metric("check_ms", duration_ms, {"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
+                    _record_audit_trail("check_snapshot", artifact_path=str(snapshot), context={"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
+                summary = pd.DataFrame(results).sort_values(["acertos", "jogo"], ascending=[False, True]).reset_index(drop=True)
                 st.session_state["last_check_context"] = {
                     "timestamp": _report_timestamp(),
-                    "contest_id": int(contest_id),
-                    "numbers": _format_numbers(numbers),
-                    "draw_numbers": _format_numbers(result["draw_numbers"]),
-                    "hits": int(result["hits"]),
-                    "correct_numbers": _format_numbers(result["correct_numbers"]),
+                    "contest_id": contest_id_int,
+                    "games": results,
                 }
-                _record_operational_log("check", "success", duration_ms, {"contest_id": int(contest_id), "hits": int(result["hits"])})
-                _record_performance_metric("check_ms", duration_ms, {"contest_id": int(contest_id), "hits": int(result["hits"])})
-                _record_audit_trail("check_snapshot", artifact_path=str(snapshot), context={"contest_id": int(contest_id), "hits": int(result["hits"])})
-                st.metric("Acertos", int(result["hits"]))
-                st.dataframe(check_row, hide_index=True, use_container_width=True)
-                st.subheader("Dezenas sorteadas")
-                st.write(_format_numbers(result["draw_numbers"]))
-                st.subheader("Dezenas acertadas")
-                st.write(_format_numbers(result["correct_numbers"]) if result["correct_numbers"] else "-")
+                st.metric("Jogos conferidos", len(results))
+                st.metric("Maior acerto", int(summary["acertos"].max()) if not summary.empty else 0)
+                st.dataframe(summary, hide_index=True, use_container_width=True)
+                st.subheader("Ranking por acertos")
+                st.dataframe(summary[["jogo", "acertos", "contest_id"]], hide_index=True, use_container_width=True)
             except Exception as exc:
                 duration_ms = (time.monotonic() - start_time) * 1000.0
                 _record_operational_log("check", "failed", duration_ms, {"contest_id": int(contest_id), "error": str(exc)})
                 st.warning(str(exc))
+
 
 
 def render_statistics_page(draws) -> None:
