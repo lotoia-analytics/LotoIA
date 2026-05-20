@@ -2164,26 +2164,20 @@ def _sidebar_navigation() -> str:
             padding-left: 1rem;
             padding-right: 1rem;
         }
-        .lotoia-sidebar-title {
-            font-size: 1.55rem;
-            font-weight: 900;
-            letter-spacing: 0.10em;
-            color: #123456;
-            margin-bottom: 0.1rem;
-            line-height: 1;
-        }
         .lotoia-sidebar-fallback {
-            font-size: 1.45rem;
             font-weight: 900;
             color: #123456;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.6rem;
             line-height: 1;
+            text-align: center;
+            font-size: 1.15rem;
+            letter-spacing: 0.12em;
         }
-        .lotoia-sidebar-subtitle {
-            color: #5a6b7e;
-            font-size: 0.82rem;
-            margin-bottom: 0.95rem;
-            line-height: 1.45;
+        section[data-testid="stSidebar"] img {
+            width: 80% !important;
+            max-width: 260px !important;
+            display: block;
+            margin: 0 auto 0.7rem auto;
         }
         .lotoia-sidebar-divider {
             border-top: 1px solid rgba(18, 52, 86, 0.14);
@@ -2200,12 +2194,10 @@ def _sidebar_navigation() -> str:
             margin-top: -0.2rem;
         }
         </style>
-        """,
+    """,
         unsafe_allow_html=True,
     )
     _render_sidebar_logo()
-    st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-subtitle">Dashboard institucional anal?tico<br/>Leitura operacional, benchmarking e hist?rico</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
     return st.sidebar.radio(
@@ -2947,8 +2939,6 @@ def main() -> None:
             st.sidebar.image(str(LOGO_PATH), use_container_width=True)
     except Exception:
         pass
-
-    st.sidebar.caption("Plataforma analítica para LOTOFÁCIL")
 
     try:
         draws = _load_draws()
