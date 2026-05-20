@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 try:
     from . import _bootstrap  # type: ignore[import-not-found]  # noqa: F401
@@ -201,7 +201,7 @@ def _sqlite_classify_error(statement: str, exc: Exception, table_name: str | Non
     elif "no such column" in lowered:
         issue = "coluna ausente"
     elif "syntax error" in lowered:
-        issue = "schema invÃ¡lido"
+        issue = "schema inválido"
     elif "constraint" in lowered:
         issue = "migration pendente"
     else:
@@ -219,7 +219,7 @@ def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) 
     if connection is None or current_cursor is None:
         SQLITE_BOOTSTRAP_DIAGNOSTICS.append(
             {
-                "issue": "runtime indisponÃ­vel",
+                "issue": "runtime indisponível",
                 "table": table_name or "",
                 "sql": statement.strip().replace("\n", " "),
                 "error": "No SQLite connection available",
@@ -656,9 +656,9 @@ def _frequency_chart() -> go.Figure:
         data=[go.Bar(x=dataframe["dezena"], y=dataframe["frequencia"], marker_color="#173b63")]
     )
     figure.update_layout(
-        title="FrequÃªncia das dezenas",
+        title="Frequência das dezenas",
         xaxis_title="Dezena",
-        yaxis_title="FrequÃªncia",
+        yaxis_title="Frequência",
         margin={"l": 20, "r": 20, "t": 50, "b": 20},
     )
     return figure
@@ -685,7 +685,7 @@ def _sum_chart() -> go.Figure:
         data=[go.Histogram(x=history["soma"], nbinsx=15, marker_color="#0f766e")]
     )
     figure.update_layout(
-        title="DistribuiÃ§Ã£o da soma",
+        title="Distribuição da soma",
         xaxis_title="Soma",
         yaxis_title="Quantidade",
         margin={"l": 20, "r": 20, "t": 50, "b": 20},
@@ -697,9 +697,9 @@ def _odd_even_chart() -> go.Figure:
     history = _analytics_base_tables()["history"]
     figure = go.Figure()
     figure.add_trace(go.Bar(x=history["concurso"], y=history["pares"], name="Pares", marker_color="#173b63"))
-    figure.add_trace(go.Bar(x=history["concurso"], y=history["impares"], name="Ãmpares", marker_color="#9bbad1"))
+    figure.add_trace(go.Bar(x=history["concurso"], y=history["impares"], name="Ímpares", marker_color="#9bbad1"))
     figure.update_layout(
-        title="Pares e Ã­mpares por concurso",
+        title="Pares e ímpares por concurso",
         barmode="group",
         xaxis_title="Concurso",
         yaxis_title="Quantidade",
@@ -722,12 +722,12 @@ def _recurrence_heatmap() -> go.Figure:
         data=go.Heatmap(
             z=[pivot["repeticao"].tolist()],
             x=[str(value) for value in pivot.index.tolist()],
-            y=["RecorrÃªncia"],
+            y=["Recorrência"],
             colorscale="Blues",
         )
     )
     figure.update_layout(
-        title="Heatmap de recorrÃªncia histÃ³rica",
+        title="Heatmap de recorrência histórica",
         margin={"l": 20, "r": 20, "t": 50, "b": 20},
     )
     return figure
@@ -746,8 +746,8 @@ def _pattern_heatmap() -> go.Figure:
         data=go.Heatmap(z=matrix, colorscale="Viridis")
     )
     figure.update_layout(
-        title="Heatmap de padrÃµes",
-        xaxis_title="PosiÃ§Ã£o",
+        title="Heatmap de padrões",
+        xaxis_title="Posição",
         yaxis_title="Linha",
         margin={"l": 20, "r": 20, "t": 50, "b": 20},
     )
@@ -762,7 +762,7 @@ def _temporal_heatmap() -> go.Figure:
     history["periodo"] = (history["concurso"] // 50) * 50
     pivot = pd.pivot_table(history, index="periodo", values="soma", aggfunc="mean")
     figure = go.Figure(
-        data=go.Heatmap(z=[pivot["soma"].tolist()], x=[str(v) for v in pivot.index.tolist()], y=["Soma mÃ©dia"], colorscale="Cividis")
+        data=go.Heatmap(z=[pivot["soma"].tolist()], x=[str(v) for v in pivot.index.tolist()], y=["Soma média"], colorscale="Cividis")
     )
     figure.update_layout(
         title="Heatmap temporal",
@@ -777,7 +777,7 @@ def _distribution_chart_advanced() -> go.Figure:
         data=[go.Scatter(x=history["concurso"], y=history["soma"], mode="lines+markers", marker={"size": 6, "color": "#355c7d"})]
     )
     figure.update_layout(
-        title="DistribuiÃ§Ã£o histÃ³rica da soma",
+        title="Distribuição histórica da soma",
         xaxis_title="Concurso",
         yaxis_title="Soma",
         margin={"l": 20, "r": 20, "t": 50, "b": 20},
@@ -1058,11 +1058,11 @@ def _performance_metrics_table() -> pd.DataFrame:
     rows = []
     logs = _observability_tables()["logs"]
     families = {
-        "generation": "tempo geraÃ§Ã£o",
-        "check": "tempo conferÃªncia",
+        "generation": "tempo geração",
+        "check": "tempo conferência",
         "analytics": "tempo analytics",
-        "report": "tempo relatÃ³rios",
-        "ml": "tempo inferÃªncia ML",
+        "report": "tempo relatórios",
+        "ml": "tempo inferência ML",
         "dashboard": "tempo carregamento dashboard",
     }
     for event_type, label in families.items():
@@ -1091,8 +1091,8 @@ def _alert_contracts() -> pd.DataFrame:
     }
     metrics = _operational_metrics()
     checks = [
-        ("tempo excessivo geraÃ§Ã£o", health["avg_generation_ms"] <= ALERT_GENERATION_MS, health["avg_generation_ms"], ALERT_GENERATION_MS),
-        ("tempo excessivo conferÃªncia", health["avg_check_ms"] <= ALERT_CHECK_MS, health["avg_check_ms"], ALERT_CHECK_MS),
+        ("tempo excessivo geração", health["avg_generation_ms"] <= ALERT_GENERATION_MS, health["avg_generation_ms"], ALERT_GENERATION_MS),
+        ("tempo excessivo conferência", health["avg_check_ms"] <= ALERT_CHECK_MS, health["avg_check_ms"], ALERT_CHECK_MS),
         ("crescimento anormal logs", metrics["log_growth_today"] <= ALERT_LOG_GROWTH_EVENTS, metrics["log_growth_today"], ALERT_LOG_GROWTH_EVENTS),
         ("crescimento SQLite", health["sqlite_size_bytes"] <= ALERT_SQLITE_SIZE_BYTES, health["sqlite_size_bytes"], ALERT_SQLITE_SIZE_BYTES),
         ("falhas repetidas", health["failures"] < ALERT_REPEATED_FAILURES, health["failures"], ALERT_REPEATED_FAILURES),
@@ -1148,7 +1148,7 @@ def _observability_metrics_table() -> pd.DataFrame:
 
 def render_observability_page() -> None:
     with st.container(border=True):
-        _section_header("Observability", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
+        _section_header("Observability", "Logs institucionais, saúde cloud, auditoria e eventos operacionais recentes.")
         health = _runtime_health()
         operational = _operational_metrics()
         st.subheader("Operational Health Panel")
@@ -1187,17 +1187,17 @@ def render_observability_page() -> None:
         st.subheader("Cloud monitoring")
         st.dataframe(_cloud_failure_table(), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Tempo mÃ©dio", f"{health['response_time_ms']:.2f} ms")
-        col2.metric("ExecuÃ§Ãµes", health["total_runs"])
+        col1.metric("Tempo médio", f"{health['response_time_ms']:.2f} ms")
+        col2.metric("Execuções", health["total_runs"])
         col3.metric("Falhas", health["failures"])
         col4.metric("Snapshots", health["snapshot_events"])
 
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("MÃ©tricas runtime")
+            st.subheader("Métricas runtime")
             st.dataframe(_observability_metrics_table(), hide_index=True, use_container_width=True)
         with col2:
-            st.subheader("SaÃºde operacional")
+            st.subheader("Saúde operacional")
             st.dataframe(
                 pd.DataFrame(
                     [
@@ -1249,7 +1249,7 @@ def _record_operational_log(event_type: str, status: str, duration_ms: float | N
                 duration_ms,
                 context_json
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (, , , )
             """,
             payload,
         )
@@ -1268,7 +1268,7 @@ def _record_operational_log(event_type: str, status: str, duration_ms: float | N
                             duration_ms,
                             context_json
                         )
-                        VALUES (?, ?, ?, ?)
+                        VALUES (, , , )
                         """,
                         payload,
                     )
@@ -1307,7 +1307,7 @@ def _record_audit_trail(action_type: str, actor: str = "dashboard", artifact_pat
                 artifact_path,
                 context_json
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (, , , )
             """,
             (
                 action_type,
@@ -1331,7 +1331,7 @@ def _record_audit_trail(action_type: str, actor: str = "dashboard", artifact_pat
                             artifact_path,
                             context_json
                         )
-                        VALUES (?, ?, ?, ?)
+                        VALUES (, , , )
                         """,
                         (
                             action_type,
@@ -1537,11 +1537,11 @@ def _parse_check_numbers(numbers_text: str) -> list[int]:
     try:
         numbers = [int(item) for item in numbers_text.replace(",", " ").replace(";", " ").split()]
     except Exception as exc:
-        raise ValueError("Digite apenas dezenas numÃ©ricas separadas por espaÃ§o ou vÃ­rgula.") from exc
+        raise ValueError("Digite apenas dezenas numéricas separadas por espaço ou vírgula.") from exc
     if len(numbers) != 15:
-        raise ValueError("Informe exatamente 15 dezenas para conferÃªncia.")
+        raise ValueError("Informe exatamente 15 dezenas para conferência.")
     if len(set(numbers)) != 15:
-        raise ValueError("As dezenas da conferÃªncia nÃ£o podem se repetir.")
+        raise ValueError("As dezenas da conferência não podem se repetir.")
     invalid = [number for number in numbers if number < 1 or number > 25]
     if invalid:
         raise ValueError("As dezenas devem estar entre 01 e 25.")
@@ -1551,14 +1551,14 @@ def _parse_check_numbers(numbers_text: str) -> list[int]:
 def _find_draw_for_check(contest_id: int) -> Draw:
     draws = load_draws_csv(DEFAULT_HISTORY_PATH)
     if not draws:
-        raise ValueError("Nenhum concurso histÃ³rico disponÃ­vel para conferÃªncia.")
+        raise ValueError("Nenhum concurso histórico disponível para conferência.")
     latest_contest = max(draw.contest for draw in draws)
     if contest_id > latest_contest:
-        raise ValueError(f"Concurso {contest_id} ainda nÃ£o disponÃ­vel. Ãšltimo concurso carregado: {latest_contest}.")
+        raise ValueError(f"Concurso {contest_id} ainda não disponível. Último concurso carregado: {latest_contest}.")
     for draw in draws:
         if draw.contest == contest_id:
             return draw
-    raise ValueError(f"Concurso {contest_id} nÃ£o encontrado na base histÃ³rica.")
+    raise ValueError(f"Concurso {contest_id} não encontrado na base histórica.")
 
 
 def _check_game_against_contest(contest_id: int, numbers: list[int]) -> dict[str, Any]:
@@ -1630,7 +1630,7 @@ def _backtest_games_dataframe(result: BacktestResult) -> pd.DataFrame:
 
 def _distribution_chart(hit_distribution: dict[str, int]) -> go.Figure:
     figure = go.Figure(data=[go.Bar(x=list(hit_distribution.keys()), y=list(hit_distribution.values()), marker_color="#173b63")])
-    figure.update_layout(title="DistribuiÃ§Ã£o de acertos", xaxis_title="Pontos", yaxis_title="Quantidade", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Distribuição de acertos", xaxis_title="Pontos", yaxis_title="Quantidade", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -1645,7 +1645,7 @@ def _hits_by_contest_chart(result: BacktestResult) -> go.Figure:
     contests = [item["contest"] for item in result.contest_results]
     figure = go.Figure()
     figure.add_trace(go.Scatter(x=contests, y=[item["best_hits"] for item in result.contest_results], mode="lines+markers", name="Melhor jogo"))
-    figure.add_trace(go.Scatter(x=contests, y=[item["average_hits"] for item in result.contest_results], mode="lines+markers", name="MÃ©dia"))
+    figure.add_trace(go.Scatter(x=contests, y=[item["average_hits"] for item in result.contest_results], mode="lines+markers", name="Média"))
     figure.update_layout(title="Acertos por concurso", xaxis_title="Concurso", yaxis_title="Acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
@@ -1653,7 +1653,7 @@ def _hits_by_contest_chart(result: BacktestResult) -> go.Figure:
 def _configuration_chart(calibration_result: dict[str, Any]) -> go.Figure:
     evaluations = calibration_result.get("evaluations", [])
     figure = go.Figure(data=[go.Bar(x=[evaluation["configuration"] for evaluation in evaluations], y=[evaluation["average_hits"] for evaluation in evaluations], marker_color="#1f5f8b")])
-    figure.update_layout(title="MÃ©dia de acertos por configuraÃ§Ã£o", xaxis_title="ConfiguraÃ§Ã£o", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Média de acertos por configuração", xaxis_title="Configuração", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -1692,7 +1692,7 @@ def _benchmark_comparison_dataframe(result: BenchmarkResult) -> pd.DataFrame:
 def _benchmark_average_chart(result: BenchmarkResult) -> go.Figure:
     dataframe = _benchmark_summary_dataframe(result)
     figure = go.Figure(data=[go.Bar(x=dataframe["estrategia"], y=dataframe["media_acertos"], marker_color=["#173b63", "#1f5f8b", "#9bbad1"])])
-    figure.update_layout(title="MÃ©dia de acertos por estratÃ©gia", xaxis_title="EstratÃ©gia", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Média de acertos por estratégia", xaxis_title="Estratégia", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -1708,7 +1708,7 @@ def _benchmark_evolution_chart(result: BenchmarkResult) -> go.Figure:
                 name=strategy,
             )
         )
-    figure.update_layout(title="EvoluÃ§Ã£o histÃ³rica do benchmark", xaxis_title="Concurso", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Evolução histórica do benchmark", xaxis_title="Concurso", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -1718,7 +1718,7 @@ def _runs_dataframe(runs: list[dict[str, Any]], columns: list[str]) -> pd.DataFr
 
 def _historical_metric_chart(runs: list[dict[str, Any]], metric: str, title: str) -> go.Figure:
     figure = go.Figure(data=[go.Scatter(x=[run["created_at"] for run in runs], y=[run.get(metric, 0) for run in runs], mode="lines+markers")])
-    figure.update_layout(title=title, xaxis_title="ExecuÃ§Ã£o", yaxis_title=metric, margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title=title, xaxis_title="Execução", yaxis_title=metric, margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -1826,7 +1826,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                 first_name,
                 whatsapp
             )
-            VALUES (?, ?)
+            VALUES (, )
             """,
             (first_name.strip(), whatsapp.strip()),
         )
@@ -1843,7 +1843,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                             first_name,
                             whatsapp
                         )
-                        VALUES (?, ?)
+                        VALUES (, )
                         """,
                         (first_name.strip(), whatsapp.strip()),
                     )
@@ -1863,7 +1863,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
             created_at
         FROM leads
         ORDER BY created_at DESC, id DESC
-        LIMIT ?
+        LIMIT 
         """,
         ["id", "first_name", "whatsapp", "created_at"],
         params=(LEAD_HISTORY_LIMIT,),
@@ -1878,7 +1878,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
             strategy
         FROM generation_events
         ORDER BY created_at DESC, id DESC
-        LIMIT ?
+        LIMIT 
         """,
         ["first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
         params=(LEAD_HISTORY_LIMIT,),
@@ -1893,7 +1893,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
             hits
         FROM check_events
         ORDER BY created_at DESC, id DESC
-        LIMIT ?
+        LIMIT 
         """,
         ["first_name", "whatsapp", "created_at", "contest_id", "hits"],
         params=(LEAD_HISTORY_LIMIT,),
@@ -2072,8 +2072,8 @@ def _metric_row(result: BacktestResult) -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Concursos", result.contests_analyzed)
     col2.metric("Jogos avaliados", result.total_games)
-    col3.metric("MÃ©dia de acertos", f"{result.average_hits:.2f}")
-    col4.metric("CorrelaÃ§Ã£o", f"{result.final_score_hit_correlation:.3f}")
+    col3.metric("Média de acertos", f"{result.average_hits:.2f}")
+    col4.metric("Correlação", f"{result.final_score_hit_correlation:.3f}")
 
 
 def _section_header(title: str, subtitle: str) -> None:
@@ -2093,12 +2093,12 @@ def _render_kpi_cards() -> None:
     total_games = _safe_total_games()
     col1, col2, col3, col4 = st.columns(4)
     cards = [
-        (col1, "GeraÃ§Ãµes", gen_count, "Eventos persistidos em generation_events"),
-        (col2, "ConferÃªncias", check_count, "Eventos persistidos em check_events"),
-        (col3, "Ãšltimo concurso", last_contest, "Maior concurso conferido"),
+        (col1, "Gerações", gen_count, "Eventos persistidos em generation_events"),
+        (col2, "Conferências", check_count, "Eventos persistidos em check_events"),
+        (col3, "Último concurso", last_contest, "Maior concurso conferido"),
         (col4, "Jogos totais", total_games, "Total operacional registrado"),
     ]
-    markers = ["â–¸", "â–¸", "â–¸", "â–¸"]
+    markers = ["▸", "▸", "▸", "▸"]
     for (column, label, value, caption), marker in zip(cards, markers, strict=True):
         with column:
             st.markdown(
@@ -2118,14 +2118,14 @@ def _render_lead_intelligence() -> None:
     analytics = _lead_analytics()
     history = _lead_history_dataframe()
     st.markdown("---")
-    _section_header("Lead Intelligence", "InteligÃªncia institucional por usuÃ¡rio, recorrÃªncia e padrÃ£o de uso.")
+    _section_header("Lead Intelligence", "Inteligência institucional por usuário, recorrência e padrão de uso.")
     a, b, c, d, e = st.columns(5)
     a.metric("Total leads", analytics["total_leads"])
     b.metric("Leads recorrentes", analytics["recurring_leads"])
-    c.metric("AtivaÃ§Ãµes ML", analytics["ml_activations"])
-    d.metric("GeraÃ§Ãµes", analytics["volume_generations"])
-    e.metric("ConferÃªncias", analytics["volume_checks"])
-    st.subheader("HistÃ³rico institucional")
+    c.metric("Ativações ML", analytics["ml_activations"])
+    d.metric("Gerações", analytics["volume_generations"])
+    e.metric("Conferências", analytics["volume_checks"])
+    st.subheader("Histórico institucional")
     st.dataframe(
         history,
         hide_index=True,
@@ -2136,12 +2136,12 @@ def _render_lead_intelligence() -> None:
             "whatsapp": "WhatsApp",
             "created_at": "Criado em",
             "origin": "Origem",
-            "generations": "GeraÃ§Ãµes",
-            "checks": "ConferÃªncias",
+            "generations": "Gerações",
+            "checks": "Conferências",
             "ml_activations": "ML",
-            "last_generation_at": "Ãšltima geraÃ§Ã£o",
-            "last_check_at": "Ãšltima conferÃªncia",
-            "recurrence_score": "RecorrÃªncia",
+            "last_generation_at": "Última geração",
+            "last_check_at": "Última conferência",
+            "recurrence_score": "Recorrência",
         },
     )
     if not history.empty:
@@ -2203,7 +2203,7 @@ def _sidebar_navigation() -> str:
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     return st.sidebar.radio(
-        "Navega??o",
+        "Navegao",
         options=[
             "geracao_jogos",
             "conferir_jogos",
@@ -2236,7 +2236,7 @@ def _sidebar_navigation() -> str:
 
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Historical Intelligence", "Intelig?ncia hist?rica operacional para combina??es, recorr?ncia e proximidade estat?stica.")
+        _section_header("Historical Intelligence", "Inteligncia histrica operacional para combinaes, recorrncia e proximidade estatstica.")
         if st.session_state.get("last_generation_games"):
             games = st.session_state["last_generation_games"]
         else:
@@ -2246,13 +2246,13 @@ def render_historical_intelligence_page(draws) -> None:
 
         analytics = _historical_analytics(games)
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Jogos in?ditos", analytics["unique_games"])
+        c1.metric("Jogos inditos", analytics["unique_games"])
         c2.metric("Jogos recorrentes", analytics["recurring_games"])
-        c3.metric("Raridade m?dia", f"{analytics['avg_rarity']:.4f}")
-        c4.metric("Proximidade m?dia", f"{analytics['avg_proximity']:.4f}")
+        c3.metric("Raridade mdia", f"{analytics['avg_rarity']:.4f}")
+        c4.metric("Proximidade mdia", f"{analytics['avg_proximity']:.4f}")
 
         match_df = _historical_intelligence_dataframe(games)
-        st.subheader("Tabela hist?rica")
+        st.subheader("Tabela histrica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
 
         unique_df = match_df[match_df["is_unique"] == True]
@@ -2260,7 +2260,7 @@ def render_historical_intelligence_page(draws) -> None:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("Jogos in?ditos")
+            st.subheader("Jogos inditos")
             st.dataframe(unique_df, hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Jogos recorrentes")
@@ -2283,13 +2283,13 @@ def render_historical_intelligence_page(draws) -> None:
 def render_analytics_intelligence_page() -> None:
     with st.container(border=True):
         start_time = time.monotonic()
-        _section_header("Analytics Intelligence", "Visual analytics institucional com grÃ¡ficos, heatmaps e padrÃµes histÃ³ricos.")
+        _section_header("Analytics Intelligence", "Visual analytics institucional com gráficos, heatmaps e padrões históricos.")
         c1, c2, c3, c4 = st.columns(4)
         analytics_history = _analytics_base_tables()["history"]
         c1.metric("Concursos", len(analytics_history))
-        c2.metric("PadrÃµes", len(_recurrence_table()))
-        c3.metric("MÃ©dia soma", f"{analytics_history['soma'].mean():.2f}" if not analytics_history.empty else "0.00")
-        c4.metric("RecorrÃªncia mÃ©dia", f"{analytics_history['repeticao'].mean():.2f}" if not analytics_history.empty else "0.00")
+        c2.metric("Padrões", len(_recurrence_table()))
+        c3.metric("Média soma", f"{analytics_history['soma'].mean():.2f}" if not analytics_history.empty else "0.00")
+        c4.metric("Recorrência média", f"{analytics_history['repeticao'].mean():.2f}" if not analytics_history.empty else "0.00")
 
         st.plotly_chart(_frequency_chart(), use_container_width=True)
         st.plotly_chart(_delay_chart(), use_container_width=True)
@@ -2303,7 +2303,7 @@ def render_analytics_intelligence_page() -> None:
             st.plotly_chart(_pattern_heatmap(), use_container_width=True)
         with col2:
             st.plotly_chart(_temporal_heatmap(), use_container_width=True)
-            st.subheader("PadrÃµes recorrentes")
+            st.subheader("Padrões recorrentes")
             st.dataframe(_recurrence_table(), hide_index=True, use_container_width=True)
         duration_ms = (time.monotonic() - start_time) * 1000.0
         _record_operational_log("analytics", "success", duration_ms, {"source": "analytics_intelligence"})
@@ -2312,7 +2312,7 @@ def render_analytics_intelligence_page() -> None:
 
 def render_ml_intelligence_page() -> None:
     with st.container(border=True):
-        _section_header("ML Intelligence", "Score ML operacional com validaÃ§Ã£o temporal e reranking interpretable.")
+        _section_header("ML Intelligence", "Score ML operacional com validação temporal e reranking interpretable.")
         training = _ml_training_result()
         model = training["model"]
         validation = training["validation_metrics"]
@@ -2322,9 +2322,9 @@ def render_ml_intelligence_page() -> None:
         col1.metric("Model version", model.model_version)
         col2.metric("Score schema", model.feature_schema_version)
         col3.metric("Walk-forward", validation["splits"])
-        col4.metric("Rows vÃ¡lidas", validation["rows"])
+        col4.metric("Rows válidas", validation["rows"])
 
-        st.subheader("MÃ©tricas do modelo")
+        st.subheader("Métricas do modelo")
         st.dataframe(_ml_features_table(model), hide_index=True, use_container_width=True)
 
         scored_df = pd.DataFrame(
@@ -2362,16 +2362,16 @@ def render_ml_intelligence_page() -> None:
         st.plotly_chart(score_fig, use_container_width=True)
 
         val_df = pd.DataFrame(training["splits"])
-        st.subheader("ValidaÃ§Ã£o walk-forward")
+        st.subheader("Validação walk-forward")
         st.dataframe(val_df, hide_index=True, use_container_width=True)
         st.info(
-            f"GovernanÃ§a: temporal={validation['temporal_valid']} | linhas={validation['rows']} | modelo={validation['model_version']}"
+            f"Governança: temporal={validation['temporal_valid']} | linhas={validation['rows']} | modelo={validation['model_version']}"
         )
 
 
 def render_ml_governance_page() -> None:
     with st.container(border=True):
-        _section_header("ML Governance", "GovernanÃ§a institucional de modelos, experimentos, versÃµes e snapshots.")
+        _section_header("ML Governance", "Governança institucional de modelos, experimentos, versões e snapshots.")
         training = _ml_training_result()
         payload = training["payload"]
         feature_rows = training["feature_rows"]
@@ -2385,7 +2385,7 @@ def render_ml_governance_page() -> None:
         col3.metric("Snapshots", len(list(ML_SNAPSHOTS_DIR.glob("*.json"))))
         col4.metric("Arquivos ML", len(list(ML_REPORTS_DIR.glob("*"))))
 
-        st.subheader("HistÃ³rico de calibraÃ§Ã£o")
+        st.subheader("Histórico de calibração")
         history_df = pd.DataFrame(
             [
                 {
@@ -2400,7 +2400,7 @@ def render_ml_governance_page() -> None:
         )
         st.dataframe(history_df, hide_index=True, use_container_width=True)
 
-        st.subheader("GovernanÃ§a de features")
+        st.subheader("Governança de features")
         st.dataframe(pd.DataFrame(feature_rows), hide_index=True, use_container_width=True)
 
         st.subheader("Artefatos institucionais")
@@ -2426,22 +2426,22 @@ def render_ml_governance_page() -> None:
 
 def render_generation_page() -> None:
     with st.container(border=True):
-        _section_header("Criar Jogos", "GeraÃ§Ã£o institucional com o fluxo operacional atual preservado.")
+        _section_header("Criar Jogos", "Geração institucional com o fluxo operacional atual preservado.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = lead_col1.text_input("Primeiro nome do lead", key="admin_first_name")
         whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
         first_name = _safe_text(first_name, max_length=80)
         whatsapp = _safe_text(whatsapp, max_length=40)
-        st.markdown('<div class="lotoia-lead-hint">Lead institucional opcional para rastreabilidade analÃ­tica.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="lotoia-lead-hint">Lead institucional opcional para rastreabilidade analítica.</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
         pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
-        max_repeated = col3.number_input("RepetiÃ§Ã£o mÃ¡xima", min_value=0, max_value=15, value=9)
-        mode = st.radio("Modo", ["Ranking hÃ­brido", "MÃºltiplos jogos"], horizontal=True)
+        max_repeated = col3.number_input("Repetição máxima", min_value=0, max_value=15, value=9)
+        mode = st.radio("Modo", ["Ranking híbrido", "Múltiplos jogos"], horizontal=True)
         if st.button("Gerar jogos", type="primary"):
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
-                if mode == "Ranking hÃ­brido":
+                if mode == "Ranking híbrido":
                     payload = _cached_generate_best_games(int(count), int(pool_size))
                     games = payload["games"]
                 else:
@@ -2473,7 +2473,7 @@ def render_generation_page() -> None:
 
 def render_check_page() -> None:
     with st.container(border=True):
-        _section_header("Conferir Jogos", "ConferÃªncia operacional contra concursos histÃ³ricos carregados.")
+        _section_header("Conferir Jogos", "Conferência operacional contra concursos históricos carregados.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
@@ -2499,7 +2499,7 @@ def render_check_page() -> None:
                             hits,
                             execution_time_ms
                         )
-                        VALUES (?, ?, ?, ?, ?)
+                        VALUES (, , , , )
                         """,
                         (first_name.strip(), whatsapp.strip(), int(contest_id), int(result["hits"]), duration_ms),
                     )
@@ -2537,13 +2537,13 @@ def render_check_page() -> None:
 
 def render_statistics_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Resultados Passados", "Base histÃ³rica, frequÃªncias, atrasos e leituras estruturais do acervo.")
+        _section_header("Resultados Passados", "Base histórica, frequências, atrasos e leituras estruturais do acervo.")
         summary = summarize_draws(draws)
         hot_cold = calculate_hot_cold_numbers(draws, window=20)
         stats = _cached_stats()
         col1, col2, col3 = st.columns(3)
         col1.metric("Concursos carregados", summary["total_draws"])
-        col2.metric("Ãšltimo concurso", summary["last_contest"]["contest"])
+        col2.metric("Último concurso", summary["last_contest"]["contest"])
         col3.metric("Dezenas rastreadas", summary["numbers_tracked"])
         col1, col2 = st.columns(2)
         with col1:
@@ -2553,35 +2553,35 @@ def render_statistics_page(draws) -> None:
             st.subheader("Dezenas frias")
             st.dataframe(pd.DataFrame(hot_cold["cold"]), hide_index=True, use_container_width=True)
         frequency = sorted(summary["frequencies"].items(), key=lambda item: item[1], reverse=True)
-        st.plotly_chart(go.Figure(data=[go.Bar(x=[number for number, _ in frequency], y=[count for _, count in frequency], marker_color="#1f5f8b")]).update_layout(title="FrequÃªncia histÃ³rica", xaxis_title="Dezena", yaxis_title="Quantidade"), use_container_width=True)
-        tabs = st.tabs(["FrequÃªncia", "Atrasos", "Duos", "Ternos", "Quadras", "Quinas", "Senas"])
+        st.plotly_chart(go.Figure(data=[go.Bar(x=[number for number, _ in frequency], y=[count for _, count in frequency], marker_color="#1f5f8b")]).update_layout(title="Frequência histórica", xaxis_title="Dezena", yaxis_title="Quantidade"), use_container_width=True)
+        tabs = st.tabs(["Frequência", "Atrasos", "Duos", "Ternos", "Quadras", "Quinas", "Senas"])
         tables = [("dezena", stats["frequency"]), ("dezena", stats["delay"]), ("duo", stats["duos"]), ("terno", stats["ternos"]), ("quadra", stats["quadras"]), ("quina", stats["quinas"]), ("sena", stats["senas"])]
         for tab, (key_name, table_stats) in zip(tabs, tables, strict=True):
             with tab:
                 if table_stats:
                     st.dataframe(_stats_table(table_stats, key_name), hide_index=True, use_container_width=True)
                 else:
-                    st.info("Arquivo estatÃ­stico ainda nÃ£o encontrado.")
+                    st.info("Arquivo estatístico ainda não encontrado.")
 
 
 def render_backtesting_page() -> BacktestResult | None:
     with st.container(border=True):
-        _section_header("Testar EstratÃ©gia", "Backtesting temporal e avaliaÃ§Ã£o histÃ³rica com leitura analÃ­tica.")
+        _section_header("Testar Estratégia", "Backtesting temporal e avaliação histórica com leitura analítica.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5)
         pool_size = col2.number_input("Pool", min_value=1, max_value=500, value=30)
         games_count = col3.number_input("Jogos", min_value=1, max_value=100, value=10)
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=200)
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=200)
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42)
         if games_count > pool_size:
-            st.warning("O pool precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool precisa ser maior ou igual à quantidade de jogos.")
             return None
         if st.button("Executar backtest", type="primary"):
-            with st.spinner("Executando backtest histÃ³rico..."):
+            with st.spinner("Executando backtest histórico..."):
                 result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
             _metric_row(result)
             if result.total_games == 0:
-                st.warning("Backtest em modo degradado: nÃ£o foi possÃ­vel gerar candidatos suficientes nesta configuraÃ§Ã£o.")
+                st.warning("Backtest em modo degradado: não foi possível gerar candidatos suficientes nesta configuração.")
                 return result
             st.plotly_chart(_distribution_chart(result.hit_distribution), use_container_width=True)
             st.plotly_chart(_score_correlation_chart(result), use_container_width=True)
@@ -2594,12 +2594,12 @@ def render_backtesting_page() -> BacktestResult | None:
 
 def render_calibration_page() -> None:
     with st.container(border=True):
-        _section_header("Ajustar EstratÃ©gia", "CalibraÃ§Ã£o experimental com pesos temporÃ¡rios e avaliaÃ§Ã£o restaurÃ¡vel.")
+        _section_header("Ajustar Estratégia", "Calibração experimental com pesos temporários e avaliação restaurável.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="cal_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="cal_games")
         pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="cal_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=150, key="cal_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=150, key="cal_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="cal_seed")
         weight_cols = st.columns(4)
         weights = {
@@ -2608,61 +2608,61 @@ def render_calibration_page() -> None:
             "quadra": weight_cols[2].number_input("Quadra", min_value=0.0, value=25.0),
             "quina": weight_cols[3].number_input("Quina", min_value=0.0, value=20.0),
             "delay": weight_cols[0].number_input("Delay", min_value=0.0, value=10.0),
-            "frequency": weight_cols[1].number_input("FrequÃªncia", min_value=0.0, value=5.0),
+            "frequency": weight_cols[1].number_input("Frequência", min_value=0.0, value=5.0),
             "sum": weight_cols[2].number_input("Soma", min_value=0.0, value=3.0),
-            "sequence": weight_cols[3].number_input("SequÃªncia", min_value=0.0, value=2.0),
+            "sequence": weight_cols[3].number_input("Sequência", min_value=0.0, value=2.0),
         }
         st.metric("Soma dos pesos", sum(weights.values()))
         if games_count > pool_size:
-            st.warning("O pool precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool precisa ser maior ou igual à quantidade de jogos.")
             return
-        if st.button("Comparar configuraÃ§Ãµes", type="primary"):
-            with st.spinner("Executando calibraÃ§Ã£o experimental..."):
+        if st.button("Comparar configurações", type="primary"):
+            with st.spinner("Executando calibração experimental..."):
                 result = _cached_calibration(weights, int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
             if not result.get("evaluations"):
-                st.warning("CalibraÃ§Ã£o sem avaliaÃ§Ãµes disponÃ­veis nesta configuraÃ§Ã£o.")
+                st.warning("Calibração sem avaliações disponíveis nesta configuração.")
                 return
             evaluations = result["evaluations"]
             st.plotly_chart(_configuration_chart(result), use_container_width=True)
             st.dataframe(pd.DataFrame([{"configuracao": evaluation["configuration"], "media_acertos": evaluation["average_hits"], "correlacao": evaluation["final_score_hit_correlation"], "desvio_padrao": evaluation["hit_standard_deviation"], "peso_total": evaluation["total_weight"]} for evaluation in evaluations]), hide_index=True, use_container_width=True)
-            st.info(f"Melhor configuraÃ§Ã£o nesta amostra: {result['best_configuration']}")
+            st.info(f"Melhor configuração nesta amostra: {result['best_configuration']}")
 
 
 def render_benchmark_page() -> None:
     with st.container(border=True):
-        _section_header("Comparar MÃ©todos", "Benchmark cientÃ­fico para leitura comparativa entre estratÃ©gias.")
+        _section_header("Comparar Métodos", "Benchmark científico para leitura comparativa entre estratégias.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5, key="bench_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="bench_games")
         pool_size = col3.number_input("Pool LotoIA", min_value=1, max_value=500, value=20, key="bench_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=200, key="bench_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=200, key="bench_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="bench_seed")
         if games_count > pool_size:
-            st.warning("O pool do LotoIA precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool do LotoIA precisa ser maior ou igual à quantidade de jogos.")
             return
         if st.button("Executar benchmark", type="primary"):
-            with st.spinner("Executando comparaÃ§Ã£o controlada..."):
+            with st.spinner("Executando comparação controlada..."):
                 result = _cached_benchmark(int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
             summary = _benchmark_summary_dataframe(result)
             comparisons = _benchmark_comparison_dataframe(result)
             lotoia = result.strategies["lotoia_engine"]
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Concursos", result.contests_analyzed)
-            col2.metric("Jogos por estratÃ©gia", result.games_per_contest)
-            col3.metric("MÃ©dia LotoIA", f"{lotoia['average_hits']:.2f}")
+            col2.metric("Jogos por estratégia", result.games_per_contest)
+            col3.metric("Média LotoIA", f"{lotoia['average_hits']:.2f}")
             col4.metric("Desvio LotoIA", f"{lotoia['standard_deviation']:.2f}")
             st.plotly_chart(_benchmark_average_chart(result), use_container_width=True)
             st.plotly_chart(_benchmark_evolution_chart(result), use_container_width=True)
-            st.subheader("Ranking das estratÃ©gias")
+            st.subheader("Ranking das estratégias")
             st.dataframe(summary, hide_index=True, use_container_width=True)
-            st.subheader("ComparaÃ§Ãµes estatÃ­sticas")
+            st.subheader("Comparações estatísticas")
             st.dataframe(comparisons, hide_index=True, use_container_width=True)
-            st.info(f"RelatÃ³rios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
+            st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
 
 
 def render_history_page() -> None:
     with st.container(border=True):
-        _section_header("Meus Testes", "HistÃ³rico operacional, eventos persistidos e analytics atuais.")
+        _section_header("Meus Testes", "Histórico operacional, eventos persistidos e analytics atuais.")
         runs = _cached_runs()
         benchmark_runs = runs["benchmark"]
         backtest_runs = runs["backtest"]
@@ -2672,49 +2672,49 @@ def render_history_page() -> None:
         col1, col2, col3 = st.columns(3)
         col1.metric("Benchmarks", len(benchmark_runs))
         col2.metric("Backtests", len(backtest_runs))
-        col3.metric("CalibraÃ§Ãµes", len(calibration_runs))
+        col3.metric("Calibrações", len(calibration_runs))
         st.markdown("---")
         st.subheader("generation_events")
         st.dataframe(gen_df, use_container_width=True, hide_index=True)
         st.subheader("check_events")
         st.dataframe(check_df, use_container_width=True, hide_index=True)
-        tabs = st.tabs(["Benchmarks", "Backtests", "CalibraÃ§Ãµes"])
+        tabs = st.tabs(["Benchmarks", "Backtests", "Calibrações"])
         with tabs[0]:
             if benchmark_runs:
-                st.plotly_chart(_historical_metric_chart(benchmark_runs, "lotoia_average_hits", "MÃ©dia LotoIA por benchmark"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(benchmark_runs, "lotoia_average_hits", "Média LotoIA por benchmark"), use_container_width=True)
                 st.dataframe(_runs_dataframe(benchmark_runs, ["id", "created_at", "contests", "games_per_contest", "lotoia_average_hits", "filtered_average_hits", "random_average_hits", "superiority_rate", "average_advantage", "report_path"]), hide_index=True, use_container_width=True)
             else:
                 st.info("Nenhum benchmark persistido ainda.")
         with tabs[1]:
             if backtest_runs:
-                st.plotly_chart(_historical_metric_chart(backtest_runs, "average_hits", "MÃ©dia por backtest"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(backtest_runs, "average_hits", "Média por backtest"), use_container_width=True)
                 st.dataframe(_runs_dataframe(backtest_runs, ["id", "created_at", "contests", "games_per_contest", "average_hits", "correlation", "report_path"]), hide_index=True, use_container_width=True)
             else:
                 st.info("Nenhum backtest persistido ainda.")
         with tabs[2]:
             if calibration_runs:
-                st.plotly_chart(_historical_metric_chart(calibration_runs, "average_hits", "MÃ©dia por calibraÃ§Ã£o"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(calibration_runs, "average_hits", "Média por calibração"), use_container_width=True)
                 st.dataframe(_runs_dataframe(calibration_runs, ["id", "created_at", "average_hits", "correlation", "report_path"]), hide_index=True, use_container_width=True)
             else:
-                st.info("Nenhuma calibraÃ§Ã£o persistida ainda.")
+                st.info("Nenhuma calibração persistida ainda.")
 
 
 def render_reports_page() -> None:
     with st.container(border=True):
-        _section_header("RelatÃ³rios", "SaÃ­das analÃ­ticas persistidas e artefatos gerados pela operaÃ§Ã£o.")
+        _section_header("Relatórios", "Saídas analíticas persistidas e artefatos gerados pela operação.")
         _ensure_reports_dirs()
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="rep_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="rep_games")
         pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="rep_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=150, key="rep_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=150, key="rep_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="rep_seed")
-        if st.button("Gerar relatÃ³rio", type="primary"):
+        if st.button("Gerar relatório", type="primary"):
             start_time = time.monotonic()
-            with st.spinner("Gerando relatÃ³rio analÃ­tico..."):
+            with st.spinner("Gerando relatório analítico..."):
                 result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
                 if result.total_games == 0:
-                    st.warning("RelatÃ³rio em modo degradado: backtest sem candidatos suficientes.")
+                    st.warning("Relatório em modo degradado: backtest sem candidatos suficientes.")
                     return
                 report = generate_backtest_report(result=result, output_dir=REPORTS_DIR)
                 snapshot = _write_snapshot(
@@ -2734,12 +2734,12 @@ def render_reports_page() -> None:
                 _record_operational_log("report", "success", duration_ms, {"output_dir": str(report.output_dir)})
                 _record_performance_metric("report_ms", duration_ms, {"output_dir": str(report.output_dir)})
                 _record_audit_trail("report_export", artifact_path=str(report.json_path), context={"output_dir": str(report.output_dir)})
-            st.success(f"RelatÃ³rio gerado em {report.output_dir}")
+            st.success(f"Relatório gerado em {report.output_dir}")
         files = sorted(path for path in REPORTS_DIR.glob("*") if path.is_file())
         if not files:
-            st.info("Nenhum relatÃ³rio gerado ainda.")
+            st.info("Nenhum relatório gerado ainda.")
             return
-        st.subheader("Arquivos disponÃ­veis")
+        st.subheader("Arquivos disponíveis")
         for path in files:
             col1, col2 = st.columns([3, 1])
             col1.write(str(path))
@@ -2748,7 +2748,7 @@ def render_reports_page() -> None:
                 col2.download_button("Baixar", data=download_bytes, file_name=path.name, key=f"download_{path.name}")
         html_files = [path for path in files if path.suffix.lower() == ".html"]
         if html_files:
-            selected = st.selectbox("GrÃ¡fico HTML", html_files, format_func=lambda path: path.name)
+            selected = st.selectbox("Gráfico HTML", html_files, format_func=lambda path: path.name)
             st.components.v1.html(selected.read_text(encoding="utf-8"), height=520, scrolling=True)
         json_files = [path for path in files if path.suffix.lower() == ".json"]
         if json_files:
@@ -2766,13 +2766,13 @@ def _latest_check_context() -> dict[str, Any]:
 
 def render_reports_engine_page() -> None:
     with st.container(border=True):
-        _section_header("Reports Engine", "ExportaÃ§Ãµes institucionais, relatÃ³rios recentes e snapshots operacionais.")
+        _section_header("Reports Engine", "Exportações institucionais, relatórios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
         col1, col2, col3 = st.columns(3)
         col1.metric("Snapshots", len(list(REPORTS_SNAPSHOTS_DIR.glob("*.json"))))
-        col2.metric("Ãšltima geraÃ§Ã£o", "sim" if latest_games else "nÃ£o")
-        col3.metric("Ãšltima conferÃªncia", "sim" if latest_check else "nÃ£o")
+        col2.metric("Última geração", "sim" if latest_games else "não")
+        col3.metric("Última conferência", "sim" if latest_check else "não")
 
         if latest_games:
             gen_df, gen_payload = _build_generation_report_payload(latest_games)
@@ -2782,10 +2782,10 @@ def render_reports_engine_page() -> None:
                 [
                     f"Timestamp: {gen_payload['timestamp']}",
                     f"Total de jogos: {len(latest_games)}",
-                    f"Jogos inÃ©ditos: {gen_payload['analytics']['unique_games']}",
+                    f"Jogos inéditos: {gen_payload['analytics']['unique_games']}",
                     f"Jogos recorrentes: {gen_payload['analytics']['recurring_games']}",
-                    f"Raridade mÃ©dia: {gen_payload['analytics']['avg_rarity']}",
-                    f"Proximidade mÃ©dia: {gen_payload['analytics']['avg_proximity']}",
+                    f"Raridade média: {gen_payload['analytics']['avg_rarity']}",
+                    f"Proximidade média: {gen_payload['analytics']['avg_proximity']}",
                 ],
                 gen_df,
             )
@@ -2793,9 +2793,9 @@ def render_reports_engine_page() -> None:
             pdf_bytes = _safe_download_bytes(generation_pdf)
             csv_bytes = _safe_download_bytes(gen_csv)
             if pdf_bytes is not None:
-                st.download_button("Baixar PDF da geraÃ§Ã£o", data=pdf_bytes, file_name=generation_pdf.name)
+                st.download_button("Baixar PDF da geração", data=pdf_bytes, file_name=generation_pdf.name)
             if csv_bytes is not None:
-                st.download_button("Baixar CSV da geraÃ§Ã£o", data=csv_bytes, file_name=gen_csv.name)
+                st.download_button("Baixar CSV da geração", data=csv_bytes, file_name=gen_csv.name)
 
         if latest_check:
             check_row = pd.DataFrame([latest_check])
@@ -2813,11 +2813,11 @@ def render_reports_engine_page() -> None:
             pdf_bytes = _safe_download_bytes(check_pdf)
             csv_bytes = _safe_download_bytes(check_csv)
             if pdf_bytes is not None:
-                st.download_button("Baixar PDF da conferÃªncia", data=pdf_bytes, file_name=check_pdf.name)
+                st.download_button("Baixar PDF da conferência", data=pdf_bytes, file_name=check_pdf.name)
             if csv_bytes is not None:
-                st.download_button("Baixar CSV da conferÃªncia", data=csv_bytes, file_name=check_csv.name)
+                st.download_button("Baixar CSV da conferência", data=csv_bytes, file_name=check_csv.name)
 
-        st.subheader("Snapshots disponÃ­veis")
+        st.subheader("Snapshots disponíveis")
         snapshots = sorted(REPORTS_SNAPSHOTS_DIR.glob("*.json"), reverse=True)
         if snapshots:
             for path in snapshots[:10]:
@@ -2826,7 +2826,7 @@ def render_reports_engine_page() -> None:
                 if snapshot_bytes is not None:
                     st.download_button("Baixar snapshot", data=snapshot_bytes, file_name=path.name, key=f"snap_{path.name}")
         else:
-            st.info("Nenhum snapshot institucional disponÃ­vel ainda.")
+            st.info("Nenhum snapshot institucional disponível ainda.")
 
 
 def main() -> None:
@@ -2965,7 +2965,7 @@ def main() -> None:
         st.stop()
     except Exception as exc:
         _record_operational_log("load_draws", "failed", 0.0, {"error": str(exc), "path": str(DEFAULT_HISTORY_PATH)})
-        st.warning("O carregamento do acervo histÃ³rico encontrou uma falha controlada. O dashboard seguirÃ¡ em modo seguro parcial.")
+        st.warning("O carregamento do acervo histórico encontrou uma falha controlada. O dashboard seguirá em modo seguro parcial.")
         draws = []
 
     try:
@@ -3008,7 +3008,7 @@ def main() -> None:
     except Exception as exc:
         _record_operational_log("dashboard", "failed", 0.0, {"page": locals().get("page", "unknown"), "error": str(exc)})
         st.error("Falha operacional controlada no dashboard. O runtime permaneceu ativo.")
-        st.caption(f"Contexto tÃ©cnico: {exc}")
+        st.caption(f"Contexto técnico: {exc}")
         st.markdown("---")
         _render_lead_intelligence()
 
