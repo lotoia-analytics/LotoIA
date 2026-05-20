@@ -434,15 +434,15 @@ PAGES = [
 LABELS = {
     "geracao_jogos": "Criar Jogos",
     "conferir_jogos": "Conferir Jogos",
-    "estatisticas_historicas": "Estatísticas",
+    "estatisticas_historicas": "Resultados Passados",
     "backtesting": "Testar Estratégia",
     "calibracao_experimental": "Ajustar Estratégia",
     "benchmark_cientifico": "Comparar Métodos",
     "historico_experimental": "Meus Testes",
     "relatorios": "Relatórios",
-    "historical_intelligence": "Padrões",
-    "analytics_intelligence": "Heatmaps",
-    "ml_intelligence": "Inteligência Analítica",
+    "historical_intelligence": "Historical Intelligence",
+    "analytics_intelligence": "Analytics Intelligence",
+    "ml_intelligence": "ML Intelligence",
 }
 
 
@@ -2205,12 +2205,12 @@ def _sidebar_navigation() -> str:
     return st.sidebar.radio(
         "Navega??o",
         options=[
+            "geracao_jogos",
+            "conferir_jogos",
             "estatisticas_historicas",
             "historical_intelligence",
             "analytics_intelligence",
             "ml_intelligence",
-            "geracao_jogos",
-            "conferir_jogos",
             "backtesting",
             "calibracao_experimental",
             "benchmark_cientifico",
@@ -2222,10 +2222,10 @@ def _sidebar_navigation() -> str:
         ],
         format_func=lambda key: {
             **LABELS,
-            "estatisticas_historicas": "Estatísticas",
-            "historical_intelligence": "Padrões",
-            "analytics_intelligence": "Heatmaps",
-            "ml_intelligence": "Inteligência Analítica",
+            "estatisticas_historicas": "Resultados Passados",
+            "historical_intelligence": "Historical Intelligence",
+            "analytics_intelligence": "Analytics Intelligence",
+            "ml_intelligence": "ML Intelligence",
             "ml_governance": "ML Governance",
             "observability": "Observability",
             "reports_engine": "Reports Engine",
@@ -3015,4 +3015,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
