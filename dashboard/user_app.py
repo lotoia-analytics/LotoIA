@@ -194,6 +194,10 @@ def _user_indicator(games: list[dict[str, Any]]) -> tuple[str, str]:
 
 
 def _render_sidebar() -> str:
+    st.sidebar.markdown(
+        "<div style='font-size:1.05rem; font-weight:900; letter-spacing:0.02em; color:#3b4fe0; margin:0.2rem 0 0.6rem 0;'>LotoIA</div>",
+        unsafe_allow_html=True,
+    )
     logo_path = PROJECT_ROOT / "assets" / "logo.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width=220)

@@ -91,6 +91,9 @@ def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
         def title(self, *args, **kwargs):
             return None
 
+        def markdown(self, *args, **kwargs):
+            return None
+
         def image(self, *args, **kwargs):
             image_calls.append(args)
 
