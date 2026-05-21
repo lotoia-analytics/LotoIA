@@ -393,7 +393,7 @@ def render_live_analytical_intelligence(
         insights_frame = pd.DataFrame(insights)
         st.dataframe(insights_frame, hide_index=True, use_container_width=True)
     else:
-        st.info("Insights executivos ainda nao consolidados nesta leitura.")
+        st.info("Insights ainda nao consolidados nesta leitura.")
 
     st.markdown("### Presenca")
     presence_cols = st.columns(4)

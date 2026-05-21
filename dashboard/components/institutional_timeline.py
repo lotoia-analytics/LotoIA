@@ -20,7 +20,7 @@ def render_institutional_timeline(timeline: pd.DataFrame) -> None:
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
             <div class="lotoia-executive-kicker">Linha do tempo</div>
-            <div class="lotoia-executive-copy">Snapshots recentes, transicoes de estado e memoria visual para leitura cronologica rapida.</div>
+            <div class="lotoia-executive-copy">Registros recentes, transicoes de estado e memoria visual para leitura rapida.</div>
         </div>
         """,
         unsafe_allow_html=True,

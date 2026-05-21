@@ -1722,8 +1722,8 @@ def render_observability_page() -> None:
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Homepage", summary.get("homepage_priority", "-"))
         col2.metric("Estabilidade", summary.get("stability_note", "-"))
-        col3.metric("Snapshot institucional", "ok" if summary.get("institutional_snapshot_ready") else "pending")
-        col4.metric("Timeline institucional", "ok" if summary.get("institutional_timeline_ready") else "pending")
+        col3.metric("Snapshot", "ok" if summary.get("institutional_snapshot_ready") else "pending")
+        col4.metric("Linha do tempo", "ok" if summary.get("institutional_timeline_ready") else "pending")
         st.caption(
             f"Gerações={counts.get('generation_events', 0)}"
             f" | Conferências={counts.get('check_events', 0)}"
@@ -1757,7 +1757,7 @@ def render_observability_page() -> None:
         )
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("Performance tracking")
+            st.subheader("Desempenho")
             st.dataframe(_performance_metrics_table(), hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Metricas operacionais")
@@ -1909,11 +1909,11 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        st.subheader("Insights analiticos")
+        st.subheader("Insights")
         st.dataframe(_analytical_intelligence_insights(), hide_index=True, use_container_width=True)
         st.subheader("Comparativos analiticos")
         st.dataframe(_analytical_intelligence_comparisons(), hide_index=True, use_container_width=True)
-        st.subheader("Timeline analitica")
+        st.subheader("Linha do tempo")
         st.dataframe(_analytical_intelligence_timeline(), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo médio", f"{health['response_time_ms']:.2f} ms")
@@ -1923,7 +1923,7 @@ def render_observability_page() -> None:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("Métricas runtime")
+            st.subheader("Metricas runtime")
             st.dataframe(_observability_metrics_table(), hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Saúde operacional")
@@ -3011,14 +3011,14 @@ def _render_lead_intelligence() -> None:
     analytics = _lead_analytics()
     history = _lead_history_dataframe()
     st.markdown("---")
-    _section_header("Lead Intelligence", "Inteligência institucional por usuário, recorrência e padrão de uso.")
+    _section_header("Leitura de uso", "Uso institucional por usuario, recorrencia e padrao de uso.")
     a, b, c, d, e = st.columns(5)
     a.metric("Total leads", analytics["total_leads"])
     b.metric("Leads recorrentes", analytics["recurring_leads"])
     c.metric("Ativações ML", analytics["ml_activations"])
     d.metric("Gerações", analytics["volume_generations"])
     e.metric("Conferências", analytics["volume_checks"])
-    st.subheader("Histórico institucional")
+    st.subheader("Historico")
     st.dataframe(
         history,
         hide_index=True,
@@ -3237,7 +3237,7 @@ def render_ml_intelligence_page() -> None:
         col3.metric("Walk-forward", validation["splits"])
         col4.metric("Rows válidas", validation["rows"])
 
-        st.subheader("Métricas do modelo")
+        st.subheader("Metricas do modelo")
         st.dataframe(_ml_features_table(model), hide_index=True, use_container_width=True)
 
         scored_df = pd.DataFrame(
@@ -3855,7 +3855,7 @@ def render_reports_engine_page() -> None:
             if csv_bytes is not None:
                 st.download_button("Baixar CSV da conferência", data=csv_bytes, file_name=check_csv.name)
 
-        st.subheader("Snapshots disponíveis")
+        st.subheader("Snapshots")
         snapshots = sorted(REPORTS_SNAPSHOTS_DIR.glob("*.json"), reverse=True)
         if snapshots:
             for path in snapshots[:10]:

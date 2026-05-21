@@ -87,7 +87,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     else:
         st.dataframe(strategic_frame, hide_index=True, use_container_width=True)
 
-    st.markdown("### Insights adaptativos")
+    st.markdown("### Insights")
     adaptive_insights_frame = pd.DataFrame(adaptive_insights.get("insights", []))
     if adaptive_insights_frame.empty:
         st.info("Insights adaptativos ainda em consolidacao.")
@@ -100,7 +100,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
         ("Trend", longitudinal_evolution.get("summary", {}).get("trend", "observacao")),
         ("Stability evolution", longitudinal_evolution.get("summary", {}).get("stability_evolution", 0.0)),
         ("Drift evolution", longitudinal_evolution.get("summary", {}).get("drift_evolution", 0.0)),
-        ("Timeline depth", longitudinal_evolution.get("summary", {}).get("timeline_depth", 0)),
+        ("Linha do tempo", longitudinal_evolution.get("summary", {}).get("timeline_depth", 0)),
     ]
     for column, (label, value) in zip(evolution_cols, evolution_items, strict=True):
         with column:
@@ -114,7 +114,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     st.markdown("### Strategic analytical timeline")
     strategic_frame = pd.DataFrame(strategic_timeline.get("timeline", []))
     if strategic_frame.empty:
-        st.info("Timeline estrategica ainda nao consolidada.")
+        st.info("Linha do tempo estrategica ainda nao consolidada.")
     else:
         st.dataframe(strategic_frame, hide_index=True, use_container_width=True)
 
