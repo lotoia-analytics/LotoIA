@@ -79,6 +79,11 @@ from lotoia.analytics import (
     publish_institutional_analytics,
     publish_adaptive_institutional_intelligence,
 )
+from lotoia.orchestration import (
+    build_intelligent_operational_orchestration,
+    load_intelligent_operational_orchestration,
+    persist_intelligent_operational_orchestration,
+)
 from lotoia.observability import (
     build_observational_stabilization_report,
     load_observational_stabilization_report,
@@ -94,6 +99,7 @@ from dashboard.components import (
     render_executive_panel,
     render_executive_summary,
     render_institutional_timeline,
+    render_operational_orchestration,
     render_secondary_operational_metrics,
     render_structural_health,
 )
@@ -2977,6 +2983,9 @@ def _render_institutional_cockpit() -> None:
     timeline = load_institutional_analytical_timeline()
     if not timeline:
         timeline = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
+    orchestration_report = load_intelligent_operational_orchestration()
+    if not orchestration_report:
+        orchestration_report = persist_intelligent_operational_orchestration(report_dir=REPORTS_DIR / "orchestration")
 
     historical_summary = historical_report.get("summary", {})
     analytical_summary = ai_report.get("analytical_summary", {})
@@ -2995,6 +3004,7 @@ def _render_institutional_cockpit() -> None:
             observability_report,
             pd.DataFrame(timeline.get("timeline", [])),
         )
+        render_operational_orchestration(orchestration_report)
 
 
 def _render_lead_intelligence() -> None:

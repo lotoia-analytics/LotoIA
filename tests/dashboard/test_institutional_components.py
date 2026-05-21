@@ -16,6 +16,7 @@ import dashboard.components.live_analytical_intelligence as live_analytical_inte
 import dashboard.components.hero_banner as hero_banner
 import dashboard.components.live_status_header as live_status_header
 import dashboard.components.institutional_timeline as institutional_timeline
+import dashboard.components.operational_orchestration as operational_orchestration
 import dashboard.components.secondary_metrics as secondary_metrics
 import dashboard.components.structural_health as structural_health
 
@@ -48,6 +49,7 @@ def _patch_streamlit(monkeypatch) -> None:
         live_analytical_intelligence,
         live_status_header,
         institutional_timeline,
+        operational_orchestration,
         secondary_metrics,
         structural_health,
         executive_summary,
@@ -192,7 +194,40 @@ def test_institutional_timeline_renders_dataframe(monkeypatch) -> None:
 
 def test_secondary_operational_metrics_renders_without_error(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
-    secondary_metrics.render_secondary_operational_metrics(12, 8, "5000", "24")
+    secondary_metrics.render_secondary_operational_metrics(12, 8, 3, "5000", "24")
+
+
+def test_operational_orchestration_renders_without_error(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    operational_orchestration.render_operational_orchestration(
+        {
+            "report": {
+                "summary": {
+                    "orchestration_state": "coordenada",
+                    "priority": "stable",
+                    "critical_state": False,
+                    "strong_stability": True,
+                    "elevated_drift": False,
+                    "important_change": True,
+                    "timeline_depth": 2,
+                    "memory_depth": 3,
+                },
+                "decision_context": {
+                    "headline": "baseline longitudinal consistente",
+                    "recommendation": "manter baseline hard e monitorar longitudinalmente",
+                    "comparison": "historical trend and adaptive memory aligned",
+                },
+                "operational_priority": {
+                    "critical_state": False,
+                    "strong_stability": True,
+                    "elevated_drift": False,
+                    "important_change": True,
+                },
+                "storytelling": ["Contexto executivo: baseline consistente", "Prioridade operacional: stable"],
+                "events": [{"layer": "executive", "status": "saudavel"}],
+            }
+        }
+    )
 
 
 def test_institutional_design_system_renders_without_error(monkeypatch) -> None:

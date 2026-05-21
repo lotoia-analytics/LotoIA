@@ -1,3 +1,39 @@
+# Release Notes - Missao 18 / Intelligent Operational Orchestration
+
+## Status inicial
+
+- Missao 18 iniciada com foco em orquestracao operacional inteligente, contextualizacao executiva e continuidade estrategica.
+- As fases 1 a 6 foram implementadas sobre artifacts reais ja persistidos, sem alterar generator, baseline hard, benchmark, longitudinal core, adaptive intelligence core, ML pipeline, heuristicas cientificas ou score principal.
+- A homepage passou a exibir uma camada discreta de orquestracao institucional acima da leitura operacional secundária.
+
+## Resumo
+
+- Nova camada de orquestracao contextual integrando inteligencia analitica, historica, adaptativa e observabilidade.
+- Contexto executivo, prioridade operacional, memoria estrategica e narrativa institucional passam a ser coordenados em um painel proprio.
+- A experiencia continua governada e observavel, sem automacao decisoria.
+
+## Alteracoes principais
+
+- Criado `src/lotoia/orchestration/intelligent_orchestration.py` com build, persist e load da orquestracao operacional inteligente.
+- Criado `dashboard/components/operational_orchestration.py` para renderizacao da camada de orquestracao no cockpit.
+- Integracao da camada de orquestracao no cockpit institucional do dashboard.
+- Ajuste da operacao secundaria para incluir o contador de uso de ML.
+
+## Protecoes adicionadas
+
+- Testes para persistencia, carregamento e composicao da camada de orquestracao.
+- Testes de renderizacao do novo painel de orquestracao.
+- Reforco da integracao dos contadores operacionais secundarios.
+
+## Validacao
+
+- `tests/test_intelligent_orchestration.py`
+- `tests/dashboard/test_institutional_components.py`
+
+## Observacao
+
+- A Missao 18 coordena inteligencia institucional sem tocar no motor cientifico.
+
 # Release Notes - Missao 17 / Executive Visual Engine
 
 ## Status inicial
