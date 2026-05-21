@@ -215,6 +215,94 @@ class ReconciliationGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class RuntimeExecution(Base):
+    __tablename__ = "runtime_executions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    flow_name: Mapped[str] = mapped_column(String, nullable=False)
+    stage: Mapped[str] = mapped_column(String, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="running", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class RuntimeSpan(Base):
+    __tablename__ = "runtime_spans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    trace_id: Mapped[str] = mapped_column(String, nullable=False)
+    span_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    parent_span_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    stage: Mapped[str] = mapped_column(String, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="running", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    attributes_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class RuntimeMetric(Base):
+    __tablename__ = "runtime_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    metric_type: Mapped[str] = mapped_column(String, nullable=False)
+    labels_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class RuntimeLineage(Base):
+    __tablename__ = "runtime_lineage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    entity_type: Mapped[str] = mapped_column(String, nullable=False)
+    entity_id: Mapped[str] = mapped_column(String, nullable=False)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class RuntimeSnapshot(Base):
+    __tablename__ = "runtime_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    snapshot_type: Mapped[str] = mapped_column(String, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
     return f"sqlite:///{path}"
 
@@ -306,6 +394,79 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
             """
         )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_executions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL UNIQUE,
+                flow_name TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'running',
+                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                duration_ms REAL,
+                context_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_spans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                trace_id TEXT NOT NULL,
+                span_id TEXT NOT NULL UNIQUE,
+                parent_span_id TEXT,
+                name TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'running',
+                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                duration_ms REAL,
+                attributes_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                value REAL NOT NULL,
+                metric_type TEXT NOT NULL,
+                labels_json JSON NOT NULL DEFAULT '{}',
+                metadata_json JSON NOT NULL DEFAULT '{}',
+                observed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_lineage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload_json JSON NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                snapshot_id TEXT NOT NULL UNIQUE,
+                snapshot_type TEXT NOT NULL,
+                payload_json JSON NOT NULL DEFAULT '{}',
+                metadata_json JSON NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         generated_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(generated_games)").fetchall()
@@ -334,6 +495,60 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE reconciliation_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
         ):
             if column_name not in reconciliation_game_columns:
+                connection.exec_driver_sql(column_sql)
+        runtime_execution_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(runtime_executions)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE runtime_executions ADD COLUMN stage TEXT NOT NULL DEFAULT ''", "stage"),
+            ("ALTER TABLE runtime_executions ADD COLUMN status TEXT NOT NULL DEFAULT 'running'", "status"),
+            ("ALTER TABLE runtime_executions ADD COLUMN finished_at TIMESTAMP", "finished_at"),
+            ("ALTER TABLE runtime_executions ADD COLUMN duration_ms REAL", "duration_ms"),
+            ("ALTER TABLE runtime_executions ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
+        ):
+            if column_name not in runtime_execution_columns:
+                connection.exec_driver_sql(column_sql)
+        runtime_span_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(runtime_spans)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE runtime_spans ADD COLUMN stage TEXT NOT NULL DEFAULT ''", "stage"),
+            ("ALTER TABLE runtime_spans ADD COLUMN status TEXT NOT NULL DEFAULT 'running'", "status"),
+            ("ALTER TABLE runtime_spans ADD COLUMN finished_at TIMESTAMP", "finished_at"),
+            ("ALTER TABLE runtime_spans ADD COLUMN duration_ms REAL", "duration_ms"),
+            ("ALTER TABLE runtime_spans ADD COLUMN attributes_json JSON NOT NULL DEFAULT '{}'", "attributes_json"),
+        ):
+            if column_name not in runtime_span_columns:
+                connection.exec_driver_sql(column_sql)
+        runtime_metric_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(runtime_metrics)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE runtime_metrics ADD COLUMN labels_json JSON NOT NULL DEFAULT '{}'", "labels_json"),
+            ("ALTER TABLE runtime_metrics ADD COLUMN metadata_json JSON NOT NULL DEFAULT '{}'", "metadata_json"),
+            ("ALTER TABLE runtime_metrics ADD COLUMN observed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "observed_at"),
+        ):
+            if column_name not in runtime_metric_columns:
+                connection.exec_driver_sql(column_sql)
+        runtime_lineage_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(runtime_lineage)").fetchall()
+        }
+        if "payload_json" not in runtime_lineage_columns:
+            connection.exec_driver_sql("ALTER TABLE runtime_lineage ADD COLUMN payload_json JSON NOT NULL DEFAULT '{}'")
+        runtime_snapshot_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(runtime_snapshots)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE runtime_snapshots ADD COLUMN payload_json JSON NOT NULL DEFAULT '{}'", "payload_json"),
+            ("ALTER TABLE runtime_snapshots ADD COLUMN metadata_json JSON NOT NULL DEFAULT '{}'", "metadata_json"),
+            ("ALTER TABLE runtime_snapshots ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
+        ):
+            if column_name not in runtime_snapshot_columns:
                 connection.exec_driver_sql(column_sql)
         columns = {
             row[1]

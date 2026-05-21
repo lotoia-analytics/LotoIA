@@ -9,12 +9,14 @@ from sqlalchemy import text
 
 from backend.main import app
 from lotoia.database.database import get_session
+from lotoia.observability import MetricType, MetricSample
 from lotoia.public.persistence import (
     CheckEventRepository,
     GenerationEventRepository,
     LeadRepository,
     initialize_public_persistence,
 )
+from lotoia.observability import ObservabilityRepository
 from lotoia.public.service import (
     PublicCheckRequest,
     PublicGenerationRequest,
@@ -178,10 +180,17 @@ def test_generate_public_games_persists_generation_and_games(tmp_path: Path) -> 
         row = session.execute(text("select target_contest, origin, generation_mode, context_json from generated_games order by id limit 1")).first()
 
     assert response["metadata"]["target_contest"] is not None
+    assert response["metadata"]["execution_id"].startswith("exec-")
     assert row is not None
     assert row[1] == "public_api"
     assert row[2] == "public_hybrid_statistical_v1"
     assert "target_contest" in row[3]
+    with get_session(db_path) as session:
+        assert session.execute(text("select count(*) from runtime_executions")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_spans")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_metrics")).scalar() >= 1
+        assert session.execute(text("select count(*) from runtime_lineage")).scalar() >= 1
+        assert session.execute(text("select count(*) from runtime_snapshots")).scalar() >= 1
 
 
 def test_check_public_contest_is_readonly_and_persists_event(tmp_path: Path) -> None:
@@ -206,6 +215,49 @@ def test_check_public_contest_is_readonly_and_persists_event(tmp_path: Path) -> 
 
     assert response["hits"] == 15
     assert response["correct_numbers"] == list(range(1, 16))
+    assert response["result"]["execution_id"].startswith("exec-")
+    with get_session(tmp_path / "lotoia.db") as session:
+        assert session.execute(text("select count(*) from runtime_executions")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_spans")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_metrics")).scalar() >= 1
+        assert session.execute(text("select count(*) from runtime_lineage")).scalar() >= 1
+
+
+def test_observability_repository_persists_runtime_execution_tracing_metrics(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    initialize_public_persistence(db_path)
+    repository = ObservabilityRepository(db_path)
+    execution_id = repository.start_execution(flow_name="generation", stage="seed", context={"source": "test"})
+    sample = MetricSample(
+        name="runtime_latency_ms",
+        value=12.5,
+        metric_type=MetricType.TIMER,
+        labels={"source": "test"},
+        metadata={"stage": "seed"},
+    )
+    repository.record_metric(execution_id, sample, stage="seed")
+    repository.record_lineage(
+        execution_id,
+        entity_type="generation_event",
+        entity_id="seed-1",
+        event_type="generator_started",
+        payload={"source": "test"},
+    )
+    repository.record_snapshot(
+        execution_id,
+        snapshot_type="runtime",
+        payload={"state": "ok"},
+        metadata={"source": "test"},
+    )
+    repository.finish_execution(execution_id, status="ok", stage="done", duration_ms=12.5, context={"stage": "done"})
+
+    with get_session(db_path) as session:
+        assert session.execute(text("select count(*) from runtime_executions")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_spans")).scalar() == 0
+        assert session.execute(text("select count(*) from runtime_metrics")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_lineage")).scalar() == 1
+        assert session.execute(text("select count(*) from runtime_snapshots")).scalar() == 1
+
 
 
 def test_public_generate_endpoint_returns_games() -> None:

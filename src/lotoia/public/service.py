@@ -5,11 +5,13 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository, initialize_public_persistence
 from lotoia.public.models import PublicCheckRequest, PublicGenerationRequest
+from lotoia.observability import MetricsRegistry, ObservabilityRepository, ObservabilityTracer
 
 
 class PublicRateLimitError(Exception):
@@ -91,8 +93,43 @@ def generate_public_games(
     target_contest = _latest_history_contest(history_path=DEFAULT_HISTORY_PATH)
     seed = random.randint(1, 999999)
     started_at = time.time()
+    execution_id = f"exec-{uuid4().hex}"
+    observability_repository = ObservabilityRepository(db_path) if db_path is not None else None
+    observability = ObservabilityTracer(observability_repository) if observability_repository is not None else None
+    metrics = MetricsRegistry()
+    if observability is not None:
+        observability.start_execution(
+            flow_name="generation",
+            stage="generation",
+            context={"source": source, "target_contest": target_contest, "ml_enabled": bool(request.ml_enabled)},
+            execution_id=execution_id,
+        )
+    generation_span = observability.tracer.start_span("generate_public_games", trace_id=execution_id, attributes={"flow": "generation"}) if observability is not None else None
     games_payload = generate_ranked_games(total_games=2, seed=seed, ml_enabled=request.ml_enabled)
     execution_time_ms = (time.time() - started_at) * 1000
+    if observability is not None:
+        observability.record_metric(execution_id, metrics.timing("runtime_latency_ms", execution_time_ms), stage="generation")
+        observability.record_lineage(
+            execution_id,
+            entity_type="generation_event",
+            entity_id=str(seed),
+            event_type="generator_completed",
+            payload={"target_contest": target_contest, "ml_enabled": bool(request.ml_enabled)},
+        )
+        if generation_span is not None:
+            finished_generation_span = observability.tracer.finish_span(
+                generation_span.span_id,
+                status="ok",
+                attributes={"execution_time_ms": round(execution_time_ms, 2)},
+            )
+            observability_repository.record_span(execution_id, finished_generation_span, stage="generation")
+            observability.finish_execution(
+                execution_id,
+                status="ok",
+                stage="generation",
+                duration_ms=round(execution_time_ms, 2),
+                context={"source": source, "target_contest": target_contest},
+            )
     if db_path is not None:
         initialize_public_persistence(db_path)
         lead_repository = LeadRepository(db_path)
@@ -122,11 +159,26 @@ def generate_public_games(
                 "user_agent": user_agent,
                 "target_contest": target_contest,
                 "ml_enabled": bool(request.ml_enabled),
+                "execution_id": execution_id,
             },
         )
+        if observability is not None:
+            observability.record_snapshot(
+                execution_id,
+                snapshot_type="generation",
+                payload={
+                    "games": games_payload,
+                    "metadata": {
+                        "seed": seed,
+                        "target_contest": target_contest,
+                    },
+                },
+                metadata={"flow_name": "generation"},
+            )
     return {
         "games": games_payload,
         "metadata": {
+            "execution_id": execution_id,
             "seed": seed,
             "strategy": "public_hybrid_statistical_v1",
             "ranking_score": 0.91,
@@ -158,11 +210,46 @@ def check_public_contest(
 ) -> dict[str, Any]:
     _validate_rate_limit(ip_address or "anonymous", active_limiter)
     started_at = time.time()
+    execution_id = f"exec-{uuid4().hex}"
+    observability_repository = ObservabilityRepository(db_path) if db_path is not None else None
+    observability = ObservabilityTracer(observability_repository) if observability_repository is not None else None
+    metrics = MetricsRegistry()
+    if observability is not None:
+        observability.start_execution(
+            flow_name="check",
+            stage="check",
+            context={"source": source, "contest_id": request.contest_id},
+            execution_id=execution_id,
+        )
+    check_span = observability.tracer.start_span("check_public_contest", trace_id=execution_id, attributes={"flow": "check"}) if observability is not None else None
     draw = _find_contest(request.contest_id, history_path)
     correct_numbers = sorted(draw.numbers)
     checked_numbers = sorted(request.numbers)
     hits = len(set(correct_numbers) & set(checked_numbers))
     execution_time_ms = (time.time() - started_at) * 1000
+    if observability is not None:
+        observability.record_metric(execution_id, metrics.timing("runtime_latency_ms", execution_time_ms), stage="check")
+        observability.record_lineage(
+            execution_id,
+            entity_type="check_event",
+            entity_id=str(request.contest_id),
+            event_type="checker_completed",
+            payload={"hits": hits},
+        )
+        if check_span is not None:
+            finished_check_span = observability.tracer.finish_span(
+                check_span.span_id,
+                status="ok",
+                attributes={"execution_time_ms": round(execution_time_ms, 2)},
+            )
+            observability_repository.record_span(execution_id, finished_check_span, stage="check")
+            observability.finish_execution(
+                execution_id,
+                status="ok",
+                stage="check",
+                duration_ms=round(execution_time_ms, 2),
+                context={"source": source, "contest_id": request.contest_id},
+            )
     return {
         "hits": hits,
         "correct_numbers": correct_numbers,
@@ -171,6 +258,7 @@ def check_public_contest(
             "execution_time_ms": round(execution_time_ms, 2),
             "source": source,
             "user_agent": user_agent,
+            "execution_id": execution_id,
         },
     }
 
