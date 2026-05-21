@@ -2937,6 +2937,29 @@ def _sidebar_navigation() -> str:
     )
 
 
+def _render_sidebar_dispatch(page: str, draws) -> None:
+    routes: dict[str, Any] = {
+        "geracao_jogos": render_generation_page,
+        "conferir_jogos": render_check_page,
+        "estatisticas_historicas": lambda: render_statistics_page(draws),
+        "backtesting": render_backtesting_page,
+        "calibracao_experimental": render_calibration_page,
+        "benchmark_cientifico": render_benchmark_page,
+        "historico_experimental": render_history_page,
+        "relatorios": render_reports_page,
+        "historical_intelligence": lambda: render_historical_intelligence_page(draws),
+        "analytics_intelligence": render_analytics_intelligence_page,
+        "ml_intelligence": render_ml_intelligence_page,
+        "jogo_expandido_experimental": render_expansion_experimental_page,
+        "ml_governance": render_ml_governance_page,
+        "observability": render_observability_page,
+        "reports_engine": render_reports_engine_page,
+    }
+    handler = routes.get(page)
+    if handler is not None:
+        handler()
+
+
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
         _section_header("Historical Intelligence", "Inteligncia histrica operacional para combinaes, recorrncia e proximidade estatstica.")
@@ -3800,36 +3823,7 @@ def main() -> None:
         with st.expander("Métricas operacionais secundárias", expanded=False):
             _render_kpi_cards()
         st.markdown("---")
-        if page == "geracao_jogos":
-            render_generation_page()
-        elif page == "conferir_jogos":
-            render_check_page()
-        elif page == "estatisticas_historicas":
-            render_statistics_page(draws)
-        elif page == "backtesting":
-            render_backtesting_page()
-        elif page == "calibracao_experimental":
-            render_calibration_page()
-        elif page == "benchmark_cientifico":
-            render_benchmark_page()
-        elif page == "historico_experimental":
-            render_history_page()
-        elif page == "relatorios":
-            render_reports_page()
-        elif page == "historical_intelligence":
-            render_historical_intelligence_page(draws)
-        elif page == "analytics_intelligence":
-            render_analytics_intelligence_page()
-        elif page == "ml_intelligence":
-            render_ml_intelligence_page()
-        elif page == "jogo_expandido_experimental":
-            render_expansion_experimental_page()
-        elif page == "ml_governance":
-            render_ml_governance_page()
-        elif page == "observability":
-            render_observability_page()
-        elif page == "reports_engine":
-            render_reports_engine_page()
+        _render_sidebar_dispatch(page, draws)
         st.markdown("---")
         _render_lead_intelligence()
         dashboard_duration_ms = (time.monotonic() - dashboard_start_time) * 1000.0

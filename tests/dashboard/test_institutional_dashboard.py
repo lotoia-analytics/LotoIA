@@ -329,3 +329,36 @@ def test_dashboard_uses_wide_layout(monkeypatch) -> None:
     admin_app.main()
 
     assert any(call.get("layout") == "wide" for call in calls)
+
+
+def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    calls: list[str] = []
+
+    monkeypatch.setattr(admin_app, "render_generation_page", lambda: calls.append("geracao_jogos"))
+    monkeypatch.setattr(admin_app, "render_check_page", lambda: calls.append("conferir_jogos"))
+    monkeypatch.setattr(admin_app, "render_statistics_page", lambda draws: calls.append("estatisticas_historicas"))
+    monkeypatch.setattr(admin_app, "render_historical_intelligence_page", lambda draws: calls.append("historical_intelligence"))
+    monkeypatch.setattr(admin_app, "render_analytics_intelligence_page", lambda: calls.append("analytics_intelligence"))
+    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
+    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
+    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "geracao_jogos")
+    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
+    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
+    monkeypatch.setattr(admin_app, "_render_institutional_cockpit", lambda: None)
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
+
+    admin_app._render_sidebar_dispatch("geracao_jogos", [])
+    admin_app._render_sidebar_dispatch("conferir_jogos", [])
+    admin_app._render_sidebar_dispatch("estatisticas_historicas", [])
+    admin_app._render_sidebar_dispatch("historical_intelligence", [])
+    admin_app._render_sidebar_dispatch("analytics_intelligence", [])
+
+    assert calls == [
+        "geracao_jogos",
+        "conferir_jogos",
+        "estatisticas_historicas",
+        "historical_intelligence",
+        "analytics_intelligence",
+    ]
