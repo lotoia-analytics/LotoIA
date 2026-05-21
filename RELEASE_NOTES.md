@@ -1,3 +1,276 @@
+# Release Notes - Missao 15 / Live Analytical Intelligence
+
+## Status parcial
+
+- Missao 15 em evolucao com inteligencia analitica viva e comparativa.
+- A homepage e os painéis analiticos passaram a mostrar evolucao temporal, memoria operacional e narrativa institucional em artefatos persistidos.
+- Nenhuma mudanca foi feita em generator, baseline hard, benchmark, longitudinal, ML pipeline, observability core, heuristics, analytical intelligence core ou executive intelligence core.
+
+## Resumo
+
+- Adicionada uma camada de leitura viva para evolucao longitudinal, interpretacao temporal e storytelling institucional.
+- A experiencia analitica passou a mostrar tendencia, comparativos e memoria operacional em tempo quase real.
+- O cockpit executivo e a pagina analitica ganharam continuidade temporal visivel.
+
+## Alteracoes principais
+
+- Adicionado `dashboard/components/live_analytical_intelligence.py`.
+- Integrado o painel analitico vivo no dashboard.
+- Expandido o design system para suportar leitura comparativa e visual premium.
+- Mantida a homepage institucional e a area de geracao como pontos de entrada principais.
+
+## Protecoes adicionadas
+
+- Teste de renderizacao da inteligencia analitica viva.
+- Teste da linha viva do cockpit institucional mantidos.
+- Testes de componentes institucionais continuam verdes.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega acrescenta percepcao de evolucao temporal sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 15 / Live Analytical Intelligence
+
+## Status parcial
+
+- Missao 15 segue em consolidacao com leitura viva longitudinal, memoria operacional e narrativa institucional expandida.
+- A camada analitica agora mostra evolucao temporal, comparacoes e continuidade operacional a partir de artifacts reais.
+- Nenhuma mudanca foi feita em generator, baseline hard, benchmark, longitudinal, ML pipeline, observability core, heuristics, analytical intelligence core ou executive intelligence core.
+
+## Resumo
+
+- Adicionado painel vivo de evolucao longitudinal.
+- Adicionada interpretacao temporal mais explicita.
+- Adicionado storytelling institucional com memoria operacional perceptivel.
+- Adicionadas comparacoes vivas e insights executivos dinâmicos.
+
+## Alteracoes principais
+
+- Expandido `dashboard/components/live_analytical_intelligence.py`.
+- Mantido o design system para suportar leitura comparativa e visual premium.
+- Preservada a homepage institucional e a area de geracao como pontos de entrada principais.
+
+## Protecoes adicionadas
+
+- Teste de renderizacao da inteligencia analitica viva.
+- Teste de narrativa temporal.
+- Teste de memoria longitudinal.
+- Testes de componentes institucionais continuam verdes.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega reforca a percepcao de evolucao temporal sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 15 / Live Analytical Intelligence
+
+## Status parcial
+
+- Missao 15 segue em consolidacao com leitura viva longitudinal, memoria operacional e narrativa institucional expandida.
+- A camada analitica agora mostra evolucao temporal, comparacoes e continuidade operacional a partir de artifacts reais.
+- O artefato longitudinal foi refeito com checkpoints 10, 25, 50 e 100 para suportar a narrativa comparativa real.
+- Nenhuma mudanca foi feita em generator, baseline hard, benchmark, longitudinal, ML pipeline, observability core, heuristics, analytical intelligence core ou executive intelligence core.
+
+## Resumo
+
+- Adicionado painel vivo de evolucao longitudinal.
+- Adicionada interpretacao temporal mais explicita.
+- Adicionado storytelling institucional com memoria operacional perceptivel.
+- Adicionadas comparacoes vivas e insights executivos dinâmicos.
+- Adicionada rail comparativa dos checkpoints 10/25/50/100.
+
+## Alteracoes principais
+
+- Expandido `dashboard/components/live_analytical_intelligence.py`.
+- Mantido o design system para suportar leitura comparativa e visual premium.
+- Preservada a homepage institucional e a area de geracao como pontos de entrada principais.
+- Atualizado `reports/longitudinal/baseline_hard_longitudinal.json` com checkpoints completos.
+
+## Protecoes adicionadas
+
+- Teste de renderizacao da inteligencia analitica viva.
+- Teste de narrativa temporal.
+- Teste de memoria longitudinal.
+- Teste da rail comparativa 10/25/50/100.
+- Testes de componentes institucionais continuam verdes.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega reforca a percepcao de evolucao temporal sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 14 / Executive Visual Presence Layer
+
+## Status parcial
+
+- Missao 14 em evolucao com presenca executiva mais forte e design system visual padronizado.
+- O cockpit institucional ganhou profundidade leve, hierarquia mais clara e areas secundarias mais discretas.
+- A homepage segue sem alterar baseline, engine, benchmark, longitudinal, ML pipeline ou a camada analitica institucional.
+
+## Resumo
+
+- O hero cockpit foi reforcado como protagonista visual.
+- O header executivo vivo continua exibindo estado institucional em leitura rapida.
+- A experiencia de geracao ficou contextualizada e mais ligada ao estado atual da plataforma.
+- A operacao secundaria passou a ficar recolhida em area compacta.
+
+## Alteracoes principais
+
+- Reforco visual no `dashboard/components/hero_banner.py`.
+- Reforco visual e badge pulsante leve em `dashboard/components/live_status_header.py`.
+- Reforco visual no `dashboard/components/generation_context.py`.
+- Cockpit executivo reorganizado com layout modular em `dashboard/components/executive_dashboard.py`.
+- Adicionado design system institucional leve em `dashboard/components/design_system.py`.
+- Operacao secundaria colapsada em `dashboard/components/secondary_metrics.py`.
+
+## Protecoes adicionadas
+
+- Teste do hero cockpit.
+- Teste do header executivo vivo.
+- Teste da leitura contextual da geracao.
+- Teste do layout modular do cockpit.
+- Teste do design system institucional.
+- Teste da operacao secundaria recolhida.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega melhora a presenca visual institucional sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 14 / Executive Visual Presence Layer
+
+## Status final
+
+- Missao 14 estabilizada.
+- O cockpit institucional ganhou mais presenca executiva, profundidade visual leve e leitura contextual mais dominante.
+- A homepage passou a parecer mais viva e premium sem alterar baseline, engine, benchmark, longitudinal, ML pipeline ou a camada analitica institucional.
+
+## Resumo
+
+- O hero cockpit foi reforcado como protagonista visual.
+- O header executivo vivo continua exibindo estado institucional em leitura rapida.
+- A experiencia de geracao ficou contextualizada e mais ligada ao estado atual da plataforma.
+- A timeline institucional segue como storytelling visual de apoio.
+
+## Alteracoes principais
+
+- Reforco visual no `dashboard/components/hero_banner.py`.
+- Reforco visual e badge pulsante leve em `dashboard/components/live_status_header.py`.
+- Reforco visual no `dashboard/components/generation_context.py`.
+- Cockpit executivo reorganizado com layout modular em `dashboard/components/executive_dashboard.py`.
+- Timeline institucional mantida como rail de narrativa visual.
+
+## Protecoes adicionadas
+
+- Teste do hero cockpit.
+- Teste do header executivo vivo.
+- Teste da leitura contextual da geracao.
+- Teste do layout modular do cockpit.
+- Teste da timeline institucional viva.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega aprimora a presenca visual institucional sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 13 / Institutional Visual Intelligence
+
+## Status final
+
+- Missao 13 estabilizada.
+- O cockpit institucional passou a operar com grade executiva mais modular, fluida e visualmente inteligente.
+- A homepage ganhou hierarquia visual mais clara, mantendo engine, baseline hard, longitudinal, benchmark, ML pipeline e analytics intactos.
+
+## Resumo
+
+- O topo institucional foi reorganizado para favorecer leitura guiada e narrativa executiva.
+- O cockpit ganhou distribuição modular com blocos mais equilibrados.
+- A timeline e a leitura viva continuam ancoradas em artefatos persistidos e relatórios institucionais.
+
+## Alteracoes principais
+
+- Adicionado `dashboard/components/live_status_header.py`.
+- Adicionado `dashboard/components/generation_context.py`.
+- Ajustado `dashboard/components/executive_dashboard.py` para grid executiva modular.
+- Mantida a prioridade do cockpit institucional na homepage.
+
+## Protecoes adicionadas
+
+- Teste de renderizacao modular do cockpit executivo.
+- Teste de header executivo vivo.
+- Teste de leitura contextual da geracao.
+- Testes da homepage institucional mantidos.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega melhora a experiencia visual institucional sem alterar a logica estatistica da plataforma.
+
+# Release Notes - Missao 13 / Institutional Visual Intelligence
+
+## Status final
+
+- Missao 13 estabilizada.
+- O cockpit institucional passou a operar com grade executiva mais modular, fluida e visualmente inteligente.
+- A homepage ganhou hierarquia visual mais clara, mantendo engine, baseline hard, longitudinal, benchmark, ML pipeline e analytics intactos.
+
+## Resumo
+
+- O topo institucional foi reorganizado para favorecer leitura guiada e narrativa executiva.
+- O cockpit ganhou distribuicao modular com blocos mais equilibrados.
+- A timeline institucional ganhou rail visual cronologico mais vivo.
+- A leitura contextual da geracao e o header executivo vivo continuam ancorados em artefatos persistidos e relatorios institucionais.
+
+## Alteracoes principais
+
+- Adicionado `dashboard/components/live_status_header.py`.
+- Adicionado `dashboard/components/generation_context.py`.
+- Adicionado rail visual cronologico em `dashboard/components/institutional_timeline.py`.
+- Ajustado `dashboard/components/executive_dashboard.py` para grid executiva modular.
+- Mantida a prioridade do cockpit institucional na homepage.
+
+## Protecoes adicionadas
+
+- Teste de renderizacao modular do cockpit executivo.
+- Teste de header executivo vivo.
+- Teste de leitura contextual da geracao.
+- Teste da timeline institucional viva.
+- Testes da homepage institucional mantidos.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega melhora a experiencia visual institucional sem alterar a logica estatistica da plataforma.
+
 # Release Notes - Missao 12 / Institutional Live Experience
 
 ## Status final

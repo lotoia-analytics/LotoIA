@@ -6,10 +6,12 @@ import pandas as pd
 
 import dashboard.components as institutional_components
 import dashboard.components.analytical_cards as analytical_cards
+import dashboard.components.design_system as design_system
 import dashboard.components.executive_dashboard as executive_dashboard
 import dashboard.components.executive_panel as executive_panel
 import dashboard.components.executive_summary as executive_summary
 import dashboard.components.generation_context as generation_context
+import dashboard.components.live_analytical_intelligence as live_analytical_intelligence
 import dashboard.components.hero_banner as hero_banner
 import dashboard.components.live_status_header as live_status_header
 import dashboard.components.institutional_timeline as institutional_timeline
@@ -38,8 +40,10 @@ def _patch_streamlit(monkeypatch) -> None:
         hero_banner,
         executive_panel,
         analytical_cards,
+        design_system,
         executive_dashboard,
         generation_context,
+        live_analytical_intelligence,
         live_status_header,
         institutional_timeline,
         secondary_metrics,
@@ -50,7 +54,13 @@ def _patch_streamlit(monkeypatch) -> None:
         monkeypatch.setattr(module.st, "caption", lambda *args, **kwargs: None)
         monkeypatch.setattr(module.st, "info", lambda *args, **kwargs: None)
         monkeypatch.setattr(module.st, "dataframe", lambda *args, **kwargs: None)
-        monkeypatch.setattr(module.st, "columns", lambda count: [_DummyColumn() for _ in range(count)])
+        monkeypatch.setattr(module.st, "line_chart", lambda *args, **kwargs: None)
+        monkeypatch.setattr(module.st, "metric", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            module.st,
+            "columns",
+            lambda count, *args, **kwargs: [_DummyColumn() for _ in range(count if isinstance(count, int) else len(count))],
+        )
 
 
 def test_executive_components_render_without_error(monkeypatch) -> None:
@@ -103,6 +113,49 @@ def test_executive_dashboard_renders_without_error(monkeypatch) -> None:
     executive_dashboard.render_executive_dashboard(executive_report, analytical_summary, historical_summary, snapshot_summary, observability_summary, timeline)
 
 
+def test_executive_dashboard_uses_modular_layout(monkeypatch) -> None:
+    calls: list[str] = []
+
+    _patch_streamlit(monkeypatch)
+
+    def _mark(*args, **kwargs):
+        if args:
+            calls.append(str(args[0]))
+
+    monkeypatch.setattr(executive_dashboard.st, "markdown", _mark)
+    monkeypatch.setattr(
+        executive_dashboard.st,
+        "columns",
+        lambda widths, *args, **kwargs: [_DummyColumn() for _ in range(widths if isinstance(widths, int) else len(widths))],
+    )
+    monkeypatch.setattr(executive_dashboard.st, "expander", lambda *args, **kwargs: _noop_context())
+
+    executive_report = {
+        "status": "saudavel",
+        "baseline_mode": "hard",
+        "headline": "baseline longitudinal consistente",
+        "recommendation": "manter baseline hard e monitorar longitudinalmente",
+        "drift": 0.12,
+        "confidence": "alta",
+    }
+    analytical_summary = {"confidence": "alta", "drift": 0.12, "structural_health": 0.93, "coverage_10": 0.52, "coverage_11": 0.21}
+    historical_summary = {"trend": "estavel", "verdict_count": 2}
+    snapshot_summary = {"status": "saudavel", "trend": "estavel"}
+    observability_summary = {"summary": {"stability_note": "cockpit institucional validado", "institutional_snapshot_ready": True}}
+    timeline = pd.DataFrame([{ "created_at": "2026-05-21", "status": "saudavel" }])
+
+    executive_dashboard.render_executive_dashboard(
+        executive_report,
+        analytical_summary,
+        historical_summary,
+        snapshot_summary,
+        observability_summary,
+        timeline,
+    )
+
+    assert any("Executive dashboard" in call for call in calls)
+
+
 def test_live_status_header_renders_without_error(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     executive_report = {"status": "saudavel", "baseline_mode": "hard", "drift": 0.12, "confidence": "alta"}
@@ -140,6 +193,11 @@ def test_secondary_operational_metrics_renders_without_error(monkeypatch) -> Non
     secondary_metrics.render_secondary_operational_metrics(12, 8, "5000", "24")
 
 
+def test_institutional_design_system_renders_without_error(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    design_system.render_institutional_design_system()
+
+
 def test_generation_context_renders_without_error(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     executive_report = {"status": "saudavel", "baseline_mode": "hard", "drift": 0.12, "confidence": "alta"}
@@ -149,14 +207,704 @@ def test_generation_context_renders_without_error(monkeypatch) -> None:
     generation_context.render_generation_context(executive_report, historical_summary, observability_summary)
 
 
+def test_live_analytical_intelligence_renders_without_error(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    analytical_report = {
+        "analytical_summary": {
+            "structural_health": 0.93,
+            "confidence": "alta",
+            "drift": 0.12,
+            "coverage_10": 0.52,
+            "coverage_11": 0.21,
+            "interpretation": "baseline longitudinal consistente",
+        },
+        "insights": [
+            {"metric": "stability", "value": 0.93, "interpretation": "baseline estavel", "confidence": "alta"}
+        ],
+        "comparisons": [
+            {"label": "média de acertos", "baseline": 9.0, "compared": 9.2, "delta": 0.2, "interpretation": "crescimento longitudinal"}
+        ],
+    }
+    executive_report = {
+        "status": "saudavel",
+        "baseline_mode": "hard",
+        "headline": "baseline longitudinal consistente",
+        "recommendation": "manter baseline hard e monitorar longitudinalmente",
+    }
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {
+                "created_at": "2026-05-21",
+                "headline": "baseline longitudinal consistente",
+                "status_transition": "inicio",
+                "recommendation": "manter baseline hard",
+                "structural_health": 0.93,
+                "drift": 0.12,
+                "coverage_10": 0.52,
+                "coverage_11": 0.21,
+            },
+            {
+                "created_at": "2026-05-22",
+                "headline": "baseline com cobertura alta",
+                "status_transition": "mantido em saudavel",
+                "recommendation": "manter baseline hard",
+                "structural_health": 0.94,
+                "drift": 0.11,
+                "coverage_10": 0.53,
+                "coverage_11": 0.22,
+            },
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+
+def test_live_analytical_intelligence_uses_timeline_context(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    def _info(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "info", _info)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame([{"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21}])
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Live analytical intelligence" in message or "Evolution" in message or "evolucao" in message.lower() for message in captured)
+
+
+def test_live_analytical_intelligence_reports_trend_direction(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.94, "confidence": "alta", "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "melhoria controlada", "verdict_count": 3}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame([
+        {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.90, "drift": 0.13, "coverage_10": 0.50, "coverage_11": 0.20},
+        {"created_at": "2026-05-22", "headline": "baseline com cobertura alta", "status_transition": "mantido em saudavel", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+    ])
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("melhorou" in message or "cresceu levemente" in message or "ganhou tracao" in message for message in captured)
+
+
+def test_live_analytical_intelligence_includes_longitudinal_memory(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Longitudinal evolution panel" in message or "Operational memory layer" in message or "Executive insight engine" in message for message in captured)
+
+
+def test_live_analytical_intelligence_renders_executive_graphics(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Executive analytical graphics" in message or "Average hits trend" in message or "Score-correlation trend" in message for message in captured)
+
+
+def test_live_analytical_intelligence_shows_runtime_memory(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    def _caption(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", _caption)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "progress", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("runtime" in message.lower() or "Memoria operacional percebida" in message or "Memoria operacional" in message for message in captured)
+
+
+def test_live_analytical_intelligence_reports_executive_continuity(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _caption(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", _caption)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "progress", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Executive continuity" in message or "forte" in message or "em consolidacao" in message for message in captured)
+
+
+def test_live_analytical_intelligence_shows_live_pulse(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("live pulse" in message or "memory" in message.lower() for message in captured)
+
+
+def test_live_analytical_intelligence_shows_institutional_presence(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Institutional analytical presence" in message or "memoria ativa" in message or "sistema vivo" in message for message in captured)
+
+
+def test_live_analytical_intelligence_shows_consistency_seal(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Analytical consistency seal" in message or "Traceability" in message or "Consistency" in message for message in captured)
+
+
+def test_live_analytical_intelligence_shows_institutional_evolution_summary(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    def _caption(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", _caption)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Institutional evolution summary" in message or "resumo longitudinal" in message or "Direcao institucional" in message for message in captured)
+
+
+def test_live_analytical_intelligence_renders_longitudinal_comparison_rail(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        live_analytical_intelligence,
+        "_load_longitudinal_report",
+        lambda: {
+            "baseline_mode": "hard",
+            "summary": {"coverage_10": 0.0, "coverage_11": 0.0, "stability_index": 0.82},
+            "runs": [
+                {"checkpoint": 10, "result": {"lotoia": {"average_hits": 9.01, "stability_window_sd": 0.60, "final_score_hit_correlation": 0.01}, "contests_analyzed": 10}},
+                {"checkpoint": 25, "result": {"lotoia": {"average_hits": 9.10, "stability_window_sd": 0.58, "final_score_hit_correlation": 0.02}, "contests_analyzed": 25}},
+                {"checkpoint": 50, "result": {"lotoia": {"average_hits": 9.14, "stability_window_sd": 0.57, "final_score_hit_correlation": 0.01}, "contests_analyzed": 50}},
+                {"checkpoint": 100, "result": {"lotoia": {"average_hits": 9.09, "stability_window_sd": 0.56, "final_score_hit_correlation": 0.00}, "contests_analyzed": 100}},
+            ],
+        },
+    )
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame([{"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21}])
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("checkpoint 10" in message or "checkpoint 100" in message for message in captured)
+
+
+def test_live_analytical_intelligence_renders_comparison_summary(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Hits delta" in message or "Memory depth" in message or "Stability delta" in message for message in captured)
+
+
+def test_live_analytical_intelligence_renders_consistency_seal(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Analytical consistency seal" in message or "Traceability" in message or "Institutional state" in message for message in captured)
+
+
+def test_live_analytical_intelligence_renders_final_institutional_posture(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _markdown(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", _markdown)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Final institutional posture" in message or "Posture" in message or "Signal" in message for message in captured)
+
+
+def test_live_analytical_intelligence_reports_final_message(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _caption(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", _caption)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("leitura institucional permanece consistente" in message.lower() or "leitura institucional segue em consolidacao" in message.lower() for message in captured)
+
+
+def test_live_analytical_intelligence_reports_executive_summary(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _info(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "info", _info)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Resumo executivo" in message or "continuidade" in message.lower() or "memoria institucional" in message.lower() for message in captured)
+
+
+def test_live_analytical_intelligence_reports_timeline_depth(monkeypatch) -> None:
+    captured: list[str] = []
+    _patch_streamlit(monkeypatch)
+
+    def _caption(message, *args, **kwargs):
+        captured.append(str(message))
+
+    monkeypatch.setattr(live_analytical_intelligence.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "caption", _caption)
+    monkeypatch.setattr(live_analytical_intelligence.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "line_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(live_analytical_intelligence.st, "metric", lambda *args, **kwargs: None)
+
+    analytical_report = {"analytical_summary": {"structural_health": 0.93, "confidence": "alta", "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21, "interpretation": "baseline longitudinal consistente"}, "insights": [], "comparisons": []}
+    executive_report = {"status": "saudavel", "baseline_mode": "hard", "headline": "baseline longitudinal consistente", "recommendation": "manter baseline hard e monitorar longitudinalmente"}
+    historical_report = {"summary": {"trend": "estavel", "verdict_count": 3, "latest_status": "saudavel", "latest_transition": "inicio"}}
+    snapshot_report = {"summary": {"status": "saudavel"}}
+    timeline = pd.DataFrame(
+        [
+            {"created_at": "2026-05-21", "headline": "baseline longitudinal consistente", "status_transition": "inicio", "recommendation": "manter baseline hard", "structural_health": 0.93, "drift": 0.12, "coverage_10": 0.52, "coverage_11": 0.21},
+            {"created_at": "2026-05-22", "headline": "baseline longitudinal consistente", "status_transition": "mantido", "recommendation": "manter baseline hard", "structural_health": 0.94, "drift": 0.11, "coverage_10": 0.53, "coverage_11": 0.22},
+            {"created_at": "2026-05-23", "headline": "baseline longitudinal consistente", "status_transition": "estavel", "recommendation": "manter baseline hard", "structural_health": 0.95, "drift": 0.10, "coverage_10": 0.54, "coverage_11": 0.23},
+        ]
+    )
+    observability_report = {"summary": {"stability_note": "cockpit institucional validado"}}
+
+    live_analytical_intelligence.render_live_analytical_intelligence(
+        analytical_report,
+        executive_report,
+        historical_report,
+        snapshot_report,
+        timeline,
+        observability_report,
+    )
+
+    assert any("Timeline institutional depth" in message or "3 checkpoints" in message for message in captured)
+
+
 def test_institutional_components_package_exports_are_callable() -> None:
     expected_exports = {
         "render_analytical_cards",
+        "render_institutional_design_system",
         "render_executive_dashboard",
         "render_hero_banner",
         "render_executive_panel",
         "render_executive_summary",
         "render_generation_context",
+        "render_live_analytical_intelligence",
         "render_live_status_header",
         "render_institutional_timeline",
         "render_secondary_operational_metrics",

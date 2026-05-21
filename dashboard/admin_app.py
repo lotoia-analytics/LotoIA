@@ -82,6 +82,7 @@ from dashboard.components import (
     render_analytical_cards,
     render_executive_dashboard,
     render_generation_context,
+    render_live_analytical_intelligence,
     render_hero_banner,
     render_executive_panel,
     render_executive_summary,
@@ -1807,6 +1808,14 @@ def render_observability_page() -> None:
             f"Veredito executivo: {executive_report.get('headline', '-')}"
             f" | status={executive_report.get('status', '-')}"
             f" | recomendacao={executive_report.get('recommendation', '-')}"
+        )
+        render_live_analytical_intelligence(
+            ai_report,
+            executive_report,
+            build_institutional_historical_intelligence(),
+            load_institutional_analytics_snapshot(),
+            _institutional_analytical_timeline(),
+            load_observational_stabilization_report(),
         )
         st.subheader("Institutional historical intelligence")
         st.dataframe(_institutional_historical_table(), hide_index=True, use_container_width=True)
