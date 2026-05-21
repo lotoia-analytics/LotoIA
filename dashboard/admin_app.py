@@ -833,6 +833,43 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "last_generation_at": "Ultima geracao",
             "last_check_at": "Ultima conferencia",
             "lead": "Lead",
+            "event_type": "Evento",
+            "count": "Quantidade",
+            "avg_duration_ms": "Tempo medio ms",
+            "failures": "Falhas",
+            "metric": "Metrica",
+            "value": "Valor",
+            "stage": "Etapa",
+            "status": "Status",
+            "source": "Fonte",
+            "model_version": "Versao do modelo",
+            "report_path": "Caminho do relatorio",
+            "response_time_ms": "Tempo resposta ms",
+            "ml_events": "Eventos ML",
+            "report_events": "Eventos de relatorio",
+            "snapshot_events": "Snapshots",
+            "sqlite_size_bytes": "SQLite bytes",
+            "total_runs": "Execucoes",
+            "total_games": "Jogos totais",
+            "prize_count": "Premios",
+            "best_hits": "Melhor acerto",
+            "latest_contest": "Ultimo concurso",
+            "prize_tier": "Faixa",
+            "prize_status": "Status premio",
+            "hits": "Acertos",
+            "matched_numbers": "Dezenas acertadas",
+            "numbers": "Dezenas",
+            "game_index": "Jogo",
+            "contest_id": "Concurso",
+            "total_hits": "Acertos totais",
+            "best_hits": "Melhor acerto",
+            "retention_rate": "Retencao",
+            "average_hits": "Acertos medios",
+            "historical_average_hits": "Media historica acertos",
+            "historical_average_prizes": "Media historica premios",
+            "prize_tiers": "Faixas premio",
+            "prize_count": "Premios",
+            "note": "Observacao",
         }
     )
 
@@ -1817,37 +1854,39 @@ def render_observability_page() -> None:
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Desempenho")
-            st.dataframe(_performance_metrics_table(), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(_performance_metrics_table()), hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Metricas operacionais")
             st.dataframe(
-                pd.DataFrame(
-                    [
-                        {"metric": "daily_generation_average", "value": operational["daily_generation_average"]},
-                        {"metric": "check_volume", "value": operational["check_volume"]},
-                        {"metric": "ml_usage", "value": operational["ml_usage"]},
-                        {"metric": "generated_games", "value": operational["generated_games"]},
-                        {"metric": "imported_contests", "value": operational["imported_contests"]},
-                        {"metric": "snapshot_volume", "value": operational["snapshot_volume"]},
-                        {"metric": "log_growth_today", "value": operational["log_growth_today"]},
-                        {"metric": "sqlite_size_bytes", "value": operational["sqlite_size_bytes"]},
-                    ]
+                _presentational_dataframe(
+                    pd.DataFrame(
+                        [
+                            {"metric": "daily_generation_average", "value": operational["daily_generation_average"]},
+                            {"metric": "check_volume", "value": operational["check_volume"]},
+                            {"metric": "ml_usage", "value": operational["ml_usage"]},
+                            {"metric": "generated_games", "value": operational["generated_games"]},
+                            {"metric": "imported_contests", "value": operational["imported_contests"]},
+                            {"metric": "snapshot_volume", "value": operational["snapshot_volume"]},
+                            {"metric": "log_growth_today", "value": operational["log_growth_today"]},
+                            {"metric": "sqlite_size_bytes", "value": operational["sqlite_size_bytes"]},
+                        ]
+                    )
                 ),
                 hide_index=True,
                 use_container_width=True,
             )
         st.subheader("Alertas")
-        st.dataframe(_alert_contracts(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_alert_contracts()), hide_index=True, use_container_width=True)
         st.subheader("Fonte de verdade")
-        st.dataframe(_source_of_truth_map(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_source_of_truth_map()), hide_index=True, use_container_width=True)
         st.subheader("Monitoramento cloud")
-        st.dataframe(_cloud_failure_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_cloud_failure_table()), hide_index=True, use_container_width=True)
         st.subheader("Rastro de geracao")
         trace_table = _generation_pipeline_trace_table()
         if trace_table.empty:
             st.info("Nenhum snapshot comportamental ainda.")
         else:
-            st.dataframe(trace_table, hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(trace_table), hide_index=True, use_container_width=True)
             latest_trace = trace_table.iloc[0].to_dict()
             st.caption(
                 "Último estágio: "
@@ -1859,50 +1898,50 @@ def render_observability_page() -> None:
         col_trace_1, col_trace_2 = st.columns(2)
         with col_trace_1:
             st.subheader("Mapa de pressao")
-            st.dataframe(_pressure_heatmap_table(), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(_pressure_heatmap_table()), hide_index=True, use_container_width=True)
         with col_trace_2:
             st.subheader("Resumo de estabilidade")
-            st.dataframe(_survival_summary_table(), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(_survival_summary_table()), hide_index=True, use_container_width=True)
         st.subheader("Colapso de diversidade")
-        st.dataframe(_diversity_collapse_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_diversity_collapse_table()), hide_index=True, use_container_width=True)
         st.subheader("Comparativo de normalizacao")
-        st.dataframe(_normalization_comparison_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_normalization_comparison_table()), hide_index=True, use_container_width=True)
         st.subheader("Divergencia de pipeline")
-        st.dataframe(_pipeline_divergence_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_pipeline_divergence_table()), hide_index=True, use_container_width=True)
         st.subheader("Relatorio dos filtros destrutivos")
-        st.dataframe(_destructive_filters_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_destructive_filters_table()), hide_index=True, use_container_width=True)
         st.subheader("Comportamento executivo")
-        st.dataframe(_executive_behavioral_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_executive_behavioral_table()), hide_index=True, use_container_width=True)
         st.subheader("Filter profile damage")
-        st.dataframe(_filter_profile_damage_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_filter_profile_damage_table()), hide_index=True, use_container_width=True)
         st.subheader("Recuperacao")
-        st.dataframe(_behavior_recovery_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_behavior_recovery_table()), hide_index=True, use_container_width=True)
         st.subheader("Zona segura")
-        st.dataframe(_safe_recovery_zone_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_safe_recovery_zone_table()), hide_index=True, use_container_width=True)
         st.subheader("Aderencia historica")
-        st.dataframe(_historical_adherence_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_historical_adherence_table()), hide_index=True, use_container_width=True)
         st.subheader("Estabilidade do perfil")
-        st.dataframe(_profile_stability_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_profile_stability_table()), hide_index=True, use_container_width=True)
         st.subheader("Sensibilidade a pressao")
-        st.dataframe(_pressure_sensitivity_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_pressure_sensitivity_table()), hide_index=True, use_container_width=True)
         st.subheader("Protocolo de recuperacao")
-        st.dataframe(_recovery_decision_protocol_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_recovery_decision_protocol_table()), hide_index=True, use_container_width=True)
         st.subheader("Drift de comportamento")
-        st.dataframe(_behavior_drift_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_behavior_drift_table()), hide_index=True, use_container_width=True)
         st.subheader("Bases ouro")
-        st.dataframe(_golden_baselines_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_golden_baselines_table()), hide_index=True, use_container_width=True)
         st.subheader("Recuperacao falsa")
-        st.dataframe(_false_recovery_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_false_recovery_table()), hide_index=True, use_container_width=True)
         st.subheader("Base experimental")
-        st.dataframe(_experiment_baseline_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_experiment_baseline_table()), hide_index=True, use_container_width=True)
         st.subheader("Comparativo experimental")
-        st.dataframe(_experiment_comparison_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_experiment_comparison_table()), hide_index=True, use_container_width=True)
         st.subheader("Plat? de recuperacao")
-        st.dataframe(_recovery_plateau_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_recovery_plateau_table()), hide_index=True, use_container_width=True)
         st.subheader("Experimento 01")
-        st.dataframe(_experiment_01_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_experiment_01_table()), hide_index=True, use_container_width=True)
         st.subheader("Ganho marginal")
-        st.dataframe(_marginal_recovery_gain_table(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_marginal_recovery_gain_table()), hide_index=True, use_container_width=True)
         ai_report = build_analytical_intelligence()
         ai_summary = ai_report.get("analytical_summary", {})
         ai_insights = ai_report.get("insights", [])

@@ -416,6 +416,34 @@ def test_presentational_dataframe_renames_user_history_columns() -> None:
     assert "Tendencia" in dataframe.columns
 
 
+def test_presentational_dataframe_renames_observability_columns() -> None:
+    dataframe = admin_app._presentational_dataframe(
+        admin_app.pd.DataFrame(
+            [
+                {
+                    "event_type": "sqlite",
+                    "count": 3,
+                    "avg_duration_ms": 4.2,
+                    "status": "ok",
+                    "source": "admin_app",
+                    "metric": "sqlite_size_bytes",
+                    "value": 1024,
+                    "stage": "generation",
+                }
+            ]
+        )
+    )
+
+    assert "Evento" in dataframe.columns
+    assert "Quantidade" in dataframe.columns
+    assert "Tempo medio ms" in dataframe.columns
+    assert "Status" in dataframe.columns
+    assert "Fonte" in dataframe.columns
+    assert "Metrica" in dataframe.columns
+    assert "Valor" in dataframe.columns
+    assert "Etapa" in dataframe.columns
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []
