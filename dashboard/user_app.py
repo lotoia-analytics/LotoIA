@@ -218,10 +218,6 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
         "<div style='font-size:0.78rem; text-transform:uppercase; letter-spacing:0.14em; color:#6b7f93; margin-bottom:0.15rem;'>Geracao assistida</div>",
         unsafe_allow_html=True,
     )
-    st.markdown(
-        "<div style='font-size:1.0rem; font-weight:700; color:#1f2f44; margin:0 0 0.7rem 0;'>LotoIA</div>",
-        unsafe_allow_html=True,
-    )
     lead_col1, lead_col2 = st.columns(2)
     first_name = lead_col1.text_input("Primeiro nome", key="user_first_name")
     whatsapp = lead_col2.text_input("WhatsApp", key="user_whatsapp")
@@ -231,10 +227,10 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
     count = st.number_input("Quantidade", min_value=1, max_value=MAX_GAMES_PER_SESSION, value=DEFAULT_GAMES_COUNT)
     pool_size = st.number_input("Pool", min_value=int(count), max_value=100, value=max(int(count) * 4, DEFAULT_POOL_SIZE))
     st.markdown(
-        "<div style='font-size:1rem; font-weight:800; color:#3b4fe0; margin:0.2rem 0 0.4rem 0;'>LotoIA</div>",
+        "<div style='font-size:1rem; font-weight:800; color:#3b4fe0; margin:0.2rem 0 0.35rem 0;'>LotoIA</div>",
         unsafe_allow_html=True,
     )
-    ml_enabled = st.toggle("ML light", value=False)
+    ml_enabled = st.toggle("LotoIA", value=False, label_visibility="collapsed")
 
     if st.button("Gerar", type="primary", disabled=not lead_ready):
         try:
