@@ -178,6 +178,49 @@ class InstitutionalMemoryRegistry:
             lineage=lineage_payload,
         )
 
+    def register_state(
+        self,
+        *,
+        execution_id: str,
+        state_type: str,
+        state: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        lineage: dict[str, Any] | None = None,
+    ) -> MemoryState:
+        memory_id = f"memory-state-{uuid4().hex}"
+        payload_metadata = dict(metadata or {})
+        lineage_payload = dict(lineage or {})
+        state_payload = dict(state)
+        with get_session(self.db_path) as session:
+            session.add(
+                InstitutionalMemoryState(
+                    memory_id=memory_id,
+                    execution_id=execution_id,
+                    state_type=state_type,
+                    state_json=state_payload,
+                    metadata_json=payload_metadata,
+                )
+            )
+            session.add(
+                InstitutionalMemoryLineage(
+                    execution_id=execution_id,
+                    memory_id=memory_id,
+                    event_type=str(lineage_payload.get("event_type") or f"{state_type}_state"),
+                    entity_type=str(lineage_payload.get("entity_type") or "runtime_execution"),
+                    entity_id=str(lineage_payload.get("entity_id") or execution_id),
+                    payload_json={**lineage_payload, "state_type": state_type},
+                )
+            )
+            session.commit()
+        return MemoryState(
+            memory_id=memory_id,
+            execution_id=execution_id,
+            state_type=state_type,
+            created_at=datetime.now(UTC),
+            state=state_payload,
+            metadata=payload_metadata,
+        )
+
     def get_snapshot(self, memory_id: str) -> MemorySnapshot | None:
         with get_session(self.db_path) as session:
             row = (
@@ -240,6 +283,24 @@ class InstitutionalMemoryRegistry:
                 for row in rows
             ]
 
+    def get_state(self, memory_id: str) -> MemoryState | None:
+        with get_session(self.db_path) as session:
+            row = (
+                session.query(InstitutionalMemoryState)
+                .filter(InstitutionalMemoryState.memory_id == memory_id)
+                .first()
+            )
+            if row is None:
+                return None
+            return MemoryState(
+                memory_id=row.memory_id,
+                execution_id=row.execution_id,
+                state_type=row.state_type,
+                created_at=row.created_at,
+                state=dict(row.state_json or {}),
+                metadata=dict(row.metadata_json or {}),
+            )
+
     def compare_snapshots(self, left_memory_id: str, right_memory_id: str) -> MemoryComparison:
         left = self.get_snapshot(left_memory_id)
         right = self.get_snapshot(right_memory_id)
@@ -283,6 +344,10 @@ class InstitutionalMemoryRegistry:
             "replay_count": len(replay),
             "latest_snapshot": snapshots[0].to_dict() if snapshots else None,
             "latest_state": states[0].to_dict() if states else None,
+            "state_map": {
+                state.state_type: state.to_dict()
+                for state in states
+            },
             "snapshots": [snapshot.to_dict() for snapshot in snapshots],
             "states": [state.to_dict() for state in states],
             "lineage": lineage,
