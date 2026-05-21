@@ -466,6 +466,30 @@ def test_presentational_dataframe_renames_log_columns() -> None:
     assert "Caminho do relatorio" in dataframe.columns
 
 
+def test_presentational_dataframe_renames_artifact_columns() -> None:
+    dataframe = admin_app._presentational_dataframe(
+        admin_app.pd.DataFrame(
+            [
+                {
+                    "type": "json",
+                    "path": "reports/demo.json",
+                    "generated_by": "pipeline",
+                    "model_version": "v1",
+                    "interpretation": "ok",
+                    "confidence": "alta",
+                }
+            ]
+        )
+    )
+
+    assert "Tipo" in dataframe.columns
+    assert "Caminho" in dataframe.columns
+    assert "Gerado por" in dataframe.columns
+    assert "Versao do modelo" in dataframe.columns
+    assert "Interpretacao" in dataframe.columns
+    assert "Confianca" in dataframe.columns
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []

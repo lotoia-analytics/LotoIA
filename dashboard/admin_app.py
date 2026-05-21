@@ -844,6 +844,11 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "source": "Fonte",
             "model_version": "Versao do modelo",
             "report_path": "Caminho do relatorio",
+            "type": "Tipo",
+            "path": "Caminho",
+            "generated_by": "Gerado por",
+            "interpretation": "Interpretacao",
+            "confidence": "Confianca",
             "response_time_ms": "Tempo resposta ms",
             "ml_events": "Eventos ML",
             "report_events": "Eventos de relatorio",
@@ -3375,7 +3380,7 @@ def render_analytics_intelligence_page() -> None:
         with col2:
             st.plotly_chart(_temporal_heatmap(), use_container_width=True)
             st.subheader("Padrões recorrentes")
-            st.dataframe(_recurrence_table(), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(_recurrence_table()), hide_index=True, use_container_width=True)
         duration_ms = (time.monotonic() - start_time) * 1000.0
         _record_operational_log("analytics", "success", duration_ms, {"source": "analytics_intelligence"})
         _record_performance_metric("analytics_ms", duration_ms, {"source": "analytics_intelligence"})
@@ -3396,7 +3401,7 @@ def render_ml_intelligence_page() -> None:
         col4.metric("Rows válidas", validation["rows"])
 
         st.subheader("Metricas do modelo")
-        st.dataframe(_ml_features_table(model), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_ml_features_table(model)), hide_index=True, use_container_width=True)
 
         scored_df = pd.DataFrame(
             [
@@ -3413,7 +3418,7 @@ def render_ml_intelligence_page() -> None:
         if not scored_df.empty:
             scored_df = scored_df.head(40)
         st.subheader("Ranking ML")
-        st.dataframe(scored_df, hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(scored_df), hide_index=True, use_container_width=True)
 
         score_fig = go.Figure(
             data=[
@@ -3434,7 +3439,7 @@ def render_ml_intelligence_page() -> None:
 
         val_df = pd.DataFrame(training["splits"])
         st.subheader("Validação walk-forward")
-        st.dataframe(val_df, hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(val_df), hide_index=True, use_container_width=True)
         st.info(
             f"Governança: temporal={validation['temporal_valid']} | linhas={validation['rows']} | modelo={validation['model_version']}"
         )
@@ -3469,10 +3474,10 @@ def render_ml_governance_page() -> None:
                 }
             ]
         )
-        st.dataframe(history_df, hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(history_df), hide_index=True, use_container_width=True)
 
         st.subheader("Governança de features")
-        st.dataframe(pd.DataFrame(feature_rows), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(pd.DataFrame(feature_rows)), hide_index=True, use_container_width=True)
 
         st.subheader("Artefatos institucionais")
         artifacts = pd.DataFrame(
@@ -3483,7 +3488,7 @@ def render_ml_governance_page() -> None:
                 {"type": "snapshot", "path": str(snapshot_path)},
             ]
         )
-        st.dataframe(artifacts, hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(artifacts), hide_index=True, use_container_width=True)
         for _, row in artifacts.iterrows():
             artifact_path = Path(row["path"])
             if artifact_path.exists():
