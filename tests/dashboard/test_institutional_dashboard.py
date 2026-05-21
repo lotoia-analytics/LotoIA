@@ -444,6 +444,28 @@ def test_presentational_dataframe_renames_observability_columns() -> None:
     assert "Etapa" in dataframe.columns
 
 
+def test_presentational_dataframe_renames_log_columns() -> None:
+    dataframe = admin_app._presentational_dataframe(
+        admin_app.pd.DataFrame(
+            [
+                {
+                    "event_type": "dashboard",
+                    "count": 5,
+                    "avg_duration_ms": 12.5,
+                    "failures": 1,
+                    "report_path": "reports/demo.json",
+                }
+            ]
+        )
+    )
+
+    assert "Evento" in dataframe.columns
+    assert "Quantidade" in dataframe.columns
+    assert "Tempo medio ms" in dataframe.columns
+    assert "Falhas" in dataframe.columns
+    assert "Caminho do relatorio" in dataframe.columns
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []

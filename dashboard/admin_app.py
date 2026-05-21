@@ -1993,7 +1993,7 @@ def render_observability_page() -> None:
         st.dataframe(_institutional_analytical_timeline(), hide_index=True, use_container_width=True)
         if ai_top_insights:
             st.dataframe(
-                pd.DataFrame(
+                _presentational_dataframe(pd.DataFrame(
                     [
                         {
                             "metric": item.get("metric", ""),
@@ -2003,16 +2003,16 @@ def render_observability_page() -> None:
                         }
                         for item in ai_top_insights.values()
                     ]
-                ),
+                )),
                 hide_index=True,
                 use_container_width=True,
             )
         st.subheader("Insights")
-        st.dataframe(_analytical_intelligence_insights(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_analytical_intelligence_insights()), hide_index=True, use_container_width=True)
         st.subheader("Comparativos analiticos")
-        st.dataframe(_analytical_intelligence_comparisons(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_analytical_intelligence_comparisons()), hide_index=True, use_container_width=True)
         st.subheader("Linha do tempo")
-        st.dataframe(_analytical_intelligence_timeline(), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(_analytical_intelligence_timeline()), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo médio", f"{health['response_time_ms']:.2f} ms")
         col2.metric("Execuções", health["total_runs"])
@@ -2022,27 +2022,27 @@ def render_observability_page() -> None:
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Metricas runtime")
-            st.dataframe(_observability_metrics_table(), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(_observability_metrics_table()), hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Saúde operacional")
             st.dataframe(
-                pd.DataFrame(
+                _presentational_dataframe(pd.DataFrame(
                     [
                         {"metric": "avg_generation_ms", "value": health["avg_generation_ms"]},
                         {"metric": "avg_check_ms", "value": health["avg_check_ms"]},
                         {"metric": "ml_events", "value": health["ml_events"]},
                         {"metric": "report_events", "value": health["report_events"]},
                     ]
-                ),
+                )),
                 hide_index=True,
                 use_container_width=True,
             )
 
         tables = _observability_tables()
         st.subheader("Logs recentes")
-        st.dataframe(tables["logs"].head(50), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(tables["logs"].head(50)), hide_index=True, use_container_width=True)
         st.subheader("Auditoria institucional")
-        st.dataframe(tables["audit"].head(50), hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(tables["audit"].head(50)), hide_index=True, use_container_width=True)
 
 
 def _report_timestamp() -> str:
