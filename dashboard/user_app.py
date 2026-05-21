@@ -194,11 +194,9 @@ def _user_indicator(games: list[dict[str, Any]]) -> tuple[str, str]:
 
 
 def _render_sidebar() -> str:
-    st.sidebar.title("LotoIA User")
     logo_path = PROJECT_ROOT / "assets" / "logo.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width=220)
-    st.sidebar.success(ONLINE_MARKER)
     return st.sidebar.radio(
         "Navegacao",
         [
