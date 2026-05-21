@@ -197,7 +197,7 @@ def _render_sidebar() -> str:
     st.sidebar.title("LotoIA User")
     logo_path = PROJECT_ROOT / "assets" / "logo.png"
     if logo_path.exists():
-        st.sidebar.image(str(logo_path), use_container_width=True)
+        st.sidebar.image(str(logo_path), width=220)
     st.sidebar.success(ONLINE_MARKER)
     return st.sidebar.radio(
         "Navegacao",
