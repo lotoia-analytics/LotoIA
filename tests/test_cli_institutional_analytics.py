@@ -163,6 +163,7 @@ def test_run_operational_lifecycle_cli(monkeypatch, capsys, tmp_path: Path) -> N
             assert kwargs["generation_event_id"] == 88
             assert kwargs["lead_id"] == 7
             assert kwargs["cleanup"] is True
+            assert kwargs["report_dir"] == tmp_path / "reports" / "operational"
             return type("Report", (), {"to_dict": lambda self: payload})()
 
     monkeypatch.setattr(cli, "OperationalLifecycleEngine", FakeEngine)
@@ -175,6 +176,7 @@ def test_run_operational_lifecycle_cli(monkeypatch, capsys, tmp_path: Path) -> N
             generation_event_id=88,
             official_numbers="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
             db_path=tmp_path / "lotoia.db",
+            report_dir=tmp_path / "reports" / "operational",
             cleanup=True,
         ),
     )

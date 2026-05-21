@@ -3879,6 +3879,7 @@ def render_reports_engine_page() -> None:
         lifecycle_engine = OperationalLifecycleEngine(DEFAULT_DATABASE_PATH)
         lifecycle_dashboard = lifecycle_engine.build_dashboard()
         lifecycle_telemetry = lifecycle_engine.build_telemetry()
+        lifecycle_analytics = lifecycle_engine.build_post_draw_analytics()
         col1, col2, col3 = st.columns(3)
         col1.metric("Snapshots", len(list(REPORTS_SNAPSHOTS_DIR.glob("*.json"))))
         col2.metric("Última geração", "sim" if latest_games else "não")
@@ -3954,6 +3955,20 @@ def render_reports_engine_page() -> None:
         )
         if lifecycle_dashboard.post_draw_notes:
             st.write(" | ".join(lifecycle_dashboard.post_draw_notes))
+        if lifecycle_analytics is not None:
+            st.subheader("Analiticas pos-sorteio")
+            analytics_col1, analytics_col2, analytics_col3, analytics_col4 = st.columns(4)
+            analytics_col1.metric("Acertos medios", f"{lifecycle_analytics.average_hits:.2f}")
+            analytics_col2.metric("Retencao", f"{lifecycle_analytics.retention_rate:.0%}")
+            analytics_col3.metric("Prêmios", lifecycle_analytics.prize_count)
+            analytics_col4.metric("Melhor acerto", max((int(key) for key in lifecycle_analytics.hit_distribution.keys()), default=0))
+            st.caption(
+                f"Concursos: {lifecycle_analytics.contest_id} | "
+                f"Historico medio de acertos: {lifecycle_analytics.historical_average_hits:.2f} | "
+                f"Historico medio de premios: {lifecycle_analytics.historical_average_prizes:.2f}"
+            )
+            if lifecycle_analytics.notes:
+                st.write(" | ".join(lifecycle_analytics.notes))
 
 
 def main() -> None:

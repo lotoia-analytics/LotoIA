@@ -58,6 +58,7 @@ class OperationalClosureReport:
     removed_games: int
     telemetry: dict[str, Any]
     dashboard: OperationalDashboardSummary
+    analytics: dict[str, Any] | None
     detections: list[PrizeDetection]
     decisions: list[RetentionDecision]
 
@@ -70,8 +71,39 @@ class OperationalClosureReport:
             "removed_games": self.removed_games,
             "telemetry": self.telemetry,
             "dashboard": asdict(self.dashboard),
+            "analytics": self.analytics,
             "detections": [asdict(item) for item in self.detections],
             "decisions": [asdict(item) for item in self.decisions],
+        }
+
+
+@dataclass(frozen=True)
+class PostDrawAnalyticsReport:
+    contest_id: int
+    generation_event_id: int
+    total_games: int
+    prize_count: int
+    average_hits: float
+    hit_distribution: dict[str, int]
+    prize_tiers: dict[str, int]
+    retention_rate: float
+    historical_average_hits: float
+    historical_average_prizes: float
+    notes: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "contest_id": self.contest_id,
+            "generation_event_id": self.generation_event_id,
+            "total_games": self.total_games,
+            "prize_count": self.prize_count,
+            "average_hits": self.average_hits,
+            "hit_distribution": self.hit_distribution,
+            "prize_tiers": self.prize_tiers,
+            "retention_rate": self.retention_rate,
+            "historical_average_hits": self.historical_average_hits,
+            "historical_average_prizes": self.historical_average_prizes,
+            "notes": self.notes,
         }
 
 
@@ -191,6 +223,91 @@ class OperationalLifecycleEngine:
             "operational_status": "healthy" if reconciliation_runs else "idle",
         }
 
+    def build_post_draw_analytics(self, *, contest_id: int | None = None) -> PostDrawAnalyticsReport | None:
+        with get_session(self.db_path) as session:
+            filters = []
+            params: dict[str, Any] = {}
+            if contest_id is not None:
+                filters.append("contest_id = :contest_id")
+                params["contest_id"] = contest_id
+            where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+            latest_row = session.execute(
+                text(
+                    f"""
+                    SELECT generation_event_id, contest_id, prize_count, total_hits, best_hits
+                    FROM reconciliation_runs
+                    {where_clause}
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """
+                ),
+                params,
+            ).first()
+            if latest_row is None:
+                return None
+            generation_event_id = int(latest_row[0])
+            contest_value = int(latest_row[1])
+            prize_count = int(latest_row[2] or 0)
+            total_hits = int(latest_row[3] or 0)
+            best_hits = int(latest_row[4] or 0)
+            games = session.execute(
+                text(
+                    """
+                    SELECT hits, prize_tier, prize_status, numbers, matched_numbers
+                    FROM reconciliation_games
+                    WHERE generation_event_id = :generation_event_id
+                      AND contest_id = :contest_id
+                    """
+                ),
+                {"generation_event_id": generation_event_id, "contest_id": contest_value},
+            ).all()
+            total_games = len(games)
+            hit_distribution: dict[str, int] = {}
+            prize_tiers: dict[str, int] = {}
+            retention_rate = 0.0
+            retained = 0
+            for row in games:
+                hits = int(row[0] or 0)
+                prize_tier = str(row[1] or "")
+                prize_status = str(row[2] or "")
+                hit_distribution[str(hits)] = hit_distribution.get(str(hits), 0) + 1
+                if prize_tier:
+                    prize_tiers[prize_tier] = prize_tiers.get(prize_tier, 0) + 1
+                if prize_status == "premiado":
+                    retained += 1
+            retention_rate = retained / total_games if total_games else 0.0
+            historical_rows = session.execute(
+                text(
+                    """
+                    SELECT COALESCE(AVG(total_hits), 0), COALESCE(AVG(prize_count), 0)
+                    FROM reconciliation_runs
+                    """
+                )
+            ).first()
+            historical_average_hits = float(historical_rows[0] or 0) if historical_rows else 0.0
+            historical_average_prizes = float(historical_rows[1] or 0) if historical_rows else 0.0
+
+        average_hits = total_hits / total_games if total_games else 0.0
+        notes = [
+            "premiacao detectada" if prize_count else "sem premiacao relevante",
+            "desempenho acima da media historica" if average_hits >= historical_average_hits else "desempenho abaixo da media historica",
+        ]
+        if best_hits >= 15:
+            notes.append("acerto maximo observado")
+        return PostDrawAnalyticsReport(
+            contest_id=contest_value,
+            generation_event_id=generation_event_id,
+            total_games=total_games,
+            prize_count=prize_count,
+            average_hits=average_hits,
+            hit_distribution=hit_distribution,
+            prize_tiers=prize_tiers,
+            retention_rate=retention_rate,
+            historical_average_hits=historical_average_hits,
+            historical_average_prizes=historical_average_prizes,
+            notes=notes,
+        )
+
     def close_day(
         self,
         *,
@@ -201,6 +318,7 @@ class OperationalLifecycleEngine:
         lead_id: int | None = None,
         strategic_games: set[int] | None = None,
         cleanup: bool = True,
+        report_dir: Path | None = None,
     ) -> OperationalClosureReport:
         detections: list[PrizeDetection] = []
         for index, game in enumerate(generated_games, start=1):
@@ -256,6 +374,25 @@ class OperationalLifecycleEngine:
             },
             games=matched_games,
         )
+        analytics_report = self.build_post_draw_analytics(contest_id=contest_id)
+        if report_dir is not None:
+            self._persist_operational_report(report_dir, "operational_closure", {
+                "closure": {
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "contest_id": contest_id,
+                    "prize_count": summary["prize_count"],
+                    "retained_games": len(retained_games),
+                    "removed_games": removed_games,
+                    "telemetry": telemetry,
+                    "dashboard": asdict(dashboard),
+                    "analytics": analytics_report.to_dict() if analytics_report else None,
+                },
+                "detections": [asdict(item) for item in detections],
+                "decisions": [asdict(item) for item in decisions],
+            })
+            self._persist_operational_report(report_dir, "operational_telemetry", telemetry)
+            if analytics_report is not None:
+                self._persist_operational_report(report_dir, "post_draw_analytics", analytics_report.to_dict())
         if cleanup and removed_games:
             self._cleanup_non_prized(generation_event_id=generation_event_id, keep_indexes=keep_indexes)
         return OperationalClosureReport(
@@ -266,6 +403,7 @@ class OperationalLifecycleEngine:
             removed_games=removed_games,
             telemetry=telemetry,
             dashboard=dashboard,
+            analytics=analytics_report.to_dict() if analytics_report else None,
             detections=detections,
             decisions=decisions,
         )
@@ -285,3 +423,10 @@ class OperationalLifecycleEngine:
                 session.query(GeneratedGame).filter(GeneratedGame.generation_event_id == generation_event_id).delete(synchronize_session=False)
                 session.query(ReconciliationGame).filter(ReconciliationGame.generation_event_id == generation_event_id).delete(synchronize_session=False)
             session.commit()
+
+    @staticmethod
+    def _persist_operational_report(report_dir: Path, stem: str, payload: dict[str, Any]) -> Path:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / f"{stem}.json"
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        return path

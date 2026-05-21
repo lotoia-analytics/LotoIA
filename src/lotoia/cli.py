@@ -202,6 +202,7 @@ def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
     parser.add_argument("--generation-event-id", type=int, required=True)
     parser.add_argument("--official-numbers", type=str, required=True, help="Lista separada por virgulas com as dezenas oficiais.")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    parser.add_argument("--report-dir", type=Path, default=Path("reports") / "operational")
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args(argv)
 
@@ -217,6 +218,7 @@ def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
         generation_event_id=args.generation_event_id,
         lead_id=lead_id,
         cleanup=bool(args.cleanup),
+        report_dir=args.report_dir,
     )
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
 
