@@ -11,6 +11,7 @@ from lotoia.ml.score_ml import (
     score_ml_games,
     supervised_rerank_games,
 )
+from lotoia.ml.governance import activate_score_ml_runtime
 
 __all__ = [
     "InterpretableLinearScoreML",
@@ -22,6 +23,7 @@ __all__ = [
     "ensure_calibration",
     "ml_heartbeat",
     "migrate_score_ml_snapshot",
+    "activate_score_ml_runtime",
     "score_ml_games",
     "supervised_rerank_games",
 ]

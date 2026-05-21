@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.generator.engine import generate_ranked_games
+from lotoia.ml import activate_score_ml_runtime
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository, initialize_public_persistence
 from lotoia.public.models import PublicCheckRequest, PublicGenerationRequest
 from lotoia.observability import MetricsRegistry, ObservabilityRepository, ObservabilityTracer
@@ -106,6 +107,7 @@ def generate_public_games(
         )
     generation_span = observability.tracer.start_span("generate_public_games", trace_id=execution_id, attributes={"flow": "generation"}) if observability is not None else None
     games_payload = generate_ranked_games(total_games=2, seed=seed, ml_enabled=request.ml_enabled)
+    games_payload, score_ml_runtime = activate_score_ml_runtime(games_payload, enabled=request.ml_enabled)
     execution_time_ms = (time.time() - started_at) * 1000
     if observability is not None:
         observability.record_metric(execution_id, metrics.timing("runtime_latency_ms", execution_time_ms), stage="generation")
@@ -114,7 +116,11 @@ def generate_public_games(
             entity_type="generation_event",
             entity_id=str(seed),
             event_type="generator_completed",
-            payload={"target_contest": target_contest, "ml_enabled": bool(request.ml_enabled)},
+            payload={
+                "target_contest": target_contest,
+                "ml_enabled": bool(request.ml_enabled),
+                "score_ml_runtime": score_ml_runtime,
+            },
         )
         if generation_span is not None:
             finished_generation_span = observability.tracer.finish_span(
@@ -194,6 +200,7 @@ def generate_public_games(
                 for profile in ("recorrente", "hibrido", "caotico")
             },
             "target_contest": target_contest,
+            "score_ml_runtime": score_ml_runtime,
         },
     }
 
