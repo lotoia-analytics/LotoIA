@@ -3101,13 +3101,13 @@ def _sidebar_navigation() -> str:
         format_func=lambda key: {
             **LABELS,
             "estatisticas_historicas": "Resultados Passados",
-            "historical_intelligence": "Historico",
-            "analytics_intelligence": "Analises",
-            "ml_intelligence": "Inteligencia ML",
-            "jogo_expandido_experimental": "Jogo Expandido (Experimental)",
-            "ml_governance": "Governanca ML",
-            "observability": "Monitoramento",
-            "reports_engine": "Relatorios",
+            "historical_intelligence": "Historico Analitico",
+            "analytics_intelligence": "Analise Inteligente",
+            "ml_intelligence": "Aprendizado Estatistico",
+            "jogo_expandido_experimental": "Jogo Expandido",
+            "ml_governance": "Auditoria Tecnica",
+            "observability": "Monitoramento Analitico",
+            "reports_engine": "Relatorios Gerais",
         }.get(key, key),
         label_visibility="collapsed",
     )
@@ -3148,7 +3148,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
 
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Historico", "Inteligncia histrica operacional para combinaes, recorrncia e proximidade estatstica.")
+        _section_header("Historico Analitico", "Leitura historica para combinacoes, recorrencia e proximidade estatistica.")
         if st.session_state.get("last_generation_games"):
             games = st.session_state["last_generation_games"]
         else:
@@ -3196,7 +3196,7 @@ def render_historical_intelligence_page(draws) -> None:
 def render_analytics_intelligence_page() -> None:
     with st.container(border=True):
         start_time = time.monotonic()
-        _section_header("Analises", "Visual analytics institucional com gráficos, heatmaps e padrões históricos.")
+        _section_header("Analise Inteligente", "Leitura analitica com graficos, heatmaps e padroes historicos.")
         c1, c2, c3, c4 = st.columns(4)
         analytics_history = _analytics_base_tables()["history"]
         c1.metric("Concursos", len(analytics_history))
@@ -3225,7 +3225,7 @@ def render_analytics_intelligence_page() -> None:
 
 def render_ml_intelligence_page() -> None:
     with st.container(border=True):
-        _section_header("Inteligencia ML", "Score ML operacional com validação temporal e reranking interpretable.")
+        _section_header("Aprendizado Estatistico", "Score ML com validacao temporal e reranking interpretavel.")
         training = _ml_training_result()
         model = training["model"]
         validation = training["validation_metrics"]
@@ -3284,7 +3284,7 @@ def render_ml_intelligence_page() -> None:
 
 def render_ml_governance_page() -> None:
     with st.container(border=True):
-        _section_header("Governanca ML", "Governança institucional de modelos, experimentos, versões e snapshots.")
+        _section_header("Auditoria Tecnica", "Governanca de modelos, experimentos, versoes e snapshots.")
         training = _ml_training_result()
         payload = training["payload"]
         feature_rows = training["feature_rows"]
@@ -3339,7 +3339,7 @@ def render_ml_governance_page() -> None:
 
 def render_generation_page() -> None:
     with st.container(border=True):
-        _section_header("Criar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
+        _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
         executive_report = build_executive_analytical_report()
         historical_report = build_institutional_historical_intelligence()
         observability_report = load_observational_stabilization_report()
@@ -3540,7 +3540,7 @@ def render_backtesting_page() -> BacktestResult | None:
 
 def render_calibration_page() -> None:
     with st.container(border=True):
-        _section_header("Estrategias", "Calibracao experimental com pesos temporarios e avaliacao restauravel.")
+        _section_header("Estrategias Operacionais", "Calibracao experimental com pesos temporarios e avaliacao restauravel.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="cal_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="cal_games")
@@ -3576,7 +3576,7 @@ def render_calibration_page() -> None:
 
 def render_benchmark_page() -> None:
     with st.container(border=True):
-        _section_header("Comparativos", "Benchmark cientifico para leitura comparativa entre estrategias.")
+        _section_header("Comparativos Operacionais", "Benchmark cientifico para leitura comparativa entre estrategias.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5, key="bench_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="bench_games")
@@ -3609,7 +3609,7 @@ def render_benchmark_page() -> None:
 def render_expansion_experimental_page() -> None:
     with st.container(border=True):
         _section_header(
-            "Jogo Expandido (Experimental)",
+            "Jogo Expandido",
             "Validacao operacional interna do motor combinatorio, restrita a 16 e 17 dezenas.",
         )
         st.warning("Modo experimental interno: 18, 19 e 20 dezenas permanecem desabilitadas no ADMIN.")
@@ -3700,7 +3700,7 @@ def render_expansion_experimental_page() -> None:
 
 def render_history_page() -> None:
     with st.container(border=True):
-        _section_header("Testes", "Histórico operacional, eventos persistidos e analytics atuais.")
+        _section_header("Testes Operacionais", "Historico operacional, eventos persistidos e analises atuais.")
         runs = _cached_runs()
         benchmark_runs = runs["benchmark"]
         backtest_runs = runs["backtest"]
@@ -3739,7 +3739,7 @@ def render_history_page() -> None:
 
 def render_reports_page() -> None:
     with st.container(border=True):
-        _section_header("Relatorios", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
+        _section_header("Analiticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
         _ensure_reports_dirs()
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="rep_contests")
@@ -3804,7 +3804,7 @@ def _latest_check_context() -> dict[str, Any]:
 
 def render_reports_engine_page() -> None:
     with st.container(border=True):
-        _section_header("Relatorios", "Exportações institucionais, relatórios recentes e snapshots operacionais.")
+        _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
         col1, col2, col3 = st.columns(3)
