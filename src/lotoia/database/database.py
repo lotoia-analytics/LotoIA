@@ -370,7 +370,8 @@ class InstitutionalMemoryReplay(Base):
 
 
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
-    return f"sqlite:///{path}"
+    resolved = path if path.is_absolute() else path.resolve()
+    return f"sqlite:///{resolved.as_posix()}"
 
 
 def get_engine(path: Path = DEFAULT_DATABASE_PATH):

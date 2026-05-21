@@ -57,6 +57,7 @@ def build_institutional_observability_dashboard(
     metrics = repository.list_metrics(limit=limit)
     lineage = repository.list_lineage(limit=limit)
     snapshots = repository.list_snapshots(limit=limit)
+    latest_execution = executions[0] if executions else {}
 
     runtime_health = _runtime_health(executions, spans, metrics, lineage, snapshots)
     drift_evolution = _metric_evolution(metrics, "confidence_drift")
@@ -83,6 +84,7 @@ def build_institutional_observability_dashboard(
             "average_execution_duration_ms": runtime_health["average_execution_duration_ms"],
             "latest_flow": runtime_health["latest_flow"],
             "latest_status": runtime_health["latest_status"],
+            "latest_execution_id": latest_execution.get("execution_id", "-"),
         },
         "runtime_health": runtime_health,
         "execution_graph": executions[:limit],

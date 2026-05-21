@@ -5,6 +5,7 @@ from .memory_registry import (
     MemorySnapshot,
     MemoryState,
 )
+from .memory_timeline import MemoryTimeline, MemoryTimelineEntry, build_memory_timeline
 
 __all__ = [
     "InstitutionalMemoryRegistry",
@@ -12,4 +13,7 @@ __all__ = [
     "MemoryReplay",
     "MemorySnapshot",
     "MemoryState",
+    "MemoryTimeline",
+    "MemoryTimelineEntry",
+    "build_memory_timeline",
 ]

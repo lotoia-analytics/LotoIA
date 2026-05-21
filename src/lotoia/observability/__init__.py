@@ -13,6 +13,7 @@ from .observational_stabilization import (
 )
 from .operational_monitoring import OperationalMonitoring, OperationalMonitoringSnapshot
 from .structured_logging import LogLevel, StructuredLogEvent, StructuredLogger
+from lotoia.memory import build_memory_timeline
 
 __all__ = [
     "DistributedTracer",
@@ -35,6 +36,7 @@ __all__ = [
     "TraceSpan",
     "ObservabilityTracer",
     "build_observational_stabilization_report",
+    "build_memory_timeline",
     "load_observational_stabilization_report",
     "persist_observational_stabilization_report",
 ]

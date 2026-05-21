@@ -41,6 +41,10 @@ def test_memory_registry_registers_snapshots_and_replays(tmp_path) -> None:
     assert replay.comparison is not None
     assert replay.comparison.changed_keys == comparison.changed_keys
     assert replay.memory_ids == (second.memory_id, first.memory_id)
+    listed_replay = registry.get_execution_replay("exec-1")
+    assert listed_replay is not None
+    assert listed_replay.replay_id == replay.replay_id
+    assert len(registry.list_replays(execution_id="exec-1")) == 1
 
 
 def test_memory_registry_registers_runtime_states(tmp_path) -> None:

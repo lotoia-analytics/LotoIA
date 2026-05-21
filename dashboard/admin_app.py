@@ -87,6 +87,7 @@ from lotoia.orchestration import (
 from lotoia.public import OperationalLifecycleEngine
 from lotoia.observability import (
     build_institutional_observability_dashboard,
+    build_memory_timeline,
     build_observational_stabilization_report,
     load_observational_stabilization_report,
     persist_observational_stabilization_report,
@@ -953,6 +954,18 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "ml": "ML",
             "observability_boot": "Inicializacao observability",
             "sqlite_bootstrap": "Bootstrap SQLite",
+            "snapshot::baseline": "Snapshot baseline",
+            "snapshot::adaptive": "Snapshot adaptativo",
+            "snapshot::runtime": "Snapshot runtime",
+            "snapshot::drift": "Snapshot drift",
+            "snapshot::confidence": "Snapshot confianca",
+            "snapshot::health": "Snapshot saude",
+            "state::baseline_state": "Estado baseline",
+            "state::drift_state": "Estado drift",
+            "state::confidence_state": "Estado confianca",
+            "state::adaptive_state": "Estado adaptativo",
+            "state::runtime_health": "Estado de saude",
+            "replay::chronological": "Replay cronologico",
         },
         "source": {
             "observability": "Monitoramento",
@@ -978,6 +991,14 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
         "latest_status": {"mixed": "misto", "homepage em observacao": "homepage em observacao"},
         "homepage_priority": {"mixed": "mista", "homepage em observacao": "homepage em observacao"},
         "state": {"monitoring": "monitorando", "observation": "observacao"},
+        "state_type": {
+            "baseline_state": "Estado baseline",
+            "drift_state": "Estado drift",
+            "confidence_state": "Estado confianca",
+            "adaptive_state": "Estado adaptativo",
+            "runtime_health": "Estado de saude",
+            "replay": "Replay",
+        },
         "pattern": {"observacao governada": "observacao governada"},
         "runtime_perception": {"percepcao operacional em atencao": "percepcao operacional em atencao"},
         "presence_state": {"adaptativa": "adaptativa"},
@@ -2004,11 +2025,44 @@ def render_observability_page() -> None:
                             "confidence": "ok" if observability_dashboard.get("structural_integrity", {}).get("ok") else "alerta",
                         },
                     ]
-                )
+            )
             ),
             hide_index=True,
             use_container_width=True,
         )
+        timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
+        memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
+        st.subheader("Linha temporal executiva da memória")
+        timeline_summary = memory_timeline.get("summary", {})
+        timeline_col1, timeline_col2, timeline_col3, timeline_col4 = st.columns(4)
+        timeline_col1.metric("Marcadores", timeline_summary.get("marker_count", 0))
+        timeline_col2.metric("Snapshots", timeline_summary.get("snapshot_count", 0))
+        timeline_col3.metric("Estados", timeline_summary.get("state_count", 0))
+        timeline_col4.metric("Replay", "sim" if timeline_summary.get("replay_ready") else "nao")
+        st.caption(
+            f"Execução: {memory_timeline.get('execution_id', '-')}"
+            f" | Ultimo evento: {timeline_summary.get('latest_event', '-')}"
+        )
+        timeline_entries = memory_timeline.get("entries", [])
+        if timeline_entries:
+            st.dataframe(
+                _presentational_dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "metric": entry.get("label", ""),
+                                "value": entry.get("timestamp", ""),
+                                "interpretation": entry.get("event_type", ""),
+                                "confidence": entry.get("state_type", ""),
+                                "path": entry.get("memory_id", ""),
+                            }
+                            for entry in timeline_entries[:20]
+                        ]
+                    )
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
         health = _runtime_health()
         operational = _operational_metrics()
         st.subheader("Saude operacional")

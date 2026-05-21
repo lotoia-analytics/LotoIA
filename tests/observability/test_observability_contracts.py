@@ -144,4 +144,5 @@ def test_institutional_observability_dashboard_aggregates_runtime_history(tmp_pa
     assert dashboard["summary"]["metric_count"] == 1
     assert dashboard["summary"]["lineage_count"] == 1
     assert dashboard["summary"]["snapshot_count"] == 1
+    assert dashboard["summary"]["latest_execution_id"] == execution_id
     assert dashboard["structural_integrity"]["ok"] is True

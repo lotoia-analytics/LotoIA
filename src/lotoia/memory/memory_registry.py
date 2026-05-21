@@ -389,6 +389,60 @@ class InstitutionalMemoryRegistry:
             metadata={"replay_strategy": replay_type},
         )
 
+    def list_replays(self, *, execution_id: str | None = None, limit: int = 100) -> list[MemoryReplay]:
+        with get_session(self.db_path) as session:
+            query = session.query(InstitutionalMemoryReplay).order_by(
+                InstitutionalMemoryReplay.created_at.desc(),
+                InstitutionalMemoryReplay.id.desc(),
+            )
+            if execution_id is not None:
+                query = query.filter(InstitutionalMemoryReplay.execution_id == execution_id)
+            rows = query.limit(limit).all()
+        replays: list[MemoryReplay] = []
+        for row in rows:
+            replay_payload = dict(row.result_json or {})
+            memory_ids = tuple(str(memory_id) for memory_id in replay_payload.get("memory_ids", []))
+            snapshots = tuple(
+                snapshot
+                for snapshot in (self.get_snapshot(memory_id) for memory_id in memory_ids)
+                if snapshot is not None
+            )
+            states = tuple(
+                state
+                for state in (self.get_state(memory_id) for memory_id in memory_ids)
+                if state is not None
+            )
+            comparison_payload = replay_payload.get("comparison")
+            comparison = None
+            if isinstance(comparison_payload, dict):
+                comparison = MemoryComparison(
+                    left_memory_id=str(comparison_payload.get("left_memory_id", "")),
+                    right_memory_id=str(comparison_payload.get("right_memory_id", "")),
+                    added_keys=tuple(str(item) for item in comparison_payload.get("added_keys", [])),
+                    removed_keys=tuple(str(item) for item in comparison_payload.get("removed_keys", [])),
+                    changed_keys=tuple(str(item) for item in comparison_payload.get("changed_keys", [])),
+                    stable_keys=tuple(str(item) for item in comparison_payload.get("stable_keys", [])),
+                    drift_summary=dict(comparison_payload.get("drift_summary") or {}),
+                )
+            replays.append(
+                MemoryReplay(
+                    replay_id=row.replay_id,
+                    execution_id=row.execution_id,
+                    replay_type=row.replay_type,
+                    created_at=row.created_at,
+                    memory_ids=memory_ids,
+                    states=states,
+                    snapshots=snapshots,
+                    comparison=comparison,
+                    metadata={"request": row.request_json, "result": replay_payload},
+                )
+            )
+        return replays
+
+    def get_execution_replay(self, execution_id: str) -> MemoryReplay | None:
+        replays = self.list_replays(execution_id=execution_id, limit=1)
+        return replays[0] if replays else None
+
     def _list_lineage(self, execution_id: str) -> list[dict[str, Any]]:
         with get_session(self.db_path) as session:
             rows = (
