@@ -85,10 +85,14 @@ def test_user_panel_declares_cloud_marker() -> None:
 
 def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
     captured_options = []
+    image_calls = []
 
     class _Sidebar:
         def title(self, *args, **kwargs):
             return None
+
+        def image(self, *args, **kwargs):
+            image_calls.append(args)
 
         def success(self, *args, **kwargs):
             return None
@@ -101,6 +105,7 @@ def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
 
     assert _render_sidebar() == "Gerar Jogos"
     assert "Jogo Expandido" not in captured_options
+    assert image_calls
 
 
 def test_user_generation_requires_lead(monkeypatch) -> None:
