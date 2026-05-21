@@ -146,6 +146,7 @@ ALERT_LOG_GROWTH_EVENTS = 1_000
 SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
 SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
+SQLITE_BOOTSTRAP_STATE = {"fallback_used": False, "requested_path": "", "active_path": ""}
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
@@ -173,6 +174,13 @@ def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
                     "active_path": str(candidate),
                     "reason": "sqlite bootstrap fallback path selected",
                 }
+                SQLITE_BOOTSTRAP_STATE.update(
+                    {
+                        "fallback_used": True,
+                        "requested_path": str(path),
+                        "active_path": str(candidate),
+                    }
+                )
                 SQLITE_MEMORY_LOGS.append(
                     {
                         "event_type": "sqlite_bootstrap",
@@ -186,6 +194,10 @@ def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
             last_error = exc
 
     raise sqlite3.OperationalError(f"sqlite bootstrap failed for all candidates: {last_error}")
+
+
+def _sqlite_bootstrap_state() -> dict[str, Any]:
+    return dict(SQLITE_BOOTSTRAP_STATE)
 
 
 def _sqlite_bind_connection(connection: sqlite3.Connection) -> None:
@@ -1725,6 +1737,12 @@ def render_observability_page() -> None:
         col2.metric("Runtime", health.get("runtime_status", "unknown"))
         col3.metric("ML", health.get("ml_status", "idle"))
         col4.metric("Cache", health.get("cache_status", "bounded"))
+        bootstrap_state = _sqlite_bootstrap_state()
+        if bootstrap_state.get("fallback_used"):
+            st.info(
+                "SQLite bootstrap em fallback temporário "
+                f"({bootstrap_state.get('requested_path', '-') } -> {bootstrap_state.get('active_path', '-')})."
+            )
         st.caption(
             f"Engine ativa: {health.get('engine_version', '-')}"
             f" | Modelo: {health.get('model_version', '-')}"
