@@ -22,20 +22,14 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
     institutional_presence = report.get("institutional_presence", {}) if isinstance(report, Mapping) else {}
 
     with st.container(border=True):
-        st.markdown(
-            """
-            <div class="lotoia-executive-kicker">Orquestracao operacional</div>
-            <div class="lotoia-executive-copy">Coordena contexto, continuidade e prioridade operacional sem tocar no motor cientifico.</div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='lotoia-executive-kicker'>Orquestracao</div>", unsafe_allow_html=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Orquestração", summary.get("orchestration_state", "-"))
         col2.metric("Prioridade", summary.get("priority", "-"))
         col3.metric("Memória", summary.get("memory_depth", 0))
         col4.metric("Linha do tempo", summary.get("timeline_depth", 0))
 
-        with st.expander("Detalhes operacionais", expanded=False):
+        with st.expander("Detalhes", expanded=False):
             st.info(
                 f"{decision_context.get('headline', '-')}"
                 f" | {decision_context.get('recommendation', '-')}"

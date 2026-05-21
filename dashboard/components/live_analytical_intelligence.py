@@ -91,7 +91,7 @@ def render_live_analytical_intelligence(
         ]
     )
 
-    st.markdown("### Inteligencia viva")
+    st.markdown("### Inteligencia")
     top_left, top_right = st.columns([1.2, 0.8], gap="large")
     with top_left:
         st.markdown(
@@ -143,9 +143,9 @@ def render_live_analytical_intelligence(
         st.markdown(
             f"""
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
-                <div class="lotoia-muted-label">Interpretacao</div>
+                <div class="lotoia-muted-label">Leitura</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
-                    Leitura temporal
+                    Temporal
                 </div>
                 <div style="font-size: 0.92rem; color: #4b5f74; line-height: 1.6;">
                     {summary.get('interpretation', executive_report.get('headline', 'baseline longitudinal consistente'))}
