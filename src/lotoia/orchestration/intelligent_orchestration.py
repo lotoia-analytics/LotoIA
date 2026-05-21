@@ -89,6 +89,52 @@ def build_intelligent_operational_orchestration(report_dir: Path = DEFAULT_ORCHE
         f"Timeline institucional: {timeline_summary.get('latest_transition', 'sem transicao')}",
     ]
 
+    live_coordination = {
+        "state": "live" if summary_has_live_signals(observability_summary, adaptive_summary, historical_summary) else "monitoring",
+        "signals": [
+            {
+                "source": "observability",
+                "status": str(observability_summary.get("stability_note", "")),
+                "ready": bool(observability_summary.get("institutional_snapshot_ready")) and bool(observability_summary.get("institutional_timeline_ready")),
+            },
+            {
+                "source": "adaptive_intelligence",
+                "status": str(adaptive_summary.get("trend", "")),
+                "ready": int(adaptive_summary.get("memory_depth", 0)) >= 2,
+            },
+            {
+                "source": "historical_intelligence",
+                "status": str(historical_summary.get("trend", "")),
+                "ready": int(historical_summary.get("verdict_count", 0)) >= 2,
+            },
+        ],
+        "runtime_perception": "percepção operacional viva" if not critical_state else "percepção operacional em atenção",
+    }
+
+    signal_engine = {
+        "state": "stable" if strong_stability and not elevated_drift else "attention" if elevated_drift else "observation",
+        "persistent_changes": int(adaptive_summary.get("persistent_changes", 0)),
+        "recurring_statuses": int(adaptive_summary.get("recurring_statuses", 0)),
+        "historical_trend": str(historical_summary.get("trend", "")),
+        "adaptive_trend": str(adaptive_summary.get("trend", "")),
+        "pattern": "coerencia institucional" if strong_stability and not elevated_drift else "mudanca persistente" if important_change else "observacao governada",
+    }
+
+    operational_experience = {
+        "cockpit": "executive_dashboard",
+        "timeline": "institutional_timeline",
+        "adaptive_memory": int(adaptive_summary.get("memory_depth", 0)),
+        "context": priority,
+        "visual_runtime": "live" if live_coordination["state"] == "live" else "monitoring",
+        "institutional_hierarchy": [
+            "executive context",
+            "historical continuity",
+            "adaptive memory",
+            "observability",
+            "operational signals",
+        ],
+    }
+
     report = {
         "source": str(report_dir),
         "schema_version": INTELLIGENT_ORCHESTRATION_SCHEMA_VERSION,
@@ -126,6 +172,14 @@ def build_intelligent_operational_orchestration(report_dir: Path = DEFAULT_ORCHE
         "events": events,
         "strategic_memory": strategic_memory,
         "storytelling": storytelling,
+        "live_coordination": live_coordination,
+        "signal_engine": signal_engine,
+        "operational_experience": operational_experience,
+        "institutional_presence": {
+            "presence_state": "coordenada" if live_coordination["state"] == "live" and signal_engine["state"] == "stable" else "adaptativa",
+            "narrative": "cockpit executivo inteligente e contextual" if not critical_state else "cockpit executivo em observacao",
+            "coordination_depth": len(events) + len(strategic_memory),
+        },
     }
     return report
 
@@ -157,3 +211,11 @@ def load_intelligent_operational_orchestration(
     except Exception:
         return {}
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def summary_has_live_signals(
+    observability_summary: Mapping[str, Any],
+    adaptive_summary: Mapping[str, Any],
+    historical_summary: Mapping[str, Any],
+) -> bool:
+    return bool(observability_summary.get("institutional_snapshot_ready")) and bool(observability_summary.get("institutional_timeline_ready")) and int(adaptive_summary.get("memory_depth", 0)) >= 2 and int(historical_summary.get("verdict_count", 0)) >= 2

@@ -49,6 +49,9 @@ def test_build_intelligent_operational_orchestration_returns_context(monkeypatch
     assert payload["summary"]["memory_depth"] >= 0
     assert payload["decision_context"]["headline"] == "baseline longitudinal consistente"
     assert payload["events"]
+    assert payload["live_coordination"]["state"] in {"live", "monitoring"}
+    assert payload["signal_engine"]["state"] in {"stable", "attention", "observation"}
+    assert payload["institutional_presence"]["presence_state"] in {"coordenada", "adaptativa"}
 
 
 def test_persist_and_load_intelligent_operational_orchestration(monkeypatch) -> None:
