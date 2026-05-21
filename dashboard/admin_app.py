@@ -1732,7 +1732,7 @@ def render_observability_page() -> None:
         )
         health = _runtime_health()
         operational = _operational_metrics()
-        st.subheader("Operational Health Panel")
+        st.subheader("Saude operacional")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo geracao", f"{health['avg_generation_ms']:.2f} ms")
         col2.metric("Tempo conferencia", f"{health['avg_check_ms']:.2f} ms")
@@ -1812,7 +1812,7 @@ def render_observability_page() -> None:
         st.dataframe(_pipeline_divergence_table(), hide_index=True, use_container_width=True)
         st.subheader("Relatorio dos filtros destrutivos")
         st.dataframe(_destructive_filters_table(), hide_index=True, use_container_width=True)
-        st.subheader("Executive behavioral report")
+        st.subheader("Comportamento executivo")
         st.dataframe(_executive_behavioral_table(), hide_index=True, use_container_width=True)
         st.subheader("Filter profile damage")
         st.dataframe(_filter_profile_damage_table(), hide_index=True, use_container_width=True)
@@ -1887,11 +1887,11 @@ def render_observability_page() -> None:
                 "adaptive_insights": adaptive_insights_report.get("report", adaptive_report.get("adaptive_insights", {})),
             }
         )
-        st.subheader("Institutional historical intelligence")
+        st.subheader("Historico analitico")
         st.dataframe(_institutional_historical_table(), hide_index=True, use_container_width=True)
-        st.subheader("Institutional analytics snapshot")
+        st.subheader("Snapshot analitico")
         st.dataframe(_institutional_analytics_snapshot_table(), hide_index=True, use_container_width=True)
-        st.subheader("Institutional analytical timeline")
+        st.subheader("Linha do tempo")
         st.dataframe(_institutional_analytical_timeline(), hide_index=True, use_container_width=True)
         if ai_top_insights:
             st.dataframe(
@@ -1909,11 +1909,11 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        st.subheader("Analytical intelligence insights")
+        st.subheader("Insights analiticos")
         st.dataframe(_analytical_intelligence_insights(), hide_index=True, use_container_width=True)
-        st.subheader("Analytical intelligence comparisons")
+        st.subheader("Comparativos analiticos")
         st.dataframe(_analytical_intelligence_comparisons(), hide_index=True, use_container_width=True)
-        st.subheader("Analytical intelligence timeline")
+        st.subheader("Timeline analitica")
         st.dataframe(_analytical_intelligence_timeline(), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo médio", f"{health['response_time_ms']:.2f} ms")
