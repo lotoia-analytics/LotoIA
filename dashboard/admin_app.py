@@ -11,6 +11,7 @@ import json
 import sqlite3
 import shutil
 import time
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from lotoia.combinatorics import (
 )
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
+from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.basic_generator import generate_best_games, generate_multiple_games
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
 from lotoia.governance.adaptive_governance_report import (
@@ -118,7 +120,7 @@ from lotoia.statistics.generation_trace import experiment_01_report, marginal_re
 from lotoia.statistics.basic import summarize_draws
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = PROJECT_ROOT / "lotoia.db"
+DB_PATH = PROJECT_ROOT / DEFAULT_DATABASE_PATH
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
 LOGO_DIRECTORY = PROJECT_ROOT / "assets" / "logo"
 REPORTS_DIR = PROJECT_ROOT / "reports"
@@ -150,15 +152,26 @@ cursor: sqlite3.Cursor | None = None
 
 
 def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, check_same_thread=False)
-    try:
-        connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = NORMAL")
-    except sqlite3.Error:
-        pass
-    return connection
+    candidates = [path, Path(tempfile.gettempdir()) / "lotoia" / "lotoia.db"]
+    last_error: Exception | None = None
+
+    for candidate in candidates:
+        try:
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(candidate, check_same_thread=False)
+            try:
+                connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+                connection.execute("PRAGMA journal_mode = WAL")
+                connection.execute("PRAGMA synchronous = NORMAL")
+            except sqlite3.Error:
+                pass
+            global DB_PATH
+            DB_PATH = candidate
+            return connection
+        except Exception as exc:
+            last_error = exc
+
+    raise sqlite3.OperationalError(f"sqlite bootstrap failed for all candidates: {last_error}")
 
 
 def _sqlite_bind_connection(connection: sqlite3.Connection) -> None:
