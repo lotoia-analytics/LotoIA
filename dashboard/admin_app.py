@@ -167,6 +167,20 @@ def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
                 pass
             global DB_PATH
             DB_PATH = candidate
+            if candidate != path:
+                fallback_context = {
+                    "requested_path": str(path),
+                    "active_path": str(candidate),
+                    "reason": "sqlite bootstrap fallback path selected",
+                }
+                SQLITE_MEMORY_LOGS.append(
+                    {
+                        "event_type": "sqlite_bootstrap",
+                        "status": "fallback",
+                        "context": fallback_context,
+                    }
+                )
+                _record_operational_log("sqlite_bootstrap", "fallback", 0.0, fallback_context)
             return connection
         except Exception as exc:
             last_error = exc
