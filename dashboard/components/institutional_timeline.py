@@ -56,7 +56,7 @@ def render_institutional_timeline(timeline: pd.DataFrame) -> None:
                 unsafe_allow_html=True,
             )
 
-    st.markdown("#### Historical detail")
+    st.markdown("#### Detalhe historico")
     st.dataframe(
         timeline,
         hide_index=True,

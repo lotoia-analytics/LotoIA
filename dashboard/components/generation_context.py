@@ -34,7 +34,7 @@ def render_generation_context(
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.35rem;">
-            <div class="lotoia-executive-kicker">Contextual executive action</div>
+            <div class="lotoia-executive-kicker">Acao contextual</div>
             <div class="lotoia-executive-copy">Antes da acao principal, a homepage apresenta o contexto institucional atual com leitura curta e guiada.</div>
         </div>
         """,

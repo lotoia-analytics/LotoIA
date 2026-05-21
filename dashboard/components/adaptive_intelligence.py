@@ -20,11 +20,11 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     strategic_timeline = adaptive_report.get("strategic_timeline", {})
     adaptive_presence = adaptive_report.get("adaptive_presence", {})
 
-    st.markdown("### Adaptive institutional intelligence")
+    st.markdown("### Inteligencia adaptativa")
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
-            <div class="lotoia-executive-kicker">Adaptive memory layer</div>
+            <div class="lotoia-executive-kicker">Memoria adaptativa</div>
             <div class="lotoia-executive-copy">Memoria operacional, recorrencias e continuidade institucional em leitura executiva consolidada.</div>
         </div>
         """,
@@ -87,7 +87,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     else:
         st.dataframe(strategic_frame, hide_index=True, use_container_width=True)
 
-    st.markdown("### Adaptive executive insights")
+    st.markdown("### Insights adaptativos")
     adaptive_insights_frame = pd.DataFrame(adaptive_insights.get("insights", []))
     if adaptive_insights_frame.empty:
         st.info("Insights adaptativos ainda em consolidacao.")
@@ -118,7 +118,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     else:
         st.dataframe(strategic_frame, hide_index=True, use_container_width=True)
 
-    st.markdown("### Adaptive institutional presence")
+    st.markdown("### Presenca adaptativa")
     presence_cols = st.columns(3)
     presence_items = [
         ("Presence", adaptive_presence.get("summary", {}).get("presence", "observacional")),
