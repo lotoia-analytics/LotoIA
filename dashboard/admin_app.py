@@ -2938,6 +2938,8 @@ def _sidebar_navigation() -> str:
 
 
 def _render_sidebar_dispatch(page: str, draws) -> None:
+    st.write(f"DEBUG PAGE => {page}")
+
     routes: dict[str, Any] = {
         "geracao_jogos": render_generation_page,
         "conferir_jogos": render_check_page,
@@ -2957,7 +2959,15 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
     }
     handler = routes.get(page)
     if handler is not None:
-        handler()
+        try:
+            handler()
+        except Exception as exc:
+            _record_operational_log("dashboard_route", "failed", 0.0, {"page": page, "error": str(exc)})
+            st.error(f"Falha controlada na rota {page}.")
+            st.caption(f"Contexto técnico: {exc}")
+            raise
+    else:
+        st.warning(f"Rota sem handler: {page}")
 
 
 def render_historical_intelligence_page(draws) -> None:
@@ -3820,8 +3830,7 @@ def main() -> None:
     try:
         page = _sidebar_navigation()
         _render_institutional_cockpit()
-        with st.expander("Métricas operacionais secundárias", expanded=False):
-            _render_kpi_cards()
+        _render_kpi_cards()
         st.markdown("---")
         _render_sidebar_dispatch(page, draws)
         st.markdown("---")
