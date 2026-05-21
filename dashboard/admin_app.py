@@ -3612,7 +3612,7 @@ def render_expansion_experimental_page() -> None:
             "Jogo Expandido",
             "Validacao operacional interna do motor combinatorio, restrita a 16 e 17 dezenas.",
         )
-        st.warning("Modo experimental interno: 18, 19 e 20 dezenas permanecem desabilitadas no ADMIN.")
+        st.warning("Modo interno: 18, 19 e 20 dezenas permanecem desabilitadas no ADMIN.")
         selected_count = st.selectbox(
             "Quantidade de dezenas",
             options=list(ADMIN_EXPANSION_ALLOWED_SIZES),
@@ -3679,7 +3679,7 @@ def render_expansion_experimental_page() -> None:
         )
         pdf_path = _save_pdf_report(
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "pdf"),
-            "LotoIA - Jogo Expandido Experimental",
+            "LotoIA - Jogo Expandido",
             [
                 f"Dezenas selecionadas: {_format_numbers(result['selected_numbers'])}",
                 f"Apostas internas: {result['total_combinations']}",

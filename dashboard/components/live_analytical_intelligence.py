@@ -97,7 +97,7 @@ def render_live_analytical_intelligence(
         st.markdown(
             f"""
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
-                <div class="lotoia-muted-label">Evolucao longitudinal</div>
+                <div class="lotoia-muted-label">Evolucao</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
                     Evolucao da estabilidade, confiança, drift e cobertura
                 </div>
@@ -143,7 +143,7 @@ def render_live_analytical_intelligence(
         st.markdown(
             f"""
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
-                <div class="lotoia-muted-label">Interpretacao temporal</div>
+                <div class="lotoia-muted-label">Interpretacao</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
                     Leitura temporal interpretativa
                 </div>
@@ -233,7 +233,7 @@ def render_live_analytical_intelligence(
                     unsafe_allow_html=True,
                 )
 
-    st.markdown("### Graficos executivos")
+    st.markdown("### Graficos")
     if longitudinal_frame.empty:
         st.info("Graficos executivos ainda dependem do longitudinal consolidado.")
     else:
