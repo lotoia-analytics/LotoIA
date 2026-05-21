@@ -220,8 +220,6 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
     first_name = " ".join((first_name or "").strip().split())
     whatsapp = " ".join((whatsapp or "").strip().split())
     lead_ready = bool(first_name and whatsapp)
-    if not lead_ready:
-        st.info("Preencha primeiro nome e WhatsApp para habilitar a geracao.")
     count = st.number_input("Quantidade", min_value=1, max_value=MAX_GAMES_PER_SESSION, value=DEFAULT_GAMES_COUNT)
     pool_size = st.number_input("Pool", min_value=int(count), max_value=100, value=max(int(count) * 4, DEFAULT_POOL_SIZE))
     ml_enabled = st.toggle("ML light", value=False)
