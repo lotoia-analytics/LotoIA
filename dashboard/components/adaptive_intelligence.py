@@ -32,8 +32,8 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     )
     top_cols = st.columns(3, gap="large")
     top_items = [
-        ("Memory depth", operational_memory.get("summary", {}).get("memory_depth", 0)),
-        ("Adaptive trend", temporal_analysis.get("summary", {}).get("trend", "observacao")),
+        ("Memoria", operational_memory.get("summary", {}).get("memory_depth", 0)),
+        ("Tendencia", temporal_analysis.get("summary", {}).get("trend", "observacao")),
         ("Pattern", pattern_detection.get("summary", {}).get("pattern", "observacao")),
     ]
     for column, (label, value) in zip(top_cols, top_items, strict=True):
@@ -63,7 +63,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
         ("Trend", temporal_analysis.get("summary", {}).get("trend", "observacao")),
         ("Recurring status", temporal_analysis.get("summary", {}).get("recurring_statuses", 0)),
         ("Persistent changes", temporal_analysis.get("summary", {}).get("persistent_changes", 0)),
-        ("Memory depth", temporal_analysis.get("summary", {}).get("memory_depth", 0)),
+        ("Memoria", temporal_analysis.get("summary", {}).get("memory_depth", 0)),
     ]
     for column, (label, value) in zip(temporal_cols, temporal_items, strict=True):
         with column:
@@ -121,9 +121,9 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     st.markdown("### Presenca adaptativa")
     presence_cols = st.columns(3)
     presence_items = [
-        ("Presence", adaptive_presence.get("summary", {}).get("presence", "observacional")),
-        ("Consistency", adaptive_presence.get("summary", {}).get("consistency", 0.0)),
-        ("Memory depth", adaptive_presence.get("summary", {}).get("memory_depth", 0)),
+        ("Presenca", adaptive_presence.get("summary", {}).get("presence", "observacional")),
+        ("Consistencia", adaptive_presence.get("summary", {}).get("consistency", 0.0)),
+        ("Memoria", adaptive_presence.get("summary", {}).get("memory_depth", 0)),
     ]
     for column, (label, value) in zip(presence_cols, presence_items, strict=True):
         with column:

@@ -15,7 +15,7 @@ def _status_badge(status: str) -> str:
 
 
 def render_institutional_timeline(timeline: pd.DataFrame) -> None:
-    st.markdown("### Timeline institucional")
+    st.markdown("### Linha do tempo")
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">

@@ -214,10 +214,10 @@ def render_live_analytical_intelligence(
         )
         comparative_cols = st.columns(4)
         comparative_items = [
-            ("Hits delta", _first_last_delta(longitudinal_frame, "average_hits", 0.0)),
-            ("Stability delta", _first_last_delta(longitudinal_frame, "stability_window_sd", 0.0)),
-            ("Correlation delta", _first_last_delta(longitudinal_frame, "final_score_hit_correlation", 0.0)),
-            ("Memory depth", float(len(longitudinal_frame))),
+            ("Acertos", _first_last_delta(longitudinal_frame, "average_hits", 0.0)),
+            ("Estabilidade", _first_last_delta(longitudinal_frame, "stability_window_sd", 0.0)),
+            ("Correlacao", _first_last_delta(longitudinal_frame, "final_score_hit_correlation", 0.0)),
+            ("Memoria", float(len(longitudinal_frame))),
         ]
         for column, (label, value) in zip(comparative_cols, comparative_items, strict=True):
             with column:
@@ -312,8 +312,8 @@ def render_live_analytical_intelligence(
         st.metric("Drift", f"{_latest_value(timeline, 'drift', summary.get('drift', 0.0)):.2f}")
         st.metric("Confiança", f"{_first_last_delta(timeline, 'verdict_count', historical_summary.get('verdict_count', 0)):.2f}")
     with comp_col2:
-        st.metric("Coverage 10+ evolution", f"{_first_last_delta(timeline, 'coverage_10', summary.get('coverage_10', 0.0)):.2f}")
-        st.metric("Coverage 11+ evolution", f"{_first_last_delta(timeline, 'coverage_11', summary.get('coverage_11', 0.0)):.2f}")
+        st.metric("Cobertura 10+", f"{_first_last_delta(timeline, 'coverage_10', summary.get('coverage_10', 0.0)):.2f}")
+        st.metric("Cobertura 11+", f"{_first_last_delta(timeline, 'coverage_11', summary.get('coverage_11', 0.0)):.2f}")
         st.metric("Memoria operacional", f"{len(timeline)} checkpoints")
 
     st.markdown("### Memoria operacional")
@@ -398,10 +398,10 @@ def render_live_analytical_intelligence(
     st.markdown("### Presenca")
     presence_cols = st.columns(4)
     presence_items = [
-        ("Continuity", "memoria ativa" if memory_continuity >= 0.80 else "memoria consolidando"),
-        ("Evolution", longitudinal_summary.get("trend", historical_summary.get("trend", "estavel"))),
-        ("Confidence", str(summary.get("confidence", executive_report.get("confidence", "-")))),
-        ("Health", "sistema vivo" if float(summary.get("structural_health", 0.0)) >= 0.80 else "observacao"),
+        ("Continuidade", "memoria ativa" if memory_continuity >= 0.80 else "memoria consolidando"),
+        ("Evolucao", longitudinal_summary.get("trend", historical_summary.get("trend", "estavel"))),
+        ("Confianca", str(summary.get("confidence", executive_report.get("confidence", "-")))),
+        ("Saude", "sistema vivo" if float(summary.get("structural_health", 0.0)) >= 0.80 else "observacao"),
     ]
     for column, (label, value) in zip(presence_cols, presence_items, strict=True):
         with column:
@@ -429,8 +429,8 @@ def render_live_analytical_intelligence(
     st.markdown("### Selo de consistencia")
     seal_cols = st.columns(3)
     seal_items = [
-        ("Consistency", f"{consistency_score:.2f}"),
-        ("Traceability", "artifacts reais"),
+        ("Consistencia", f"{consistency_score:.2f}"),
+        ("Rastreabilidade", "artifacts reais"),
         ("Estado institucional", "continua" if consistency_score >= 0.80 else "em consolidacao"),
     ]
     for column, (label, value) in zip(seal_cols, seal_items, strict=True):
@@ -451,8 +451,8 @@ def render_live_analytical_intelligence(
     st.markdown("### Postura final")
     final_cols = st.columns(2)
     final_items = [
-        ("Posture", final_posture),
-        ("Signal", "continuity" if consistency_score >= 0.80 else "monitoramento"),
+        ("Postura", final_posture),
+        ("Sinal", "continuidade" if consistency_score >= 0.80 else "monitoramento"),
     ]
     for column, (label, value) in zip(final_cols, final_items, strict=True):
         with column:

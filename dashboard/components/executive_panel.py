@@ -10,7 +10,7 @@ def render_executive_panel(
     analytical_summary: Mapping[str, Any],
     historical_summary: Mapping[str, Any],
 ) -> None:
-    st.markdown("### Cockpit institucional")
+    st.markdown("### Visao geral")
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">

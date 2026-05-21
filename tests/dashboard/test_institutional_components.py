@@ -804,7 +804,7 @@ def test_live_analytical_intelligence_renders_comparison_summary(monkeypatch) ->
         observability_report,
     )
 
-    assert any("Hits delta" in message or "Memory depth" in message or "Stability delta" in message for message in captured)
+    assert any("Acertos" in message or "Memoria" in message or "Estabilidade" in message for message in captured)
 
 
 def test_live_analytical_intelligence_renders_consistency_seal(monkeypatch) -> None:
@@ -876,7 +876,7 @@ def test_live_analytical_intelligence_renders_final_institutional_posture(monkey
         observability_report,
     )
 
-    assert any("Final institutional posture" in message or "Posture" in message or "Signal" in message for message in captured)
+    assert any("Postura final" in message or "Postura" in message or "Sinal" in message for message in captured)
 
 
 def test_live_analytical_intelligence_reports_final_message(monkeypatch) -> None:

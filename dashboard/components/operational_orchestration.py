@@ -33,7 +33,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         col1.metric("Orquestração", summary.get("orchestration_state", "-"))
         col2.metric("Prioridade", summary.get("priority", "-"))
         col3.metric("Memória", summary.get("memory_depth", 0))
-        col4.metric("Timeline", summary.get("timeline_depth", 0))
+        col4.metric("Linha do tempo", summary.get("timeline_depth", 0))
 
         st.markdown("### Contexto executivo")
         st.info(
@@ -69,7 +69,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
             col1, col2, col3 = st.columns(3)
             col1.metric("Runtime", live_coordination.get("state", "monitoring"))
             col2.metric("Percepcao", live_coordination.get("runtime_perception", "-"))
-            col3.metric("Presence", institutional_presence.get("presence_state", "adaptativa"))
+            col3.metric("Presenca", institutional_presence.get("presence_state", "adaptativa"))
             st.dataframe(coordination_frame, hide_index=True, use_container_width=True)
 
         st.markdown("### Tendencia")
@@ -81,9 +81,9 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
 
         st.markdown("### Experiencia operacional")
         exp_cols = st.columns(4)
-        exp_cols[0].metric("Cockpit", operational_experience.get("cockpit", "-"))
-        exp_cols[1].metric("Timeline", operational_experience.get("timeline", "-"))
-        exp_cols[2].metric("Memória", operational_experience.get("adaptive_memory", 0))
+        exp_cols[0].metric("Visao geral", operational_experience.get("cockpit", "-"))
+        exp_cols[1].metric("Linha do tempo", operational_experience.get("timeline", "-"))
+        exp_cols[2].metric("Memoria", operational_experience.get("adaptive_memory", 0))
         exp_cols[3].metric("Contexto", operational_experience.get("context", "-"))
 
         st.caption(
