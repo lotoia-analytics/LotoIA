@@ -135,7 +135,7 @@ STREAMLIT_CACHE_MAX_ENTRIES = 16
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "check_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -2555,13 +2555,13 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
         return pd.DataFrame(columns=columns)
 
 
-def _persist_lead(first_name: str, whatsapp: str) -> None:
+def _persist_lead(first_name: str, whatsapp: str) -> int | None:
     if not first_name.strip() or not whatsapp.strip():
-        return
+        return None
     connection, current_cursor = _sqlite_ensure_runtime_connection()
     if connection is None or current_cursor is None:
         SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "first_name": first_name, "whatsapp": whatsapp})
-        return
+        return None
     try:
         current_cursor.execute(
             """
@@ -2574,6 +2574,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
             (first_name.strip(), whatsapp.strip()),
         )
         connection.commit()
+        return int(current_cursor.lastrowid or 0) or None
     except sqlite3.Error as exc:
         SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "error": str(exc), "first_name": first_name, "whatsapp": whatsapp})
         if _sqlite_maybe_recover_connection(exc):
@@ -2591,9 +2592,128 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                         (first_name.strip(), whatsapp.strip()),
                     )
                     recovered_conn.commit()
+                    return int(recovered_cursor.lastrowid or 0) or None
                 except sqlite3.Error:
                     pass
     _invalidate_runtime_cache()
+    return None
+
+
+def _persist_generation_events(
+    *,
+    first_name: str,
+    whatsapp: str,
+    games: list[dict[str, Any]],
+    duration_ms: float,
+    strategy: str,
+    lead_id: int | None,
+) -> int | None:
+    connection, current_cursor = _sqlite_ensure_runtime_connection()
+    if connection is None or current_cursor is None:
+        SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "games": len(games), "strategy": strategy})
+        return None
+
+    average_rank = 0.0
+    if games:
+        scores = [float(game.get("final_score", {}).get("final_score", 0.0)) for game in games if isinstance(game.get("final_score"), dict)]
+        average_rank = round(sum(scores) / len(scores), 4) if scores else 0.0
+
+    try:
+        current_cursor.execute(
+            """
+            INSERT INTO generation_events (
+                first_name,
+                whatsapp,
+                seed,
+                strategy,
+                ranking_score,
+                execution_time_ms,
+                ml_enabled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (first_name.strip(), whatsapp.strip(), None, strategy, average_rank, duration_ms, 0),
+        )
+        generation_event_id = int(current_cursor.lastrowid or 0) or None
+        for index, game in enumerate(games, start=1):
+            current_cursor.execute(
+                """
+                INSERT INTO generated_games (
+                    generation_event_id,
+                    lead_id,
+                    game_index,
+                    numbers,
+                    profile_type,
+                    final_score,
+                    quadra_score
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    generation_event_id,
+                    lead_id,
+                    index,
+                    json.dumps(game.get("numbers", []), ensure_ascii=False),
+                    str(game.get("profile_type", "")),
+                    json.dumps(game.get("final_score", {}), ensure_ascii=False),
+                    json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
+                ),
+            )
+        connection.commit()
+        _invalidate_runtime_cache()
+        return generation_event_id
+    except sqlite3.Error as exc:
+        SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "error": str(exc), "games": len(games), "strategy": strategy})
+        if _sqlite_maybe_recover_connection(exc):
+            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
+            if recovered_conn is not None and recovered_cursor is not None:
+                try:
+                    recovered_cursor.execute(
+                        """
+                        INSERT INTO generation_events (
+                            first_name,
+                            whatsapp,
+                            seed,
+                            strategy,
+                            ranking_score,
+                            execution_time_ms,
+                            ml_enabled
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (first_name.strip(), whatsapp.strip(), None, strategy, average_rank, duration_ms, 0),
+                    )
+                    generation_event_id = int(recovered_cursor.lastrowid or 0) or None
+                    for index, game in enumerate(games, start=1):
+                        recovered_cursor.execute(
+                            """
+                            INSERT INTO generated_games (
+                                generation_event_id,
+                                lead_id,
+                                game_index,
+                                numbers,
+                                profile_type,
+                                final_score,
+                                quadra_score
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                generation_event_id,
+                                lead_id,
+                                index,
+                                json.dumps(game.get("numbers", []), ensure_ascii=False),
+                                str(game.get("profile_type", "")),
+                                json.dumps(game.get("final_score", {}), ensure_ascii=False),
+                                json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
+                            ),
+                        )
+                    recovered_conn.commit()
+                    _invalidate_runtime_cache()
+                    return generation_event_id
+                except sqlite3.Error:
+                    pass
+        return None
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
@@ -3240,7 +3360,16 @@ def render_generation_page() -> None:
                         },
                     }
                 st.session_state["last_generation_games"] = games
-                _persist_lead(first_name, whatsapp)
+                lead_id = _persist_lead(first_name, whatsapp)
+            duration_ms = (time.monotonic() - start_time) * 1000.0
+            generation_event_id = _persist_generation_events(
+                first_name=first_name,
+                whatsapp=whatsapp,
+                games=games,
+                duration_ms=duration_ms,
+                strategy=mode,
+                lead_id=lead_id,
+            )
             dataframe = _games_dataframe(games)
             st.dataframe(dataframe, hide_index=True, use_container_width=True)
             st.plotly_chart(go.Figure(data=[go.Bar(x=dataframe["rank"], y=dataframe["final_score"], marker_color="#173b63")]).update_layout(title="Ranking por final_score", xaxis_title="Rank", yaxis_title="final_score"), use_container_width=True)
@@ -3261,10 +3390,9 @@ def render_generation_page() -> None:
                     "profile_distribution": payload.get("profile_counts", {}),
                 },
             )
-            duration_ms = (time.monotonic() - start_time) * 1000.0
-            _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False})
+            _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False, "generation_event_id": generation_event_id})
             _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
-            _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games)})
+            _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games), "generation_event_id": generation_event_id})
             _invalidate_runtime_cache()
 def render_check_page() -> None:
     with st.container(border=True):

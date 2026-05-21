@@ -62,6 +62,43 @@ def test_sqlite_bootstrap_creates_institutional_tables(tmp_path: Path, monkeypat
     assert {"snapshot_type", "artifact_path", "metadata_json"} <= snapshot_columns
 
 
+def test_generation_events_are_persisted_with_generated_games() -> None:
+    connection = sqlite3.connect(":memory:")
+    try:
+        admin_app._sqlite_bind_connection(connection)
+        admin_app._sqlite_ensure_admin_schema()
+
+        games = [
+            {
+                "numbers": list(range(1, 16)),
+                "profile_type": "recorrente",
+                "final_score": {"final_score": 98.5},
+                "quadra_score": {"found_quadras": 3},
+            },
+            {
+                "numbers": list(range(2, 17)),
+                "profile_type": "hibrido",
+                "final_score": {"final_score": 95.25},
+                "quadra_score": {"found_quadras": 2},
+            },
+        ]
+
+        event_id = admin_app._persist_generation_events(
+            first_name="Ana",
+            whatsapp="11999999999",
+            games=games,
+            duration_ms=12.5,
+            strategy="Ranking hibrido",
+            lead_id=7,
+        )
+
+        assert event_id is not None
+        assert admin_app._safe_count("generation_events") == 1
+        assert admin_app._safe_count("generated_games") == 2
+    finally:
+        connection.close()
+
+
 def test_sqlite_engine_enables_wal_and_autocheckpoint(tmp_path: Path) -> None:
     from lotoia.database.database import get_engine
 
