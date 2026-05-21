@@ -35,7 +35,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         col3.metric("Memória", summary.get("memory_depth", 0))
         col4.metric("Timeline", summary.get("timeline_depth", 0))
 
-        st.markdown("### Contexto")
+        st.markdown("### Contexto executivo")
         st.info(
             f"{decision_context.get('headline', '-')}"
             f" | {decision_context.get('recommendation', '-')}"
@@ -61,7 +61,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         else:
             st.dataframe(events_frame, hide_index=True, use_container_width=True)
 
-        st.markdown("### Situacao")
+        st.markdown("### Situacao atual")
         coordination_frame = pd.DataFrame(live_coordination.get("signals", []))
         if coordination_frame.empty:
             st.info("Coordenacao viva ainda em consolidacao.")
@@ -79,7 +79,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         signal_cols[2].metric("Mudanças", signal_engine.get("persistent_changes", 0))
         signal_cols[3].metric("Recorrência", signal_engine.get("recurring_statuses", 0))
 
-        st.markdown("### Experiencia")
+        st.markdown("### Experiencia operacional")
         exp_cols = st.columns(4)
         exp_cols[0].metric("Cockpit", operational_experience.get("cockpit", "-"))
         exp_cols[1].metric("Timeline", operational_experience.get("timeline", "-"))

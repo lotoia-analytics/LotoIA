@@ -305,12 +305,12 @@ def render_live_analytical_intelligence(
                     unsafe_allow_html=True,
                 )
 
-    st.markdown("### Live analytical comparisons")
+    st.markdown("### Comparativos")
     comp_col1, comp_col2 = st.columns(2, gap="large")
     with comp_col1:
-        st.metric("Trend stability", f"{_latest_value(timeline, 'structural_health', summary.get('structural_health', 0.0)):.2f}")
-        st.metric("Trend drift", f"{_latest_value(timeline, 'drift', summary.get('drift', 0.0)):.2f}")
-        st.metric("Confidence evolution", f"{_first_last_delta(timeline, 'verdict_count', historical_summary.get('verdict_count', 0)):.2f}")
+        st.metric("Estabilidade", f"{_latest_value(timeline, 'structural_health', summary.get('structural_health', 0.0)):.2f}")
+        st.metric("Drift", f"{_latest_value(timeline, 'drift', summary.get('drift', 0.0)):.2f}")
+        st.metric("Confiança", f"{_first_last_delta(timeline, 'verdict_count', historical_summary.get('verdict_count', 0)):.2f}")
     with comp_col2:
         st.metric("Coverage 10+ evolution", f"{_first_last_delta(timeline, 'coverage_10', summary.get('coverage_10', 0.0)):.2f}")
         st.metric("Coverage 11+ evolution", f"{_first_last_delta(timeline, 'coverage_11', summary.get('coverage_11', 0.0)):.2f}")
@@ -378,7 +378,7 @@ def render_live_analytical_intelligence(
             f"checkpoints {len(longitudinal_frame)}"
         )
 
-    st.markdown("### Insights executivos")
+        st.markdown("### Insights")
     insight_messages = [
         f"Baseline hard manteve {'estabilidade' if summary.get('structural_health', 0.0) >= 0.80 else 'observacao'} nos checkpoints recentes.",
         f"Longitudinal apresentou {'baixa' if longitudinal_summary.get('stability_index', 0.0) >= 0.80 else 'media'} variabilidade.",
@@ -395,7 +395,7 @@ def render_live_analytical_intelligence(
     else:
         st.info("Insights executivos ainda nao consolidados nesta leitura.")
 
-    st.markdown("### Presenca institucional")
+    st.markdown("### Presenca")
     presence_cols = st.columns(4)
     presence_items = [
         ("Continuity", "memoria ativa" if memory_continuity >= 0.80 else "memoria consolidando"),
@@ -448,7 +448,7 @@ def render_live_analytical_intelligence(
             )
 
     final_posture = "madura" if consistency_score >= 0.80 and memory_continuity >= 0.80 else "em consolidacao"
-    st.markdown("### Final institutional posture")
+    st.markdown("### Postura final")
     final_cols = st.columns(2)
     final_items = [
         ("Posture", final_posture),
