@@ -4,6 +4,7 @@ from .distributed_tracing import DistributedTracer, TraceSpan
 from .metrics_registry import MetricSample, MetricSummary, MetricsRegistry, MetricType
 from .observability_alerts import ObservabilityAlert, ObservabilityAlertEngine, ObservabilityAlertRule
 from .observability_repository import ObservabilityRepository, ObservabilityTracer
+from .institutional_dashboard import InstitutionalObservabilityDashboard, build_institutional_observability_dashboard
 from .observability_report import ObservabilityReport
 from .observational_stabilization import (
     build_observational_stabilization_report,
@@ -25,6 +26,8 @@ __all__ = [
     "ObservabilityAlertRule",
     "ObservabilityReport",
     "ObservabilityRepository",
+    "InstitutionalObservabilityDashboard",
+    "build_institutional_observability_dashboard",
     "OperationalMonitoring",
     "OperationalMonitoringSnapshot",
     "StructuredLogEvent",

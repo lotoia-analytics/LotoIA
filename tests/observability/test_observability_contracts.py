@@ -7,7 +7,7 @@ import sqlite3
 import pandas as pd
 from lotoia.database import create_database
 from lotoia.database.database import get_session, Lead, GenerationEvent, CheckEvent, ImportedContest, GeneratedGame
-from lotoia.observability import build_observational_stabilization_report
+from lotoia.observability import MetricSample, MetricType, ObservabilityRepository, build_institutional_observability_dashboard, build_observational_stabilization_report
 
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
@@ -111,3 +111,37 @@ def test_observational_stabilization_report_reads_live_database(tmp_path) -> Non
     assert report["summary"]["homepage_priority"] in {"institutional_first", "mixed"}
     assert report["counts"]["generation_events"] == 1
     assert report["counts"]["check_events"] == 1
+
+
+def test_institutional_observability_dashboard_aggregates_runtime_history(tmp_path) -> None:
+    db_path = tmp_path / "observability.db"
+    create_database(db_path)
+    repository = ObservabilityRepository(db_path)
+    execution_id = repository.start_execution(flow_name="generation", stage="runtime", context={"source": "test"})
+    repository.record_metric(
+        execution_id,
+        MetricSample(name="confidence_drift", value=0.4, metric_type=MetricType.GAUGE, labels={}, metadata={}),
+        stage="runtime",
+    )
+    repository.record_lineage(
+        execution_id,
+        entity_type="runtime_execution",
+        entity_id=execution_id,
+        event_type="generator_started",
+        payload={"source": "test"},
+    )
+    repository.record_snapshot(
+        execution_id,
+        snapshot_type="runtime",
+        payload={"state": "ok"},
+        metadata={"source": "test"},
+    )
+    repository.finish_execution(execution_id, status="ok", stage="done", duration_ms=42.0)
+
+    dashboard = build_institutional_observability_dashboard(db_path)
+
+    assert dashboard["summary"]["execution_count"] == 1
+    assert dashboard["summary"]["metric_count"] == 1
+    assert dashboard["summary"]["lineage_count"] == 1
+    assert dashboard["summary"]["snapshot_count"] == 1
+    assert dashboard["structural_integrity"]["ok"] is True

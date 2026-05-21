@@ -86,6 +86,7 @@ from lotoia.orchestration import (
 )
 from lotoia.public import OperationalLifecycleEngine
 from lotoia.observability import (
+    build_institutional_observability_dashboard,
     build_observational_stabilization_report,
     load_observational_stabilization_report,
     persist_observational_stabilization_report,
@@ -911,7 +912,68 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     )
     value_maps: dict[str, dict[Any, Any]] = {
         "layer": {"executive": "Executiva", "historical": "Historica", "observability": "Observabilidade", "adaptive": "Adaptativa"},
-        "status": {"atencao": "atencao", "critical": "critico", "monitoring": "monitorando", "insuficiente": "insuficiente", "mixed": "mista", "saudavel": "saudavel"},
+        "component": {
+            "executive_dashboard": "Visao geral",
+            "executive_panel": "Painel executivo",
+            "executive_summary": "Resumo",
+            "live_status_header": "Estado atual",
+            "institutional_timeline": "Linha do tempo",
+            "live_analytical_intelligence": "Inteligencia viva",
+            "operational_orchestration": "Orquestracao operacional",
+            "adaptive_intelligence": "Inteligencia adaptativa",
+            "historical_intelligence": "Historico analitico",
+            "analytics_intelligence": "Analise inteligente",
+            "observability": "Monitoramento",
+        },
+        "flow_name": {
+            "generation": "Geracao",
+            "check": "Conferencia",
+            "benchmark": "Benchmark",
+            "backtest": "Backtest",
+            "calibration": "Calibracao",
+            "report": "Relatorio",
+            "observability": "Monitoramento",
+        },
+        "entity_type": {
+            "generation_event": "Evento de geracao",
+            "check_event": "Evento de conferencia",
+            "runtime_execution": "Execucao runtime",
+            "runtime_span": "Span runtime",
+            "runtime_metric": "Metrica runtime",
+            "runtime_lineage": "Lineage runtime",
+            "runtime_snapshot": "Snapshot runtime",
+        },
+        "event_type": {
+            "generation": "Geracao",
+            "check": "Conferencia",
+            "dashboard": "Dashboard",
+            "load_draws": "Carga de acervo",
+            "export": "Exportacao",
+            "sqlite": "SQLite",
+            "ml": "ML",
+            "observability_boot": "Inicializacao observability",
+            "sqlite_bootstrap": "Bootstrap SQLite",
+        },
+        "source": {
+            "observability": "Monitoramento",
+            "adaptive_intelligence": "Inteligencia adaptativa",
+            "historical_intelligence": "Historico analitico",
+            "executive_dashboard": "Visao geral",
+            "operational_monitoring": "Monitoramento operacional",
+            "operational_orchestration": "Orquestracao operacional",
+            "public_api": "API publica",
+            "dashboard": "Dashboard",
+            "generation": "Geracao",
+            "check": "Conferencia",
+            "sqlite": "SQLite",
+            "ml": "ML",
+        },
+        "metric_type": {
+            "gauge": "Indicador",
+            "counter": "Contador",
+            "timer": "Tempo",
+        },
+        "status": {"atencao": "atencao", "critical": "critico", "monitoring": "monitorando", "insuficiente": "insuficiente", "mixed": "mista", "saudavel": "saudavel", "running": "executando", "success": "sucesso", "failed": "falha", "ok": "ok", "active": "ativo", "idle": "inativo", "degraded": "degradado"},
         "trend": {"insuficiente": "insuficiente", "stable": "estavel", "observation": "observacao", "mixed": "mista"},
         "latest_status": {"mixed": "misto", "homepage em observacao": "homepage em observacao"},
         "homepage_priority": {"mixed": "mista", "homepage em observacao": "homepage em observacao"},
@@ -919,6 +981,33 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
         "pattern": {"observacao governada": "observacao governada"},
         "runtime_perception": {"percepcao operacional em atencao": "percepcao operacional em atencao"},
         "presence_state": {"adaptativa": "adaptativa"},
+        "snapshot_type": {
+            "runtime": "Runtime",
+            "generation": "Geracao",
+            "check": "Conferencia",
+            "observability": "Monitoramento",
+        },
+        "name": {
+            "runtime_latency_ms": "Latencia runtime ms",
+            "dashboard_load_ms": "Carga do dashboard ms",
+            "generation_ms": "Tempo geracao ms",
+            "check_ms": "Tempo conferencia ms",
+            "ml_inference_ms": "Tempo ML ms",
+            "report_ms": "Tempo relatorio ms",
+            "avg_generation_ms": "Media geracao ms",
+            "avg_check_ms": "Media conferencia ms",
+            "avg_duration_ms": "Tempo medio ms",
+        },
+        "metric": {
+            "avg_generation_ms": "Tempo medio geracao",
+            "avg_check_ms": "Tempo medio conferencia",
+            "ml_usage": "Uso ML",
+            "generated_games": "Jogos gerados",
+            "imported_contests": "Concursos importados",
+            "snapshot_volume": "Volume de snapshots",
+            "log_growth_today": "Crescimento de logs hoje",
+            "sqlite_size_bytes": "Tamanho SQLite bytes",
+        },
     }
     for column, replacements in value_maps.items():
         if column in presentational.columns:
@@ -1877,6 +1966,48 @@ def render_observability_page() -> None:
             f" | Conferências={counts.get('check_events', 0)}"
             f" | Jogos={counts.get('generated_games', 0)}"
             f" | Concursos={counts.get('imported_contests', 0)}"
+        )
+        observability_dashboard = build_institutional_observability_dashboard()
+        observability_summary = observability_dashboard.get("summary", {})
+        observability_health = observability_dashboard.get("runtime_health", {})
+        st.subheader("Painel executivo de observabilidade")
+        dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
+        dash_col1.metric("Execuções", observability_summary.get("execution_count", 0))
+        dash_col2.metric("Spans", observability_summary.get("span_count", 0))
+        dash_col3.metric("Metricas", observability_summary.get("metric_count", 0))
+        dash_col4.metric("Snapshots", observability_summary.get("snapshot_count", 0))
+        st.caption(
+            f"Fluxo recente: {observability_summary.get('latest_flow', '-')}"
+            f" | Status: {observability_summary.get('latest_status', '-')}"
+            f" | Duração média: {observability_summary.get('average_execution_duration_ms', 0.0):.2f} ms"
+        )
+        st.dataframe(
+            _presentational_dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "metric": "confidence_drift",
+                            "value": len(observability_dashboard.get("drift_evolution", [])),
+                            "interpretation": "Eventos de drift rastreados",
+                            "confidence": observability_health.get("latest_status", "-"),
+                        },
+                        {
+                            "metric": "confidence_stability",
+                            "value": len(observability_dashboard.get("confidence_stability", [])),
+                            "interpretation": "Eventos de estabilidade rastreados",
+                            "confidence": observability_health.get("latest_status", "-"),
+                        },
+                        {
+                            "metric": "structural_integrity",
+                            "value": 1.0 if observability_dashboard.get("structural_integrity", {}).get("ok") else 0.0,
+                            "interpretation": "Integridade estrutural persistida",
+                            "confidence": "ok" if observability_dashboard.get("structural_integrity", {}).get("ok") else "alerta",
+                        },
+                    ]
+                )
+            ),
+            hide_index=True,
+            use_container_width=True,
         )
         health = _runtime_health()
         operational = _operational_metrics()

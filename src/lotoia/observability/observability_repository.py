@@ -150,6 +150,111 @@ class ObservabilityRepository:
             session.commit()
             return {"snapshot_id": row.snapshot_id, "execution_id": execution_id}
 
+    def list_executions(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(RuntimeExecution)
+                .order_by(RuntimeExecution.started_at.desc(), RuntimeExecution.id.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "id": row.id,
+                    "execution_id": row.execution_id,
+                    "flow_name": row.flow_name,
+                    "stage": row.stage,
+                    "status": row.status,
+                    "started_at": row.started_at,
+                    "finished_at": row.finished_at,
+                    "duration_ms": row.duration_ms,
+                    "context_json": row.context_json,
+                }
+                for row in rows
+            ]
+
+    def list_spans(self, *, execution_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            query = session.query(RuntimeSpan).order_by(RuntimeSpan.started_at.desc(), RuntimeSpan.id.desc())
+            if execution_id is not None:
+                query = query.filter(RuntimeSpan.execution_id == execution_id)
+            rows = query.limit(limit).all()
+            return [
+                {
+                    "id": row.id,
+                    "execution_id": row.execution_id,
+                    "trace_id": row.trace_id,
+                    "span_id": row.span_id,
+                    "parent_span_id": row.parent_span_id,
+                    "name": row.name,
+                    "stage": row.stage,
+                    "status": row.status,
+                    "started_at": row.started_at,
+                    "finished_at": row.finished_at,
+                    "duration_ms": row.duration_ms,
+                    "attributes_json": row.attributes_json,
+                }
+                for row in rows
+            ]
+
+    def list_metrics(self, *, execution_id: str | None = None, limit: int = 300) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            query = session.query(RuntimeMetric).order_by(RuntimeMetric.observed_at.desc(), RuntimeMetric.id.desc())
+            if execution_id is not None:
+                query = query.filter(RuntimeMetric.execution_id == execution_id)
+            rows = query.limit(limit).all()
+            return [
+                {
+                    "id": row.id,
+                    "execution_id": row.execution_id,
+                    "name": row.name,
+                    "value": row.value,
+                    "metric_type": row.metric_type,
+                    "labels_json": row.labels_json,
+                    "metadata_json": row.metadata_json,
+                    "observed_at": row.observed_at,
+                }
+                for row in rows
+            ]
+
+    def list_lineage(self, *, execution_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            query = session.query(RuntimeLineage).order_by(RuntimeLineage.created_at.desc(), RuntimeLineage.id.desc())
+            if execution_id is not None:
+                query = query.filter(RuntimeLineage.execution_id == execution_id)
+            rows = query.limit(limit).all()
+            return [
+                {
+                    "id": row.id,
+                    "execution_id": row.execution_id,
+                    "entity_type": row.entity_type,
+                    "entity_id": row.entity_id,
+                    "event_type": row.event_type,
+                    "payload_json": row.payload_json,
+                    "created_at": row.created_at,
+                }
+                for row in rows
+            ]
+
+    def list_snapshots(self, *, execution_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            query = session.query(RuntimeSnapshot).order_by(RuntimeSnapshot.created_at.desc(), RuntimeSnapshot.id.desc())
+            if execution_id is not None:
+                query = query.filter(RuntimeSnapshot.execution_id == execution_id)
+            rows = query.limit(limit).all()
+            return [
+                {
+                    "id": row.id,
+                    "execution_id": row.execution_id,
+                    "snapshot_id": row.snapshot_id,
+                    "snapshot_type": row.snapshot_type,
+                    "payload_json": row.payload_json,
+                    "metadata_json": row.metadata_json,
+                    "created_at": row.created_at,
+                }
+                for row in rows
+            ]
+
 
 class ObservabilityTracer:
     """Trace helper coupled to the observability repository."""
