@@ -2962,9 +2962,10 @@ def _section_header(title: str, subtitle: str) -> None:
 def _render_kpi_cards() -> None:
     gen_count = _safe_count("generation_events")
     check_count = _safe_count("check_events")
+    ml_count = int(_query_scalar("SELECT COUNT(*) FROM generation_events WHERE ml_enabled = 1"))
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
-    render_secondary_operational_metrics(gen_count, check_count, last_contest, total_games)
+    render_secondary_operational_metrics(gen_count, check_count, ml_count, last_contest, total_games)
 
 
 def _render_institutional_cockpit() -> None:
