@@ -11,6 +11,7 @@ from dashboard.user_app import (
     _recent_history_dataframe,
     _render_sidebar,
     _user_indicator,
+    render_generate_page,
 )
 
 
@@ -100,3 +101,33 @@ def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
 
     assert _render_sidebar() == "Gerar Jogos"
     assert "Jogo Expandido" not in captured_options
+
+
+def test_user_generation_requires_lead(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _Sidebar:
+        pass
+
+    monkeypatch.setattr("dashboard.user_app.st.header", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.info", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.success", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.button", lambda *args, **kwargs: False)
+    monkeypatch.setattr("dashboard.user_app.st.toggle", lambda *args, **kwargs: False)
+    monkeypatch.setattr("dashboard.user_app.st.number_input", lambda *args, **kwargs: 1)
+    monkeypatch.setattr("dashboard.user_app.st.columns", lambda count: [type("Col", (), {"text_input": lambda self, *a, **k: ""})() for _ in range(count)])
+    monkeypatch.setattr("dashboard.user_app.st.session_state", {})
+    monkeypatch.setattr("dashboard.user_app.st.write", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.error", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.download_button", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.radio", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.title", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.set_page_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.sidebar", _Sidebar())
+    monkeypatch.setattr("dashboard.user_app.st.sidebar", type("Sidebar", (), {"title": lambda self, *a, **k: None, "success": lambda self, *a, **k: None, "radio": lambda self, *a, **k: "Gerar Jogos"})())
+
+    render_generate_page([])
+
+    assert captured == {}

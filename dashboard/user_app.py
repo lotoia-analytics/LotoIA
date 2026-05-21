@@ -16,6 +16,7 @@ except ImportError:
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.generator.basic_generator import generate_best_games
+from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
 MAX_GAMES_PER_SESSION = 10
 DEFAULT_GAMES_COUNT = 5
@@ -212,12 +213,24 @@ def _record_event(events: list[dict[str, Any]], event_type: str, details: str) -
 
 def render_generate_page(events: list[dict[str, Any]]) -> None:
     st.header("Gerar Jogos")
+    st.caption("Informe nome e WhatsApp para liberar a geracao.")
+    lead_col1, lead_col2 = st.columns(2)
+    first_name = lead_col1.text_input("Primeiro nome", key="user_first_name")
+    whatsapp = lead_col2.text_input("WhatsApp", key="user_whatsapp")
+    first_name = " ".join((first_name or "").strip().split())
+    whatsapp = " ".join((whatsapp or "").strip().split())
+    lead_ready = bool(first_name and whatsapp)
+    if not lead_ready:
+        st.info("Preencha primeiro nome e WhatsApp para habilitar a geracao.")
     count = st.number_input("Quantidade", min_value=1, max_value=MAX_GAMES_PER_SESSION, value=DEFAULT_GAMES_COUNT)
     pool_size = st.number_input("Pool", min_value=int(count), max_value=100, value=max(int(count) * 4, DEFAULT_POOL_SIZE))
     ml_enabled = st.toggle("ML light", value=False)
 
-    if st.button("Gerar", type="primary"):
+    if st.button("Gerar", type="primary", disabled=not lead_ready):
         try:
+            lead_service = LeadCaptureService()
+            lead_payload = LeadCaptureRequest(first_name=first_name, whatsapp=whatsapp, source="user_panel")
+            lead_capture = lead_service.capture(lead_payload, ip_address="", user_agent="user_panel")
             result = _generate_user_games(int(count), int(pool_size), ml_enabled)
         except Exception as exc:
             st.error(str(exc))
@@ -226,6 +239,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
 
         games = result["games"]
         st.success(f"{len(games)} jogos gerados.")
+        st.caption(f"Lead: {lead_capture.lead['first_name']} | {lead_capture.normalized_whatsapp}")
         st.caption(f"Indicador: {_user_indicator(games)[0]}")
         st.dataframe(
             pd.DataFrame(
@@ -242,7 +256,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
             use_container_width=True,
         )
         _record_event(events, "geracao", f"{len(games)} jogos")
-        st.session_state["user_last_generation"] = result
+        st.session_state["user_last_generation"] = {**result, "lead": lead_capture.lead, "lead_normalized_whatsapp": lead_capture.normalized_whatsapp}
 
 
 def render_check_page(events: list[dict[str, Any]]) -> None:
