@@ -38,6 +38,12 @@ from lotoia.ml.calibration_governance import (
     MLCalibrationGovernanceResult,
     register_calibration_snapshot,
 )
+from lotoia.ml.drift_detection import (
+    DEFAULT_ML_DRIFT_DETECTION_DIR,
+    DEFAULT_ML_DRIFT_DETECTION_REGISTRY,
+    MLDriftDetectionResult,
+    detect_ml_drift,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -75,6 +81,10 @@ __all__ = [
     "DEFAULT_ML_CALIBRATION_GOVERNANCE_REGISTRY",
     "MLCalibrationGovernanceResult",
     "register_calibration_snapshot",
+    "DEFAULT_ML_DRIFT_DETECTION_DIR",
+    "DEFAULT_ML_DRIFT_DETECTION_REGISTRY",
+    "MLDriftDetectionResult",
+    "detect_ml_drift",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
