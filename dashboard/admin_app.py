@@ -85,6 +85,7 @@ from lotoia.orchestration import (
     persist_intelligent_operational_orchestration,
 )
 from lotoia.public import OperationalLifecycleEngine
+from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
     build_memory_timeline,
@@ -2057,6 +2058,49 @@ def render_observability_page() -> None:
                                 "path": entry.get("memory_id", ""),
                             }
                             for entry in timeline_entries[:20]
+                        ]
+                    )
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        evolution = build_adaptive_evolution_tracking(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {
+            "summary": {
+                "snapshot_count": 0,
+                "state_count": 0,
+                "step_count": 0,
+                "change_count": 0,
+                "stable_count": 0,
+                "latest_label": "-",
+            },
+            "execution_id": timeline_execution_id,
+            "steps": [],
+        }
+        st.subheader("Evolucao adaptativa")
+        evolution_summary = evolution.get("summary", {})
+        evo_col1, evo_col2, evo_col3, evo_col4 = st.columns(4)
+        evo_col1.metric("Snapshots", evolution_summary.get("snapshot_count", 0))
+        evo_col2.metric("Estados", evolution_summary.get("state_count", 0))
+        evo_col3.metric("Mudancas", evolution_summary.get("change_count", 0))
+        evo_col4.metric("Estabilidade", evolution_summary.get("stable_count", 0))
+        st.caption(
+            f"Execucao: {evolution.get('execution_id', '-')}"
+            f" | Ultima evolucao: {evolution_summary.get('latest_label', '-')}"
+        )
+        evolution_steps = evolution.get("steps", [])
+        if evolution_steps:
+            st.dataframe(
+                _presentational_dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "metric": step.get("label", ""),
+                                "value": step.get("timestamp", ""),
+                                "interpretation": step.get("event_type", ""),
+                                "confidence": step.get("drift_ratio", 0.0),
+                                "stage": step.get("memory_id", ""),
+                            }
+                            for step in evolution_steps[:20]
                         ]
                     )
                 ),
