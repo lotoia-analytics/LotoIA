@@ -50,6 +50,11 @@ from lotoia.ml.explainability import (
     MLExplainabilityResult,
     explain_score_ml_game,
 )
+from lotoia.ml.runtime_isolation import (
+    MLRuntimeIsolationContract,
+    describe_ml_runtime_isolation,
+    get_isolated_ml_runtime_state,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -95,6 +100,9 @@ __all__ = [
     "DEFAULT_ML_EXPLAINABILITY_REGISTRY",
     "MLExplainabilityResult",
     "explain_score_ml_game",
+    "MLRuntimeIsolationContract",
+    "describe_ml_runtime_isolation",
+    "get_isolated_ml_runtime_state",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
