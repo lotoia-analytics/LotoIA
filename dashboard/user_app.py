@@ -232,6 +232,10 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
     lead_ready = bool(first_name and whatsapp)
     count = st.number_input("Quantidade", min_value=1, max_value=MAX_GAMES_PER_SESSION, value=DEFAULT_GAMES_COUNT)
     pool_size = st.number_input("Pool", min_value=int(count), max_value=100, value=max(int(count) * 4, DEFAULT_POOL_SIZE))
+    st.markdown(
+        "<div style='font-size:1rem; font-weight:700; color:#1f2f44; margin:0.2rem 0 0.4rem 0;'>LotoIA</div>",
+        unsafe_allow_html=True,
+    )
     ml_enabled = st.toggle("ML light", value=False)
 
     if st.button("Gerar", type="primary", disabled=not lead_ready):
