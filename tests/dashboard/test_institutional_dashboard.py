@@ -268,22 +268,62 @@ def test_cache_invalidates_after_generation(monkeypatch) -> None:
     monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app, "_record_audit_trail", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app, "_persist_lead", lambda *args, **kwargs: None)
+    class _LeadCaptureService:
+        def __init__(self, db_path) -> None:  # noqa: ANN001
+            self.db_path = db_path
+
+        def capture(self, payload, *, ip_address="", user_agent=""):  # noqa: ANN001
+            assert payload.first_name == "Ana"
+            assert payload.whatsapp == "11999999999"
+            assert payload.source == "dashboard_user_panel"
+            return type(
+                "LeadCaptureResult",
+                (),
+                {"lead": {"id": 7, "first_name": "Ana"}, "normalized_whatsapp": "11999999999"},
+            )()
+
+    monkeypatch.setattr(admin_app, "LeadCaptureService", _LeadCaptureService)
+    monkeypatch.setattr(admin_app, "_persist_generation_events", lambda **kwargs: calls.append("persist") or 99)
     monkeypatch.setattr(admin_app, "_cached_generate_best_games", lambda count, pool_size: {"games": [{"numbers": list(range(1, 16)), "final_score": {"final_score": 1}, "quadra_score": {"found_quadras": 0, "average_rank": 0}}], "profile_counts": {"recorrente": 1, "hibrido": 0, "caotico": 0}})
     monkeypatch.setattr(admin_app, "_games_dataframe", lambda games: admin_app.pd.DataFrame([{"rank": 1, "final_score": 1}]))
     monkeypatch.setattr(admin_app.st, "spinner", lambda *args, **kwargs: _dummy_context())
     monkeypatch.setattr(admin_app.st, "session_state", {})
     monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
-    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking híbrido")
+    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking hibrido")
     monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "Ana")
+    monkeypatch.setattr(
+        admin_app.st,
+        "text_input",
+        lambda label, *args, **kwargs: "Ana" if "nome" in label.lower() else "(11) 99999-9999",
+    )
     monkeypatch.setattr(admin_app.st, "markdown", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "dataframe", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "plotly_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
+
+    lead_id, first_name, whatsapp = admin_app._capture_generation_lead("Ana", "(11) 99999-9999")
+    assert lead_id == 7
+    assert first_name == "Ana"
+    assert whatsapp == "11999999999"
+    admin_app._invalidate_runtime_cache()
+
+    assert calls == ["clear"]
+
+
+def test_generation_page_disables_button_without_lead(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(admin_app, "build_executive_analytical_report", lambda: {})
+    monkeypatch.setattr(admin_app, "build_institutional_historical_intelligence", lambda: {})
+    monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda: {})
+    monkeypatch.setattr(admin_app, "render_generation_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: captured.update(kwargs) or False)
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "")
 
     admin_app.render_generation_page()
 
-    assert calls
+    assert captured.get("disabled") is True
 
 
 def test_homepage_renders_institutional_cockpit_first(monkeypatch) -> None:

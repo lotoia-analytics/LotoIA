@@ -90,6 +90,7 @@ from lotoia.observability import (
     load_observational_stabilization_report,
     persist_observational_stabilization_report,
 )
+from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 from dashboard.components import (
     render_adaptive_institutional_intelligence,
     render_analytical_cards,
@@ -2791,6 +2792,21 @@ def _persist_generation_events(
         return None
 
 
+def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, str]:
+    lead_service = LeadCaptureService(DEFAULT_DATABASE_PATH)
+    lead_payload = LeadCaptureRequest(
+        first_name=first_name,
+        whatsapp=whatsapp,
+        source="dashboard_user_panel",
+    )
+    lead_capture = lead_service.capture(
+        lead_payload,
+        ip_address="",
+        user_agent="dashboard_user_panel",
+    )
+    return int(lead_capture.lead["id"]), str(lead_capture.lead["first_name"]), str(lead_capture.normalized_whatsapp)
+
+
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _lead_history_dataframe() -> pd.DataFrame:
     leads_df = _read_sql_query_safe(
@@ -3418,15 +3434,23 @@ def render_generation_page() -> None:
         whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
         first_name = _safe_text(first_name, max_length=80)
         whatsapp = _safe_text(whatsapp, max_length=40)
-        st.markdown('<div class="lotoia-lead-hint">Lead institucional opcional para rastreabilidade analitica.</div>', unsafe_allow_html=True)
+        lead_ready = bool(first_name.strip() and whatsapp.strip())
+        if not lead_ready:
+            st.info("Informe primeiro nome e WhatsApp para habilitar a geracao.")
+        st.markdown('<div class="lotoia-lead-hint">Lead institucional obrigatorio para rastreabilidade analitica.</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
         pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
         max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
         mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
-        if st.button("Gerar jogos", type="primary"):
+        if st.button("Gerar jogos", type="primary", disabled=not lead_ready):
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
+                try:
+                    lead_id, first_name, whatsapp = _capture_generation_lead(first_name, whatsapp)
+                except Exception as exc:
+                    st.warning(str(exc))
+                    return
                 if mode == "Ranking hibrido":
                     payload = _cached_generate_best_games(int(count), int(pool_size))
                     games = payload["games"]
@@ -3440,7 +3464,6 @@ def render_generation_page() -> None:
                         },
                     }
                 st.session_state["last_generation_games"] = games
-                lead_id = _persist_lead(first_name, whatsapp)
             duration_ms = (time.monotonic() - start_time) * 1000.0
             generation_event_id = _persist_generation_events(
                 first_name=first_name,
