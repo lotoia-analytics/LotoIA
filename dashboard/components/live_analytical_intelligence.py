@@ -102,7 +102,7 @@ def render_live_analytical_intelligence(
                     Evolucao da estabilidade, confiança, drift e cobertura
                 </div>
                 <div style="font-size: 0.92rem; color: #4b5f74; line-height: 1.5;">
-                    O baseline permanece sob leitura institucional. A evolucao temporal mostra como a plataforma se comporta ao longo dos checkpoints persistidos.
+                    O baseline permanece sob leitura institucional.
                 </div>
             </div>
             """,
@@ -145,16 +145,13 @@ def render_live_analytical_intelligence(
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
                 <div class="lotoia-muted-label">Interpretacao</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
-                    Leitura temporal interpretativa
+                    Leitura temporal
                 </div>
                 <div style="font-size: 0.92rem; color: #4b5f74; line-height: 1.6;">
                     {summary.get('interpretation', executive_report.get('headline', 'baseline longitudinal consistente'))}
                 </div>
                 <div style="margin-top: 0.55rem; font-size: 0.88rem; color: #4b5f74; line-height: 1.55;">
-                    A estabilidade { _direction_label(stability_delta, 'melhorou', 'recuou') }.
-                    O drift { _direction_label(drift_delta, 'cresceu levemente', 'reduziu') }.
-                    A cobertura 10+ { _direction_label(coverage10_delta, 'ganhou tracao', 'perdeu tracao') }.
-                    A cobertura 11+ { _direction_label(coverage11_delta, 'ganhou tracao', 'perdeu tracao') }.
+                    Estabilidade { _direction_label(stability_delta, 'melhorou', 'recuou') } | drift { _direction_label(drift_delta, 'cresceu', 'reduziu') } | cobertura 10+ { _direction_label(coverage10_delta, 'ganhou', 'perdeu') } | cobertura 11+ { _direction_label(coverage11_delta, 'ganhou', 'perdeu') }.
                 </div>
                 <div style="margin-top: 0.55rem; display: flex; flex-wrap: wrap; gap: 0.35rem;">
                     <span style="padding: 0.28rem 0.62rem; border-radius: 999px; background: #eef7f0; color: #204c33; font-size: 0.82rem; font-weight: 700;">{historical_summary.get('trend', 'estavel')}</span>
@@ -176,14 +173,13 @@ def render_live_analytical_intelligence(
             """,
             unsafe_allow_html=True,
         )
-        st.caption(f"Memoria operacional percebida: {memory_continuity:.2f}")
         if comparisons:
             comparison_frame = pd.DataFrame(comparisons)
             st.dataframe(comparison_frame, hide_index=True, use_container_width=True)
         else:
             st.info("Comparacoes longitudinais ainda nao disponiveis nesta janela.")
 
-    st.markdown("### Evolucao longitudinal")
+    st.markdown("### Evolucao")
     if longitudinal_frame.empty:
         st.info("Baseline longitudinal ainda nao foi consolidado para comparacao viva.")
     else:
@@ -206,12 +202,6 @@ def render_live_analytical_intelligence(
             chart_frame["checkpoint"] = chart_frame["checkpoint"].astype(str)
             chart_frame = chart_frame.set_index("checkpoint")
             st.line_chart(chart_frame[["average_hits", "stability_window_sd", "final_score_hit_correlation"]], height=240)
-        st.caption(
-            f"baseline={longitudinal_report.get('baseline_mode', executive_report.get('baseline_mode', '-'))}"
-            f" | cobertura10={longitudinal_summary.get('coverage_10', 0.0)}"
-            f" | cobertura11={longitudinal_summary.get('coverage_11', 0.0)}"
-            f" | estabilidade={longitudinal_summary.get('stability_index', 0.0)}"
-        )
         comparative_cols = st.columns(4)
         comparative_items = [
             ("Acertos", _first_last_delta(longitudinal_frame, "average_hits", 0.0)),
@@ -233,7 +223,7 @@ def render_live_analytical_intelligence(
                     unsafe_allow_html=True,
                 )
 
-    st.markdown("### Graficos")
+    st.markdown("### Grafico")
     if longitudinal_frame.empty:
         st.info("Graficos executivos ainda dependem do longitudinal consolidado.")
     else:
@@ -286,7 +276,7 @@ def render_live_analytical_intelligence(
             height=220,
         )
 
-    st.markdown("### Narrativa evolutiva")
+    st.markdown("### Timeline")
     if timeline.empty:
         st.info("Checkpoint historico ainda nao consolidado para storytelling.")
     else:
@@ -316,7 +306,7 @@ def render_live_analytical_intelligence(
         st.metric("Cobertura 11+", f"{_first_last_delta(timeline, 'coverage_11', summary.get('coverage_11', 0.0)):.2f}")
         st.metric("Memoria operacional", f"{len(timeline)} checkpoints")
 
-    st.markdown("### Memoria operacional")
+    st.markdown("### Memoria")
     memory_cols = st.columns(3)
     memory_cols[0].metric("Latest status", str(historical_summary.get("latest_status", snapshot_summary.get("status", "-"))))
     memory_cols[1].metric("Latest transition", str(historical_summary.get("latest_transition", "inicio")))
@@ -338,7 +328,7 @@ def render_live_analytical_intelligence(
     continuity_label = "forte" if memory_continuity >= 0.80 else "em consolidacao"
     st.caption(f"Continuidade executiva {continuity_label}: {memory_continuity:.2f}")
 
-    st.markdown("### Resumo evolutivo")
+    st.markdown("### Resumo")
     if longitudinal_frame.empty:
         st.info("Resumo evolutivo institucional ainda depende do longitudinal consolidado.")
     else:
@@ -372,12 +362,6 @@ def render_live_analytical_intelligence(
                     """,
                     unsafe_allow_html=True,
                 )
-        st.caption(
-            f"resumo longitudinal: acertos {first_hits:.2f} -> {latest_hits:.2f} | "
-            f"estabilidade {first_stability:.2f} -> {latest_stability:.2f} | "
-            f"checkpoints {len(longitudinal_frame)}"
-        )
-
         st.markdown("### Insights")
     insight_messages = [
         f"Baseline hard manteve {'estabilidade' if summary.get('structural_health', 0.0) >= 0.80 else 'observacao'} nos checkpoints recentes.",
@@ -388,7 +372,7 @@ def render_live_analytical_intelligence(
     for message in insight_messages:
         st.info(message)
 
-    st.markdown("### Detalhes")
+    st.markdown("### Dados")
     if insights:
         insights_frame = pd.DataFrame(insights)
         st.dataframe(insights_frame, hide_index=True, use_container_width=True)
@@ -448,7 +432,7 @@ def render_live_analytical_intelligence(
             )
 
     final_posture = "madura" if consistency_score >= 0.80 and memory_continuity >= 0.80 else "em consolidacao"
-    st.markdown("### Postura final")
+    st.markdown("### Postura")
     final_cols = st.columns(2)
     final_items = [
         ("Postura", final_posture),
@@ -472,11 +456,11 @@ def render_live_analytical_intelligence(
         if final_posture == "madura"
         else "A leitura institucional segue em consolidacao com memoria viva."
     )
-    st.caption(final_message)
     executive_summary = (
-        "Resumo executivo: a plataforma sustenta continuidade, memoria e consistencia institucional."
+        "Resumo executivo: continuidade, memoria e consistencia."
         if final_posture == "madura"
-        else "Resumo executivo: a plataforma segue consolidando continuidade e memoria institucional."
+        else "Resumo executivo: continuidade e memoria em consolidacao."
     )
+    st.caption(final_message)
     st.info(executive_summary)
     st.caption(f"Profundidade da timeline: {len(timeline)} checkpoints")

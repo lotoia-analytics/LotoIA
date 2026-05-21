@@ -24,16 +24,6 @@ def render_executive_dashboard(
     timeline: pd.DataFrame,
 ) -> None:
     render_institutional_design_system()
-    st.markdown(
-        """
-        <div class="lotoia-executive-section" style="padding-bottom: 0.25rem; border-bottom: 1px solid #dce7f2;">
-            <div class="lotoia-executive-kicker">
-                Visao geral
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     render_live_status_header(executive_report, analytical_summary, historical_summary, observability_summary)
 
     left_col, right_col = st.columns([1.45, 0.95], gap="large")
@@ -44,6 +34,6 @@ def render_executive_dashboard(
         render_analytical_cards(analytical_summary)
         render_structural_health(analytical_summary, historical_summary)
 
-    with st.expander("Resumo e historico", expanded=True):
+    with st.expander("Historico e detalhes", expanded=True):
         render_executive_summary(executive_report, historical_summary, snapshot_summary)
         render_institutional_timeline(timeline)

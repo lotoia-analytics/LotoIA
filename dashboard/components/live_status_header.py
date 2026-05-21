@@ -62,4 +62,3 @@ def render_live_status_header(
         """,
         unsafe_allow_html=True,
     )
-    st.caption(note)
