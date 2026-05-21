@@ -809,6 +809,34 @@ def _presentational_historical_intelligence_dataframe(games: list[dict[str, Any]
     )
 
 
+def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+    return dataframe.rename(
+        columns={
+            "historical_score": "Forca Historica",
+            "profile_type": "Perfil Estrategico",
+            "recurrence_score": "Tendencia",
+            "partial_match_max": "Pico de Acertos",
+            "partial_match_avg": "Media de Acertos",
+            "jaccard_similarity": "Compatibilidade",
+            "structural_rarity": "Exclusividade",
+            "entropy_score": "Balanceamento",
+            "block_density": "Distribuicao Estrutural",
+            "first_name": "Nome",
+            "whatsapp": "WhatsApp",
+            "created_at": "Criado em",
+            "origin": "Origem",
+            "generations": "Geracoes",
+            "checks": "Conferencias",
+            "ml_activations": "ML",
+            "last_generation_at": "Ultima geracao",
+            "last_check_at": "Ultima conferencia",
+            "lead": "Lead",
+        }
+    )
+
+
 def _historical_analytics(games: list[dict[str, Any]]) -> dict[str, Any]:
     matches = [_historical_match_engine(game["numbers"]) for game in games]
     return {
@@ -3124,22 +3152,9 @@ def _render_lead_intelligence() -> None:
     e.metric("Conferências", analytics["volume_checks"])
     st.subheader("Historico")
     st.dataframe(
-        history,
+        _presentational_dataframe(history),
         hide_index=True,
         use_container_width=True,
-        column_config={
-            "lead": "Lead",
-            "first_name": "Nome",
-            "whatsapp": "WhatsApp",
-            "created_at": "Criado em",
-            "origin": "Origem",
-            "generations": "Gerações",
-            "checks": "Conferências",
-            "ml_activations": "ML",
-            "last_generation_at": "Última geração",
-            "last_check_at": "Última conferência",
-            "recurrence_score": "Recorrência",
-        },
     )
     if not history.empty:
         st.subheader("Ranking de uso")
@@ -3148,7 +3163,7 @@ def _render_lead_intelligence() -> None:
             .head(20)
             .reset_index(drop=True)
         )
-        st.dataframe(ranking, hide_index=True, use_container_width=True)
+        st.dataframe(_presentational_dataframe(ranking), hide_index=True, use_container_width=True)
 
 
 def _sidebar_navigation() -> str:

@@ -388,6 +388,34 @@ def test_presentational_historical_intelligence_dataframe_renames_columns() -> N
     assert "historical_score" not in dataframe.columns
 
 
+def test_presentational_dataframe_renames_user_history_columns() -> None:
+    dataframe = admin_app._presentational_dataframe(
+        admin_app.pd.DataFrame(
+            [
+                {
+                    "lead": "Ana | 11999999999",
+                    "first_name": "Ana",
+                    "whatsapp": "11999999999",
+                    "created_at": "2026-05-21",
+                    "origin": "user_panel",
+                    "generations": 3,
+                    "checks": 1,
+                    "ml_activations": 0,
+                    "last_generation_at": "2026-05-21",
+                    "last_check_at": "2026-05-20",
+                    "recurrence_score": 4,
+                }
+            ]
+        )
+    )
+
+    assert "Nome" in dataframe.columns
+    assert "WhatsApp" in dataframe.columns
+    assert "Gerações" in dataframe.columns or "Geracoes" in dataframe.columns
+    assert "Conferências" in dataframe.columns or "Conferencias" in dataframe.columns
+    assert "Tendencia" in dataframe.columns
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []
