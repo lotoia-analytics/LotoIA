@@ -178,6 +178,43 @@ class GeneratedGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class ReconciliationRun(Base):
+    __tablename__ = "reconciliation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    generation_event_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contest_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[str] = mapped_column(String, default="official_result", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="reconciled", nullable=False)
+    prize_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_hits: Mapped[int] = mapped_column(Integer, nullable=False)
+    best_hits: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class ReconciliationGame(Base):
+    __tablename__ = "reconciliation_games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reconciliation_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    generation_event_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contest_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    game_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    numbers: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False)
+    matched_numbers: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    prize_status: Mapped[str] = mapped_column(String, default="nao_premiado", nullable=False)
+    prize_tier: Mapped[str] = mapped_column(String, default="", nullable=False)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
     return f"sqlite:///{path}"
 
@@ -234,6 +271,41 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
             """
         )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS reconciliation_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                generation_event_id INTEGER NOT NULL,
+                lead_id INTEGER,
+                contest_id INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT 'official_result',
+                status TEXT NOT NULL DEFAULT 'reconciled',
+                prize_count INTEGER NOT NULL,
+                total_hits INTEGER NOT NULL,
+                best_hits INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS reconciliation_games (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reconciliation_run_id INTEGER NOT NULL,
+                generation_event_id INTEGER NOT NULL,
+                lead_id INTEGER,
+                contest_id INTEGER NOT NULL,
+                game_index INTEGER NOT NULL,
+                numbers JSON NOT NULL,
+                hits INTEGER NOT NULL,
+                matched_numbers JSON NOT NULL,
+                prize_status TEXT NOT NULL DEFAULT 'nao_premiado',
+                prize_tier TEXT NOT NULL DEFAULT '',
+                context_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
         generated_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(generated_games)").fetchall()
@@ -245,6 +317,23 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE generated_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
         ):
             if column_name not in generated_columns:
+                connection.exec_driver_sql(column_sql)
+        reconciliation_run_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(reconciliation_runs)").fetchall()
+        }
+        if "payload" not in reconciliation_run_columns:
+            connection.exec_driver_sql("ALTER TABLE reconciliation_runs ADD COLUMN payload JSON NOT NULL DEFAULT '{}'")
+        reconciliation_game_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(reconciliation_games)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE reconciliation_games ADD COLUMN prize_status TEXT NOT NULL DEFAULT 'nao_premiado'", "prize_status"),
+            ("ALTER TABLE reconciliation_games ADD COLUMN prize_tier TEXT NOT NULL DEFAULT ''", "prize_tier"),
+            ("ALTER TABLE reconciliation_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
+        ):
+            if column_name not in reconciliation_game_columns:
                 connection.exec_driver_sql(column_sql)
         columns = {
             row[1]

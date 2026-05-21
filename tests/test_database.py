@@ -102,6 +102,8 @@ def test_create_database_schema(tmp_path: Path) -> None:
         "generation_events",
         "imported_contests",
         "leads",
+        "reconciliation_games",
+        "reconciliation_runs",
     }
     imported_columns = {column["name"] for column in inspector.get_columns("imported_contests")}
     assert {"contest_number", "created_at", "data", "dezenas", "metadata_json"} <= imported_columns

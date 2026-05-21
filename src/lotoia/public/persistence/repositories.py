@@ -8,6 +8,8 @@ from lotoia.database.database import (
     GeneratedGame,
     CheckEvent,
     GenerationEvent,
+    ReconciliationGame,
+    ReconciliationRun,
     Lead,
     get_session,
 )
@@ -118,6 +120,11 @@ class GenerationEventRepository:
             )
             return [_model_to_dict(row) for row in rows]
 
+    def get(self, event_id: int) -> dict[str, Any] | None:
+        with get_session(self.db_path) as session:
+            event = session.get(GenerationEvent, event_id)
+            return _model_to_dict(event) if event else None
+
 
 class CheckEventRepository:
     def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
@@ -153,3 +160,66 @@ class CheckEventRepository:
                 .all()
             )
             return [_model_to_dict(row) for row in rows]
+
+
+class ReconciliationRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        generation_event_id: int,
+        lead_id: int | None,
+        contest_id: int,
+        source: str,
+        status: str,
+        prize_count: int,
+        total_hits: int,
+        best_hits: int,
+        payload: dict[str, Any],
+        games: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            run = ReconciliationRun(
+                generation_event_id=generation_event_id,
+                lead_id=lead_id,
+                contest_id=contest_id,
+                source=source,
+                status=status,
+                prize_count=prize_count,
+                total_hits=total_hits,
+                best_hits=best_hits,
+                payload=payload,
+            )
+            session.add(run)
+            session.commit()
+            for game in games:
+                session.add(
+                    ReconciliationGame(
+                        reconciliation_run_id=run.id,
+                        generation_event_id=generation_event_id,
+                        lead_id=lead_id,
+                        contest_id=contest_id,
+                        game_index=int(game["game_index"]),
+                        numbers=game["numbers"],
+                        hits=int(game["hits"]),
+                        matched_numbers=game["matched_numbers"],
+                        prize_status=str(game["prize_status"]),
+                        prize_tier=str(game["prize_tier"]),
+                        context_json=game.get("context_json", {}),
+                    )
+                )
+            session.commit()
+            return {
+                "id": run.id,
+                "generation_event_id": generation_event_id,
+                "lead_id": lead_id,
+                "contest_id": contest_id,
+                "source": source,
+                "status": status,
+                "prize_count": prize_count,
+                "total_hits": total_hits,
+                "best_hits": best_hits,
+                "payload": payload,
+            }

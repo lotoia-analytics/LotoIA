@@ -5,6 +5,7 @@ from lotoia.public.service import (
     check_public_contest,
     generate_public_games,
 )
+from lotoia.public.reconciliation import ReconciliationEngine
 
 __all__ = [
     "PublicCheckRequest",
@@ -12,4 +13,5 @@ __all__ = [
     "PublicLimiter",
     "check_public_contest",
     "generate_public_games",
+    "ReconciliationEngine",
 ]
