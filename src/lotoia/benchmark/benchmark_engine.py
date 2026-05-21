@@ -20,8 +20,10 @@ from lotoia.backtesting.backtester import (
 from lotoia.data.loader import load_draws_csv
 from lotoia.database import save_benchmark_run
 from lotoia.generator.basic_generator import _build_game, _is_valid_game
+from lotoia.generator.basic_generator import _compose_profiled_games, _generate_profile_candidate
 from lotoia.models.draw import Draw
 from lotoia.statistics.temporal import build_features
+from lotoia.statistics.historical_intelligence import GENERATION_PROFILE_RATIOS
 
 STRATEGY_LOTOIA = "lotoia_engine"
 STRATEGY_FILTERED_RANDOM = "filtered_random"
@@ -75,17 +77,25 @@ def _history_for_target(
     return history[-history_window:] if history_window is not None else history
 
 
-def _generate_filtered_candidates(pool_size: int, random: Random) -> list[list[int]]:
+def _generate_filtered_candidates(
+    pool_size: int,
+    random: Random,
+    history: list[Draw] | None = None,
+) -> list[list[int]]:
     candidates: list[list[int]] = []
     seen: set[tuple[int, ...]] = set()
     attempts = 0
     max_attempts = pool_size * 10000
 
+    profiles = list(GENERATION_PROFILE_RATIOS)
     while len(candidates) < pool_size and attempts < max_attempts:
         attempts += 1
-        game = _build_game(random.sample(range(1, 26), 15))
+        if history:
+            game = _generate_profile_candidate(random, profiles[attempts % len(profiles)], history)
+        else:
+            game = _build_game(random.sample(range(1, 26), 15))
         game_key = tuple(game["numbers"])
-        if game_key in seen or not _is_valid_game(game):
+        if game_key in seen or (history is None and not _is_valid_game(game)):
             continue
         candidates.append(game["numbers"])
         seen.add(game_key)
@@ -409,12 +419,12 @@ def run_benchmark(
             continue
 
         base_seed = seed + target.contest if seed is not None else None
-        lotoia_pool = _generate_filtered_candidates(pool_size, Random(base_seed))
+        lotoia_pool = _generate_filtered_candidates(pool_size, Random(base_seed), history)
         filtered_pool = _generate_filtered_candidates(games_count, Random(None if base_seed is None else base_seed + 1))
         pure_pool = _generate_pure_candidates(games_count, Random(None if base_seed is None else base_seed + 2))
 
         lotoia_scored = _score_lotoia_games(lotoia_pool, target, history)
-        lotoia_selected = sorted(lotoia_scored, key=_hybrid_sort_key)[:games_count]
+        lotoia_selected = _compose_profiled_games(lotoia_scored, games_count)
         filtered_selected = _build_unscored_games(
             filtered_pool,
             target,

@@ -5,6 +5,9 @@ import types
 import sqlite3
 
 import pandas as pd
+from lotoia.database import create_database
+from lotoia.database.database import get_session, Lead, GenerationEvent, CheckEvent, ImportedContest, GeneratedGame
+from lotoia.observability import build_observational_stabilization_report
 
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
@@ -52,3 +55,59 @@ def test_runtime_health_and_metrics_table_are_safe(monkeypatch, tmp_path) -> Non
     assert health["failures"] == 1
     assert not metrics.empty
     assert set(metrics["event_type"]) == {"generation", "check"}
+
+
+def test_observational_stabilization_report_reads_live_database(tmp_path) -> None:
+    db_path = tmp_path / "observability.db"
+    create_database(db_path)
+    with get_session(db_path) as session:
+        lead = Lead(first_name="Ana", whatsapp="11999999999", source="public", ip_hash="", user_agent="")
+        session.add(lead)
+        session.commit()
+        session.add(
+            GenerationEvent(
+                lead_id=lead.id,
+                generated_games=[{"numbers": list(range(1, 16))}],
+                ml_enabled=0,
+                seed=7,
+                strategy="historical_recalibrated_v2",
+                ranking_score=1.0,
+                execution_time_ms=10.0,
+            )
+        )
+        session.add(
+            CheckEvent(
+                lead_id=lead.id,
+                contest_id=5000,
+                selected_numbers=list(range(1, 16)),
+                hits=12,
+                result_payload={"hits": 12},
+            )
+        )
+        session.add(
+            ImportedContest(
+                contest_number=5000,
+                data="{}",
+                dezenas="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+            )
+        )
+        session.add(
+            GeneratedGame(
+                generation_event_id=1,
+                lead_id=lead.id,
+                game_index=1,
+                numbers=list(range(1, 16)),
+                profile_type="recorrente",
+                final_score={"score": 1.0},
+                quadra_score={"quadra": 0},
+            )
+        )
+        session.commit()
+
+    report = build_observational_stabilization_report(db_path)
+
+    assert report["schema_version"] == "observational-stabilization-v1.0.0"
+    assert report["generated_by"] == "build_observational_stabilization_report"
+    assert report["summary"]["homepage_priority"] in {"institutional_first", "mixed"}
+    assert report["counts"]["generation_events"] == 1
+    assert report["counts"]["check_events"] == 1

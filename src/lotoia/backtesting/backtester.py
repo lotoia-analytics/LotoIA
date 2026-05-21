@@ -7,6 +7,7 @@ from random import Random
 from lotoia.data.loader import load_draws_csv
 from lotoia.database import save_backtest_run
 from lotoia.generator.basic_generator import _build_game, _is_valid_game
+from lotoia.generator.basic_generator import _compose_profiled_games, _generate_profile_candidate
 from lotoia.models.draw import Draw
 from lotoia.statistics.combinations import combo_score, combo_stats, rank_component_score
 from lotoia.statistics.scoring import (
@@ -24,6 +25,8 @@ from lotoia.statistics.temporal import (
     sequence_component,
     sum_component,
 )
+from lotoia.statistics.historical_intelligence import GENERATION_PROFILE_RATIOS
+from lotoia.statistics.generation_trace import persist_stage_snapshot, stage_snapshot
 
 CandidateProvider = Callable[[list[Draw], Draw, int, int, int | None], list[list[int]]]
 
@@ -140,11 +143,13 @@ def _generate_candidate_pool(
             and sequence_stats["largest_sequence"] <= sequence_max
         )
 
+    profiles = list(GENERATION_PROFILE_RATIOS)
     while len(candidates) < target_pool_size and attempts < max_attempts:
         attempts += 1
-        game = _build_game(random.sample(range(1, 26), 15))
+        profile_type = profiles[attempts % len(profiles)]
+        game = _generate_profile_candidate(random, profile_type, history)
         game_key = tuple(game["numbers"])
-        if game_key in seen or not _is_valid_game(game):
+        if game_key in seen:
             continue
         candidates.append(game["numbers"])
         seen.add(game_key)
@@ -203,7 +208,7 @@ def _hybrid_sort_key(game: dict[str, object]) -> tuple[float, int, float]:
     final_score = game["final_score"]
     quadra_score = game["quadra_score"]
     return (
-        -float(final_score["final_score"]),
+        -float(game.get("profile_score", final_score["final_score"])),
         -int(quadra_score["found_quadras"]),
         float(quadra_score["average_rank"]),
     )
@@ -277,6 +282,18 @@ def run_backtest(
             else _build_history_model(previous_history)
         )
         candidates = provider(previous_history, target, games_count, pool_size, seed)
+        persist_stage_snapshot(
+            stage_snapshot(
+                "backtest_raw_candidates",
+                [{"numbers": candidate} for candidate in candidates],
+                history=previous_history,
+                metadata={
+                    "engine_version": "historical_recalibrated_v2",
+                    "contest": target.contest,
+                    "profile_distribution": {},
+                },
+            )
+        )
         scored_games = []
         for candidate_numbers in candidates:
             score_data = _score_candidate(
@@ -293,7 +310,22 @@ def run_backtest(
                 }
             )
 
-        selected_games = sorted(scored_games, key=_hybrid_sort_key)[:games_count]
+        selected_games = _compose_profiled_games(scored_games, games_count)
+        persist_stage_snapshot(
+            stage_snapshot(
+                "backtest_final_output",
+                selected_games,
+                history=previous_history,
+                metadata={
+                    "engine_version": "historical_recalibrated_v2",
+                    "contest": target.contest,
+                    "profile_distribution": {
+                        profile: sum(1 for game in selected_games if game.get("profile_type") == profile)
+                        for profile in GENERATION_PROFILE_RATIOS
+                    },
+                },
+            )
+        )
         target_numbers = set(target.numbers)
         for game in selected_games:
             hits = len(set(game["numbers"]) & target_numbers)
@@ -314,10 +346,10 @@ def run_backtest(
             }
         )
 
-    hit_distribution = {str(points): 0 for points in range(11, 16)}
+    hit_distribution = {str(points): 0 for points in range(8, 16)}
     for game in all_games:
         hits = int(game["hits"])
-        if 11 <= hits <= 15:
+        if 8 <= hits <= 15:
             hit_distribution[str(hits)] += 1
 
     total_games = len(all_games)

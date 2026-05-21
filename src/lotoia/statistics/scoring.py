@@ -13,6 +13,7 @@ from lotoia.statistics.temporal import (
     sequence_component,
     sum_component,
 )
+from lotoia.statistics.historical_intelligence import classify_profile, profile_score
 
 SCORE_COMPONENTS = (
     "duo_score",
@@ -152,6 +153,8 @@ def score_candidate_from_history(
         score_weights.values()
     )
     quadra_score = combo_scores["quadra"]
+    profile_type = classify_profile(numbers, history)
+    historical_intelligence = profile_score(numbers, history, profile_type)
     return {
         "final_score": {"final_score": round(final_score, 2), "components": components},
         "quadra_score": {
@@ -161,4 +164,7 @@ def score_candidate_from_history(
             "average_rank": quadra_score["average_rank"],
             "top_quadras": [],
         },
+        "historical_intelligence": historical_intelligence,
+        "profile_type": profile_type,
+        "profile_score": historical_intelligence["profile_score"],
     }

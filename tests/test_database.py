@@ -98,7 +98,9 @@ def test_create_database_schema(tmp_path: Path) -> None:
         "backtest_runs",
         "calibration_runs",
         "check_events",
+        "generated_games",
         "generation_events",
+        "imported_contests",
         "leads",
     }
     check_fks = inspector.get_foreign_keys("check_events")

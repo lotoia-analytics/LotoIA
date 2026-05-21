@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine
+from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DEFAULT_DATABASE_PATH = Path("data/lotoia.db")
@@ -141,18 +142,88 @@ class CheckEvent(Base):
     )
 
 
+class ImportedContest(Base):
+    __tablename__ = "imported_contests"
+
+    contest_number: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    data: Mapped[str] = mapped_column(String, default="", nullable=False)
+    dezenas: Mapped[str] = mapped_column(String, default="", nullable=False)
+
+
+class GeneratedGame(Base):
+    __tablename__ = "generated_games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    generation_event_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    game_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    numbers: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    profile_type: Mapped[str] = mapped_column(String, default="", nullable=False)
+    final_score: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    quadra_score: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
     return f"sqlite:///{path}"
 
 
 def get_engine(path: Path = DEFAULT_DATABASE_PATH):
     path.parent.mkdir(parents=True, exist_ok=True)
-    return create_engine(database_url(path), future=True)
+    engine = create_engine(database_url(path), future=True)
+
+    @event.listens_for(engine, "connect")
+    def _configure_sqlite(dbapi_connection, connection_record):  # type: ignore[unused-ignore]
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.execute("PRAGMA wal_autocheckpoint=100;")
+            cursor.close()
+        except Exception:
+            pass
+
+    return engine
 
 
 def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
     engine = get_engine(path)
     Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS imported_contests (
+                contest_number INTEGER PRIMARY KEY NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                data TEXT NOT NULL DEFAULT '',
+                dezenas TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS generated_games (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                generation_event_id INTEGER NOT NULL,
+                lead_id INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                game_index INTEGER NOT NULL,
+                numbers JSON NOT NULL,
+                profile_type TEXT NOT NULL DEFAULT '',
+                final_score JSON NOT NULL DEFAULT '{}',
+                quadra_score JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:

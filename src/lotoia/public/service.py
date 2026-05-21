@@ -2,20 +2,13 @@ from __future__ import annotations
 
 import random
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
-from lotoia.data.loader import (
-    DEFAULT_HISTORY_PATH,
-    load_draws_csv,
-)
-from lotoia.generator.engine import (
-    generate_ranked_games,
-)
-from lotoia.public.models import (
-    PublicCheckRequest,
-    PublicGenerationRequest,
-)
+from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+from lotoia.generator.engine import generate_ranked_games
+from lotoia.public.models import PublicCheckRequest, PublicGenerationRequest
 
 
 class PublicRateLimitError(Exception):
@@ -26,218 +19,122 @@ class PublicContestNotFoundError(Exception):
     pass
 
 
-RATE_LIMIT_SECONDS = 15
+class PublicLimiter:
+    def __init__(self, cooldown_seconds: int = 15, max_requests_per_window: int = 2, window_seconds: int = 60) -> None:
+        self.cooldown_seconds = cooldown_seconds
+        self.max_requests_per_window = max_requests_per_window
+        self.window_seconds = window_seconds
+        self._requests: dict[str, deque[float]] = {}
 
-_last_requests: dict[str, float] = {}
+    def check(self, limiter_key: str, now: float | None = None) -> tuple[bool, str]:
+        current_time = now if now is not None else time.time()
+        history = self._requests.setdefault(limiter_key, deque())
+        while history and current_time - history[0] > self.window_seconds:
+            history.popleft()
+        if history and current_time - history[-1] < self.cooldown_seconds:
+            return False, "cooldown"
+        if len(history) >= self.max_requests_per_window:
+            return False, "window"
+        history.append(current_time)
+        return True, "ok"
 
 
-def _validate_rate_limit(
-    limiter_key: str,
-) -> None:
+def _resolve_limiter(active_limiter: PublicLimiter | None) -> PublicLimiter:
+    return active_limiter or PublicLimiter()
 
-    current_time = time.time()
 
-    previous_time = _last_requests.get(
-        limiter_key
-    )
-
-    if previous_time:
-
-        elapsed = (
-            current_time
-            - previous_time
+def _validate_rate_limit(limiter_key: str, active_limiter: PublicLimiter | None = None) -> None:
+    allowed, reason = _resolve_limiter(active_limiter).check(limiter_key)
+    if not allowed:
+        raise PublicRateLimitError(
+            "Muitas requisições. Aguarde alguns segundos."
+            if reason == "cooldown"
+            else "Muitas requisições na janela atual."
         )
 
-        if elapsed < RATE_LIMIT_SECONDS:
 
-            raise PublicRateLimitError(
-                (
-                    "Muitas requisições. "
-                    "Aguarde alguns segundos."
-                )
-            )
-
-    _last_requests[
-        limiter_key
-    ] = current_time
-
-
-def _find_contest(
-    contest_id: int,
-    history_path: Path,
-):
-
-    draws = list(
-        load_draws_csv(history_path)
-    )
-
+def _find_contest(contest_id: int, history_path: Path) -> Any:
+    draws = list(load_draws_csv(history_path))
     if not draws:
-
-        raise PublicContestNotFoundError(
-            "Nenhum concurso encontrado."
-        )
-
-    available_contests = [
-        draw.contest
-        for draw in draws
-    ]
-
-    latest_contest = max(
-        available_contests
-    )
-
+        raise PublicContestNotFoundError("Nenhum concurso encontrado.")
+    latest_contest = max(draw.contest for draw in draws)
     if contest_id > latest_contest:
-
         raise PublicContestNotFoundError(
-            (
-                f"Concurso {contest_id} "
-                f"ainda não disponível. "
-                f"Último concurso carregado: "
-                f"{latest_contest}."
-            )
+            f"Concurso {contest_id} ainda não disponível. Último concurso carregado: {latest_contest}."
         )
-
     for draw in draws:
-
         if draw.contest == contest_id:
             return draw
-
-    raise PublicContestNotFoundError(
-        (
-            f"Concurso {contest_id} "
-            f"não encontrado na base histórica."
-        )
-    )
+    raise PublicContestNotFoundError(f"Concurso {contest_id} não encontrado na base histórica.")
 
 
-def find_historical_matches(
-    numbers: list[int],
-    history_path: Path = DEFAULT_HISTORY_PATH,
-) -> dict[str, Any]:
-
+def find_historical_matches(numbers: list[int], history_path: Path = DEFAULT_HISTORY_PATH) -> dict[str, Any]:
     target = sorted(numbers)
-
-    draws = list(
-        load_draws_csv(history_path)
-    )
-
     matches = []
-
-    for draw in draws:
-
+    for draw in load_draws_csv(history_path):
         if sorted(draw.numbers) == target:
-
-            matches.append(
-                {
-                    "contest": draw.contest,
-                    "date": draw.date,
-                }
-            )
-
-    return {
-        "is_repeated": len(matches) > 0,
-        "total_matches": len(matches),
-        "matches": matches,
-    }
+            matches.append({"contest": draw.contest, "date": draw.date})
+    return {"is_repeated": len(matches) > 0, "total_matches": len(matches), "matches": matches}
 
 
 def generate_public_games(
     request: PublicGenerationRequest,
-    source: str,
-    user_agent: str,
-    limiter_key: str,
-):
-
-    _validate_rate_limit(
-        limiter_key
-    )
-
-    seed = random.randint(
-        1,
-        999999,
-    )
-
+    *,
+    db_path: Path | None = None,
+    source: str = "public_api",
+    ip_address: str = "",
+    user_agent: str = "",
+    active_limiter: PublicLimiter | None = None,
+) -> dict[str, Any]:
+    _validate_rate_limit(ip_address or "anonymous", active_limiter)
+    seed = random.randint(1, 999999)
     started_at = time.time()
-
-    games = generate_ranked_games(
-        total_games=3,
-        seed=seed,
-        ml_enabled=request.ml_enabled,
-    )
-
-    execution_time_ms = (
-        time.time()
-        - started_at
-    ) * 1000
-
+    games_payload = generate_ranked_games(total_games=2, seed=seed, ml_enabled=request.ml_enabled)
+    execution_time_ms = (time.time() - started_at) * 1000
     return {
-        "games": games,
+        "games": games_payload,
         "metadata": {
             "seed": seed,
-            "strategy": "ranking_hibrido",
+            "strategy": "public_hybrid_statistical_v1",
             "ranking_score": 0.91,
-            "execution_time_ms": round(
-                execution_time_ms,
-                2,
-            ),
-            "ml_enabled": (
-                request.ml_enabled
-            ),
+            "execution_time_ms": round(execution_time_ms, 2),
+            "ml_enabled": bool(request.ml_enabled),
             "source": source,
             "user_agent": user_agent,
+            "max_games": 2,
+            "engine_version": "historical_recalibrated_v2",
+            "fallback_used": False,
+            "profile_distribution": {
+                profile: sum(1 for game in games_payload if game.get("profile_type") == profile)
+                for profile in ("recorrente", "hibrido", "caotico")
+            },
         },
     }
 
 
 def check_public_contest(
     request: PublicCheckRequest,
-    source: str,
-    user_agent: str,
-    limiter_key: str,
-):
-
-    _validate_rate_limit(
-        limiter_key
-    )
-
+    *,
+    db_path: Path | None = None,
+    history_path: Path = DEFAULT_HISTORY_PATH,
+    source: str = "public_api",
+    ip_address: str = "",
+    user_agent: str = "",
+    active_limiter: PublicLimiter | None = None,
+) -> dict[str, Any]:
+    _validate_rate_limit(ip_address or "anonymous", active_limiter)
     started_at = time.time()
-
-    draw = _find_contest(
-        request.contest_id,
-        DEFAULT_HISTORY_PATH,
-    )
-
-    correct_numbers = sorted(
-        draw.numbers
-    )
-
-    checked_numbers = sorted(
-        request.numbers
-    )
-
-    hits = len(
-        set(correct_numbers)
-        & set(checked_numbers)
-    )
-
-    execution_time_ms = (
-        time.time()
-        - started_at
-    ) * 1000
-
+    draw = _find_contest(request.contest_id, history_path)
+    correct_numbers = sorted(draw.numbers)
+    checked_numbers = sorted(request.numbers)
+    hits = len(set(correct_numbers) & set(checked_numbers))
+    execution_time_ms = (time.time() - started_at) * 1000
     return {
         "hits": hits,
-        "correct_numbers": (
-            correct_numbers
-        ),
+        "correct_numbers": correct_numbers,
         "result": {
-            "contest_id": (
-                request.contest_id
-            ),
-            "execution_time_ms": round(
-                execution_time_ms,
-                2,
-            ),
+            "contest_id": request.contest_id,
+            "execution_time_ms": round(execution_time_ms, 2),
             "source": source,
             "user_agent": user_agent,
         },

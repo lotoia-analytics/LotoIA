@@ -4,8 +4,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any
+from datetime import UTC, datetime
 
-SCORE_ML_MODEL_VERSION = "score-ml-linear-baseline-v0.1.0"
+SCORE_ML_MODEL_VERSION = "historical_recalibrated_v2"
 SCORE_ML_FEATURE_SCHEMA_VERSION = "score-ml-features-v0.1.0"
 
 OFFICIAL_FEATURES = (
@@ -24,6 +25,25 @@ DEFAULT_LINEAR_WEIGHTS = {
     "odd_balance": 0.10,
     "center_balance": 0.10,
     "frame_balance": 0.10,
+}
+
+DEFAULT_CALIBRATION = {
+    "type": "interpretable_linear_supervised_baseline",
+    "version": SCORE_ML_MODEL_VERSION,
+    "status": "active",
+    "source": "runtime_default",
+    "training_summary": {"mode": "institutional_default"},
+}
+
+ML_RUNTIME_TRACE: list[dict[str, object]] = []
+ML_RUNTIME_STATE: dict[str, object] = {
+    "status": "idle",
+    "engine_version": SCORE_ML_MODEL_VERSION,
+    "model_version": SCORE_ML_MODEL_VERSION,
+    "calibration_loaded": False,
+    "snapshot_loaded": False,
+    "fallback_used": False,
+    "last_update": "",
 }
 
 
@@ -72,6 +92,12 @@ class InterpretableLinearScoreML:
     weights: Mapping[str, float] | None = None
     intercept: float = 0.0
     training_summary: Mapping[str, object] | None = None
+    calibration: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "calibration", _normalize_calibration(self.calibration, self.model_version))
+        _trace_ml("ML_LOAD_MODEL", status="ok", model_version=self.model_version)
+        _trace_ml("ML_LOAD_CALIBRATION", status="ok", calibration_loaded=True)
 
     def _weights(self) -> dict[str, float]:
         raw_weights = dict(self.weights or DEFAULT_LINEAR_WEIGHTS)
@@ -107,11 +133,93 @@ class InterpretableLinearScoreML:
             features={feature: round(features[feature], 6) for feature in OFFICIAL_FEATURES},
             attribution=attribution,
             calibration={
-                "type": "interpretable_linear_supervised_baseline",
+                **dict(self.calibration or DEFAULT_CALIBRATION),
                 "intercept": self.intercept,
                 "training_summary": dict(self.training_summary or {"mode": "institutional_default"}),
             },
         )
+
+
+def _normalize_calibration(
+    calibration: Mapping[str, object] | None,
+    model_version: str,
+) -> dict[str, object]:
+    payload = dict(DEFAULT_CALIBRATION)
+    if calibration:
+        payload.update(dict(calibration))
+    payload.setdefault("version", model_version)
+    payload.setdefault("model_version", model_version)
+    payload.setdefault("calibration_version", model_version)
+    payload.setdefault("status", "active")
+    payload.setdefault("type", "interpretable_linear_supervised_baseline")
+    payload.setdefault("training_summary", {"mode": "institutional_default"})
+    return payload
+
+
+def default_calibration_config(model_version: str = SCORE_ML_MODEL_VERSION) -> dict[str, object]:
+    return _normalize_calibration(None, model_version)
+
+
+def _trace_ml(event: str, *, status: str, **payload: object) -> None:
+    record = {
+        "event": event,
+        "status": status,
+        "timestamp": datetime.now(UTC).isoformat(),
+        **payload,
+    }
+    ML_RUNTIME_TRACE.append(record)
+    ML_RUNTIME_STATE.update(
+        {
+            "status": "active" if status == "ok" else ML_RUNTIME_STATE.get("status", "degraded"),
+            "last_update": record["timestamp"],
+            **{key: value for key, value in payload.items() if key in ML_RUNTIME_STATE},
+        }
+    )
+
+
+def ensure_calibration(model: object, *, model_version: str = SCORE_ML_MODEL_VERSION) -> object:
+    _trace_ml("ML_ATTACH_RUNTIME", status="ok", engine_version=model_version)
+    if hasattr(model, "calibration"):
+        calibration = getattr(model, "calibration")
+        if calibration is None:
+            object.__setattr__(model, "calibration", default_calibration_config(model_version))
+        elif isinstance(calibration, Mapping):
+            migrated = _normalize_calibration(calibration, model_version)
+            object.__setattr__(model, "calibration", migrated)
+    else:
+        object.__setattr__(model, "calibration", default_calibration_config(model_version))
+    if not getattr(model, "model_version", None):
+        object.__setattr__(model, "model_version", model_version)
+    _trace_ml("ML_READY", status="ok", calibration_loaded=True, engine_version=model_version)
+    return model
+
+
+def migrate_score_ml_snapshot(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
+    _trace_ml("ML_LOAD_SNAPSHOT", status="ok", snapshot_loaded=True)
+    payload = dict(snapshot or {})
+    legacy_versions = {None, "", "score-ml-linear-baseline-v0.1.0"}
+    payload["model_version"] = (
+        SCORE_ML_MODEL_VERSION if payload.get("model_version") in legacy_versions else str(payload.get("model_version"))
+    )
+    payload["feature_schema_version"] = str(
+        payload.get("feature_schema_version") or SCORE_ML_FEATURE_SCHEMA_VERSION
+    )
+    payload["calibration"] = _normalize_calibration(
+        payload.get("calibration") if isinstance(payload.get("calibration"), Mapping) else None,
+        payload["model_version"],
+    )
+    payload.setdefault("calibration_version", payload["model_version"])
+    payload.setdefault("engine_version", payload["model_version"])
+    payload.setdefault("ml_runtime_status", "active")
+    payload.setdefault("fallback_used", False)
+    payload.setdefault("ranking_strategy", "historical_recalibrated")
+    payload.setdefault("profile_distribution", {})
+    return payload
+
+
+def ml_heartbeat() -> dict[str, object]:
+    _trace_ml("ML_HEARTBEAT", status="ok", engine_version=ML_RUNTIME_STATE.get("engine_version", SCORE_ML_MODEL_VERSION))
+    return dict(ML_RUNTIME_STATE)
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -156,7 +264,7 @@ def attach_score_ml(
     *,
     model: InterpretableLinearScoreML | None = None,
 ) -> dict[str, Any]:
-    scorer = model or InterpretableLinearScoreML()
+    scorer = ensure_calibration(model or InterpretableLinearScoreML())  # type: ignore[assignment]
     result = scorer.score(game)
     game["score_ml"] = result.score_ml
     game["score_ml_details"] = result.as_dict()
@@ -238,5 +346,11 @@ def calibrate_linear_score_ml(
             "rows": len(rows),
             "target_field": target_field,
             "feature_schema_version": SCORE_ML_FEATURE_SCHEMA_VERSION,
+        },
+        calibration={
+            "type": "interpretable_linear_supervised_baseline",
+            "version": SCORE_ML_MODEL_VERSION,
+            "status": "active",
+            "source": "calibrated_runtime",
         },
     )

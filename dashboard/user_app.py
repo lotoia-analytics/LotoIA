@@ -322,7 +322,6 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
 def main() -> None:
     st.set_page_config(page_title="LotoIA User", page_icon="L", layout="wide")
     st.title("LotoIA User Panel")
-    st.caption(f"{ONLINE_MARKER} | Painel operacional leve e separado do dashboard institucional.")
 
     events = st.session_state.setdefault("user_events", [])
     page = _render_sidebar()

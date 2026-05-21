@@ -240,6 +240,29 @@ def test_generate_multiple_games_returns_final_score_for_all_games() -> None:
     assert all("final_score" in game for game in result)
 
 
+def test_generate_best_games_emits_generation_trace(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = generate_best_games(count=3, pool_size=6, ml_enabled=False)
+
+    trace_dir = tmp_path / "reports" / "snapshots" / "generation_pipeline"
+    trace_files = sorted(trace_dir.glob("*.json"))
+
+    assert result["count"] == 3
+    assert trace_files
+    assert any("final_output" in path.name for path in trace_files)
+
+
+def test_generate_multiple_games_emits_discard_traces(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _ = generate_multiple_games(count=3, max_repeated=9)
+
+    trace_dir = tmp_path / "reports" / "snapshots" / "generation_pipeline"
+    discarded = sorted(trace_dir.glob("discarded_*.json"))
+
+    assert trace_dir.exists()
+    assert discarded
+
+
 def make_scored_game(
     numbers: list[int],
     found_quadras: int,
@@ -342,25 +365,15 @@ def test_hybrid_score_sort_key_breaks_ties_by_average_rank() -> None:
     assert result[0] == better_rank
 
 
-def test_generate_best_games_orders_by_hybrid_score(monkeypatch) -> None:
-    pool = [
-        make_scored_game([1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 5, 500, 1, 70),
-        make_scored_game([1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 2, 300, 40, 90),
-        make_scored_game([1, 2, 4, 5, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25], 2, 400, 60, 90),
-        make_scored_game([1, 3, 4, 5, 7, 9, 11, 12, 14, 16, 18, 20, 22, 24, 25], 2, 400, 30, 90),
-    ]
-    monkeypatch.setattr(
-        "lotoia.generator.basic_generator.generate_filtered_game",
-        lambda: pool.pop(0),
-    )
+def test_generate_best_games_composes_profiled_ranking() -> None:
+    result = generate_best_games(count=20, pool_size=30)
 
-    result = generate_best_games(count=3, pool_size=4)
-
-    assert [game["numbers"] for game in result["games"]] == [
-        [1, 3, 4, 5, 7, 9, 11, 12, 14, 16, 18, 20, 22, 24, 25],
-        [1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25],
-        [1, 2, 4, 5, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25],
-    ]
+    assert result["profile_counts"] == {
+        "recorrente": 8,
+        "hibrido": 8,
+        "caotico": 4,
+    }
+    assert all("historical_intelligence" in game for game in result["games"])
 
 
 def test_generate_best_games_returns_quadra_score_for_all_games() -> None:

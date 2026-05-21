@@ -28,6 +28,12 @@ from lotoia.experiments.supervised_scoring import (
     validate_score_ml_rows,
     validate_supervised_scoring_registry,
 )
+from lotoia.experiments.longitudinal_baseline import (
+    DEFAULT_CHECKPOINTS,
+    DEFAULT_LONGITUDINAL_DIR,
+    LongitudinalBaselineResult,
+    run_longitudinal_baseline,
+)
 
 __all__ = [
     "ExperimentConsistencyReport",
@@ -35,8 +41,11 @@ __all__ = [
     "SUPERVISED_DATASET_STATUS",
     "SUPERVISED_SCORING_REGISTRY_VERSION",
     "SUPERVISED_SCORING_STATUS",
+    "DEFAULT_CHECKPOINTS",
+    "DEFAULT_LONGITUDINAL_DIR",
     "SupervisedSampleBoundary",
     "TemporalSplit",
+    "LongitudinalBaselineResult",
     "build_walk_forward_splits",
     "validate_dataset_lineage",
     "validate_experiment_manifest",
@@ -52,4 +61,5 @@ __all__ = [
     "validate_temporal_feature_contract",
     "validate_temporal_integrity",
     "validate_train_test_separation",
+    "run_longitudinal_baseline",
 ]

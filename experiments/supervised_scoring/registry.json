@@ -32,5 +32,15 @@
     "benchmark_reference": "experiments/temporal_benchmark/manifests/temporal_baseline_v0_1_0.json",
     "statistical_benchmark_replaced": false,
     "walk_forward_required": true
-  }
+  },
+  "executed_runs": [
+    {
+      "experiment_id": "score-ml-walk-forward-v0.1.0",
+      "status": "executed_walk_forward_validation",
+      "manifest_path": "experiments/supervised_scoring/runs/score_ml_walk_forward_v0_1_0/manifest.json",
+      "report_path": "reports/supervised_walk_forward/score_ml_v0_1_0/walk_forward_result.json",
+      "executed_at": "2026-05-20T20:59:19+00:00",
+      "reproducibility_hash": "b01d67bb9e33d9fc6889217d7de6fc1979d07f57217020e536613fb42841bd53"
+    }
+  ]
 }

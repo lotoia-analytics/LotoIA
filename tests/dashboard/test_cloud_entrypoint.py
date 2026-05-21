@@ -14,6 +14,7 @@ if "matplotlib" not in sys.modules:
 
 import dashboard.admin_app as admin_app
 import dashboard.app as cloud_app
+import dashboard.labels as dashboard_labels
 import dashboard.public_app as public_cloud_app
 
 
@@ -37,7 +38,7 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
     page = admin_app._sidebar_navigation()
 
     assert page == "observability"
-    assert captured["label"] == "Navega??o"
+    assert captured["label"] == "Navegao"
     assert captured["options"] == [
         "geracao_jogos",
         "conferir_jogos",
@@ -45,6 +46,7 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
         "historical_intelligence",
         "analytics_intelligence",
         "ml_intelligence",
+        "jogo_expandido_experimental",
         "backtesting",
         "calibracao_experimental",
         "benchmark_cientifico",
@@ -54,3 +56,10 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
         "observability",
         "reports_engine",
     ]
+
+
+def test_shared_dashboard_registry_contains_expansion_page() -> None:
+    assert "jogo_expandido_experimental" in dashboard_labels.PAGES
+    assert dashboard_labels.LABELS["jogo_expandido_experimental"] == "Jogo Expandido (Experimental)"
+    assert admin_app.PAGES is dashboard_labels.PAGES
+    assert admin_app.LABELS is dashboard_labels.LABELS

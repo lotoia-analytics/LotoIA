@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import types
 from contextlib import contextmanager
+from pathlib import Path
+import sqlite3
 
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
@@ -78,12 +80,22 @@ def _patch_streamlit(monkeypatch) -> None:
 
 
 def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
     monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st.sidebar, "radio", lambda *args, **kwargs: "observability")
+
+    def _radio(label, options, **kwargs):
+        captured["options"] = list(options)
+        captured["label"] = label
+        return "jogo_expandido_experimental"
+
+    monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
 
     page = admin_app._sidebar_navigation()
 
-    assert page == "observability"
+    assert page == "jogo_expandido_experimental"
+    assert "jogo_expandido_experimental" in captured["options"]
+    assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido (Experimental)"
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
@@ -121,6 +133,63 @@ def test_check_helpers_validate_and_score_contest(monkeypatch) -> None:
     assert games[0] == list(range(1, 16))
 
 
+def test_admin_expansion_experimental_allows_only_16_and_17(monkeypatch) -> None:
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+
+    assert admin_app._default_admin_expansion_numbers(16).endswith("16")
+    assert admin_app._default_admin_expansion_numbers(17).endswith("17")
+    assert admin_app._parse_admin_expansion_numbers(
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16"
+    ) == list(range(1, 17))
+    assert len(admin_app._parse_admin_expansion_numbers(
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17"
+    )) == 17
+
+    for value in [
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18",
+    ]:
+        try:
+            admin_app._parse_admin_expansion_numbers(value)
+        except ValueError as exc:
+            assert "16 ou 17" in str(exc)
+        else:
+            raise AssertionError("ADMIN experimental expansion must reject this size")
+
+
+def test_admin_expansion_experimental_uses_guarded_preview(monkeypatch) -> None:
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+
+    result = admin_app._run_admin_expansion(list(range(1, 18)), preview_limit=20)
+
+    assert result["total_combinations"] == 136
+    assert result["generated_count"] == 20
+    assert result["stopped_reason"] == "preview_limit"
+    assert result["metrics"]["allowed_sizes"] == [16, 17]
+
+
+def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    rendered = {"expansion": False}
+
+    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
+    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
+    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "jogo_expandido_experimental")
+    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
+    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
+
+    def _render_expansion():
+        rendered["expansion"] = True
+
+    monkeypatch.setattr(admin_app, "render_expansion_experimental_page", _render_expansion)
+
+    admin_app.main()
+
+    assert rendered["expansion"] is True
+
+
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     success_messages = []
@@ -144,3 +213,95 @@ def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     admin_app.render_reports_engine_page()
     admin_app.main()
     assert "INSTITUTIONAL DASHBOARD ACTIVE" in success_messages
+
+
+def test_dashboard_uses_live_generation_events(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "dashboard_live.db"
+    connection = sqlite3.connect(db_path)
+    try:
+        admin_app._sqlite_bind_connection(connection)
+        admin_app._sqlite_ensure_admin_schema()
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO generation_events (
+                first_name, whatsapp, seed, strategy, ranking_score, execution_time_ms, ml_enabled, created_at
+            ) VALUES ('Ana', '11999999999', 123, 'historical_recalibrated_v2', 99.0, 10.0, 0, CURRENT_TIMESTAMP)
+            """,
+        )
+        cursor.execute(
+            """
+            INSERT INTO generated_games (
+                generation_event_id, lead_id, created_at, game_index, numbers, profile_type, final_score, quadra_score
+            ) VALUES (1, 1, CURRENT_TIMESTAMP, 1, '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]', 'recorrente', '{}', '{}')
+            """,
+        )
+        cursor.execute(
+            """
+            INSERT INTO imported_contests (
+                contest_number, created_at, data, dezenas
+            ) VALUES (5000, CURRENT_TIMESTAMP, '2025-01-01', '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15')
+            """,
+        )
+        cursor.execute(
+            """
+            INSERT INTO check_events (
+                first_name, whatsapp, contest_id, hits, execution_time_ms, created_at
+            ) VALUES ('Ana', '11999999999', 5000, 12, 0.0, CURRENT_TIMESTAMP)
+            """,
+        )
+        connection.commit()
+
+        admin_app._invalidate_runtime_cache()
+        assert admin_app._safe_count("generation_events") == 1
+        assert admin_app._safe_count("check_events") == 1
+        assert admin_app._safe_total_games() == "1"
+        assert admin_app._safe_last_contest() == "5000"
+    finally:
+        admin_app._sqlite_bind_connection(admin_app._sqlite_open_connection())
+        connection.close()
+
+
+def test_cache_invalidates_after_generation(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(admin_app, "_invalidate_runtime_cache", lambda: calls.append("clear"))
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_audit_trail", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_persist_lead", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_cached_generate_best_games", lambda count, pool_size: {"games": [{"numbers": list(range(1, 16)), "final_score": {"final_score": 1}, "quadra_score": {"found_quadras": 0, "average_rank": 0}}], "profile_counts": {"recorrente": 1, "hibrido": 0, "caotico": 0}})
+    monkeypatch.setattr(admin_app, "_games_dataframe", lambda games: admin_app.pd.DataFrame([{"rank": 1, "final_score": 1}]))
+    monkeypatch.setattr(admin_app.st, "spinner", lambda *args, **kwargs: _dummy_context())
+    monkeypatch.setattr(admin_app.st, "session_state", {})
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking híbrido")
+    monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "Ana")
+    monkeypatch.setattr(admin_app.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "plotly_chart", lambda *args, **kwargs: None)
+
+    admin_app.render_generation_page()
+
+    assert calls
+
+
+def test_homepage_renders_institutional_cockpit_first(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    calls: list[str] = []
+
+    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
+    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
+    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "geracao_jogos")
+    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: calls.append("kpis"))
+    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: calls.append("leads"))
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_render_institutional_cockpit", lambda: calls.append("cockpit"))
+    monkeypatch.setattr(admin_app.st, "expander", lambda *args, **kwargs: _dummy_context())
+    monkeypatch.setattr(admin_app, "render_generation_page", lambda: calls.append("generation"))
+
+    admin_app.main()
+
+    assert calls[0] == "cockpit"
+    assert "generation" in calls

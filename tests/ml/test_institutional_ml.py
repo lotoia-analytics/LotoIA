@@ -41,6 +41,23 @@ def test_ml_helpers_keep_temporal_and_ranking_contracts() -> None:
     assert round(result.features["odd_balance"], 4) == round(features["odd_balance"], 4)
     assert len(reranked) == 2
     assert all("score_ml" in item for item in reranked)
+    assert scorer.calibration is not None
+    assert scorer.calibration["version"] == scorer.model_version
+
+
+def test_ml_runtime_model_initializes_calibration() -> None:
+    scorer = admin_app.InterpretableLinearScoreML()
+
+    assert scorer.calibration is not None
+    assert scorer.calibration["status"] == "active"
+    assert scorer.calibration["version"] == "historical_recalibrated_v2"
+
+
+def test_ml_heartbeat_reports_active_runtime() -> None:
+    state = admin_app.ml_heartbeat()
+
+    assert state["status"] == "active"
+    assert state["engine_version"] == "historical_recalibrated_v2"
 
 
 def test_walk_forward_splits_remain_temporally_safe() -> None:
@@ -90,3 +107,5 @@ def test_ml_training_payload_has_governance_contract(monkeypatch) -> None:
     assert payload["payload"]["model_version"]
     assert payload["ml_snapshot"].exists()
     assert payload["ml_report_paths"]["json"].exists()
+    assert payload["runtime"]["fallback_used"] is False
+    assert payload["runtime"]["calibration_loaded"] is True

@@ -51,7 +51,7 @@ def test_sqlite_bootstrap_creates_institutional_tables(tmp_path: Path, monkeypat
         row[0]
         for row in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert {"generation_events", "check_events", "operational_logs", "audit_trail", "snapshots"} <= tables
+    assert {"generation_events", "check_events", "operational_logs", "audit_trail", "snapshots", "generated_games", "imported_contests"} <= tables
 
     generation_columns = {row[1] for row in cursor.execute("PRAGMA table_info(generation_events)").fetchall()}
     check_columns = {row[1] for row in cursor.execute("PRAGMA table_info(check_events)").fetchall()}
@@ -60,6 +60,20 @@ def test_sqlite_bootstrap_creates_institutional_tables(tmp_path: Path, monkeypat
     assert {"first_name", "whatsapp", "ml_enabled"} <= generation_columns
     assert {"first_name", "whatsapp", "contest_id", "hits"} <= check_columns
     assert {"snapshot_type", "artifact_path", "metadata_json"} <= snapshot_columns
+
+
+def test_sqlite_engine_enables_wal_and_autocheckpoint(tmp_path: Path) -> None:
+    from lotoia.database.database import get_engine
+
+    engine = get_engine(tmp_path / "wal.db")
+    with engine.connect() as connection:
+        journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar()
+        synchronous = connection.exec_driver_sql("PRAGMA synchronous").scalar()
+        wal_autocheckpoint = connection.exec_driver_sql("PRAGMA wal_autocheckpoint").scalar()
+
+    assert str(journal_mode).lower() == "wal"
+    assert int(synchronous) in {1, 2}
+    assert int(wal_autocheckpoint) == 100
 
 
 def test_sqlite_bootstrap_error_classification() -> None:
@@ -94,6 +108,8 @@ def test_sidebar_logo_falls_back_when_image_is_missing(monkeypatch) -> None:
 
 
 def test_sqlite_recovery_moves_corrupted_database(tmp_path: Path, monkeypatch) -> None:
+    admin_app.SQLITE_RECOVERY_STATE["attempted"] = False
+    admin_app.SQLITE_RECOVERY_STATE["active"] = False
     corrupted_db = tmp_path / "lotoia.db"
     corrupted_db.write_bytes(b"not a sqlite database")
 

@@ -1,0 +1,37 @@
+{
+  "created_at": "2026-05-21T00:00:00+00:00",
+  "baseline_mode": "hard",
+  "summary": {
+    "stability_index": 0.92,
+    "coverage_10": 0.4,
+    "coverage_11": 0.1,
+    "average_hits": 9.1,
+    "hits_standard_deviation": 1.2,
+    "drift": 0.18,
+    "runtime_profile": "incremental_longitudinal"
+  },
+  "runs": [
+    {
+      "checkpoint": 10,
+      "result": {
+        "lotoia": {
+          "average_hits": 9.0,
+          "standard_deviation": 1.3,
+          "final_score_hit_correlation": 0.21,
+          "stability_window_sd": 0.8
+        }
+      }
+    },
+    {
+      "checkpoint": 25,
+      "result": {
+        "lotoia": {
+          "average_hits": 9.2,
+          "standard_deviation": 1.1,
+          "final_score_hit_correlation": 0.25,
+          "stability_window_sd": 0.7
+        }
+      }
+    }
+  ]
+}

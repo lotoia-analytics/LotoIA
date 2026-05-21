@@ -67,6 +67,13 @@ Analise inicial via script:
 python scripts/run_basic_analysis.py
 ```
 
+Memoria analitica institucional:
+
+```powershell
+python -m lotoia institutional-analytics
+lotoia institutional-analytics
+```
+
 Testes:
 
 ```powershell

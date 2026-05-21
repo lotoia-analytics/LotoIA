@@ -9,6 +9,7 @@ from dashboard.user_app import (
     _generate_user_games,
     _parse_numbers,
     _recent_history_dataframe,
+    _render_sidebar,
     _user_indicator,
 )
 
@@ -79,3 +80,23 @@ def test_user_indicator_classifies_scores() -> None:
 
 def test_user_panel_declares_cloud_marker() -> None:
     assert ONLINE_MARKER == "USER PANEL ONLINE"
+
+
+def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
+    captured_options = []
+
+    class _Sidebar:
+        def title(self, *args, **kwargs):
+            return None
+
+        def success(self, *args, **kwargs):
+            return None
+
+        def radio(self, _label, options):
+            captured_options.extend(options)
+            return options[0]
+
+    monkeypatch.setattr("dashboard.user_app.st.sidebar", _Sidebar())
+
+    assert _render_sidebar() == "Gerar Jogos"
+    assert "Jogo Expandido" not in captured_options

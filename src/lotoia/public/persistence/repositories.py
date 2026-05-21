@@ -5,6 +5,7 @@ from typing import Any
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    GeneratedGame,
     CheckEvent,
     GenerationEvent,
     Lead,
@@ -83,6 +84,19 @@ class GenerationEventRepository:
                 execution_time_ms=execution_time_ms,
             )
             session.add(event)
+            session.commit()
+            for index, game in enumerate(generated_games, start=1):
+                session.add(
+                    GeneratedGame(
+                        generation_event_id=event.id,
+                        lead_id=lead_id,
+                        game_index=index,
+                        numbers=game.get("numbers", []),
+                        profile_type=str(game.get("profile_type", "")),
+                        final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
+                        quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
+                    )
+                )
             session.commit()
             return _model_to_dict(event)
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 try:
     from . import _bootstrap  # type: ignore[import-not-found]  # noqa: F401
+    from .labels import LABELS, PAGES
 except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
+    from labels import LABELS, PAGES  # type: ignore[no-redef]
 
 import json
 import sqlite3
@@ -22,6 +24,12 @@ from lotoia.benchmark import BenchmarkResult, run_benchmark
 from lotoia.calibration.weight_calibrator import (
     WeightConfiguration,
     compare_weight_configurations,
+)
+from lotoia.combinatorics import (
+    DEFAULT_STAKE_PRICE,
+    ExpansionConfig,
+    expand_lotofacil_numbers,
+    estimate_expansion,
 )
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
@@ -48,10 +56,39 @@ from lotoia.ml import (
     InterpretableLinearScoreML,
     attach_score_ml,
     calibrate_linear_score_ml,
+    ml_heartbeat,
     extract_score_ml_features,
+    migrate_score_ml_snapshot,
+    ensure_calibration,
     supervised_rerank_games,
 )
 from lotoia.reports import generate_backtest_report
+from lotoia.analytics import (
+    build_analytical_intelligence,
+    build_executive_analytical_report,
+    build_institutional_analytical_timeline,
+    build_institutional_historical_intelligence,
+    ensure_institutional_analytical_timeline,
+    load_institutional_analytics_snapshot,
+    load_institutional_analytical_timeline,
+    publish_institutional_analytics,
+)
+from lotoia.observability import (
+    build_observational_stabilization_report,
+    load_observational_stabilization_report,
+    persist_observational_stabilization_report,
+)
+from dashboard.components import (
+    render_analytical_cards,
+    render_executive_dashboard,
+    render_generation_context,
+    render_hero_banner,
+    render_executive_panel,
+    render_executive_summary,
+    render_institutional_timeline,
+    render_secondary_operational_metrics,
+    render_structural_health,
+)
 from lotoia.statistics.advanced import (
     FINAL_SCORE_WEIGHTS,
     calculate_hot_cold_numbers,
@@ -63,6 +100,15 @@ from lotoia.statistics.advanced import (
     load_senas_stats,
     load_ternos_stats,
 )
+from lotoia.statistics.historical_intelligence import (
+    GENERATION_PROFILE_RATIOS,
+    classify_profile,
+    profile_score,
+)
+from lotoia.statistics.generation_trace import diversity_collapse_report, pressure_heatmap, survival_summary
+from lotoia.statistics.generation_trace import destructive_filters_report, executive_behavioral_report, filter_profile_damage_report, normalization_comparison_report, pipeline_divergence_score, replay_snapshot
+from lotoia.statistics.generation_trace import behavior_recovery_timeline, behavior_drift_report, experiment_baseline_report, experiment_comparison_report, false_recovery_report, golden_baselines, historical_adherence_score, pressure_sensitivity_report, profile_stability_score, recovery_decision_protocol, recovery_plateau_detection, safe_recovery_zone
+from lotoia.statistics.generation_trace import experiment_01_report, marginal_recovery_gain
 from lotoia.statistics.basic import summarize_draws
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +124,9 @@ ADMIN_EVENT_LIMIT = 200
 LEAD_HISTORY_LIMIT = 5000
 STREAMLIT_CACHE_TTL_SECONDS = 300
 STREAMLIT_CACHE_MAX_ENTRIES = 16
+ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
+ADMIN_EXPANSION_PREVIEW_LIMIT = 136
+ADMIN_EXPANSION_PAGE_SIZE = 50
 ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "check_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
@@ -296,6 +345,27 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS generated_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            generation_event_id INTEGER,
+            lead_id INTEGER,
+            game_index INTEGER,
+            numbers TEXT,
+            profile_type TEXT,
+            final_score TEXT,
+            quadra_score TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS imported_contests (
+            contest_number INTEGER PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            data TEXT,
+            dezenas TEXT
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             first_name TEXT NOT NULL,
@@ -336,7 +406,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -421,33 +491,69 @@ _sqlite_ensure_admin_schema()
 if conn is not None:
     conn.commit()
 
-PAGES = [
-    "geracao_jogos",
-    "estatisticas_historicas",
-    "backtesting",
-    "calibracao_experimental",
-    "benchmark_cientifico",
-    "historico_experimental",
-    "relatorios",
-]
-
-LABELS = {
-    "geracao_jogos": "Criar Jogos",
-    "conferir_jogos": "Conferir Jogos",
-    "estatisticas_historicas": "Resultados Passados",
-    "backtesting": "Testar Estratégia",
-    "calibracao_experimental": "Ajustar Estratégia",
-    "benchmark_cientifico": "Comparar Métodos",
-    "historico_experimental": "Meus Testes",
-    "relatorios": "Relatórios",
-    "historical_intelligence": "Historical Intelligence",
-    "analytics_intelligence": "Analytics Intelligence",
-    "ml_intelligence": "ML Intelligence",
-}
-
-
 def _format_numbers(numbers: list[int]) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
+
+
+def _parse_admin_expansion_numbers(text: str) -> list[int]:
+    tokens = [token for token in text.replace(",", " ").split() if token]
+    numbers = sorted(int(token) for token in tokens)
+    if len(numbers) not in ADMIN_EXPANSION_ALLOWED_SIZES:
+        raise ValueError("Modo experimental interno permite apenas 16 ou 17 dezenas.")
+    if len(set(numbers)) != len(numbers):
+        raise ValueError("As dezenas nao podem se repetir no jogo expandido.")
+    if any(number < 1 or number > 25 for number in numbers):
+        raise ValueError("As dezenas devem estar entre 1 e 25.")
+    return numbers
+
+
+def _default_admin_expansion_numbers(selected_count: int) -> str:
+    size = selected_count if selected_count in ADMIN_EXPANSION_ALLOWED_SIZES else ADMIN_EXPANSION_ALLOWED_SIZES[0]
+    return _format_numbers(list(range(1, size + 1)))
+
+
+def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "aposta": index + 1,
+                "dezenas": _format_numbers(game),
+            }
+            for index, game in enumerate(combinations)
+        ]
+    )
+
+
+def _run_admin_expansion(numbers: list[int], preview_limit: int = ADMIN_EXPANSION_PREVIEW_LIMIT) -> dict[str, Any]:
+    start_time = time.monotonic()
+    result = expand_lotofacil_numbers(
+        numbers,
+        config=ExpansionConfig(
+            preview_limit=min(preview_limit, ADMIN_EXPANSION_PREVIEW_LIMIT),
+            max_runtime_seconds=1.5,
+            stake_price=DEFAULT_STAKE_PRICE,
+        ),
+    )
+    payload = result.as_dict()
+    payload["metrics"] = {
+        "engine": "combinatorial_expansion_v1_admin_experimental",
+        "allowed_sizes": list(ADMIN_EXPANSION_ALLOWED_SIZES),
+        "memory_policy": "preview_paginated_no_full_ui_dump",
+        "runtime_guard_seconds": 1.5,
+    }
+    _record_operational_log(
+        "admin_expansion_experimental",
+        "success",
+        (time.monotonic() - start_time) * 1000.0,
+        {
+            "selected_count": len(numbers),
+            "total_combinations": payload["total_combinations"],
+            "generated_count": payload["generated_count"],
+            "complete": payload["complete"],
+            "stopped_reason": payload["stopped_reason"],
+        },
+    )
+    return payload
 
 
 def _safe_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
@@ -554,6 +660,7 @@ def _historical_match_engine(numbers: list[int]) -> dict[str, Any]:
     normalized = _normalize_numbers(numbers)
     total_draws = int(dataset["total_draws"])
     occurrences = historical_map.get(normalized, [])
+    history = dataset["draws"]
     similar_contests: list[dict[str, Any]] = []
     for historical_numbers, contests in historical_map.items():
         overlap = len(set(normalized).intersection(historical_numbers))
@@ -567,18 +674,21 @@ def _historical_match_engine(numbers: list[int]) -> dict[str, Any]:
                 }
             )
     similar_contests = sorted(similar_contests, key=lambda item: (item["overlap"], item["occurrences"]), reverse=True)[:10]
-    rarity = 1.0 - (len(occurrences) / total_draws) if total_draws else 1.0
+    profile_type = classify_profile(list(normalized), history)
+    intelligence = profile_score(list(normalized), history, profile_type)
+    rarity = float(intelligence["structural_rarity"]) / 100
     proximity = max((item["overlap"] / len(normalized) for item in similar_contests), default=0.0)
-    score = round((rarity * 100) + (proximity * 25), 2)
+    score = float(intelligence["profile_score"])
     return {
         "numbers": normalized,
-        "is_unique": len(occurrences) == 0,
+        "is_unique": int(intelligence["partial_match_max"]) == 0,
         "occurrences": len(occurrences),
         "last_contest": occurrences[-1] if occurrences else None,
         "similar_contests": similar_contests,
         "rarity": round(rarity, 4),
         "proximity": round(proximity, 4),
         "historical_score": score,
+        **intelligence,
     }
 
 
@@ -591,8 +701,21 @@ def _historical_intelligence_dataframe(games: list[dict[str, Any]]) -> pd.DataFr
                 "rank": index,
                 "dezenas": _format_numbers(game["numbers"]),
                 "historical_score": match["historical_score"],
+                "profile_type": match["profile_type"],
+                "recurrence_score": match["recurrence_score"],
+                "partial_match_max": match["partial_match_max"],
+                "partial_match_avg": match["partial_match_avg"],
+                "jaccard_similarity": match["jaccard_similarity"],
+                "structural_rarity": match["structural_rarity"],
+                "entropy_score": match["entropy_score"],
+                "block_density": match["block_density"],
+                "max_sequence_length": match["max_sequence_length"],
+                "recent_repetition_count": match["recent_repetition_count"],
+                "cluster_type": match["cluster_type"],
+                "ranking_reason": match["ranking_reason"],
                 "rarity": match["rarity"],
                 "repeat_count": match["occurrences"],
+                "partial_repeat_count": match["partial_match_max"],
                 "is_unique": match["is_unique"],
                 "last_contest": match["last_contest"],
                 "proximity": match["proximity"],
@@ -613,6 +736,19 @@ def _historical_analytics(games: list[dict[str, Any]]) -> dict[str, Any]:
         "repeated_hits": sum(match["occurrences"] for match in matches),
         "avg_rarity": round(sum(match["rarity"] for match in matches) / len(matches), 4) if matches else 0.0,
         "avg_proximity": round(sum(match["proximity"] for match in matches) / len(matches), 4) if matches else 0.0,
+        "profile_counts": {
+            profile: sum(1 for match in matches if match["profile_type"] == profile)
+            for profile in GENERATION_PROFILE_RATIOS
+        },
+        "profile_percentages": {
+            profile: round(
+                (sum(1 for match in matches if match["profile_type"] == profile) / len(matches)) * 100,
+                2,
+            )
+            if matches
+            else 0.0
+            for profile in GENERATION_PROFILE_RATIOS
+        },
     }
 
 
@@ -796,6 +932,7 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
     all_contests = [item["contest"] for item in result.contest_results]
     if not all_contests:
         empty_model = InterpretableLinearScoreML()
+        empty_model = ensure_calibration(empty_model)
         validation_metrics = {
             "rows": 0,
             "splits": 0,
@@ -803,11 +940,18 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
             "model_version": empty_model.model_version,
             "feature_schema_version": empty_model.feature_schema_version,
             "status": "degraded_no_backtest_candidates",
+            "ml_runtime_status": "degraded",
+            "fallback_used": True,
+            "calibration_loaded": bool(getattr(empty_model, "calibration", None)),
         }
         payload = {
             "timestamp": _report_timestamp(),
             "model_version": empty_model.model_version,
             "feature_schema_version": empty_model.feature_schema_version,
+            "engine_version": empty_model.model_version,
+            "calibration_version": empty_model.calibration.get("version") if isinstance(empty_model.calibration, dict) else empty_model.model_version,
+            "ml_runtime_status": "degraded",
+            "fallback_used": True,
             "experiment_rows": 0,
             "walk_forward_splits": 0,
             "temporal_valid": True,
@@ -815,6 +959,8 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
             "training_summary": {},
             "calibration": {},
             "attribution": [],
+            "profile_distribution": {},
+            "ranking_strategy": "historical_recalibrated",
         }
         ml_report_paths = _save_ml_report(payload, pd.DataFrame(columns=["feature", "weight"]))
         ml_snapshot = _write_ml_snapshot("ml_model_snapshot", payload)
@@ -844,6 +990,7 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
             )
 
     calibration_report = calibrate_linear_score_ml(rows, target_field="target_hits")
+    calibration_report = ensure_calibration(calibration_report)
     validated_rows = [row for row in rows if int(row["feature_cutoff_contest"]) < int(row["label_contest"])]
     unique_contests = sorted(set(all_contests))
     min_train_size = max(2, len(unique_contests) // 2) if len(unique_contests) > 2 else 2
@@ -876,17 +1023,26 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
         "temporal_valid": len(splits) > 0,
         "feature_schema_version": calibration_report.feature_schema_version,
         "model_version": calibration_report.model_version,
+        "ml_runtime_status": "active",
+        "fallback_used": False,
+        "calibration_loaded": bool(getattr(calibration_report, "calibration", None)),
     }
     payload = {
         "timestamp": _report_timestamp(),
         "model_version": calibration_report.model_version,
         "feature_schema_version": calibration_report.feature_schema_version,
+        "engine_version": calibration_report.model_version,
+        "calibration_version": calibration_report.calibration.get("version") if isinstance(calibration_report.calibration, dict) else calibration_report.model_version,
+        "ml_runtime_status": "active",
+        "fallback_used": False,
         "experiment_rows": len(rows),
         "walk_forward_splits": len(splits),
         "temporal_valid": validation_metrics["temporal_valid"],
         "validation_metrics": validation_metrics,
         "training_summary": dict(calibration_report.training_summary or {}),
         "features": feature_rows,
+        "profile_distribution": {},
+        "ranking_strategy": "historical_recalibrated",
     }
     duration_ms = (time.monotonic() - start_time) * 1000.0
     ml_report_paths = _save_ml_report(payload, pd.DataFrame(feature_rows))
@@ -894,7 +1050,7 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
         "ml_model_snapshot",
         {
             **payload,
-            "calibration": calibration_report.calibration,
+            "calibration": dict(calibration_report.calibration or {}),
             "attribution": [item.as_dict() for item in calibration_report.attribution],
             "sample_row": sample_row,
         },
@@ -902,6 +1058,7 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
     _record_operational_log("ml", "success", duration_ms, {"rows": len(rows), "splits": len(splits), "model_version": calibration_report.model_version})
     _record_performance_metric("ml_inference_ms", duration_ms, {"rows": len(rows), "splits": len(splits)})
     _record_audit_trail("ml_snapshot", artifact_path=str(ml_snapshot), context={"model_version": calibration_report.model_version})
+    _invalidate_runtime_cache()
     return {
         "result": result,
         "rows": rows,
@@ -915,6 +1072,12 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
         "ml_report_paths": ml_report_paths,
         "ml_snapshot": ml_snapshot,
         "payload": payload,
+        "runtime": {
+            "engine_version": calibration_report.model_version,
+            "ml_runtime_status": "active",
+            "fallback_used": False,
+            "calibration_loaded": True,
+        },
     }
 
 
@@ -986,6 +1149,9 @@ def _runtime_health() -> dict[str, Any]:
     ml_failures = int((ml_logs["status"] == "failed").sum()) if not ml_logs.empty else 0
     generation_avg = round(float(generation_logs["duration_ms"].dropna().mean()), 2) if not generation_logs.empty and generation_logs["duration_ms"].notna().any() else _table_average_ms("generation_events")
     check_avg = round(float(check_logs["duration_ms"].dropna().mean()), 2) if not check_logs.empty and check_logs["duration_ms"].notna().any() else _table_average_ms("check_events")
+    ml_state = ml_heartbeat()
+    engine_version = str(ml_state.get("engine_version") or "historical_recalibrated_v2")
+    model_version = str(ml_state.get("model_version") or "historical_recalibrated_v2")
     return {
         "response_time_ms": round(float(logs["duration_ms"].dropna().mean()), 2) if not logs.empty and logs["duration_ms"].notna().any() else 0.0,
         "total_runs": int(len(logs)),
@@ -998,9 +1164,19 @@ def _runtime_health() -> dict[str, Any]:
         "snapshot_files": _snapshot_count(),
         "sqlite_status": "ok" if sqlite_ok else "failed",
         "runtime_status": "degraded" if not logs.empty and (logs["status"] == "failed").any() else "ok",
-        "ml_status": "failed" if ml_failures else ("ok" if not ml_logs.empty else "idle"),
-        "cache_status": f"ttl={STREAMLIT_CACHE_TTL_SECONDS}s; max_entries={STREAMLIT_CACHE_MAX_ENTRIES}",
+        "ml_status": "failed" if ml_failures else str(ml_state.get("status") or ("active" if not ml_logs.empty else "idle")),
+        "engine_version": engine_version,
+        "model_version": model_version,
+        "fallback_used": bool(ml_state.get("fallback_used", False)),
+        "snapshot_version": "v2" if _snapshot_count() else "v1_legacy",
+        "cache_status": "fresh" if logs.empty or logs["created_at"].notna().any() else "stale",
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cache_stale": 0,
+        "cache_regenerated": 0,
         "sqlite_size_bytes": _sqlite_size_bytes(),
+        "calibration_loaded": bool(ml_state.get("calibration_loaded", True)),
+        "last_runtime_update": str(ml_state.get("last_update") or (logs["created_at"].max() if not logs.empty else "")),
     }
 
 
@@ -1020,6 +1196,320 @@ def _snapshot_count() -> int:
         return len(list(REPORTS_SNAPSHOTS_DIR.glob("*.json"))) + len(list(ML_SNAPSHOTS_DIR.glob("*.json")))
     except Exception:
         return 0
+
+
+def _generation_pipeline_snapshot_dir() -> Path:
+    return REPORTS_DIR / "snapshots" / "generation_pipeline"
+
+
+def _generation_pipeline_trace_table() -> pd.DataFrame:
+    trace_dir = _generation_pipeline_snapshot_dir()
+    if not trace_dir.exists():
+        return pd.DataFrame(columns=["stage", "timestamp", "games", "rarity_std", "recurrence_density", "sequence_pressure", "normalization_pressure"])
+
+    rows = []
+    for path in sorted(trace_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:20]:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        metrics = payload.get("metrics") or {}
+        rows.append(
+            {
+                "stage": payload.get("stage", path.stem),
+                "timestamp": payload.get("timestamp", ""),
+                "games": payload.get("games", 0),
+                "rarity_std": metrics.get("rarity_std", 0.0),
+                "recurrence_density": metrics.get("recurrence_density", 0.0),
+                "sequence_pressure": metrics.get("sequence_pressure", 0.0),
+                "normalization_pressure": metrics.get("normalization_pressure", 0.0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _pressure_heatmap_table() -> pd.DataFrame:
+    rows = pressure_heatmap()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["filter", "discarded", "reason"])
+
+
+def _survival_summary_table() -> pd.DataFrame:
+    rows = survival_summary()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["stage", "recorrente", "hibrido", "caotico", "total"])
+
+
+def _diversity_collapse_table() -> pd.DataFrame:
+    rows = diversity_collapse_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["stage", "diversity_score", "rarity_std", "recurrence_density", "structural_entropy", "normalization_pressure"])
+
+
+def _normalization_comparison_table() -> pd.DataFrame:
+    rows = normalization_comparison_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "rarity_std", "recurrence_density", "structural_entropy", "cluster_aggressiveness", "normalization_pressure"])
+
+
+def _pipeline_divergence_table() -> pd.DataFrame:
+    rows = pipeline_divergence_score()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "divergence_score"])
+
+
+def _destructive_filters_table() -> pd.DataFrame:
+    rows = destructive_filters_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["filter", "discarded", "diversity_collapse", "recurrence_kill", "chaos_kill", "divergence_contribution", "classification", "reference_stage"])
+
+
+def _executive_behavioral_table() -> pd.DataFrame:
+    rows = executive_behavioral_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["filter", "classification", "impact", "diversity_collapse", "recurrence_kill", "chaos_kill", "divergence_contribution"])
+
+
+def _filter_profile_damage_table() -> pd.DataFrame:
+    rows = filter_profile_damage_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["filter", "recorrente", "hibrido", "caotico"])
+
+
+def _behavior_recovery_table() -> pd.DataFrame:
+    rows = behavior_recovery_timeline()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "recurrence_recovery", "chaos_recovery", "variance_recovery", "recovery_score"])
+
+
+def _safe_recovery_zone_table() -> pd.DataFrame:
+    return pd.DataFrame(safe_recovery_zone())
+
+
+def _historical_adherence_table() -> pd.DataFrame:
+    rows = historical_adherence_score()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "historical_adherence_score"])
+
+
+def _profile_stability_table() -> pd.DataFrame:
+    rows = profile_stability_score()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["stage", "recorrente", "hibrido", "caotico", "profile_stability_score"])
+
+
+def _pressure_sensitivity_table() -> pd.DataFrame:
+    rows = pressure_sensitivity_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["filter", "pressure_sensitivity", "classification"])
+
+
+def _recovery_decision_protocol_table() -> pd.DataFrame:
+    return pd.DataFrame(recovery_decision_protocol())
+
+
+def _behavior_drift_table() -> pd.DataFrame:
+    rows = behavior_drift_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "behavior_drift_score"])
+
+
+def _golden_baselines_table() -> pd.DataFrame:
+    return pd.DataFrame(golden_baselines())
+
+
+def _false_recovery_table() -> pd.DataFrame:
+    rows = false_recovery_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "false_recovery"])
+
+
+def _experiment_baseline_table() -> pd.DataFrame:
+    return pd.DataFrame(experiment_baseline_report())
+
+
+def _experiment_comparison_table() -> pd.DataFrame:
+    rows = experiment_comparison_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "behavior_integrity_recovery"])
+
+
+def _recovery_plateau_table() -> pd.DataFrame:
+    rows = recovery_plateau_detection()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["mode", "stage", "plateau_detected"])
+
+
+def _experiment_01_table() -> pd.DataFrame:
+    rows = experiment_01_report()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["experiment", "mode", "stage", "recovery", "adherence", "drift", "false_recovery", "profile_stability"])
+
+
+def _marginal_recovery_gain_table() -> pd.DataFrame:
+    rows = marginal_recovery_gain()
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["from_stage", "to_stage", "marginal_recovery_gain", "adherence_delta", "drift_delta"])
+
+
+def _analytical_intelligence_summary() -> pd.DataFrame:
+    report = build_analytical_intelligence()
+    summary = report.get("analytical_summary", {})
+    rows = [
+        {"metric": "structural_health", "value": summary.get("structural_health", 0.0), "interpretation": summary.get("interpretation", ""), "confidence": summary.get("confidence", "")},
+        {"metric": "coverage_10", "value": summary.get("coverage_10", 0.0), "interpretation": "cobertura longitudinal em 10+", "confidence": summary.get("confidence", "")},
+        {"metric": "coverage_11", "value": summary.get("coverage_11", 0.0), "interpretation": "cobertura longitudinal em 11+", "confidence": summary.get("confidence", "")},
+        {"metric": "average_hits", "value": summary.get("average_hits", 0.0), "interpretation": "média operacional longitudinal", "confidence": summary.get("confidence", "")},
+        {"metric": "drift", "value": summary.get("drift", 0.0), "interpretation": "interpretação de drift longitudinal", "confidence": summary.get("confidence", "")},
+        {"metric": "runtime_profile", "value": summary.get("runtime_profile", ""), "interpretation": "perfil de execução", "confidence": summary.get("confidence", "")},
+    ]
+    return pd.DataFrame(rows)
+
+
+def _analytical_intelligence_insights() -> pd.DataFrame:
+    report = build_analytical_intelligence()
+    rows = report.get("insights", [])
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["metric", "value", "interpretation", "confidence"])
+
+
+def _analytical_intelligence_comparisons() -> pd.DataFrame:
+    report = build_analytical_intelligence()
+    rows = report.get("comparisons", [])
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["label", "baseline", "compared", "delta", "interpretation"])
+
+
+def _analytical_intelligence_timeline() -> pd.DataFrame:
+    report = build_analytical_intelligence()
+    rows = report.get("comparisons", [])
+    summary = report.get("analytical_summary", {})
+    if not rows:
+        return pd.DataFrame(
+            [
+                {
+                    "checkpoint": "-",
+                    "structural_health": summary.get("structural_health", 0.0),
+                    "coverage_10": summary.get("coverage_10", 0.0),
+                    "coverage_11": summary.get("coverage_11", 0.0),
+                    "drift": summary.get("drift", 0.0),
+                    "interpretation": summary.get("interpretation", ""),
+                }
+            ]
+        )
+    timeline = []
+    for index, comparison in enumerate(rows, start=1):
+        timeline.append(
+            {
+                "checkpoint": f"comparativo_{index:02d}",
+                "structural_health": summary.get("structural_health", 0.0),
+                "coverage_10": summary.get("coverage_10", 0.0),
+                "coverage_11": summary.get("coverage_11", 0.0),
+                "drift": summary.get("drift", 0.0),
+                "interpretation": comparison.get("interpretation", ""),
+            }
+        )
+    return pd.DataFrame(timeline)
+
+
+def _institutional_analytical_timeline() -> pd.DataFrame:
+    report = load_institutional_analytical_timeline()
+    if not report:
+        report = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
+    rows = report.get("timeline", [])
+    if not rows:
+        summary = report.get("summary", {})
+        return pd.DataFrame(
+            [
+                {
+                    "created_at": "-",
+                    "status": summary.get("latest_status", ""),
+                    "previous_status": "",
+                    "status_transition": summary.get("latest_transition", ""),
+                    "headline": summary.get("latest_headline", ""),
+                    "recommendation": summary.get("latest_recommendation", ""),
+                    "trend": summary.get("trend", ""),
+                    "verdict_count": summary.get("verdict_count", 0),
+                    "confidence": "",
+                    "source": report.get("source", ""),
+                }
+            ]
+        )
+    timeline = []
+    for row in rows:
+        timeline.append(
+            {
+                "created_at": row.get("created_at", ""),
+                "status": row.get("status", ""),
+                "previous_status": row.get("previous_status", ""),
+                "status_transition": row.get("status_transition", ""),
+                "headline": row.get("headline", ""),
+                "recommendation": row.get("recommendation", ""),
+                "trend": row.get("trend", ""),
+                "verdict_count": row.get("verdict_count", 0),
+                "confidence": row.get("confidence", ""),
+                "source": row.get("source", ""),
+            }
+        )
+    return pd.DataFrame(timeline)
+
+
+def _executive_analytical_summary() -> pd.DataFrame:
+    report = build_executive_analytical_report()
+    rows = [
+        {"field": "status", "value": report.get("status", "")},
+        {"field": "headline", "value": report.get("headline", "")},
+        {"field": "recommendation", "value": report.get("recommendation", "")},
+        {"field": "confidence", "value": report.get("confidence", "")},
+        {"field": "structural_health", "value": report.get("structural_health", 0.0)},
+        {"field": "drift", "value": report.get("drift", 0.0)},
+        {"field": "coverage_11", "value": report.get("coverage_11", 0.0)},
+        {"field": "baseline_mode", "value": report.get("baseline_mode", "")},
+    ]
+    return pd.DataFrame(rows)
+
+
+def _analytical_insight_cards() -> dict[str, Any]:
+    report = build_executive_analytical_report()
+    return {
+        "status": report.get("status", ""),
+        "headline": report.get("headline", ""),
+        "recommendation": report.get("recommendation", ""),
+        "confidence": report.get("confidence", ""),
+        "structural_health": report.get("structural_health", 0.0),
+        "drift": report.get("drift", 0.0),
+        "coverage_11": report.get("coverage_11", 0.0),
+    }
+
+
+def _executive_header_block() -> None:
+    cards = _analytical_insight_cards()
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Saúde", f"{float(cards.get('structural_health', 0.0)):.2f}")
+    col2.metric("Cobertura 11+", f"{float(cards.get('coverage_11', 0.0)):.2f}")
+    col3.metric("Status", str(cards.get("status", "-")))
+    col4.metric("Confiança", str(cards.get("confidence", "-")))
+    st.info(
+        f"{cards.get('headline', '-')} | {cards.get('recommendation', '-')} | drift={float(cards.get('drift', 0.0)):.2f}"
+    )
+
+
+def _institutional_historical_table() -> pd.DataFrame:
+    report = build_institutional_historical_intelligence()
+    summary = report.get("summary", {})
+    timeline = report.get("timeline", [])
+    rows = [
+        {"metric": "trend", "value": summary.get("trend", "")},
+        {"metric": "verdict_count", "value": summary.get("verdict_count", 0)},
+        {"metric": "latest_status", "value": summary.get("latest_status", "")},
+        {"metric": "latest_headline", "value": summary.get("latest_headline", "")},
+        {"metric": "latest_recommendation", "value": summary.get("latest_recommendation", "")},
+        {"metric": "stability_trend", "value": summary.get("stability_trend", 0.0)},
+        {"metric": "drift_trend", "value": summary.get("drift_trend", 0.0)},
+        {"metric": "confidence_trend", "value": summary.get("confidence_trend", 0.0)},
+        {"metric": "source", "value": report.get("source", "")},
+        {"metric": "timeline_preview", "value": len(timeline)},
+    ]
+    return pd.DataFrame(rows)
+
+
+def _institutional_analytics_snapshot_table() -> pd.DataFrame:
+    snapshot_path = REPORTS_DIR / "analytics" / "institutional_analytics_snapshot.json"
+    payload = load_institutional_analytics_snapshot(snapshot_path)
+    if not payload:
+        payload = publish_institutional_analytics(report_dir=REPORTS_DIR / "analytics")
+    executive = payload.get("executive_report", build_executive_analytical_report())
+    historical = payload.get("historical_report", build_institutional_historical_intelligence())
+    rows = [
+        {"metric": "executive_status", "value": executive.get("status", "")},
+        {"metric": "executive_headline", "value": executive.get("headline", "")},
+        {"metric": "executive_recommendation", "value": executive.get("recommendation", "")},
+        {"metric": "historical_trend", "value": historical.get("summary", {}).get("trend", "")},
+        {"metric": "historical_verdict_count", "value": historical.get("summary", {}).get("verdict_count", 0)},
+        {"metric": "latest_status", "value": historical.get("summary", {}).get("latest_status", "")},
+        {"metric": "latest_recommendation", "value": historical.get("summary", {}).get("latest_recommendation", "")},
+    ]
+    return pd.DataFrame(rows)
 
 
 def _sqlite_size_bytes() -> int:
@@ -1043,17 +1533,37 @@ def _operational_metrics() -> dict[str, Any]:
     generation_days = int(_query_scalar("SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events"))
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
     ml_usage = int(_query_scalar("SELECT COUNT(*) FROM generation_events WHERE ml_enabled = 1"))
+    imported_total = int(_query_scalar("SELECT COUNT(*) FROM imported_contests"))
+    generated_games_total = int(_query_scalar("SELECT COUNT(*) FROM generated_games"))
     logs_total = int(_query_scalar("SELECT COUNT(*) FROM operational_logs"))
     logs_today = int(_query_scalar("SELECT COUNT(*) FROM operational_logs WHERE DATE(created_at) = DATE('now')"))
     return {
         "daily_generation_average": round(generation_total / generation_days, 2) if generation_days else 0.0,
         "check_volume": check_total,
         "ml_usage": ml_usage,
+        "imported_contests": imported_total,
+        "generated_games": generated_games_total,
         "snapshot_volume": _snapshot_count(),
         "log_growth_today": logs_today,
         "log_total": logs_total,
         "sqlite_size_bytes": _sqlite_size_bytes(),
     }
+
+
+def _source_of_truth_map() -> pd.DataFrame:
+    rows = [
+        {"component": "Dashboard.generation_count", "source": "generation_events", "notes": "live COUNT(*)"},
+        {"component": "Dashboard.check_count", "source": "check_events", "notes": "live COUNT(*)"},
+        {"component": "Dashboard.total_games", "source": "generated_games", "notes": "live COUNT(*) generated_games rows"},
+        {"component": "Dashboard.last_contest", "source": "check_events -> imported_contests -> historical CSV", "notes": "MAX(contest_id) with imported contest fallback"},
+        {"component": "HistoricalIntelligence", "source": "generation_events + check_events + historical draws", "notes": "no stale snapshot dependency"},
+        {"component": "AnalyticsIntelligence", "source": "generation_events + generated_games + imported_contests", "notes": "live tables and draw history"},
+        {"component": "MLGovernance", "source": "ml_runtime_state + operational_logs", "notes": "latest runtime state"},
+        {"component": "Observability", "source": "operational_logs + audit_trail", "notes": "live runtime signals"},
+        {"component": "PerformanceTracking", "source": "operational_logs", "notes": "durations per event"},
+        {"component": "CloudMonitoring", "source": "operational_logs + sqlite file", "notes": "runtime health and size"},
+    ]
+    return pd.DataFrame(rows)
 
 
 def _performance_metrics_table() -> pd.DataFrame:
@@ -1151,6 +1661,24 @@ def _observability_metrics_table() -> pd.DataFrame:
 def render_observability_page() -> None:
     with st.container(border=True):
         _section_header("Observability", "Logs institucionais, saúde cloud, auditoria e eventos operacionais recentes.")
+        stabilization = load_observational_stabilization_report()
+        if not stabilization:
+            stabilization = persist_observational_stabilization_report()
+        stabilization_report = stabilization.get("report", {})
+        summary = stabilization_report.get("summary", {})
+        counts = stabilization_report.get("counts", {})
+        st.subheader("Observational stabilization")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Homepage", summary.get("homepage_priority", "-"))
+        col2.metric("Estabilidade", summary.get("stability_note", "-"))
+        col3.metric("Snapshot institucional", "ok" if summary.get("institutional_snapshot_ready") else "pending")
+        col4.metric("Timeline institucional", "ok" if summary.get("institutional_timeline_ready") else "pending")
+        st.caption(
+            f"Gerações={counts.get('generation_events', 0)}"
+            f" | Conferências={counts.get('check_events', 0)}"
+            f" | Jogos={counts.get('generated_games', 0)}"
+            f" | Concursos={counts.get('imported_contests', 0)}"
+        )
         health = _runtime_health()
         operational = _operational_metrics()
         st.subheader("Operational Health Panel")
@@ -1164,6 +1692,12 @@ def render_observability_page() -> None:
         col2.metric("Runtime", health.get("runtime_status", "unknown"))
         col3.metric("ML", health.get("ml_status", "idle"))
         col4.metric("Cache", health.get("cache_status", "bounded"))
+        st.caption(
+            f"Engine ativa: {health.get('engine_version', '-')}"
+            f" | Modelo: {health.get('model_version', '-')}"
+            f" | Fallback: {health.get('fallback_used', False)}"
+            f" | Snapshot: {health.get('snapshot_version', '-')}"
+        )
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Performance tracking")
@@ -1176,6 +1710,8 @@ def render_observability_page() -> None:
                         {"metric": "daily_generation_average", "value": operational["daily_generation_average"]},
                         {"metric": "check_volume", "value": operational["check_volume"]},
                         {"metric": "ml_usage", "value": operational["ml_usage"]},
+                        {"metric": "generated_games", "value": operational["generated_games"]},
+                        {"metric": "imported_contests", "value": operational["imported_contests"]},
                         {"metric": "snapshot_volume", "value": operational["snapshot_volume"]},
                         {"metric": "log_growth_today", "value": operational["log_growth_today"]},
                         {"metric": "sqlite_size_bytes", "value": operational["sqlite_size_bytes"]},
@@ -1186,8 +1722,120 @@ def render_observability_page() -> None:
             )
         st.subheader("Contratos de alerta")
         st.dataframe(_alert_contracts(), hide_index=True, use_container_width=True)
+        st.subheader("Source of truth map")
+        st.dataframe(_source_of_truth_map(), hide_index=True, use_container_width=True)
         st.subheader("Cloud monitoring")
         st.dataframe(_cloud_failure_table(), hide_index=True, use_container_width=True)
+        st.subheader("Generation behavioral trace")
+        trace_table = _generation_pipeline_trace_table()
+        if trace_table.empty:
+            st.info("Nenhum snapshot comportamental ainda.")
+        else:
+            st.dataframe(trace_table, hide_index=True, use_container_width=True)
+            latest_trace = trace_table.iloc[0].to_dict()
+            st.caption(
+                "Último estágio: "
+                f"{latest_trace.get('stage', '-')}"
+                f" | rarity_std={latest_trace.get('rarity_std', 0.0)}"
+                f" | recurrence_density={latest_trace.get('recurrence_density', 0.0)}"
+                f" | normalization_pressure={latest_trace.get('normalization_pressure', 0.0)}"
+            )
+        col_trace_1, col_trace_2 = st.columns(2)
+        with col_trace_1:
+            st.subheader("Pressure heatmap")
+            st.dataframe(_pressure_heatmap_table(), hide_index=True, use_container_width=True)
+        with col_trace_2:
+            st.subheader("Survival summary")
+            st.dataframe(_survival_summary_table(), hide_index=True, use_container_width=True)
+        st.subheader("Diversity collapse")
+        st.dataframe(_diversity_collapse_table(), hide_index=True, use_container_width=True)
+        st.subheader("Normalization comparison")
+        st.dataframe(_normalization_comparison_table(), hide_index=True, use_container_width=True)
+        st.subheader("Pipeline divergence")
+        st.dataframe(_pipeline_divergence_table(), hide_index=True, use_container_width=True)
+        st.subheader("Relatorio dos filtros destrutivos")
+        st.dataframe(_destructive_filters_table(), hide_index=True, use_container_width=True)
+        st.subheader("Executive behavioral report")
+        st.dataframe(_executive_behavioral_table(), hide_index=True, use_container_width=True)
+        st.subheader("Filter profile damage")
+        st.dataframe(_filter_profile_damage_table(), hide_index=True, use_container_width=True)
+        st.subheader("Behavior recovery timeline")
+        st.dataframe(_behavior_recovery_table(), hide_index=True, use_container_width=True)
+        st.subheader("Safe recovery zone")
+        st.dataframe(_safe_recovery_zone_table(), hide_index=True, use_container_width=True)
+        st.subheader("Historical adherence")
+        st.dataframe(_historical_adherence_table(), hide_index=True, use_container_width=True)
+        st.subheader("Profile stability")
+        st.dataframe(_profile_stability_table(), hide_index=True, use_container_width=True)
+        st.subheader("Pressure sensitivity")
+        st.dataframe(_pressure_sensitivity_table(), hide_index=True, use_container_width=True)
+        st.subheader("Recovery decision protocol")
+        st.dataframe(_recovery_decision_protocol_table(), hide_index=True, use_container_width=True)
+        st.subheader("Behavior drift")
+        st.dataframe(_behavior_drift_table(), hide_index=True, use_container_width=True)
+        st.subheader("Golden baselines")
+        st.dataframe(_golden_baselines_table(), hide_index=True, use_container_width=True)
+        st.subheader("False recovery")
+        st.dataframe(_false_recovery_table(), hide_index=True, use_container_width=True)
+        st.subheader("Experiment baseline")
+        st.dataframe(_experiment_baseline_table(), hide_index=True, use_container_width=True)
+        st.subheader("Experiment comparison")
+        st.dataframe(_experiment_comparison_table(), hide_index=True, use_container_width=True)
+        st.subheader("Recovery plateau detection")
+        st.dataframe(_recovery_plateau_table(), hide_index=True, use_container_width=True)
+        st.subheader("Experiment 01")
+        st.dataframe(_experiment_01_table(), hide_index=True, use_container_width=True)
+        st.subheader("Marginal recovery gain")
+        st.dataframe(_marginal_recovery_gain_table(), hide_index=True, use_container_width=True)
+        ai_report = build_analytical_intelligence()
+        ai_summary = ai_report.get("analytical_summary", {})
+        ai_insights = ai_report.get("insights", [])
+        ai_comparisons = ai_report.get("comparisons", [])
+        executive_report = build_executive_analytical_report()
+        ai_top_insights = {item.get("metric"): item for item in ai_insights if isinstance(item, dict)}
+        col_ai_1, col_ai_2, col_ai_3, col_ai_4 = st.columns(4)
+        col_ai_1.metric("Saúde estrutural", f"{float(ai_summary.get('structural_health', 0.0)):.2f}")
+        col_ai_2.metric("Cobertura 10+", f"{float(ai_summary.get('coverage_10', 0.0)):.2f}")
+        col_ai_3.metric("Cobertura 11+", f"{float(ai_summary.get('coverage_11', 0.0)):.2f}")
+        col_ai_4.metric("Confiança", str(ai_summary.get("confidence", "-")))
+        st.caption(
+            f"Leitura institucional: {ai_summary.get('interpretation', '-')}"
+            f" | baseline={ai_report.get('baseline_mode', '-')}"
+            f" | fonte={ai_report.get('source', '-')}"
+        )
+        st.info(
+            f"Veredito executivo: {executive_report.get('headline', '-')}"
+            f" | status={executive_report.get('status', '-')}"
+            f" | recomendacao={executive_report.get('recommendation', '-')}"
+        )
+        st.subheader("Institutional historical intelligence")
+        st.dataframe(_institutional_historical_table(), hide_index=True, use_container_width=True)
+        st.subheader("Institutional analytics snapshot")
+        st.dataframe(_institutional_analytics_snapshot_table(), hide_index=True, use_container_width=True)
+        st.subheader("Institutional analytical timeline")
+        st.dataframe(_institutional_analytical_timeline(), hide_index=True, use_container_width=True)
+        if ai_top_insights:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "metric": item.get("metric", ""),
+                            "value": item.get("value", 0.0),
+                            "interpretation": item.get("interpretation", ""),
+                            "confidence": item.get("confidence", ""),
+                        }
+                        for item in ai_top_insights.values()
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        st.subheader("Analytical intelligence insights")
+        st.dataframe(_analytical_intelligence_insights(), hide_index=True, use_container_width=True)
+        st.subheader("Analytical intelligence comparisons")
+        st.dataframe(_analytical_intelligence_comparisons(), hide_index=True, use_container_width=True)
+        st.subheader("Analytical intelligence timeline")
+        st.dataframe(_analytical_intelligence_timeline(), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo médio", f"{health['response_time_ms']:.2f} ms")
         col2.metric("Execuções", health["total_runs"])
@@ -1396,6 +2044,13 @@ def _sqlite_execute_safe(query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cu
                     pass
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
         return None
+
+
+def _invalidate_runtime_cache() -> None:
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
     except Exception as exc:
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
         return None
@@ -1599,6 +2254,9 @@ def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
             {
                 "rank": index,
                 "dezenas": _format_numbers(game["numbers"]),
+                "perfil": game.get("profile_type", ""),
+                "profile_score": game.get("profile_score", 0),
+                "motivo": game.get("historical_intelligence", {}).get("ranking_reason", ""),
                 "final_score": _score_value(game),
                 "quadras": quadra_score.get("found_quadras", 0),
                 "rank_medio_quadra": round(float(quadra_score.get("average_rank", 0)), 2),
@@ -1862,6 +2520,7 @@ def _persist_lead(first_name: str, whatsapp: str) -> None:
                     recovered_conn.commit()
                 except sqlite3.Error:
                     pass
+    _invalidate_runtime_cache()
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
@@ -2051,6 +2710,8 @@ def _safe_backtest(
 
 def _safe_count(table_name: str) -> int:
     try:
+        if table_name not in ALLOWED_ADMIN_EVENT_TABLES:
+            return 0
         row = _sqlite_execute_safe(f"SELECT COUNT(*) FROM {table_name}")
         row = row.fetchone() if row else None
         return int(row[0]) if row else 0
@@ -2063,19 +2724,26 @@ def _safe_last_contest() -> str:
         row = _sqlite_execute_safe("SELECT MAX(contest_id) FROM check_events")
         row = row.fetchone() if row else None
         value = row[0] if row else None
-        return str(value) if value is not None else "-"
+        if value is not None:
+            return str(value)
+        row = _sqlite_execute_safe("SELECT MAX(contest_number) FROM imported_contests")
+        row = row.fetchone() if row else None
+        value = row[0] if row else None
+        if value is not None:
+            return str(value)
+        draws = _load_draws()
+        if draws:
+            return str(max(draw.contest for draw in draws))
+        return "-"
     except Exception:
         return "-"
 
 
 def _safe_total_games() -> str:
     try:
-        gen_cur = _sqlite_execute_safe("SELECT COUNT(*) FROM generation_events")
-        check_cur = _sqlite_execute_safe("SELECT COUNT(*) FROM check_events")
-        gen_row = gen_cur.fetchone() if gen_cur else None
-        check_row = check_cur.fetchone() if check_cur else None
-        total = int(gen_row[0] if gen_row else 0) + int(check_row[0] if check_row else 0)
-        return str(total)
+        gen_row = _sqlite_execute_safe("SELECT COUNT(*) FROM generated_games")
+        gen_row = gen_row.fetchone() if gen_row else None
+        return str(int(gen_row[0]) if gen_row else 0)
     except Exception:
         return "-"
 
@@ -2103,27 +2771,36 @@ def _render_kpi_cards() -> None:
     check_count = _safe_count("check_events")
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
-    col1, col2, col3, col4 = st.columns(4)
-    cards = [
-        (col1, "Gerações", gen_count, "Eventos persistidos em generation_events"),
-        (col2, "Conferências", check_count, "Eventos persistidos em check_events"),
-        (col3, "Último concurso", last_contest, "Maior concurso conferido"),
-        (col4, "Jogos totais", total_games, "Total operacional registrado"),
-    ]
-    markers = ["▸", "▸", "▸", "▸"]
-    for (column, label, value, caption), marker in zip(cards, markers, strict=True):
-        with column:
-            st.markdown(
-                f"""
-                <div class="lotoia-kpi-card">
-                    <div class="lotoia-kpi-marker">{marker}</div>
-                    <div class="lotoia-kpi-label">{label}</div>
-                    <div class="lotoia-kpi-value">{value}</div>
-                    <div class="lotoia-kpi-caption">{caption}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    render_secondary_operational_metrics(gen_count, check_count, last_contest, total_games)
+
+
+def _render_institutional_cockpit() -> None:
+    ai_report = build_analytical_intelligence()
+    executive_report = build_executive_analytical_report()
+    historical_report = build_institutional_historical_intelligence()
+    snapshot = load_institutional_analytics_snapshot()
+    observability_report = load_observational_stabilization_report()
+    timeline = load_institutional_analytical_timeline()
+    if not timeline:
+        timeline = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
+
+    historical_summary = historical_report.get("summary", {})
+    analytical_summary = ai_report.get("analytical_summary", {})
+    snapshot_summary = snapshot.get("summary", {}) if isinstance(snapshot, dict) else {}
+
+    with st.container(border=True):
+        _section_header(
+            "Cockpit Institucional",
+            "Leitura executiva da saúde estrutural, baseline, confiança, drift e linha do tempo institucional.",
+        )
+        render_executive_dashboard(
+            executive_report,
+            analytical_summary,
+            historical_summary,
+            snapshot_summary,
+            observability_report,
+            pd.DataFrame(timeline.get("timeline", [])),
+        )
 
 
 def _render_lead_intelligence() -> None:
@@ -2216,28 +2893,14 @@ def _sidebar_navigation() -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     return st.sidebar.radio(
         "Navegao",
-        options=[
-            "geracao_jogos",
-            "conferir_jogos",
-            "estatisticas_historicas",
-            "historical_intelligence",
-            "analytics_intelligence",
-            "ml_intelligence",
-            "backtesting",
-            "calibracao_experimental",
-            "benchmark_cientifico",
-            "historico_experimental",
-            "relatorios",
-            "ml_governance",
-            "observability",
-            "reports_engine",
-        ],
+        options=PAGES,
         format_func=lambda key: {
             **LABELS,
             "estatisticas_historicas": "Resultados Passados",
             "historical_intelligence": "Historical Intelligence",
             "analytics_intelligence": "Analytics Intelligence",
             "ml_intelligence": "ML Intelligence",
+            "jogo_expandido_experimental": "Jogo Expandido (Experimental)",
             "ml_governance": "ML Governance",
             "observability": "Observability",
             "reports_engine": "Reports Engine",
@@ -2260,23 +2923,24 @@ def render_historical_intelligence_page(draws) -> None:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Jogos inditos", analytics["unique_games"])
         c2.metric("Jogos recorrentes", analytics["recurring_games"])
-        c3.metric("Raridade mdia", f"{analytics['avg_rarity']:.4f}")
+        c3.metric("Raridade estrutural mdia", f"{analytics['avg_rarity']:.4f}")
         c4.metric("Proximidade mdia", f"{analytics['avg_proximity']:.4f}")
+        st.caption(
+            "Perfis gerados: "
+            + ", ".join(
+                f"{profile}: {analytics['profile_percentages'].get(profile, 0):.1f}%"
+                for profile in GENERATION_PROFILE_RATIOS
+            )
+        )
 
         match_df = _historical_intelligence_dataframe(games)
         st.subheader("Tabela histrica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
 
-        unique_df = match_df[match_df["is_unique"] == True]
-        recurring_df = match_df[match_df["is_unique"] == False]
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Jogos inditos")
-            st.dataframe(unique_df, hide_index=True, use_container_width=True)
-        with col2:
-            st.subheader("Jogos recorrentes")
-            st.dataframe(recurring_df, hide_index=True, use_container_width=True)
+        tabs = st.tabs(["Recorrentes", "Hibridos", "Caoticos"])
+        for tab, profile in zip(tabs, GENERATION_PROFILE_RATIOS, strict=True):
+            with tab:
+                st.dataframe(match_df[match_df["profile_type"] == profile], hide_index=True, use_container_width=True)
 
         st.subheader("Concursos similares")
         similar_rows = []
@@ -2438,26 +3102,37 @@ def render_ml_governance_page() -> None:
 
 def render_generation_page() -> None:
     with st.container(border=True):
-        _section_header("Criar Jogos", "Geração institucional com o fluxo operacional atual preservado.")
+        _section_header("Criar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
+        executive_report = build_executive_analytical_report()
+        historical_report = build_institutional_historical_intelligence()
+        observability_report = load_observational_stabilization_report()
+        render_generation_context(executive_report, historical_report, observability_report)
         lead_col1, lead_col2 = st.columns(2)
         first_name = lead_col1.text_input("Primeiro nome do lead", key="admin_first_name")
         whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
         first_name = _safe_text(first_name, max_length=80)
         whatsapp = _safe_text(whatsapp, max_length=40)
-        st.markdown('<div class="lotoia-lead-hint">Lead institucional opcional para rastreabilidade analítica.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="lotoia-lead-hint">Lead institucional opcional para rastreabilidade analitica.</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
         pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
-        max_repeated = col3.number_input("Repetição máxima", min_value=0, max_value=15, value=9)
-        mode = st.radio("Modo", ["Ranking híbrido", "Múltiplos jogos"], horizontal=True)
+        max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
+        mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
         if st.button("Gerar jogos", type="primary"):
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
-                if mode == "Ranking híbrido":
+                if mode == "Ranking hibrido":
                     payload = _cached_generate_best_games(int(count), int(pool_size))
                     games = payload["games"]
                 else:
                     games = _cached_generate_multiple_games(int(count), int(max_repeated))
+                    payload = {
+                        "games": games,
+                        "profile_counts": {
+                            profile: sum(1 for game in games if game.get("profile_type") == profile)
+                            for profile in GENERATION_PROFILE_RATIOS
+                        },
+                    }
                 st.session_state["last_generation_games"] = games
                 _persist_lead(first_name, whatsapp)
             dataframe = _games_dataframe(games)
@@ -2475,14 +3150,16 @@ def render_generation_page() -> None:
                     "context": st.session_state["last_generation_context"],
                     "games": games,
                     "historical": _historical_analytics(games),
+                    "engine_version": "historical_recalibrated_v2",
+                    "fallback_used": False,
+                    "profile_distribution": payload.get("profile_counts", {}),
                 },
             )
             duration_ms = (time.monotonic() - start_time) * 1000.0
             _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games)})
-
-
+            _invalidate_runtime_cache()
 def render_check_page() -> None:
     with st.container(border=True):
         _section_header("Conferir Jogos", "Conferencia operacional contra concursos historicos carregados.")
@@ -2540,6 +3217,7 @@ def render_check_page() -> None:
                     _record_operational_log("check", "success", duration_ms, {"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
                     _record_performance_metric("check_ms", duration_ms, {"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
                     _record_audit_trail("check_snapshot", artifact_path=str(snapshot), context={"contest_id": contest_id_int, "hits": int(result["hits"]), "game_index": index})
+                    _invalidate_runtime_cache()
                 summary = pd.DataFrame(results).sort_values(["acertos", "jogo"], ascending=[False, True]).reset_index(drop=True)
                 st.session_state["last_check_context"] = {
                     "timestamp": _report_timestamp(),
@@ -2681,6 +3359,98 @@ def render_benchmark_page() -> None:
             st.subheader("Comparações estatísticas")
             st.dataframe(comparisons, hide_index=True, use_container_width=True)
             st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
+
+
+def render_expansion_experimental_page() -> None:
+    with st.container(border=True):
+        _section_header(
+            "Jogo Expandido (Experimental)",
+            "Validacao operacional interna do motor combinatorio, restrita a 16 e 17 dezenas.",
+        )
+        st.warning("Modo experimental interno: 18, 19 e 20 dezenas permanecem desabilitadas no ADMIN.")
+        selected_count = st.selectbox(
+            "Quantidade de dezenas",
+            options=list(ADMIN_EXPANSION_ALLOWED_SIZES),
+            index=0,
+            key="admin_expansion_selected_count",
+        )
+        default_numbers = _default_admin_expansion_numbers(int(selected_count))
+        numbers_text = st.text_input("Dezenas", value=default_numbers, key=f"admin_expansion_numbers_{selected_count}")
+        preview_limit = st.slider(
+            "Limite de preview",
+            min_value=16,
+            max_value=ADMIN_EXPANSION_PREVIEW_LIMIT,
+            value=ADMIN_EXPANSION_PREVIEW_LIMIT,
+            step=10,
+            key="admin_expansion_preview_limit",
+        )
+
+        try:
+            numbers = _parse_admin_expansion_numbers(numbers_text)
+            estimate = estimate_expansion(numbers)
+        except Exception as exc:
+            st.error(str(exc))
+            _record_operational_log("admin_expansion_experimental", "blocked", 0.0, {"error": str(exc)})
+            return
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Dezenas", len(numbers))
+        col2.metric("Apostas internas", f"{estimate['total_combinations']:,}".replace(",", "."))
+        col3.metric("Custo estimado", f"R$ {float(estimate['estimated_cost']):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+        if st.button("Gerar preview experimental", type="primary"):
+            try:
+                with st.spinner("Gerando preview com guardrails operacionais..."):
+                    st.session_state["admin_last_expansion_experimental"] = _run_admin_expansion(
+                        numbers,
+                        preview_limit=int(preview_limit),
+                    )
+            except Exception as exc:
+                st.error("Falha controlada no motor combinatorio experimental.")
+                st.caption(str(exc))
+                _record_operational_log("admin_expansion_experimental", "failed", 0.0, {"error": str(exc)})
+                return
+
+        result = st.session_state.get("admin_last_expansion_experimental")
+        if not result:
+            return
+
+        st.success(f"Preview disponivel: {result['generated_count']} de {result['total_combinations']} apostas.")
+        if result.get("stopped_reason"):
+            st.info("Preview limitado de forma controlada para preservar runtime e memoria.")
+
+        combinations = result["combinations"]
+        page_count = max(1, (len(combinations) + ADMIN_EXPANSION_PAGE_SIZE - 1) // ADMIN_EXPANSION_PAGE_SIZE)
+        page = st.number_input("Pagina", min_value=1, max_value=page_count, value=1, key="admin_expansion_page")
+        start = (int(page) - 1) * ADMIN_EXPANSION_PAGE_SIZE
+        end = start + ADMIN_EXPANSION_PAGE_SIZE
+        dataframe = _admin_expansion_dataframe(combinations[start:end])
+        st.dataframe(dataframe, hide_index=True, use_container_width=True)
+
+        export_dataframe = _admin_expansion_dataframe(combinations)
+        csv_path = _export_csv(
+            artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "csv"),
+            export_dataframe,
+        )
+        pdf_path = _save_pdf_report(
+            artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "pdf"),
+            "LotoIA - Jogo Expandido Experimental",
+            [
+                f"Dezenas selecionadas: {_format_numbers(result['selected_numbers'])}",
+                f"Apostas internas: {result['total_combinations']}",
+                f"Custo estimado: R$ {float(result['estimated_cost']):.2f}",
+                f"Preview gerado: {result['generated_count']}",
+                f"Runtime ms: {result['runtime_ms']}",
+                "Restricao ADMIN: apenas 16 e 17 dezenas.",
+            ],
+            export_dataframe,
+        )
+        csv_bytes = _safe_download_bytes(csv_path)
+        pdf_bytes = _safe_download_bytes(pdf_path)
+        if csv_bytes is not None:
+            st.download_button("Exportar CSV", data=csv_bytes, file_name=csv_path.name, mime="text/csv")
+        if pdf_bytes is not None:
+            st.download_button("Exportar PDF", data=pdf_bytes, file_name=pdf_path.name, mime="application/pdf")
 
 
 def render_history_page() -> None:
@@ -2993,7 +3763,9 @@ def main() -> None:
 
     try:
         page = _sidebar_navigation()
-        _render_kpi_cards()
+        _render_institutional_cockpit()
+        with st.expander("Métricas operacionais secundárias", expanded=False):
+            _render_kpi_cards()
         st.markdown("---")
         if page == "geracao_jogos":
             render_generation_page()
@@ -3017,6 +3789,8 @@ def main() -> None:
             render_analytics_intelligence_page()
         elif page == "ml_intelligence":
             render_ml_intelligence_page()
+        elif page == "jogo_expandido_experimental":
+            render_expansion_experimental_page()
         elif page == "ml_governance":
             render_ml_governance_page()
         elif page == "observability":
@@ -3038,5 +3812,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

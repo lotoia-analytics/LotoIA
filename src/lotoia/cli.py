@@ -7,7 +7,9 @@ from pathlib import Path
 from lotoia.backtesting import run_backtest
 from lotoia.benchmark import run_benchmark
 from lotoia.calibration import WeightConfiguration, compare_weight_configurations
+from lotoia.analytics import publish_institutional_analytics
 from lotoia.database import DEFAULT_DATABASE_PATH, create_database, list_runs
+from lotoia.observability import persist_observational_stabilization_report
 from lotoia.reports import generate_backtest_report
 from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
 
@@ -24,14 +26,14 @@ def run_basic_analysis_cli() -> None:
     print(f"Dezenas monitoradas: {summary['numbers_tracked']}")
 
 
-def run_backtest_cli() -> None:
+def run_backtest_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Executa backtesting historico do LotoIA.")
     parser.add_argument("--contests", type=int, default=5, help="Quantidade de concursos analisados.")
     parser.add_argument("--games", type=int, default=5, help="Quantidade de jogos por concurso.")
     parser.add_argument("--pool-size", type=int, default=20, help="Tamanho do pool de candidatos.")
     parser.add_argument("--history-window", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42, help="Seed para geracao reprodutivel.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     result = run_backtest(
         contests_analyzed=args.contests,
@@ -43,7 +45,7 @@ def run_backtest_cli() -> None:
     print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
 
 
-def run_benchmark_cli() -> None:
+def run_benchmark_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Executa benchmark cientifico do LotoIA.")
     parser.add_argument("--contests", type=int, default=5)
     parser.add_argument("--games", type=int, default=5)
@@ -51,7 +53,7 @@ def run_benchmark_cli() -> None:
     parser.add_argument("--history-window", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, default=Path("reports/benchmark"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     result = run_benchmark(
         contests_analyzed=args.contests,
@@ -89,14 +91,14 @@ def show_runs_cli() -> None:
     print(json.dumps(list_runs(), ensure_ascii=False, indent=2, default=str))
 
 
-def run_weight_calibration_cli() -> None:
+def run_weight_calibration_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Compara configuracoes de pesos do LotoIA.")
     parser.add_argument("--contests", type=int, default=3)
     parser.add_argument("--games", type=int, default=3)
     parser.add_argument("--pool-size", type=int, default=8)
     parser.add_argument("--history-window", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     result = compare_weight_configurations(
         configurations=[_official_configuration(), _balanced_configuration()],
@@ -109,7 +111,7 @@ def run_weight_calibration_cli() -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-def run_reports_cli() -> None:
+def run_reports_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Gera relatorios analiticos do LotoIA.")
     parser.add_argument("--contests", type=int, default=3)
     parser.add_argument("--games", type=int, default=3)
@@ -117,7 +119,7 @@ def run_reports_cli() -> None:
     parser.add_argument("--history-window", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, default=Path("reports"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     backtest = run_backtest(
         contests_analyzed=args.contests,
@@ -136,6 +138,48 @@ def run_reports_cli() -> None:
     )
     summary = generate_backtest_report(backtest, calibration, args.output_dir)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+
+
+def run_institutional_analytics_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Publica a memoria analitica institucional do LotoIA.")
+    parser.add_argument("--report-dir", type=Path, default=Path("reports") / "analytics")
+    parser.add_argument(
+        "--executive-report-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "executive_analytical_report.json",
+    )
+    parser.add_argument(
+        "--historical-report-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "institutional_historical_intelligence.json",
+    )
+    parser.add_argument(
+        "--snapshot-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "institutional_analytics_snapshot.json",
+    )
+    args = parser.parse_args(argv)
+
+    payload = publish_institutional_analytics(
+        report_dir=args.report_dir,
+        executive_report_path=args.executive_report_path,
+        historical_report_path=args.historical_report_path,
+        snapshot_path=args.snapshot_path,
+    )
+    payload = {
+        **payload,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def run_observational_stabilization_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Gera o relatorio de estabilizacao observacional do LotoIA.")
+    parser.add_argument("--report-path", type=Path, default=Path("reports") / "observability" / "observational_stabilization.json")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    args = parser.parse_args(argv)
+
+    payload = persist_observational_stabilization_report(args.report_path, db_path=args.db_path)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def _official_configuration() -> WeightConfiguration:

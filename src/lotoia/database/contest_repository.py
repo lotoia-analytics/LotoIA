@@ -22,6 +22,15 @@ class ContestRepository:
         )
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS imported_contests (
+            contest_number INTEGER PRIMARY KEY,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            data TEXT,
+            dezenas TEXT
+        )
+        """)
+
         self.connection.commit()
 
     def create_feature_table(self) -> None:
@@ -58,14 +67,31 @@ class ContestRepository:
             ),
         )
 
+        cursor.execute(
+            """
+        INSERT OR REPLACE INTO imported_contests (
+            contest_number,
+            created_at,
+            data,
+            dezenas
+        )
+        VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+        """,
+            (
+                contest["concurso"],
+                contest["data"],
+                dezenas,
+            ),
+        )
+
         self.connection.commit()
 
     def get_last_contest(self) -> int | None:
         cursor = self.connection.cursor()
 
         cursor.execute("""
-        SELECT MAX(concurso)
-        FROM contests
+        SELECT MAX(contest_number)
+        FROM imported_contests
         """)
 
         result = cursor.fetchone()
@@ -76,9 +102,9 @@ class ContestRepository:
         cursor = self.connection.cursor()
 
         cursor.execute("""
-        SELECT concurso, data, dezenas
-        FROM contests
-        ORDER BY concurso
+        SELECT contest_number, data, dezenas
+        FROM imported_contests
+        ORDER BY contest_number
         """)
 
         rows = cursor.fetchall()

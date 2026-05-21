@@ -120,3 +120,20 @@ Este documento descreve a plataforma sem alterar:
 - persistência;
 - estrutura `src/`.
 
+## Memoria Analitica Institucional
+
+A camada de interpretacao institucional pode ser publicada e consumida por tres entradas oficiais:
+
+- Dashboard: `dashboard/admin_app.py`
+- CLI: `python -m lotoia institutional-analytics`
+- CLI: `python -m lotoia observational-stabilization`
+- Pacote: `src/lotoia/__main__.py`
+
+Artefatos gerados:
+
+- `reports/analytics/executive_analytical_report.json`
+- `reports/analytics/institutional_historical_intelligence.json`
+- `reports/analytics/institutional_analytics_snapshot.json`
+- `reports/observability/observational_stabilization.json`
+
+Essa camada nao altera baseline, longitudinal, engine ou benchmark. Ela apenas publica e organiza a leitura institucional ja validada.
