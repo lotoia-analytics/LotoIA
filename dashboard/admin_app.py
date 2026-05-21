@@ -1607,9 +1607,9 @@ def _source_of_truth_map() -> pd.DataFrame:
         {"component": "Dashboard.check_count", "source": "check_events", "notes": "live COUNT(*)"},
         {"component": "Dashboard.total_games", "source": "generated_games", "notes": "live COUNT(*) generated_games rows"},
         {"component": "Dashboard.last_contest", "source": "check_events -> imported_contests -> historical CSV", "notes": "MAX(contest_id) with imported contest fallback"},
-        {"component": "HistoricalIntelligence", "source": "generation_events + check_events + historical draws", "notes": "no stale snapshot dependency"},
-        {"component": "AnalyticsIntelligence", "source": "generation_events + generated_games + imported_contests", "notes": "live tables and draw history"},
-        {"component": "MLGovernance", "source": "ml_runtime_state + operational_logs", "notes": "latest runtime state"},
+        {"component": "Historico analitico", "source": "generation_events + check_events + historical draws", "notes": "no stale snapshot dependency"},
+        {"component": "Analise inteligente", "source": "generation_events + generated_games + imported_contests", "notes": "live tables and draw history"},
+        {"component": "Auditoria tecnica", "source": "ml_runtime_state + operational_logs", "notes": "latest runtime state"},
         {"component": "Monitoramento", "source": "operational_logs + audit_trail", "notes": "live runtime signals"},
         {"component": "PerformanceTracking", "source": "operational_logs", "notes": "durations per event"},
         {"component": "CloudMonitoring", "source": "operational_logs + sqlite file", "notes": "runtime health and size"},
@@ -1879,7 +1879,7 @@ def render_observability_page() -> None:
             adaptive_report = adaptive_payload.get("adaptive_memory", {})
         adaptive_timeline_report = load_adaptive_institutional_timeline()
         adaptive_insights_report = load_adaptive_institutional_insights()
-        st.subheader("Adaptive institutional intelligence")
+        st.subheader("Inteligencia adaptativa")
         render_adaptive_institutional_intelligence(
             {
                 **adaptive_report,
