@@ -217,6 +217,7 @@ def _record_event(events: list[dict[str, Any]], event_type: str, details: str) -
 def render_generate_page(events: list[dict[str, Any]]) -> None:
     st.header("Gerar Jogos")
     st.caption("Informe nome e WhatsApp para liberar a geracao.")
+    st.subheader("LotoIA")
     lead_col1, lead_col2 = st.columns(2)
     first_name = lead_col1.text_input("Primeiro nome", key="user_first_name")
     whatsapp = lead_col2.text_input("WhatsApp", key="user_whatsapp")
