@@ -194,10 +194,6 @@ def _user_indicator(games: list[dict[str, Any]]) -> tuple[str, str]:
 
 
 def _render_sidebar() -> str:
-    st.sidebar.markdown(
-        "<div style='font-size:1.05rem; font-weight:900; letter-spacing:0.02em; color:#3b4fe0; margin:0.2rem 0 0.6rem 0;'>LotoIA</div>",
-        unsafe_allow_html=True,
-    )
     logo_path = PROJECT_ROOT / "assets" / "logo.png"
     if logo_path.exists():
         st.sidebar.image(str(logo_path), width=220)
@@ -235,7 +231,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
     count = st.number_input("Quantidade", min_value=1, max_value=MAX_GAMES_PER_SESSION, value=DEFAULT_GAMES_COUNT)
     pool_size = st.number_input("Pool", min_value=int(count), max_value=100, value=max(int(count) * 4, DEFAULT_POOL_SIZE))
     st.markdown(
-        "<div style='font-size:1rem; font-weight:700; color:#1f2f44; margin:0.2rem 0 0.4rem 0;'>LotoIA</div>",
+        "<div style='font-size:1rem; font-weight:800; color:#3b4fe0; margin:0.2rem 0 0.4rem 0;'>LotoIA</div>",
         unsafe_allow_html=True,
     )
     ml_enabled = st.toggle("ML light", value=False)
