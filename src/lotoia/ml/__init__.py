@@ -26,6 +26,12 @@ from lotoia.ml.model_registry import (
     register_model_version,
     rollback_model_version,
 )
+from lotoia.ml.feature_lineage import (
+    DEFAULT_ML_FEATURE_LINEAGE_DIR,
+    DEFAULT_ML_FEATURE_LINEAGE_REGISTRY,
+    MLFeatureLineageResult,
+    build_feature_lineage,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -55,6 +61,10 @@ __all__ = [
     "activate_model_version",
     "register_model_version",
     "rollback_model_version",
+    "DEFAULT_ML_FEATURE_LINEAGE_DIR",
+    "DEFAULT_ML_FEATURE_LINEAGE_REGISTRY",
+    "MLFeatureLineageResult",
+    "build_feature_lineage",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
