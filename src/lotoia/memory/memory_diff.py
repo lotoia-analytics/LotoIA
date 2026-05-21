@@ -75,26 +75,26 @@ def build_institutional_state_diff(
         left_state = baseline_states[-1]
         right_state = baseline_states[0]
         axes.append(
-                MemoryDiffAxis(
-                    axis="baseline_vs_baseline",
-                    left_memory_id=left_state.memory_id,
-                    right_memory_id=right_state.memory_id,
-                    comparison=_compare_state_payloads(left_state.state, right_state.state),
-                )
+            MemoryDiffAxis(
+                axis="baseline_vs_baseline",
+                left_memory_id=left_state.memory_id,
+                right_memory_id=right_state.memory_id,
+                comparison=_compare_state_payloads(left_state.state, right_state.state),
             )
+        )
 
     drift_states = [state for state in states if state.state_type == "drift_state"]
     if len(drift_states) >= 2:
         left_state = drift_states[-1]
         right_state = drift_states[0]
         axes.append(
-                MemoryDiffAxis(
-                    axis="drift_evolution",
-                    left_memory_id=left_state.memory_id,
-                    right_memory_id=right_state.memory_id,
-                    comparison=_compare_state_payloads(left_state.state, right_state.state),
-                )
+            MemoryDiffAxis(
+                axis="drift_evolution",
+                left_memory_id=left_state.memory_id,
+                right_memory_id=right_state.memory_id,
+                comparison=_compare_state_payloads(left_state.state, right_state.state),
             )
+        )
 
     diff = InstitutionalStateDiff(
         execution_id=execution_id,
