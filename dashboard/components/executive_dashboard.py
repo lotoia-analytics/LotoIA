@@ -26,8 +26,8 @@ def render_executive_dashboard(
     render_institutional_design_system()
     st.markdown(
         """
-        <div style="margin: 0 0 0.75rem 0; padding-bottom: 0.35rem; border-bottom: 1px solid #dce7f2;">
-            <div style="font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase; color: #6d7f92;">
+        <div class="lotoia-executive-section" style="padding-bottom: 0.25rem; border-bottom: 1px solid #dce7f2;">
+            <div class="lotoia-executive-kicker">
                 Executive dashboard
             </div>
         </div>
@@ -36,7 +36,7 @@ def render_executive_dashboard(
     )
     render_live_status_header(executive_report, analytical_summary, historical_summary, observability_summary)
 
-    left_col, right_col = st.columns([1.35, 1.0], gap="large")
+    left_col, right_col = st.columns([1.45, 0.95], gap="large")
     with left_col:
         render_hero_banner(executive_report, analytical_summary, historical_summary)
         render_executive_panel(executive_report, analytical_summary, historical_summary)

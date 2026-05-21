@@ -3664,7 +3664,12 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; max-width: 1280px; }
+        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; max-width: 100%; }
+        section[data-testid="stMain"] > div.block-container {
+            max-width: 100%;
+            padding-left: 1.1rem;
+            padding-right: 1.1rem;
+        }
         .stApp { background: linear-gradient(180deg, #fbfdff 0%, #f2f6fb 100%); }
         .stDataFrame, .stPlotlyChart { border-radius: 14px; }
         section[data-testid="stMain"] .stDataFrame {

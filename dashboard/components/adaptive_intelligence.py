@@ -21,6 +21,15 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
     adaptive_presence = adaptive_report.get("adaptive_presence", {})
 
     st.markdown("### Adaptive institutional intelligence")
+    st.markdown(
+        """
+        <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
+            <div class="lotoia-executive-kicker">Adaptive memory layer</div>
+            <div class="lotoia-executive-copy">Memoria operacional, recorrencias e continuidade institucional em leitura executiva consolidada.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     top_cols = st.columns(3, gap="large")
     top_items = [
         ("Memory depth", operational_memory.get("summary", {}).get("memory_depth", 0)),

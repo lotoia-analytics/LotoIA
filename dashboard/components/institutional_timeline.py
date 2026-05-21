@@ -16,6 +16,15 @@ def _status_badge(status: str) -> str:
 
 def render_institutional_timeline(timeline: pd.DataFrame) -> None:
     st.markdown("### Timeline institucional")
+    st.markdown(
+        """
+        <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
+            <div class="lotoia-executive-kicker">Institutional storytelling rail</div>
+            <div class="lotoia-executive-copy">Snapshots recentes, transicoes de estado e memoria visual para leitura cronologica rapida.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     if timeline.empty:
         st.info("Nenhum snapshot institucional disponivel ainda.")
         return
@@ -26,20 +35,20 @@ def render_institutional_timeline(timeline: pd.DataFrame) -> None:
         with column:
             st.markdown(
                 f"""
-                <div style="padding: 0.75rem; border: 1px solid #dbe4ee; border-radius: 0.75rem; background: #ffffff; min-height: 10rem;">
-                    <div style="font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase; color: #6b7f93; margin-bottom: 0.35rem;">
+                <div class="lotoia-card-shell lotoia-flow-panel" style="min-height: 10rem;">
+                    <div class="lotoia-muted-label" style="margin-bottom: 0.35rem;">
                         {row.get("created_at", "-")}
                     </div>
-                    <div style="{_status_badge(str(row.get('status', '-')))}">
+                    <div style="{_status_badge(str(row.get('status', '-')))}" class="lotoia-runtime-badge">
                         {row.get("status", "-")}
                     </div>
-                    <div style="margin-top: 0.6rem; font-size: 0.98rem; font-weight: 700; color: #123456;">
+                    <div class="lotoia-executive-copy" style="margin-top: 0.6rem; font-weight: 700; color: #123456;">
                         {row.get("headline", "-")}
                     </div>
-                    <div style="margin-top: 0.35rem; font-size: 0.88rem; color: #4b5f74;">
+                    <div class="lotoia-executive-copy" style="margin-top: 0.35rem;">
                         {row.get("status_transition", "-")}
                     </div>
-                    <div style="margin-top: 0.35rem; font-size: 0.84rem; color: #6b7f93;">
+                    <div class="lotoia-muted-label" style="margin-top: 0.35rem;">
                         {row.get("recommendation", "-")}
                     </div>
                 </div>

@@ -10,6 +10,15 @@ def render_structural_health(
     historical_summary: Mapping[str, Any],
 ) -> None:
     st.markdown("### Saude estrutural")
+    st.markdown(
+        """
+        <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.35rem;">
+            <div class="lotoia-executive-kicker">Structural health</div>
+            <div class="lotoia-executive-copy">Sinaliza estabilidade, tendencia e confianca historica em um bloco executivo de leitura curta.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Baseline", analytical_summary.get("confidence", "-"))
     col2.metric("Tendencia", historical_summary.get("trend", "-"))

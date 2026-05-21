@@ -305,3 +305,27 @@ def test_homepage_renders_institutional_cockpit_first(monkeypatch) -> None:
 
     assert calls[0] == "cockpit"
     assert "generation" in calls
+
+
+def test_dashboard_uses_wide_layout(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def _set_page_config(*args, **kwargs):
+        calls.append(kwargs)
+
+    _patch_streamlit(monkeypatch)
+    monkeypatch.setattr(admin_app.st, "set_page_config", _set_page_config)
+    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
+    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
+    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "geracao_jogos")
+    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
+    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "_render_institutional_cockpit", lambda: None)
+    monkeypatch.setattr(admin_app.st, "expander", lambda *args, **kwargs: _dummy_context())
+    monkeypatch.setattr(admin_app, "render_generation_page", lambda: None)
+
+    admin_app.main()
+
+    assert any(call.get("layout") == "wide" for call in calls)

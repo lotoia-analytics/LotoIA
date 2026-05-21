@@ -11,6 +11,15 @@ def render_executive_panel(
     historical_summary: Mapping[str, Any],
 ) -> None:
     st.markdown("### Cockpit institucional")
+    st.markdown(
+        """
+        <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
+            <div class="lotoia-executive-kicker">Executive control panel</div>
+            <div class="lotoia-executive-copy">Estado institucional, baseline, confianca, drift e saude estrutural em uma leitura rapida.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Status institucional", executive_report.get("status", "-"))
     col2.metric("Baseline", executive_report.get("baseline_mode", "-"))

@@ -1,3 +1,37 @@
+# Release Notes - Missao 17 / Executive Visual Engine
+
+## Status inicial
+
+- Missao 17 iniciada com foco em hierarquia visual, layout executivo e presenca premium, sem tocar no nucleo cientifico da plataforma.
+- A homepage e o cockpit institucional passam a usar uma moldura visual mais ampla, respiravel e consistente.
+- Nenhuma mudanca foi feita em generator, baseline hard, benchmark, longitudinal core, adaptive intelligence core, analytical intelligence, ML pipeline, observability core ou persistence layer.
+
+## Resumo
+
+- Refinamento da experiencia executiva com largura total, espaco institucional, tipografia premium e cards mais respiraveis.
+- A percepcao do cockpit ficou mais alinhada com a maturidade analitica ja existente internamente.
+- O foco continua sendo traducao visual de inteligencia institucional real, sem maquiagem cosmética.
+
+## Alteracoes principais
+
+- Ajuste do design system institucional para suportar layout amplo e hierarquia visual.
+- Ajustes no hero cockpit e no header executivo para usar classes visuais consistentes.
+- Reforco do layout executivo modular no dashboard.
+
+## Protecoes adicionadas
+
+- Testes de renderizacao dos componentes institucionais continuam protegendo a homepage.
+- A composicao executiva continua desacoplada da logica analitica.
+
+## Validacao
+
+- `tests/dashboard/test_institutional_components.py`
+- `tests/dashboard/test_institutional_dashboard.py`
+
+## Observacao
+
+- Esta entrega reposiciona a experiencia visual para um cockpit executivo premium sem alterar baseline, engine ou governanca.
+
 # Release Notes - Missao 16 / Adaptive Institutional Intelligence
 
 ## Status inicial
@@ -73,7 +107,6 @@
 
 - Esta entrega acrescenta percepcao de evolucao temporal sem alterar a logica estatistica da plataforma.
 
-# Release Notes - Missao 15 / Live Analytical Intelligence
 
 ## Status parcial
 
@@ -110,7 +143,6 @@
 
 - Esta entrega reforca a percepcao de evolucao temporal sem alterar a logica estatistica da plataforma.
 
-# Release Notes - Missao 15 / Live Analytical Intelligence
 
 ## Status parcial
 

@@ -8,6 +8,15 @@ from .design_system import render_institutional_design_system
 def render_secondary_operational_metrics(gen_count: int, check_count: int, last_contest: str, total_games: str) -> None:
     render_institutional_design_system()
     with st.expander("Operacao secundaria", expanded=False):
+        st.markdown(
+            """
+            <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
+                <div class="lotoia-executive-kicker">Secondary operations</div>
+                <div class="lotoia-executive-copy">Contadores operacionais mantidos em area compacta, sem competir com o cockpit institucional.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         col1, col2, col3, col4 = st.columns(4)
         cards = [
             (col1, "Geracoes", gen_count, "Eventos persistidos em generation_events"),

@@ -11,6 +11,15 @@ def render_executive_summary(
     snapshot_summary: Mapping[str, Any],
 ) -> None:
     st.markdown("### Resumo executivo")
+    st.markdown(
+        """
+        <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
+            <div class="lotoia-executive-kicker">Executive summary</div>
+            <div class="lotoia-executive-copy">Resumo curto da leitura institucional, da tendencia e da memoria operacional persistida.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.info(
         f"{executive_report.get('headline', '-')}"
         f" | status={executive_report.get('status', '-')}"
