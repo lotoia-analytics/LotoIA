@@ -84,6 +84,7 @@ from lotoia.orchestration import (
     load_intelligent_operational_orchestration,
     persist_intelligent_operational_orchestration,
 )
+from lotoia.public import OperationalLifecycleEngine
 from lotoia.observability import (
     build_observational_stabilization_report,
     load_observational_stabilization_report,
@@ -3875,6 +3876,9 @@ def render_reports_engine_page() -> None:
         _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
+        lifecycle_engine = OperationalLifecycleEngine(DEFAULT_DATABASE_PATH)
+        lifecycle_dashboard = lifecycle_engine.build_dashboard()
+        lifecycle_telemetry = lifecycle_engine.build_telemetry()
         col1, col2, col3 = st.columns(3)
         col1.metric("Snapshots", len(list(REPORTS_SNAPSHOTS_DIR.glob("*.json"))))
         col2.metric("Última geração", "sim" if latest_games else "não")
@@ -3933,6 +3937,23 @@ def render_reports_engine_page() -> None:
                     st.download_button("Baixar snapshot", data=snapshot_bytes, file_name=path.name, key=f"snap_{path.name}")
         else:
             st.info("Nenhum snapshot institucional disponível ainda.")
+
+        st.subheader("Dashboard operacional pós-sorteio")
+        dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
+        dash_col1.metric("Execuções", lifecycle_dashboard.total_runs)
+        dash_col2.metric("Jogos reconciliados", lifecycle_dashboard.total_games)
+        dash_col3.metric("Premiados", lifecycle_dashboard.prize_count)
+        dash_col4.metric("Melhor acerto", lifecycle_dashboard.best_hits)
+        st.caption(
+            f"Último concurso reconciliado: {lifecycle_dashboard.latest_contest or '-'} | "
+            f"Status: {lifecycle_dashboard.status}"
+        )
+        st.caption(
+            f"Telemetria: sync={lifecycle_telemetry['sync_runs']} | gerações={lifecycle_telemetry['generated_games']} | "
+            f"reconciliações={lifecycle_telemetry['reconciliation_runs']} | fechamento={lifecycle_telemetry['operational_status']}"
+        )
+        if lifecycle_dashboard.post_draw_notes:
+            st.write(" | ".join(lifecycle_dashboard.post_draw_notes))
 
 
 def main() -> None:

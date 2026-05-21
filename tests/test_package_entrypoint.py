@@ -63,3 +63,55 @@ def test_package_entrypoint_dispatches_adaptive_intelligence(monkeypatch) -> Non
     lotoia_main.main()
 
     assert calls == [("--report-dir", "custom/reports")]
+
+
+def test_package_entrypoint_dispatches_result_sync(monkeypatch) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        lotoia_main.cli,
+        "run_result_sync_cli",
+        lambda argv=None: calls.append(tuple(argv or [])),
+    )
+    monkeypatch.setattr(sys, "argv", ["lotoia", "result-sync", "--db-path", "data/lotoia.db"])
+
+    lotoia_main.main()
+
+    assert calls == [("--db-path", "data/lotoia.db")]
+
+
+def test_package_entrypoint_dispatches_operational_lifecycle(monkeypatch) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        lotoia_main.cli,
+        "run_operational_lifecycle_cli",
+        lambda argv=None: calls.append(tuple(argv or [])),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "lotoia",
+            "operational-lifecycle",
+            "--contest-id",
+            "3690",
+            "--generation-event-id",
+            "88",
+            "--official-numbers",
+            "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+        ],
+    )
+
+    lotoia_main.main()
+
+    assert calls == [
+        (
+            "--contest-id",
+            "3690",
+            "--generation-event-id",
+            "88",
+            "--official-numbers",
+            "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+        )
+    ]

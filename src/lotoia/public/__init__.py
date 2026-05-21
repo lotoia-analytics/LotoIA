@@ -6,6 +6,7 @@ from lotoia.public.service import (
     generate_public_games,
 )
 from lotoia.public.reconciliation import ReconciliationEngine
+from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
 
 __all__ = [
     "PublicCheckRequest",
@@ -14,4 +15,5 @@ __all__ = [
     "check_public_contest",
     "generate_public_games",
     "ReconciliationEngine",
+    "OperationalLifecycleEngine",
 ]

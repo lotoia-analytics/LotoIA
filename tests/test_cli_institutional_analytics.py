@@ -116,6 +116,75 @@ def test_run_result_sync_cli(monkeypatch, capsys, tmp_path: Path) -> None:
     assert parsed == payload
 
 
+def test_run_operational_lifecycle_cli(monkeypatch, capsys, tmp_path: Path) -> None:
+    payload = {
+        "created_at": "2026-05-21T19:43:00+00:00",
+        "contest_id": 3690,
+        "prize_count": 1,
+        "retained_games": 1,
+        "removed_games": 1,
+        "telemetry": {"operational_status": "healthy"},
+        "dashboard": {
+            "total_runs": 1,
+            "total_games": 2,
+            "prize_count": 1,
+            "best_hits": 15,
+            "latest_contest": 3690,
+            "status": "operational",
+            "prize_tiers": {"faixa_15": 1},
+            "post_draw_notes": ["há premiações registradas"],
+        },
+        "detections": [],
+        "decisions": [],
+    }
+
+    class FakeAdapter:
+        def __init__(self, db_path: Path) -> None:
+            assert db_path == tmp_path / "lotoia.db"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+            return None
+
+        def load_generated_games(self, generation_event_id: int):  # noqa: ARG002
+            return [{"numbers": list(range(1, 16))}, {"numbers": [1, 2, 3]}]
+
+        def load_lead_id(self, generation_event_id: int):  # noqa: ARG002
+            return 7
+
+    class FakeEngine:
+        def __init__(self, db_path: Path) -> None:
+            assert db_path == tmp_path / "lotoia.db"
+
+        def close_day(self, **kwargs):
+            assert kwargs["contest_id"] == 3690
+            assert kwargs["generation_event_id"] == 88
+            assert kwargs["lead_id"] == 7
+            assert kwargs["cleanup"] is True
+            return type("Report", (), {"to_dict": lambda self: payload})()
+
+    monkeypatch.setattr(cli, "OperationalLifecycleEngine", FakeEngine)
+    monkeypatch.setattr(cli, "ContestsRepositoryAdapter", FakeAdapter)
+    monkeypatch.setattr(
+        cli.argparse.ArgumentParser,
+        "parse_args",
+        lambda self, argv=None: argparse.Namespace(
+            contest_id=3690,
+            generation_event_id=88,
+            official_numbers="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+            db_path=tmp_path / "lotoia.db",
+            cleanup=True,
+        ),
+    )
+
+    cli.run_operational_lifecycle_cli()
+
+    parsed = json.loads(capsys.readouterr().out)
+    assert parsed == payload
+
+
 def test_run_adaptive_institutional_intelligence_cli(monkeypatch, capsys, tmp_path: Path) -> None:
     payload = {
         "adaptive_memory": {"schema_version": "adaptive-institutional-v1.0.0", "operational_memory": {"summary": {"memory_depth": 2}}},

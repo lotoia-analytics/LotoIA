@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from lotoia.backtesting import run_backtest
 from lotoia.benchmark import run_benchmark
@@ -10,6 +11,7 @@ from lotoia.calibration import WeightConfiguration, compare_weight_configuration
 from lotoia.analytics import publish_adaptive_institutional_intelligence, publish_institutional_analytics
 from lotoia.database import DEFAULT_DATABASE_PATH, ContestRepository, create_database, list_runs
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
 from lotoia.observability import persist_observational_stabilization_report
 from lotoia.reports import generate_backtest_report
 from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
@@ -194,6 +196,31 @@ def run_result_sync_cli(argv: list[str] | None = None) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Executa o fechamento operacional completo do LotoIA.")
+    parser.add_argument("--contest-id", type=int, required=True)
+    parser.add_argument("--generation-event-id", type=int, required=True)
+    parser.add_argument("--official-numbers", type=str, required=True, help="Lista separada por virgulas com as dezenas oficiais.")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    parser.add_argument("--cleanup", action="store_true")
+    args = parser.parse_args(argv)
+
+    engine = OperationalLifecycleEngine(args.db_path)
+    official_numbers = [int(part.strip()) for part in args.official_numbers.split(",") if part.strip()]
+    with ContestsRepositoryAdapter(args.db_path) as adapter:
+        games = adapter.load_generated_games(args.generation_event_id)
+        lead_id = adapter.load_lead_id(args.generation_event_id)
+    report = engine.close_day(
+        contest_id=args.contest_id,
+        generated_games=games,
+        official_numbers=official_numbers,
+        generation_event_id=args.generation_event_id,
+        lead_id=lead_id,
+        cleanup=bool(args.cleanup),
+    )
+    print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+
+
 def run_adaptive_institutional_intelligence_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Publica a inteligencia institucional adaptativa do LotoIA.")
     parser.add_argument("--report-dir", type=Path, default=Path("reports") / "analytics")
@@ -239,3 +266,62 @@ def _official_configuration() -> WeightConfiguration:
 
 def _balanced_configuration() -> WeightConfiguration:
     return WeightConfiguration("balanced_experimental", 12, 16, 20, 18, 12, 10, 6, 6)
+
+
+class ContestsRepositoryAdapter:
+    def __init__(self, db_path: Path) -> None:
+        self.repository = ContestRepository(db_path)
+
+    def __enter__(self) -> "ContestsRepositoryAdapter":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+        self.repository.connection.close()
+
+    def load_generated_games(self, generation_event_id: int) -> list[dict[str, Any]]:
+        cursor = self.repository.connection.cursor()
+        rows = cursor.execute(
+            """
+            SELECT game_index, numbers, profile_type, final_score, quadra_score, context_json, lead_id, target_contest, origin, generation_mode
+            FROM generated_games
+            WHERE generation_event_id = ?
+            ORDER BY game_index
+            """,
+            (generation_event_id,),
+        ).fetchall()
+        games: list[dict[str, Any]] = []
+        for row in rows:
+            numbers_raw = row[1]
+            try:
+                parsed_numbers = json.loads(numbers_raw) if numbers_raw else []
+            except Exception:
+                parsed_numbers = [int(number) for number in str(numbers_raw).split(",") if str(number).strip()]
+            games.append(
+                {
+                    "game_index": row[0],
+                    "numbers": [int(number) for number in parsed_numbers],
+                    "profile_type": row[2],
+                    "final_score": json.loads(row[3] or "{}"),
+                    "quadra_score": json.loads(row[4] or "{}"),
+                    "context_json": json.loads(row[5] or "{}"),
+                    "lead_id": row[6],
+                    "target_contest": row[7],
+                    "origin": row[8],
+                    "generation_mode": row[9],
+                }
+            )
+        return games
+
+    def load_lead_id(self, generation_event_id: int) -> int | None:
+        cursor = self.repository.connection.cursor()
+        row = cursor.execute(
+            """
+            SELECT lead_id
+            FROM generated_games
+            WHERE generation_event_id = ?
+            ORDER BY game_index
+            LIMIT 1
+            """,
+            (generation_event_id,),
+        ).fetchone()
+        return int(row[0]) if row and row[0] is not None else None
