@@ -388,7 +388,7 @@ def render_live_analytical_intelligence(
     for message in insight_messages:
         st.info(message)
 
-    st.markdown("### Insights executivos")
+    st.markdown("### Detalhes")
     if insights:
         insights_frame = pd.DataFrame(insights)
         st.dataframe(insights_frame, hide_index=True, use_container_width=True)
