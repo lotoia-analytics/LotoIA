@@ -32,6 +32,12 @@ from lotoia.ml.feature_lineage import (
     MLFeatureLineageResult,
     build_feature_lineage,
 )
+from lotoia.ml.calibration_governance import (
+    DEFAULT_ML_CALIBRATION_GOVERNANCE_DIR,
+    DEFAULT_ML_CALIBRATION_GOVERNANCE_REGISTRY,
+    MLCalibrationGovernanceResult,
+    register_calibration_snapshot,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -65,6 +71,10 @@ __all__ = [
     "DEFAULT_ML_FEATURE_LINEAGE_REGISTRY",
     "MLFeatureLineageResult",
     "build_feature_lineage",
+    "DEFAULT_ML_CALIBRATION_GOVERNANCE_DIR",
+    "DEFAULT_ML_CALIBRATION_GOVERNANCE_REGISTRY",
+    "MLCalibrationGovernanceResult",
+    "register_calibration_snapshot",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
