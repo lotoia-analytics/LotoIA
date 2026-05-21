@@ -103,6 +103,8 @@ def test_create_database_schema(tmp_path: Path) -> None:
         "imported_contests",
         "leads",
     }
+    imported_columns = {column["name"] for column in inspector.get_columns("imported_contests")}
+    assert {"contest_number", "created_at", "data", "dezenas", "metadata_json"} <= imported_columns
     check_fks = inspector.get_foreign_keys("check_events")
     generation_fks = inspector.get_foreign_keys("generation_events")
     assert any(fk["referred_table"] == "leads" for fk in check_fks)

@@ -13,6 +13,7 @@ def main() -> None:
     subparsers.add_parser("institutional-analytics", help="Publica a memoria analitica institucional.")
     subparsers.add_parser("adaptive-intelligence", help="Publica a inteligencia institucional adaptativa.")
     subparsers.add_parser("observational-stabilization", help="Gera o relatorio de estabilizacao observacional.")
+    subparsers.add_parser("result-sync", help="Sincroniza concursos oficiais da Caixa.")
     subparsers.add_parser("backtest", help="Executa backtesting historico.")
     subparsers.add_parser("benchmark", help="Executa benchmark cientifico.")
     subparsers.add_parser("dashboard", help="Inicia o dashboard Streamlit.")
@@ -27,6 +28,8 @@ def main() -> None:
         cli.run_adaptive_institutional_intelligence_cli(remaining)
     elif args.command == "observational-stabilization":
         cli.run_observational_stabilization_cli(remaining)
+    elif args.command == "result-sync":
+        cli.run_result_sync_cli(remaining)
     elif args.command == "backtest":
         cli.run_backtest_cli(remaining)
     elif args.command == "benchmark":

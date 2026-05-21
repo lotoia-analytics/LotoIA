@@ -74,6 +74,48 @@ def test_run_observational_stabilization_cli(monkeypatch, capsys, tmp_path: Path
     assert parsed == payload
 
 
+def test_run_result_sync_cli(monkeypatch, capsys, tmp_path: Path) -> None:
+    payload = {
+        "schema_version": "operational-result-sync-v1.0.0",
+        "generated_by": "ResultSyncService.sync_to_report",
+        "summary": {
+            "latest_contest": 3690,
+            "synced_contests": [3690],
+            "persisted_contests": 1,
+            "source": "https://example.test/api/lotofacil",
+            "fallback_used": False,
+        },
+    }
+
+    class FakeRepository:
+        def __init__(self, db_path: Path) -> None:
+            assert db_path == tmp_path / "lotoia.db"
+
+    class FakeService:
+        def __init__(self, *, repository) -> None:  # noqa: ANN001
+            self.repository = repository
+
+        def sync_to_report(self, report_path: Path):
+            assert report_path == tmp_path / "ingestion" / "result_sync.json"
+            return payload
+
+    monkeypatch.setattr(cli, "ContestRepository", FakeRepository)
+    monkeypatch.setattr(cli, "ResultSyncService", FakeService)
+    monkeypatch.setattr(
+        cli.argparse.ArgumentParser,
+        "parse_args",
+        lambda self, argv=None: argparse.Namespace(
+            db_path=tmp_path / "lotoia.db",
+            report_path=tmp_path / "ingestion" / "result_sync.json",
+        ),
+    )
+
+    cli.run_result_sync_cli()
+
+    parsed = json.loads(capsys.readouterr().out)
+    assert parsed == payload
+
+
 def test_run_adaptive_institutional_intelligence_cli(monkeypatch, capsys, tmp_path: Path) -> None:
     payload = {
         "adaptive_memory": {"schema_version": "adaptive-institutional-v1.0.0", "operational_memory": {"summary": {"memory_depth": 2}}},

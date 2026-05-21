@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -27,9 +28,22 @@ class ContestRepository:
             contest_number INTEGER PRIMARY KEY,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             data TEXT,
-            dezenas TEXT
+            dezenas TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}'
         )
         """)
+
+        existing_columns = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(imported_contests)").fetchall()
+        }
+        if "metadata_json" not in existing_columns:
+            cursor.execute(
+                """
+            ALTER TABLE imported_contests
+            ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
+            """
+            )
 
         self.connection.commit()
 
@@ -50,6 +64,11 @@ class ContestRepository:
         cursor = self.connection.cursor()
 
         dezenas = ",".join(contest["dezenas"])
+        metadata = contest.get("metadata_json", contest.get("metadata", {}))
+        if isinstance(metadata, str):
+            metadata_json = metadata
+        else:
+            metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
 
         cursor.execute(
             """
@@ -73,14 +92,16 @@ class ContestRepository:
             contest_number,
             created_at,
             data,
-            dezenas
+            dezenas,
+            metadata_json
         )
-        VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+        VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
         """,
             (
                 contest["concurso"],
                 contest["data"],
                 dezenas,
+                metadata_json,
             ),
         )
 
@@ -102,7 +123,7 @@ class ContestRepository:
         cursor = self.connection.cursor()
 
         cursor.execute("""
-        SELECT contest_number, data, dezenas
+        SELECT contest_number, data, dezenas, metadata_json
         FROM imported_contests
         ORDER BY contest_number
         """)
@@ -116,11 +137,58 @@ class ContestRepository:
                 "concurso": row[0],
                 "data": row[1],
                 "dezenas": row[2].split(","),
+                "metadata_json": row[3],
             }
 
             contests.append(contest)
 
         return contests
+
+    def get_contest(self, contest_number: int) -> dict[str, Any] | None:
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+        SELECT contest_number, data, dezenas, metadata_json
+        FROM imported_contests
+        WHERE contest_number = ?
+        """,
+            (contest_number,),
+        )
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "concurso": row[0],
+            "data": row[1],
+            "dezenas": row[2].split(","),
+            "metadata_json": row[3],
+        }
+
+    def get_latest_contest_record(self) -> dict[str, Any] | None:
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+        SELECT contest_number, data, dezenas, metadata_json
+        FROM imported_contests
+        ORDER BY contest_number DESC
+        LIMIT 1
+        """
+        )
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "concurso": row[0],
+            "data": row[1],
+            "dezenas": row[2].split(","),
+            "metadata_json": row[3],
+        }
 
     def save_frequency_snapshot(
         self,

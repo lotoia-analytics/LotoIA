@@ -153,6 +153,7 @@ class ImportedContest(Base):
     )
     data: Mapped[str] = mapped_column(String, default="", nullable=False)
     dezenas: Mapped[str] = mapped_column(String, default="", nullable=False)
+    metadata_json: Mapped[str] = mapped_column(String, default="{}", nullable=False)
 
 
 class GeneratedGame(Base):
@@ -205,7 +206,8 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 contest_number INTEGER PRIMARY KEY NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 data TEXT NOT NULL DEFAULT '',
-                dezenas TEXT NOT NULL DEFAULT ''
+                dezenas TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}'
             )
             """
         )
@@ -224,6 +226,14 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
             """
         )
+        columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(imported_contests)").fetchall()
+        }
+        if "metadata_json" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE imported_contests ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
+            )
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:

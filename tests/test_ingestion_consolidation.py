@@ -69,9 +69,9 @@ def test_lottery_data_provider_normalizes_latest_and_specific_contests(monkeypat
 def test_ingestion_sync_main_uses_official_collaborators(monkeypatch, capsys) -> None:
     events: list[tuple[str, Any]] = []
 
-    class FakeProvider:
+    class FakeClient:
         def __init__(self) -> None:
-            events.append(("provider_init", None))
+            events.append(("client_init", None))
 
     class FakeRepository:
         def __init__(self) -> None:
@@ -97,18 +97,41 @@ def test_ingestion_sync_main_uses_official_collaborators(monkeypatch, capsys) ->
         def save_frequency_snapshot(self, concurso: int, frequencies: dict[str, int]) -> None:
             events.append(("save_frequency_snapshot", (concurso, frequencies)))
 
-    monkeypatch.setattr(official_sync, "LotteryDataProvider", FakeProvider)
+    class FakeSyncService:
+        def __init__(self, *, client: Any, repository: Any) -> None:
+            events.append(("sync_service_init", (client.__class__.__name__, repository.__class__.__name__)))
+
+        def sync_latest(self) -> Any:
+            events.append(("sync_latest", None))
+            return type("Summary", (), {"synced_contests": [9999]})()
+
+    class FakeFeatureStore:
+        def calculate_frequency(self, contests: list[dict[str, Any]]) -> dict[str, int]:
+            events.append(("calculate_frequency", contests))
+            return {"01": 1, "02": 2, "03": 1}
+
+    monkeypatch.setattr(official_sync, "CaixaApiClient", FakeClient)
     monkeypatch.setattr(official_sync, "ContestRepository", FakeRepository)
+    monkeypatch.setattr(official_sync, "ResultSyncService", FakeSyncService)
+    monkeypatch.setattr(official_sync, "FeatureStore", FakeFeatureStore)
 
     official_sync.main()
 
     assert events == [
-        ("provider_init", None),
         ("repository_init", None),
+        ("client_init", None),
+        ("sync_service_init", ("FakeClient", "FakeRepository")),
         ("create_table", None),
         ("create_feature_table", None),
+        ("sync_latest", None),
         ("get_all_contests", None),
+        ("calculate_frequency", [
+            {"concurso": 1, "data": "01/01/2026", "dezenas": ["01", "02"]},
+            {"concurso": 2, "data": "02/01/2026", "dezenas": ["02", "03"]},
+        ]),
         ("get_last_contest", None),
         ("save_frequency_snapshot", (2, {"01": 1, "02": 2, "03": 1})),
     ]
-    assert "Snapshot salvo com sucesso" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Concursos sincronizados: 9999" in output
+    assert "Snapshot salvo com sucesso" in output

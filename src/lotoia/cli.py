@@ -8,7 +8,8 @@ from lotoia.backtesting import run_backtest
 from lotoia.benchmark import run_benchmark
 from lotoia.calibration import WeightConfiguration, compare_weight_configurations
 from lotoia.analytics import publish_adaptive_institutional_intelligence, publish_institutional_analytics
-from lotoia.database import DEFAULT_DATABASE_PATH, create_database, list_runs
+from lotoia.database import DEFAULT_DATABASE_PATH, ContestRepository, create_database, list_runs
+from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.observability import persist_observational_stabilization_report
 from lotoia.reports import generate_backtest_report
 from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
@@ -179,6 +180,17 @@ def run_observational_stabilization_cli(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     payload = persist_observational_stabilization_report(args.report_path, db_path=args.db_path)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def run_result_sync_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Sincroniza concursos oficiais da Caixa no LotoIA.")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    parser.add_argument("--report-path", type=Path, default=Path("reports") / "ingestion" / "result_sync.json")
+    args = parser.parse_args(argv)
+
+    service = ResultSyncService(repository=ContestRepository(args.db_path))
+    payload = service.sync_to_report(args.report_path)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 

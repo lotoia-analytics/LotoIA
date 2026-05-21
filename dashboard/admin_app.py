@@ -2294,6 +2294,21 @@ def _parse_check_games(games_text: str) -> list[list[int]]:
 
 
 def _find_draw_for_check(contest_id: int) -> Draw:
+    row = _sqlite_execute_safe(
+        """
+        SELECT contest_number, data, dezenas
+        FROM imported_contests
+        WHERE contest_number = ?
+        """,
+        (contest_id,),
+    )
+    if row:
+        contest = row.fetchone()
+        if contest:
+            numbers = [int(number) for number in str(contest[2]).split(",") if str(number).strip()]
+            if len(numbers) == 15:
+                return Draw(contest=int(contest[0]), date=str(contest[1]), numbers=numbers)
+
     draws = load_draws_csv(DEFAULT_HISTORY_PATH)
     if not draws:
         raise ValueError("Nenhum concurso historico disponivel para conferencia.")
