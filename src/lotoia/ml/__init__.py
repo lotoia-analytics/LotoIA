@@ -44,6 +44,12 @@ from lotoia.ml.drift_detection import (
     MLDriftDetectionResult,
     detect_ml_drift,
 )
+from lotoia.ml.explainability import (
+    DEFAULT_ML_EXPLAINABILITY_DIR,
+    DEFAULT_ML_EXPLAINABILITY_REGISTRY,
+    MLExplainabilityResult,
+    explain_score_ml_game,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -85,6 +91,10 @@ __all__ = [
     "DEFAULT_ML_DRIFT_DETECTION_REGISTRY",
     "MLDriftDetectionResult",
     "detect_ml_drift",
+    "DEFAULT_ML_EXPLAINABILITY_DIR",
+    "DEFAULT_ML_EXPLAINABILITY_REGISTRY",
+    "MLExplainabilityResult",
+    "explain_score_ml_game",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
