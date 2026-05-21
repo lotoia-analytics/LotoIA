@@ -7,7 +7,7 @@ from pathlib import Path
 from lotoia.backtesting import run_backtest
 from lotoia.benchmark import run_benchmark
 from lotoia.calibration import WeightConfiguration, compare_weight_configurations
-from lotoia.analytics import publish_institutional_analytics
+from lotoia.analytics import publish_adaptive_institutional_intelligence, publish_institutional_analytics
 from lotoia.database import DEFAULT_DATABASE_PATH, create_database, list_runs
 from lotoia.observability import persist_observational_stabilization_report
 from lotoia.reports import generate_backtest_report
@@ -179,6 +179,35 @@ def run_observational_stabilization_cli(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     payload = persist_observational_stabilization_report(args.report_path, db_path=args.db_path)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def run_adaptive_institutional_intelligence_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Publica a inteligencia institucional adaptativa do LotoIA.")
+    parser.add_argument("--report-dir", type=Path, default=Path("reports") / "analytics")
+    parser.add_argument(
+        "--memory-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "adaptive_institutional_memory.json",
+    )
+    parser.add_argument(
+        "--timeline-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "adaptive_institutional_timeline.json",
+    )
+    parser.add_argument(
+        "--insights-path",
+        type=Path,
+        default=Path("reports") / "analytics" / "adaptive_institutional_insights.json",
+    )
+    args = parser.parse_args(argv)
+
+    payload = publish_adaptive_institutional_intelligence(
+        report_dir=args.report_dir,
+        memory_path=args.memory_path,
+        timeline_path=args.timeline_path,
+        insights_path=args.insights_path,
+    )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 

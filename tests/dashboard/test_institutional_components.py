@@ -6,6 +6,7 @@ import pandas as pd
 
 import dashboard.components as institutional_components
 import dashboard.components.analytical_cards as analytical_cards
+import dashboard.components.adaptive_intelligence as adaptive_intelligence
 import dashboard.components.design_system as design_system
 import dashboard.components.executive_dashboard as executive_dashboard
 import dashboard.components.executive_panel as executive_panel
@@ -40,6 +41,7 @@ def _patch_streamlit(monkeypatch) -> None:
         hero_banner,
         executive_panel,
         analytical_cards,
+        adaptive_intelligence,
         design_system,
         executive_dashboard,
         generation_context,
@@ -205,6 +207,66 @@ def test_generation_context_renders_without_error(monkeypatch) -> None:
     observability_summary = {"counts": {"generation_events": 42}, "summary": {"stability_note": "cockpit institucional validado"}}
 
     generation_context.render_generation_context(executive_report, historical_summary, observability_summary)
+
+
+def test_adaptive_institutional_intelligence_renders_without_error(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    adaptive_report = {
+        "operational_memory": {
+            "summary": {"memory_depth": 3},
+            "timeline": [
+                {
+                    "created_at": "2026-05-21",
+                    "status": "saudavel",
+                    "headline": "baseline consistente",
+                    "recommendation": "monitorar",
+                    "confidence": "alta",
+                    "structural_health": 0.93,
+                    "drift": 0.12,
+                    "trend": "estavel",
+                    "source": "reports/analytics",
+                }
+            ],
+        },
+        "temporal_analysis": {
+            "summary": {
+                "trend": "evolucao estrutural",
+                "recurring_statuses": 1,
+                "persistent_changes": 1,
+                "memory_depth": 3,
+                "average_health_delta": 0.02,
+                "drift_delta": -0.01,
+                "historical_trend": "estavel",
+            }
+        },
+        "pattern_detection": {"summary": {"pattern": "recorrencia institucional", "recurring_statuses": 1, "persistent_changes": 1, "memory_depth": 3}},
+        "strategic_memory": {
+            "timeline": [{"created_at": "2026-05-21", "headline": "baseline consistente", "recommendation": "monitorar", "status_transition": "inicio", "trend": "estavel"}],
+            "summary": {"latest_headline": "baseline consistente", "latest_status": "saudavel", "trend": "estavel", "snapshot_status": "saudavel", "memory_depth": 1},
+        },
+        "adaptive_insights": {
+            "insights": [{"metric": "continuity", "interpretation": "memoria operacional persistente"}],
+            "summary": {"pattern": "recorrencia institucional", "trend": "evolucao estrutural", "memory_depth": 3},
+        },
+        "longitudinal_evolution_v2": {
+            "summary": {
+                "trend": "evolucao estrutural",
+                "stability_evolution": 0.02,
+                "drift_evolution": -0.01,
+                "confidence_evolution": 0.1,
+                "memory_depth": 3,
+                "timeline_depth": 1,
+            }
+        },
+        "observational_learning": {"summary": {"learning_mode": "observational_governed", "pattern": "recorrencia institucional", "trend": "evolucao estrutural", "memory_depth": 3}},
+        "strategic_timeline": {
+            "timeline": [{"created_at": "2026-05-21", "status": "saudavel", "headline": "baseline consistente", "recommendation": "monitorar", "status_transition": "inicio", "trend": "estavel", "source": "reports/analytics"}],
+            "summary": {"trend": "evolucao estrutural", "latest_headline": "baseline consistente", "latest_transition": "inicio", "pattern": "recorrencia institucional", "memory_depth": 1},
+        },
+        "adaptive_presence": {"summary": {"presence": "adaptativa", "consistency": 0.91, "memory_depth": 3, "pattern": "recorrencia institucional", "trend": "evolucao estrutural"}},
+    }
+
+    adaptive_intelligence.render_adaptive_institutional_intelligence(adaptive_report)
 
 
 def test_live_analytical_intelligence_renders_without_error(monkeypatch) -> None:

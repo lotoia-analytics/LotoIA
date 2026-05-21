@@ -11,6 +11,7 @@ def main() -> None:
 
     subparsers.add_parser("reports", help="Gera relatorios analiticos.")
     subparsers.add_parser("institutional-analytics", help="Publica a memoria analitica institucional.")
+    subparsers.add_parser("adaptive-intelligence", help="Publica a inteligencia institucional adaptativa.")
     subparsers.add_parser("observational-stabilization", help="Gera o relatorio de estabilizacao observacional.")
     subparsers.add_parser("backtest", help="Executa backtesting historico.")
     subparsers.add_parser("benchmark", help="Executa benchmark cientifico.")
@@ -22,6 +23,8 @@ def main() -> None:
         cli.run_reports_cli(remaining)
     elif args.command == "institutional-analytics":
         cli.run_institutional_analytics_cli(remaining)
+    elif args.command == "adaptive-intelligence":
+        cli.run_adaptive_institutional_intelligence_cli(remaining)
     elif args.command == "observational-stabilization":
         cli.run_observational_stabilization_cli(remaining)
     elif args.command == "backtest":

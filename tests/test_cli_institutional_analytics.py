@@ -72,3 +72,35 @@ def test_run_observational_stabilization_cli(monkeypatch, capsys, tmp_path: Path
 
     parsed = json.loads(capsys.readouterr().out)
     assert parsed == payload
+
+
+def test_run_adaptive_institutional_intelligence_cli(monkeypatch, capsys, tmp_path: Path) -> None:
+    payload = {
+        "adaptive_memory": {"schema_version": "adaptive-institutional-v1.0.0", "operational_memory": {"summary": {"memory_depth": 2}}},
+        "adaptive_timeline": {"schema_version": "adaptive-institutional-v1.0.0", "report": {"summary": {"trend": "estavel"}}},
+        "adaptive_insights": {"schema_version": "adaptive-institutional-v1.0.0", "report": {"summary": {"pattern": "recorrencia institucional"}}},
+    }
+
+    def fake_publish_adaptive_institutional_intelligence(**kwargs):
+        assert kwargs["report_dir"] == tmp_path / "analytics"
+        assert kwargs["memory_path"] == tmp_path / "analytics" / "adaptive_institutional_memory.json"
+        assert kwargs["timeline_path"] == tmp_path / "analytics" / "adaptive_institutional_timeline.json"
+        assert kwargs["insights_path"] == tmp_path / "analytics" / "adaptive_institutional_insights.json"
+        return payload
+
+    monkeypatch.setattr(cli, "publish_adaptive_institutional_intelligence", fake_publish_adaptive_institutional_intelligence)
+    monkeypatch.setattr(
+        cli.argparse.ArgumentParser,
+        "parse_args",
+        lambda self, argv=None: argparse.Namespace(
+            report_dir=tmp_path / "analytics",
+            memory_path=tmp_path / "analytics" / "adaptive_institutional_memory.json",
+            timeline_path=tmp_path / "analytics" / "adaptive_institutional_timeline.json",
+            insights_path=tmp_path / "analytics" / "adaptive_institutional_insights.json",
+        ),
+    )
+
+    cli.run_adaptive_institutional_intelligence_cli()
+
+    parsed = json.loads(capsys.readouterr().out)
+    assert parsed == payload

@@ -68,10 +68,14 @@ from lotoia.analytics import (
     build_executive_analytical_report,
     build_institutional_analytical_timeline,
     build_institutional_historical_intelligence,
+    load_adaptive_institutional_insights,
+    load_adaptive_institutional_intelligence,
+    load_adaptive_institutional_timeline,
     ensure_institutional_analytical_timeline,
     load_institutional_analytics_snapshot,
     load_institutional_analytical_timeline,
     publish_institutional_analytics,
+    publish_adaptive_institutional_intelligence,
 )
 from lotoia.observability import (
     build_observational_stabilization_report,
@@ -79,6 +83,7 @@ from lotoia.observability import (
     persist_observational_stabilization_report,
 )
 from dashboard.components import (
+    render_adaptive_institutional_intelligence,
     render_analytical_cards,
     render_executive_dashboard,
     render_generation_context,
@@ -1816,6 +1821,20 @@ def render_observability_page() -> None:
             load_institutional_analytics_snapshot(),
             _institutional_analytical_timeline(),
             load_observational_stabilization_report(),
+        )
+        adaptive_report = load_adaptive_institutional_intelligence()
+        if not adaptive_report:
+            adaptive_payload = publish_adaptive_institutional_intelligence()
+            adaptive_report = adaptive_payload.get("adaptive_memory", {})
+        adaptive_timeline_report = load_adaptive_institutional_timeline()
+        adaptive_insights_report = load_adaptive_institutional_insights()
+        st.subheader("Adaptive institutional intelligence")
+        render_adaptive_institutional_intelligence(
+            {
+                **adaptive_report,
+                "strategic_timeline": adaptive_timeline_report.get("report", adaptive_report.get("strategic_timeline", {})),
+                "adaptive_insights": adaptive_insights_report.get("report", adaptive_report.get("adaptive_insights", {})),
+            }
         )
         st.subheader("Institutional historical intelligence")
         st.dataframe(_institutional_historical_table(), hide_index=True, use_container_width=True)

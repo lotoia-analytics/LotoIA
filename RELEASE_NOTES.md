@@ -1,3 +1,42 @@
+# Release Notes - Missao 16 / Adaptive Institutional Intelligence
+
+## Status inicial
+
+- Missao 16 iniciada com uma camada adaptativa institucional baseada em observacao persistida.
+- A plataforma passou a consolidar memoria operacional, interpretacao temporal e padroes institucionais derivados de artifacts reais.
+- Nenhuma mudanca foi feita em generator, baseline hard, benchmark, longitudinal core, ML pipeline, score principal, heuristicas de geracao ou observability core.
+
+## Resumo
+
+- Adicionada uma camada de inteligencia institucional adaptativa para leitura historica, memoria estrategica e continuidade analitica.
+- A experiencia institucional ganhou um painel adaptativo vivo, com interpretacao temporal, deteccao de padroes e timeline estrategica.
+- O cockpit continua operando sobre artifacts persistidos e sem auto-tuning.
+
+## Alteracoes principais
+
+- Adicionado `src/lotoia/analytics/adaptive_intelligence.py`.
+- Adicionado `dashboard/components/adaptive_intelligence.py`.
+- Integrado o painel adaptativo no dashboard.
+- Expandidos CLI e entrypoint para publicar a memoria institucional adaptativa.
+- Incluida a camada adaptativa nos exports publicos do pacote.
+
+## Protecoes adicionadas
+
+- Testes de persistencia e leitura da inteligencia institucional adaptativa.
+- Testes de renderizacao do painel adaptativo no dashboard.
+- Testes da rota publica de CLI e do entrypoint do pacote.
+
+## Validacao
+
+- `tests/test_adaptive_intelligence.py`
+- `tests/test_cli_institutional_analytics.py`
+- `tests/test_package_entrypoint.py`
+- `tests/dashboard/test_institutional_components.py`
+
+## Observacao
+
+- Esta entrega adiciona memoria e interpretacao adaptativa sem alterar o nucleo cientifico da plataforma.
+
 # Release Notes - Missao 15 / Live Analytical Intelligence
 
 ## Status parcial
