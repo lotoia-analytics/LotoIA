@@ -18,6 +18,14 @@ from lotoia.ml.experiment_tracking import (
     MLExperimentTrackingResult,
     track_ml_experiment,
 )
+from lotoia.ml.model_registry import (
+    DEFAULT_ML_MODEL_REGISTRY_DIR,
+    DEFAULT_ML_MODEL_REGISTRY_PATH,
+    MLModelRegistryResult,
+    activate_model_version,
+    register_model_version,
+    rollback_model_version,
+)
 from lotoia.ml.walk_forward_validation import (
     DEFAULT_WALK_FORWARD_VALIDATION_DIR,
     DEFAULT_WALK_FORWARD_VALIDATION_ID,
@@ -41,6 +49,12 @@ __all__ = [
     "DEFAULT_ML_EXPERIMENT_TRACKING_REGISTRY",
     "MLExperimentTrackingResult",
     "track_ml_experiment",
+    "DEFAULT_ML_MODEL_REGISTRY_DIR",
+    "DEFAULT_ML_MODEL_REGISTRY_PATH",
+    "MLModelRegistryResult",
+    "activate_model_version",
+    "register_model_version",
+    "rollback_model_version",
     "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
     "DEFAULT_WALK_FORWARD_VALIDATION_ID",
     "WalkForwardValidationResult",
