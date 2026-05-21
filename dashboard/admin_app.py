@@ -812,7 +812,7 @@ def _presentational_historical_intelligence_dataframe(games: list[dict[str, Any]
 def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe.empty:
         return dataframe
-    return dataframe.rename(
+    presentational = dataframe.rename(
         columns={
             "historical_score": "Forca Historica",
             "profile_type": "Perfil Estrategico",
@@ -875,8 +875,55 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "prize_tiers": "Faixas premio",
             "prize_count": "Premios",
             "note": "Observacao",
+            "layer": "Camada",
+            "headline": "Titulo",
+            "recommendation": "Recomendacao",
+            "confidence": "Confianca",
+            "trend": "Tendencia",
+            "verdict_count": "Vereditos",
+            "latest_status": "Status recente",
+            "homepage_priority": "Prioridade homepage",
+            "stability_note": "Nota de estabilidade",
+            "runtime_profile": "Perfil runtime",
+            "memory_depth": "Memoria",
+            "timeline_depth": "Linha do tempo",
+            "orchestration_state": "Orquestracao",
+            "priority": "Prioridade",
+            "context": "Contexto",
+            "state": "Estado",
+            "pattern": "Padrao",
+            "persistent_changes": "Mudancas",
+            "recurring_statuses": "Recorrencia",
+            "runtime_perception": "Percepcao runtime",
+            "presence_state": "Presenca",
+            "coordinate_depth": "Profundidade de coordenacao",
         }
     )
+    presentational = presentational.rename(
+        columns={
+            "status_transition": "Transicao",
+            "average_hits": "Acertos medios",
+            "stability_window_sd": "Estabilidade janela",
+            "final_score_hit_correlation": "Correlacao score x acertos",
+            "contests_analyzed": "Concursos analisados",
+            "memory_state": "Estado memoria",
+        }
+    )
+    value_maps: dict[str, dict[Any, Any]] = {
+        "layer": {"executive": "Executiva", "historical": "Historica", "observability": "Observabilidade", "adaptive": "Adaptativa"},
+        "status": {"atencao": "atencao", "critical": "critico", "monitoring": "monitorando", "insuficiente": "insuficiente", "mixed": "mista", "saudavel": "saudavel"},
+        "trend": {"insuficiente": "insuficiente", "stable": "estavel", "observation": "observacao", "mixed": "mista"},
+        "latest_status": {"mixed": "misto", "homepage em observacao": "homepage em observacao"},
+        "homepage_priority": {"mixed": "mista", "homepage em observacao": "homepage em observacao"},
+        "state": {"monitoring": "monitorando", "observation": "observacao"},
+        "pattern": {"observacao governada": "observacao governada"},
+        "runtime_perception": {"percepcao operacional em atencao": "percepcao operacional em atencao"},
+        "presence_state": {"adaptativa": "adaptativa"},
+    }
+    for column, replacements in value_maps.items():
+        if column in presentational.columns:
+            presentational[column] = presentational[column].replace(replacements)
+    return presentational
 
 
 def _historical_analytics(games: list[dict[str, Any]]) -> dict[str, Any]:
