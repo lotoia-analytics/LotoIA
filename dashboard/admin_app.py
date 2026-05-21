@@ -3380,6 +3380,7 @@ def render_historical_intelligence_page(draws) -> None:
             )
         )
 
+        match_raw_df = _historical_intelligence_dataframe(games)
         match_df = _presentational_historical_intelligence_dataframe(games)
         st.subheader("Tabela histrica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
@@ -3387,7 +3388,17 @@ def render_historical_intelligence_page(draws) -> None:
         tabs = st.tabs(["Recorrentes", "Hibridos", "Caoticos"])
         for tab, profile in zip(tabs, GENERATION_PROFILE_RATIOS, strict=True):
             with tab:
-                st.dataframe(match_df[match_df["profile_type"] == profile], hide_index=True, use_container_width=True)
+                st.dataframe(
+                    _presentational_historical_intelligence_dataframe(
+                        [
+                            game
+                            for game in games
+                            if _historical_intelligence_dataframe([game]).iloc[0]["profile_type"] == profile
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
         st.subheader("Concursos similares")
         similar_rows = []
@@ -3395,9 +3406,9 @@ def render_historical_intelligence_page(draws) -> None:
             similar_rows.append(
                 {
                     "dezenas": row["dezenas"],
-                    "historical_score": row["historical_score"],
-                    "last_contest": row["last_contest"],
-                    "similar_contests": row["similar_contests"],
+                    "Forca Historica": row["Forca Historica"],
+                    "Ultimo concurso": row["last_contest"],
+                    "Concursos similares": row["similar_contests"],
                 }
             )
         st.dataframe(pd.DataFrame(similar_rows), hide_index=True, use_container_width=True)
