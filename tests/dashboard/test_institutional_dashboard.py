@@ -371,6 +371,23 @@ def test_dashboard_uses_wide_layout(monkeypatch) -> None:
     assert any(call.get("layout") == "wide" for call in calls)
 
 
+def test_presentational_historical_intelligence_dataframe_renames_columns() -> None:
+    dataframe = admin_app._presentational_historical_intelligence_dataframe(
+        [{"numbers": list(range(1, 16))}]
+    )
+
+    assert "Forca Historica" in dataframe.columns
+    assert "Perfil Estrategico" in dataframe.columns
+    assert "Tendencia" in dataframe.columns
+    assert "Pico de Acertos" in dataframe.columns
+    assert "Media de Acertos" in dataframe.columns
+    assert "Compatibilidade" in dataframe.columns
+    assert "Exclusividade" in dataframe.columns
+    assert "Balanceamento" in dataframe.columns
+    assert "Distribuicao Estrutural" in dataframe.columns
+    assert "historical_score" not in dataframe.columns
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []

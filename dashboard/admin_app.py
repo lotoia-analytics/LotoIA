@@ -790,6 +790,25 @@ def _historical_intelligence_dataframe(games: list[dict[str, Any]]) -> pd.DataFr
     return pd.DataFrame(rows)
 
 
+def _presentational_historical_intelligence_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
+    dataframe = _historical_intelligence_dataframe(games)
+    if dataframe.empty:
+        return dataframe
+    return dataframe.rename(
+        columns={
+            "historical_score": "Forca Historica",
+            "profile_type": "Perfil Estrategico",
+            "recurrence_score": "Tendencia",
+            "partial_match_max": "Pico de Acertos",
+            "partial_match_avg": "Media de Acertos",
+            "jaccard_similarity": "Compatibilidade",
+            "structural_rarity": "Exclusividade",
+            "entropy_score": "Balanceamento",
+            "block_density": "Distribuicao Estrutural",
+        }
+    )
+
+
 def _historical_analytics(games: list[dict[str, Any]]) -> dict[str, Any]:
     matches = [_historical_match_engine(game["numbers"]) for game in games]
     return {
@@ -3255,7 +3274,7 @@ def render_historical_intelligence_page(draws) -> None:
             )
         )
 
-        match_df = _historical_intelligence_dataframe(games)
+        match_df = _presentational_historical_intelligence_dataframe(games)
         st.subheader("Tabela histrica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
 
