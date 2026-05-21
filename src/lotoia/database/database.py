@@ -303,6 +303,72 @@ class RuntimeSnapshot(Base):
     )
 
 
+class InstitutionalMemorySnapshot(Base):
+    __tablename__ = "institutional_memory_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    memory_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    snapshot_type: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    state_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    lineage_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class InstitutionalMemoryState(Base):
+    __tablename__ = "institutional_memory_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    memory_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    state_type: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    state_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class InstitutionalMemoryLineage(Base):
+    __tablename__ = "institutional_memory_lineage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    memory_id: Mapped[str] = mapped_column(String, nullable=False)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    entity_type: Mapped[str] = mapped_column(String, nullable=False)
+    entity_id: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class InstitutionalMemoryReplay(Base):
+    __tablename__ = "institutional_memory_replay"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    replay_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    execution_id: Mapped[str] = mapped_column(String, nullable=False)
+    replay_type: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    request_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
     return f"sqlite:///{path}"
 
@@ -467,6 +533,60 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
             """
         )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_memory_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id TEXT NOT NULL UNIQUE,
+                execution_id TEXT NOT NULL,
+                snapshot_type TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                state_json JSON NOT NULL DEFAULT '{}',
+                metadata_json JSON NOT NULL DEFAULT '{}',
+                lineage_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_memory_states (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id TEXT NOT NULL UNIQUE,
+                execution_id TEXT NOT NULL,
+                state_type TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                state_json JSON NOT NULL DEFAULT '{}',
+                metadata_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_memory_lineage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                memory_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                payload_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_memory_replay (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                replay_id TEXT NOT NULL UNIQUE,
+                execution_id TEXT NOT NULL,
+                replay_type TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                request_json JSON NOT NULL DEFAULT '{}',
+                result_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
         generated_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(generated_games)").fetchall()
@@ -549,6 +669,50 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE runtime_snapshots ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
         ):
             if column_name not in runtime_snapshot_columns:
+                connection.exec_driver_sql(column_sql)
+        institutional_memory_snapshot_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(institutional_memory_snapshots)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE institutional_memory_snapshots ADD COLUMN state_json JSON NOT NULL DEFAULT '{}'", "state_json"),
+            ("ALTER TABLE institutional_memory_snapshots ADD COLUMN metadata_json JSON NOT NULL DEFAULT '{}'", "metadata_json"),
+            ("ALTER TABLE institutional_memory_snapshots ADD COLUMN lineage_json JSON NOT NULL DEFAULT '{}'", "lineage_json"),
+            ("ALTER TABLE institutional_memory_snapshots ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
+        ):
+            if column_name not in institutional_memory_snapshot_columns:
+                connection.exec_driver_sql(column_sql)
+        institutional_memory_state_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(institutional_memory_states)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE institutional_memory_states ADD COLUMN state_json JSON NOT NULL DEFAULT '{}'", "state_json"),
+            ("ALTER TABLE institutional_memory_states ADD COLUMN metadata_json JSON NOT NULL DEFAULT '{}'", "metadata_json"),
+            ("ALTER TABLE institutional_memory_states ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
+        ):
+            if column_name not in institutional_memory_state_columns:
+                connection.exec_driver_sql(column_sql)
+        institutional_memory_lineage_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(institutional_memory_lineage)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE institutional_memory_lineage ADD COLUMN payload_json JSON NOT NULL DEFAULT '{}'", "payload_json"),
+            ("ALTER TABLE institutional_memory_lineage ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
+        ):
+            if column_name not in institutional_memory_lineage_columns:
+                connection.exec_driver_sql(column_sql)
+        institutional_memory_replay_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(institutional_memory_replay)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE institutional_memory_replay ADD COLUMN request_json JSON NOT NULL DEFAULT '{}'", "request_json"),
+            ("ALTER TABLE institutional_memory_replay ADD COLUMN result_json JSON NOT NULL DEFAULT '{}'", "result_json"),
+            ("ALTER TABLE institutional_memory_replay ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP", "created_at"),
+        ):
+            if column_name not in institutional_memory_replay_columns:
                 connection.exec_driver_sql(column_sql)
         columns = {
             row[1]
