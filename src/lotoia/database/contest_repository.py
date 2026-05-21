@@ -33,6 +33,24 @@ class ContestRepository:
         )
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS generated_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            generation_event_id INTEGER,
+            lead_id INTEGER,
+            target_contest INTEGER,
+            origin TEXT NOT NULL DEFAULT 'dashboard',
+            generation_mode TEXT NOT NULL DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            game_index INTEGER,
+            numbers TEXT,
+            profile_type TEXT,
+            final_score TEXT,
+            quadra_score TEXT,
+            context_json TEXT NOT NULL DEFAULT '{}'
+        )
+        """)
+
         existing_columns = {
             row[1]
             for row in cursor.execute("PRAGMA table_info(imported_contests)").fetchall()
@@ -44,6 +62,19 @@ class ContestRepository:
             ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
             """
             )
+
+        generated_columns = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(generated_games)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
+            ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),
+            ("ALTER TABLE generated_games ADD COLUMN generation_mode TEXT NOT NULL DEFAULT ''", "generation_mode"),
+            ("ALTER TABLE generated_games ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'", "context_json"),
+        ):
+            if column_name not in generated_columns:
+                cursor.execute(column_sql)
 
         self.connection.commit()
 
@@ -106,6 +137,56 @@ class ContestRepository:
         )
 
         self.connection.commit()
+
+    def save_generated_games(
+        self,
+        *,
+        generation_event_id: int | None,
+        lead_id: int | None,
+        target_contest: int | None,
+        origin: str,
+        generation_mode: str,
+        games: list[dict[str, Any]],
+        context: dict[str, Any] | None = None,
+    ) -> int:
+        cursor = self.connection.cursor()
+        context_json = json.dumps(context or {}, ensure_ascii=False, sort_keys=True)
+        inserted = 0
+        for index, game in enumerate(games, start=1):
+            cursor.execute(
+                """
+            INSERT INTO generated_games (
+                generation_event_id,
+                lead_id,
+                target_contest,
+                origin,
+                generation_mode,
+                game_index,
+                numbers,
+                profile_type,
+                final_score,
+                quadra_score,
+                context_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    generation_event_id,
+                    lead_id,
+                    target_contest,
+                    origin,
+                    generation_mode,
+                    index,
+                    ",".join(str(number) for number in game.get("numbers", [])),
+                    str(game.get("profile_type", "")),
+                    json.dumps(game.get("final_score", {}), ensure_ascii=False, sort_keys=True),
+                    json.dumps(game.get("quadra_score", {}), ensure_ascii=False, sort_keys=True),
+                    context_json,
+                ),
+            )
+            inserted += 1
+        self.connection.commit()
+        return inserted
 
     def get_last_contest(self) -> int | None:
         cursor = self.connection.cursor()

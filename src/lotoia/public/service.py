@@ -8,6 +8,7 @@ from typing import Any
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.generator.engine import generate_ranked_games
+from lotoia.public.persistence import GenerationEventRepository, LeadRepository, initialize_public_persistence
 from lotoia.public.models import PublicCheckRequest, PublicGenerationRequest
 
 
@@ -87,10 +88,42 @@ def generate_public_games(
     active_limiter: PublicLimiter | None = None,
 ) -> dict[str, Any]:
     _validate_rate_limit(ip_address or "anonymous", active_limiter)
+    target_contest = _latest_history_contest(history_path=DEFAULT_HISTORY_PATH)
     seed = random.randint(1, 999999)
     started_at = time.time()
     games_payload = generate_ranked_games(total_games=2, seed=seed, ml_enabled=request.ml_enabled)
     execution_time_ms = (time.time() - started_at) * 1000
+    if db_path is not None:
+        initialize_public_persistence(db_path)
+        lead_repository = LeadRepository(db_path)
+        generation_repository = GenerationEventRepository(db_path)
+        lead = lead_repository.find_by_first_name_and_whatsapp(request.first_name.strip(), request.whatsapp)
+        if lead is None:
+            lead = lead_repository.insert(
+                first_name=request.first_name.strip(),
+                whatsapp=request.whatsapp,
+                source=source,
+                ip_hash="",
+                user_agent=user_agent,
+            )
+        generation_repository.insert(
+            lead_id=lead["id"],
+            generated_games=games_payload,
+            ml_enabled=request.ml_enabled,
+            seed=seed,
+            strategy="public_hybrid_statistical_v1",
+            ranking_score=0.91,
+            execution_time_ms=round(execution_time_ms, 2),
+            target_contest=target_contest,
+            origin=source,
+            generation_mode="public_hybrid_statistical_v1",
+            context={
+                "source": source,
+                "user_agent": user_agent,
+                "target_contest": target_contest,
+                "ml_enabled": bool(request.ml_enabled),
+            },
+        )
     return {
         "games": games_payload,
         "metadata": {
@@ -108,6 +141,7 @@ def generate_public_games(
                 profile: sum(1 for game in games_payload if game.get("profile_type") == profile)
                 for profile in ("recorrente", "hibrido", "caotico")
             },
+            "target_contest": target_contest,
         },
     }
 
@@ -139,3 +173,13 @@ def check_public_contest(
             "user_agent": user_agent,
         },
     }
+
+
+def _latest_history_contest(history_path: Path = DEFAULT_HISTORY_PATH) -> int | None:
+    try:
+        draws = load_draws_csv(history_path)
+    except Exception:
+        return None
+    if not draws:
+        return None
+    return max(draw.contest for draw in draws)

@@ -400,11 +400,15 @@ def _sqlite_ensure_admin_schema() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             generation_event_id INTEGER,
             lead_id INTEGER,
+            target_contest INTEGER,
+            origin TEXT NOT NULL DEFAULT 'dashboard',
+            generation_mode TEXT NOT NULL DEFAULT '',
             game_index INTEGER,
             numbers TEXT,
             profile_type TEXT,
             final_score TEXT,
             quadra_score TEXT,
+            context_json TEXT NOT NULL DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
@@ -413,7 +417,8 @@ def _sqlite_ensure_admin_schema() -> None:
             contest_number INTEGER PRIMARY KEY,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             data TEXT,
-            dezenas TEXT
+            dezenas TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}'
         )
         """,
         """
@@ -475,6 +480,11 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("check_events", "contest_id", "INTEGER")
     _sqlite_ensure_column("check_events", "hits", "INTEGER")
     _sqlite_ensure_column("check_events", "execution_time_ms", "REAL")
+    _sqlite_ensure_column("generated_games", "target_contest", "INTEGER")
+    _sqlite_ensure_column("generated_games", "origin", "TEXT", "'dashboard'")
+    _sqlite_ensure_column("generated_games", "generation_mode", "TEXT", "''")
+    _sqlite_ensure_column("generated_games", "context_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("imported_contests", "metadata_json", "TEXT", "'{}'")
     _sqlite_ensure_column("leads", "first_name", "TEXT", "''")
     _sqlite_ensure_column("leads", "whatsapp", "TEXT", "''")
     _sqlite_ensure_column("leads", "created_at", "TIMESTAMP", "CURRENT_TIMESTAMP")
@@ -2635,6 +2645,11 @@ def _persist_generation_events(
         return None
 
     average_rank = 0.0
+    target_contest = None
+    try:
+        target_contest = int(_safe_last_contest()) if _safe_last_contest().isdigit() else None
+    except Exception:
+        target_contest = None
     if games:
         scores = [float(game.get("final_score", {}).get("final_score", 0.0)) for game in games if isinstance(game.get("final_score"), dict)]
         average_rank = round(sum(scores) / len(scores), 4) if scores else 0.0
@@ -2662,22 +2677,41 @@ def _persist_generation_events(
                 INSERT INTO generated_games (
                     generation_event_id,
                     lead_id,
+                    target_contest,
+                    origin,
+                    generation_mode,
                     game_index,
                     numbers,
                     profile_type,
                     final_score,
-                    quadra_score
+                    quadra_score,
+                    context_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     generation_event_id,
                     lead_id,
+                    target_contest,
+                    "dashboard_admin",
+                    strategy,
                     index,
                     json.dumps(game.get("numbers", []), ensure_ascii=False),
                     str(game.get("profile_type", "")),
                     json.dumps(game.get("final_score", {}), ensure_ascii=False),
                     json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
+                    json.dumps(
+                        {
+                            "first_name": first_name.strip(),
+                            "whatsapp": whatsapp.strip(),
+                            "duration_ms": round(duration_ms, 2),
+                            "strategy": strategy,
+                            "lead_id": lead_id,
+                            "target_contest": target_contest,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
                 ),
             )
         connection.commit()
@@ -2708,27 +2742,46 @@ def _persist_generation_events(
                     for index, game in enumerate(games, start=1):
                         recovered_cursor.execute(
                             """
-                            INSERT INTO generated_games (
-                                generation_event_id,
-                                lead_id,
-                                game_index,
-                                numbers,
-                                profile_type,
-                                final_score,
-                                quadra_score
-                            )
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                generation_event_id,
-                                lead_id,
-                                index,
-                                json.dumps(game.get("numbers", []), ensure_ascii=False),
-                                str(game.get("profile_type", "")),
-                                json.dumps(game.get("final_score", {}), ensure_ascii=False),
-                                json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
-                            ),
+                        INSERT INTO generated_games (
+                            generation_event_id,
+                            lead_id,
+                            target_contest,
+                            origin,
+                            generation_mode,
+                            game_index,
+                            numbers,
+                            profile_type,
+                            final_score,
+                            quadra_score,
+                            context_json
                         )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            generation_event_id,
+                            lead_id,
+                            target_contest,
+                            "dashboard_admin",
+                            strategy,
+                            index,
+                            json.dumps(game.get("numbers", []), ensure_ascii=False),
+                            str(game.get("profile_type", "")),
+                            json.dumps(game.get("final_score", {}), ensure_ascii=False),
+                            json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
+                            json.dumps(
+                                {
+                                    "first_name": first_name.strip(),
+                                    "whatsapp": whatsapp.strip(),
+                                    "duration_ms": round(duration_ms, 2),
+                                    "strategy": strategy,
+                                    "lead_id": lead_id,
+                                    "target_contest": target_contest,
+                                },
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                        ),
+                    )
                     recovered_conn.commit()
                     _invalidate_runtime_cache()
                     return generation_event_id

@@ -41,6 +41,10 @@ def save_generation_event(
     strategy: str,
     ranking_score: float,
     execution_time_ms: float,
+    target_contest: int | None = None,
+    origin: str = "public_api",
+    generation_mode: str = "public_hybrid_statistical_v1",
+    context: dict[str, Any] | None = None,
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
     initialize_public_persistence(db_path)
@@ -53,6 +57,10 @@ def save_generation_event(
         strategy=strategy,
         ranking_score=ranking_score,
         execution_time_ms=execution_time_ms,
+        target_contest=target_contest,
+        origin=origin,
+        generation_mode=generation_mode,
+        context=context,
     )
 
 

@@ -162,6 +162,9 @@ class GeneratedGame(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     generation_event_id: Mapped[int] = mapped_column(Integer, nullable=False)
     lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_contest: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    origin: Mapped[str] = mapped_column(String, default="dashboard", nullable=False)
+    generation_mode: Mapped[str] = mapped_column(String, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -172,6 +175,7 @@ class GeneratedGame(Base):
     profile_type: Mapped[str] = mapped_column(String, default="", nullable=False)
     final_score: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     quadra_score: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
@@ -217,15 +221,31 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 generation_event_id INTEGER NOT NULL,
                 lead_id INTEGER NOT NULL,
+                target_contest INTEGER,
+                origin TEXT NOT NULL DEFAULT 'dashboard',
+                generation_mode TEXT NOT NULL DEFAULT '',
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 game_index INTEGER NOT NULL,
                 numbers JSON NOT NULL,
                 profile_type TEXT NOT NULL DEFAULT '',
                 final_score JSON NOT NULL DEFAULT '{}',
-                quadra_score JSON NOT NULL DEFAULT '{}'
+                quadra_score JSON NOT NULL DEFAULT '{}',
+                context_json JSON NOT NULL DEFAULT '{}'
             )
             """
         )
+        generated_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(generated_games)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
+            ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),
+            ("ALTER TABLE generated_games ADD COLUMN generation_mode TEXT NOT NULL DEFAULT ''", "generation_mode"),
+            ("ALTER TABLE generated_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
+        ):
+            if column_name not in generated_columns:
+                connection.exec_driver_sql(column_sql)
         columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(imported_contests)").fetchall()

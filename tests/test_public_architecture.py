@@ -159,6 +159,29 @@ def test_generate_public_games_limits_to_two_games(tmp_path: Path) -> None:
     assert len(response["games"]) == 2
     assert response["metadata"]["max_games"] == 2
     assert response["metadata"]["strategy"] == "public_hybrid_statistical_v1"
+    assert "target_contest" in response["metadata"]
+
+
+def test_generate_public_games_persists_generation_and_games(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    response = generate_public_games(
+        PublicGenerationRequest(first_name="Ana", whatsapp="11999999999", ml_enabled=True),
+        db_path=db_path,
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+        active_limiter=PublicLimiter(cooldown_seconds=0),
+    )
+
+    with get_session(db_path) as session:
+        assert session.execute(text("select count(*) from generation_events")).scalar() == 1
+        assert session.execute(text("select count(*) from generated_games")).scalar() == 2
+        row = session.execute(text("select target_contest, origin, generation_mode, context_json from generated_games order by id limit 1")).first()
+
+    assert response["metadata"]["target_contest"] is not None
+    assert row is not None
+    assert row[1] == "public_api"
+    assert row[2] == "public_hybrid_statistical_v1"
+    assert "target_contest" in row[3]
 
 
 def test_check_public_contest_is_readonly_and_persists_event(tmp_path: Path) -> None:

@@ -72,6 +72,10 @@ class GenerationEventRepository:
         strategy: str,
         ranking_score: float,
         execution_time_ms: float,
+        target_contest: int | None = None,
+        origin: str = "public_api",
+        generation_mode: str = "public_hybrid_statistical_v1",
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
             event = GenerationEvent(
@@ -90,11 +94,15 @@ class GenerationEventRepository:
                     GeneratedGame(
                         generation_event_id=event.id,
                         lead_id=lead_id,
+                        target_contest=target_contest,
+                        origin=origin,
+                        generation_mode=generation_mode,
                         game_index=index,
                         numbers=game.get("numbers", []),
                         profile_type=str(game.get("profile_type", "")),
                         final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
                         quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
+                        context_json=context or {},
                     )
                 )
             session.commit()
