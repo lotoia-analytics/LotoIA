@@ -12,6 +12,13 @@ from lotoia.ml.score_ml import (
     supervised_rerank_games,
 )
 from lotoia.ml.governance import activate_score_ml_runtime
+from lotoia.ml.walk_forward_validation import (
+    DEFAULT_WALK_FORWARD_VALIDATION_DIR,
+    DEFAULT_WALK_FORWARD_VALIDATION_ID,
+    WalkForwardValidationResult,
+    build_walk_forward_validation_report,
+    run_walk_forward_validation,
+)
 
 __all__ = [
     "InterpretableLinearScoreML",
@@ -24,6 +31,11 @@ __all__ = [
     "ml_heartbeat",
     "migrate_score_ml_snapshot",
     "activate_score_ml_runtime",
+    "DEFAULT_WALK_FORWARD_VALIDATION_DIR",
+    "DEFAULT_WALK_FORWARD_VALIDATION_ID",
+    "WalkForwardValidationResult",
+    "build_walk_forward_validation_report",
     "score_ml_games",
     "supervised_rerank_games",
+    "run_walk_forward_validation",
 ]
