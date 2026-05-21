@@ -14,7 +14,7 @@ def render_executive_panel(
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
-            <div class="lotoia-executive-kicker">Executive control panel</div>
+            <div class="lotoia-executive-kicker">Visao geral</div>
             <div class="lotoia-executive-copy">Estado institucional, baseline, confianca, drift e saude estrutural em uma leitura rapida.</div>
         </div>
         """,

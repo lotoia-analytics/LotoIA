@@ -24,7 +24,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
     with st.container(border=True):
         st.markdown(
             """
-            <div class="lotoia-executive-kicker">Intelligent orchestration</div>
+            <div class="lotoia-executive-kicker">Orquestracao operacional</div>
             <div class="lotoia-executive-copy">Coordena contexto, continuidade e prioridade operacional sem tocar no motor científico.</div>
             """,
             unsafe_allow_html=True,
@@ -35,7 +35,7 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         col3.metric("Memória", summary.get("memory_depth", 0))
         col4.metric("Timeline", summary.get("timeline_depth", 0))
 
-        st.markdown("### Executive decision context")
+        st.markdown("### Contexto executivo")
         st.info(
             f"{decision_context.get('headline', '-')}"
             f" | {decision_context.get('recommendation', '-')}"
@@ -48,20 +48,20 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         priority_col3.metric("Drift", "high" if operational_priority.get("elevated_drift") else "controlled")
         priority_col4.metric("Change", "relevant" if operational_priority.get("important_change") else "stable")
 
-        st.markdown("### Executive storytelling")
+        st.markdown("### Linha do tempo")
         if storytelling:
             st.write(" | ".join(str(item) for item in storytelling))
         else:
             st.info("Narrativa operacional ainda em consolidacao.")
 
-        st.markdown("### Institutional event system")
+        st.markdown("### Historico de eventos")
         events_frame = pd.DataFrame(events)
         if events_frame.empty:
             st.info("Nenhum evento institucional consolidado.")
         else:
             st.dataframe(events_frame, hide_index=True, use_container_width=True)
 
-        st.markdown("### Live executive coordination")
+        st.markdown("### Situacao atual")
         coordination_frame = pd.DataFrame(live_coordination.get("signals", []))
         if coordination_frame.empty:
             st.info("Coordenacao viva ainda em consolidacao.")
@@ -72,14 +72,14 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
             col3.metric("Presence", institutional_presence.get("presence_state", "adaptativa"))
             st.dataframe(coordination_frame, hide_index=True, use_container_width=True)
 
-        st.markdown("### Institutional signal engine")
+        st.markdown("### Tendencia institucional")
         signal_cols = st.columns(4)
         signal_cols[0].metric("Estado", signal_engine.get("state", "observation"))
         signal_cols[1].metric("Padrão", signal_engine.get("pattern", "observacao governada"))
         signal_cols[2].metric("Mudanças", signal_engine.get("persistent_changes", 0))
         signal_cols[3].metric("Recorrência", signal_engine.get("recurring_statuses", 0))
 
-        st.markdown("### Operational experience orchestration")
+        st.markdown("### Experiencia operacional")
         exp_cols = st.columns(4)
         exp_cols[0].metric("Cockpit", operational_experience.get("cockpit", "-"))
         exp_cols[1].metric("Timeline", operational_experience.get("timeline", "-"))

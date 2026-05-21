@@ -21,7 +21,7 @@ def render_hero_banner(
         f"""
         <div class="lotoia-card-shell lotoia-flow-panel">
             <div class="lotoia-executive-kicker">
-                Institutional cockpit
+                Visao geral
             </div>
             <div class="lotoia-executive-headline" style="margin-bottom: 0.45rem;">
                 {executive_report.get("headline", "baseline longitudinal consistente")}

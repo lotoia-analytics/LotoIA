@@ -14,7 +14,7 @@ def render_executive_summary(
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
-            <div class="lotoia-executive-kicker">Executive summary</div>
+            <div class="lotoia-executive-kicker">Resumo</div>
             <div class="lotoia-executive-copy">Resumo curto da leitura institucional, da tendencia e da memoria operacional persistida.</div>
         </div>
         """,

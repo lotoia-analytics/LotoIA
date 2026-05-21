@@ -13,7 +13,7 @@ def render_structural_health(
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.35rem;">
-            <div class="lotoia-executive-kicker">Structural health</div>
+            <div class="lotoia-executive-kicker">Saude atual</div>
             <div class="lotoia-executive-copy">Sinaliza estabilidade, tendencia e confianca historica em um bloco executivo de leitura curta.</div>
         </div>
         """,

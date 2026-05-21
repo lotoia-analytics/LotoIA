@@ -91,13 +91,13 @@ def render_live_analytical_intelligence(
         ]
     )
 
-    st.markdown("### Live analytical intelligence")
+    st.markdown("### Inteligencia viva")
     top_left, top_right = st.columns([1.2, 0.8], gap="large")
     with top_left:
         st.markdown(
             f"""
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
-                <div class="lotoia-muted-label">Longitudinal evolution panel</div>
+                <div class="lotoia-muted-label">Evolucao longitudinal</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
                     Evolucao da estabilidade, confiança, drift e cobertura
                 </div>
@@ -143,7 +143,7 @@ def render_live_analytical_intelligence(
         st.markdown(
             f"""
             <div class="lotoia-card-shell" style="padding: 0.95rem 1rem;">
-                <div class="lotoia-muted-label">Live trend interpretation</div>
+                <div class="lotoia-muted-label">Interpretacao temporal</div>
                 <div class="lotoia-executive-title" style="font-size: 1.05rem; margin: 0.35rem 0 0.4rem 0;">
                     Leitura temporal interpretativa
                 </div>
@@ -183,7 +183,7 @@ def render_live_analytical_intelligence(
         else:
             st.info("Comparacoes longitudinais ainda nao disponiveis nesta janela.")
 
-    st.markdown("### Longitudinal evolution panel")
+    st.markdown("### Evolucao longitudinal")
     if longitudinal_frame.empty:
         st.info("Baseline longitudinal ainda nao foi consolidado para comparacao viva.")
     else:
@@ -233,26 +233,26 @@ def render_live_analytical_intelligence(
                     unsafe_allow_html=True,
                 )
 
-    st.markdown("### Executive analytical graphics")
+    st.markdown("### Graficos executivos")
     if longitudinal_frame.empty:
         st.info("Graficos executivos ainda dependem do longitudinal consolidado.")
     else:
         graphic_cols = st.columns(3)
         graphic_metrics = [
             (
-                "Average hits trend",
+                "Media de acertos",
                 float(_latest_value(longitudinal_frame, "average_hits", 0.0)),
                 _first_last_delta(longitudinal_frame, "average_hits", 0.0),
                 "media de acertos",
             ),
             (
-                "Stability trend",
+                "Estabilidade",
                 float(_latest_value(longitudinal_frame, "stability_window_sd", 0.0)),
                 _first_last_delta(longitudinal_frame, "stability_window_sd", 0.0),
                 "estabilidade da janela",
             ),
             (
-                "Score-correlation trend",
+                "Score x acertos",
                 float(_latest_value(longitudinal_frame, "final_score_hit_correlation", 0.0)),
                 _first_last_delta(longitudinal_frame, "final_score_hit_correlation", 0.0),
                 "correlacao score x hits",
@@ -286,7 +286,7 @@ def render_live_analytical_intelligence(
             height=220,
         )
 
-    st.markdown("### Institutional evolution storytelling")
+    st.markdown("### Narrativa evolutiva")
     if timeline.empty:
         st.info("Checkpoint historico ainda nao consolidado para storytelling.")
     else:
@@ -314,9 +314,9 @@ def render_live_analytical_intelligence(
     with comp_col2:
         st.metric("Coverage 10+ evolution", f"{_first_last_delta(timeline, 'coverage_10', summary.get('coverage_10', 0.0)):.2f}")
         st.metric("Coverage 11+ evolution", f"{_first_last_delta(timeline, 'coverage_11', summary.get('coverage_11', 0.0)):.2f}")
-        st.metric("Operational memory", f"{len(timeline)} checkpoints")
+        st.metric("Memoria operacional", f"{len(timeline)} checkpoints")
 
-    st.markdown("### Operational memory layer")
+    st.markdown("### Memoria operacional")
     memory_cols = st.columns(3)
     memory_cols[0].metric("Latest status", str(historical_summary.get("latest_status", snapshot_summary.get("status", "-"))))
     memory_cols[1].metric("Latest transition", str(historical_summary.get("latest_transition", "inicio")))
@@ -336,9 +336,9 @@ def render_live_analytical_intelligence(
             )
             st.progress(memory_continuity)
     continuity_label = "forte" if memory_continuity >= 0.80 else "em consolidacao"
-    st.caption(f"Executive continuity {continuity_label}: {memory_continuity:.2f}")
+    st.caption(f"Continuidade executiva {continuity_label}: {memory_continuity:.2f}")
 
-    st.markdown("### Institutional evolution summary")
+    st.markdown("### Resumo evolutivo")
     if longitudinal_frame.empty:
         st.info("Resumo evolutivo institucional ainda depende do longitudinal consolidado.")
     else:
@@ -378,24 +378,24 @@ def render_live_analytical_intelligence(
             f"checkpoints {len(longitudinal_frame)}"
         )
 
-    st.markdown("### Executive insight engine")
+    st.markdown("### Insights executivos")
     insight_messages = [
         f"Baseline hard manteve {'estabilidade' if summary.get('structural_health', 0.0) >= 0.80 else 'observacao'} nos checkpoints recentes.",
         f"Longitudinal apresentou {'baixa' if longitudinal_summary.get('stability_index', 0.0) >= 0.80 else 'media'} variabilidade.",
-        f"Observability segue {obs_summary.get('stability_note', 'monitorada')}.",
+        f"Monitoramento segue {obs_summary.get('stability_note', 'monitorado')}.",
         f"Memoria operacional {'continua' if memory_continuity >= 0.80 else 'ainda consolidando'} o estado institucional.",
     ]
     for message in insight_messages:
         st.info(message)
 
-    st.markdown("### Executive analytical insights")
+    st.markdown("### Insights executivos")
     if insights:
         insights_frame = pd.DataFrame(insights)
         st.dataframe(insights_frame, hide_index=True, use_container_width=True)
     else:
         st.info("Insights executivos ainda nao consolidados nesta leitura.")
 
-    st.markdown("### Institutional analytical presence")
+    st.markdown("### Presenca institucional")
     presence_cols = st.columns(4)
     presence_items = [
         ("Continuity", "memoria ativa" if memory_continuity >= 0.80 else "memoria consolidando"),
@@ -426,12 +426,12 @@ def render_live_analytical_intelligence(
             3,
         ),
     )
-    st.markdown("### Analytical consistency seal")
+    st.markdown("### Selo de consistencia")
     seal_cols = st.columns(3)
     seal_items = [
         ("Consistency", f"{consistency_score:.2f}"),
         ("Traceability", "artifacts reais"),
-        ("Institutional state", "continua" if consistency_score >= 0.80 else "em consolidacao"),
+        ("Estado institucional", "continua" if consistency_score >= 0.80 else "em consolidacao"),
     ]
     for column, (label, value) in zip(seal_cols, seal_items, strict=True):
         with column:
@@ -479,4 +479,4 @@ def render_live_analytical_intelligence(
         else "Resumo executivo: a plataforma segue consolidando continuidade e memoria institucional."
     )
     st.info(executive_summary)
-    st.caption(f"Timeline institutional depth: {len(timeline)} checkpoints")
+    st.caption(f"Profundidade da timeline: {len(timeline)} checkpoints")

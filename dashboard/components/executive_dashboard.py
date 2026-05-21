@@ -28,7 +28,7 @@ def render_executive_dashboard(
         """
         <div class="lotoia-executive-section" style="padding-bottom: 0.25rem; border-bottom: 1px solid #dce7f2;">
             <div class="lotoia-executive-kicker">
-                Executive dashboard
+                Visao geral
             </div>
         </div>
         """,
@@ -44,6 +44,6 @@ def render_executive_dashboard(
         render_analytical_cards(analytical_summary)
         render_structural_health(analytical_summary, historical_summary)
 
-    with st.expander("Resumo executivo e memoria institucional", expanded=True):
+    with st.expander("Resumo e historico", expanded=True):
         render_executive_summary(executive_report, historical_summary, snapshot_summary)
         render_institutional_timeline(timeline)

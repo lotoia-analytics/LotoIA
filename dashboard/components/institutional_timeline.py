@@ -19,7 +19,7 @@ def render_institutional_timeline(timeline: pd.DataFrame) -> None:
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.55rem;">
-            <div class="lotoia-executive-kicker">Institutional storytelling rail</div>
+            <div class="lotoia-executive-kicker">Linha do tempo</div>
             <div class="lotoia-executive-copy">Snapshots recentes, transicoes de estado e memoria visual para leitura cronologica rapida.</div>
         </div>
         """,

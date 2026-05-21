@@ -10,7 +10,7 @@ def render_analytical_cards(analytical_summary: Mapping[str, Any]) -> None:
     st.markdown(
         """
         <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.35rem;">
-            <div class="lotoia-executive-kicker">Executive analytical cards</div>
+            <div class="lotoia-executive-kicker">Leitura analitica</div>
             <div class="lotoia-executive-copy">Leitura rapida da cobertura, drift e saude estrutural em cards premium e compactos.</div>
         </div>
         """,

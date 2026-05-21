@@ -50,7 +50,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
                 unsafe_allow_html=True,
             )
 
-    st.markdown("### Operational memory foundation")
+    st.markdown("### Memoria operacional")
     memory_timeline = pd.DataFrame(operational_memory.get("timeline", []))
     if memory_timeline.empty:
         st.info("Memoria operacional adaptativa ainda depende de snapshots institucionais.")
@@ -69,7 +69,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
         with column:
             st.metric(label, value)
 
-    st.markdown("### Institutional pattern detection")
+    st.markdown("### Padroes institucionais")
     pattern_cols = st.columns(3)
     pattern_items = [
         ("Pattern", pattern_detection.get("summary", {}).get("pattern", "observacao")),
@@ -80,7 +80,7 @@ def render_adaptive_institutional_intelligence(adaptive_report: Mapping[str, Any
         with column:
             st.metric(label, value)
 
-    st.markdown("### Executive strategic memory")
+    st.markdown("### Memoria estrategica")
     strategic_frame = pd.DataFrame(strategic_memory.get("timeline", []))
     if strategic_frame.empty:
         st.info("Memoria estrategica ainda nao consolidada.")

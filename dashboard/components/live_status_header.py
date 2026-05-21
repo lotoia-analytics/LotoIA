@@ -39,7 +39,7 @@ def render_live_status_header(
         f"""
         <div style="padding: 0.35rem 0 0.25rem 0;">
             <div style="font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase; color: #6d7f92; margin-bottom: 0.35rem;">
-                Executive live header
+                Estado atual
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.35rem;">
                 <span style="padding: 0.35rem 0.7rem; border-radius: 999px; background: #eef4fb; color: #123456; font-size: 0.88rem; font-weight: 700;">

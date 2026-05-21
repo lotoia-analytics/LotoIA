@@ -11,8 +11,8 @@ def render_secondary_operational_metrics(gen_count: int, check_count: int, ml_co
         st.markdown(
             """
             <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
-                <div class="lotoia-executive-kicker">Secondary operations</div>
-                <div class="lotoia-executive-copy">Contadores operacionais mantidos em area compacta, sem competir com o cockpit institucional.</div>
+                <div class="lotoia-executive-kicker">Operacao secundaria</div>
+                <div class="lotoia-executive-copy">Contadores operacionais mantidos em area compacta, sem competir com a visao geral.</div>
             </div>
             """,
             unsafe_allow_html=True,

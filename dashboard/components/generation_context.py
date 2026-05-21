@@ -59,7 +59,7 @@ def render_generation_context(
             f"""
             <div style="padding: 0.85rem 0.95rem; border: 1px solid #dbe4ee; border-radius: 0.9rem; background: #ffffff; box-shadow: 0 8px 20px rgba(18, 52, 86, 0.06);">
                 <div style="font-size: 0.74rem; letter-spacing: 0.16em; text-transform: uppercase; color: #6b7f93; margin-bottom: 0.35rem;">
-                    Executive action panel
+                    Acao executiva
                 </div>
                 <div style="font-size: 0.98rem; font-weight: 700; color: #123456; margin-bottom: 0.35rem;">
                     Action context

@@ -157,7 +157,7 @@ def test_executive_dashboard_uses_modular_layout(monkeypatch) -> None:
         timeline,
     )
 
-    assert any("Executive dashboard" in call for call in calls)
+    assert any("Visao geral" in call for call in calls)
 
 
 def test_live_status_header_renders_without_error(monkeypatch) -> None:
@@ -397,7 +397,7 @@ def test_live_analytical_intelligence_uses_timeline_context(monkeypatch) -> None
         observability_report,
     )
 
-    assert any("Live analytical intelligence" in message or "Evolution" in message or "evolucao" in message.lower() for message in captured)
+    assert any("Inteligencia viva" in message or "evolucao" in message.lower() for message in captured)
 
 
 def test_live_analytical_intelligence_reports_trend_direction(monkeypatch) -> None:
@@ -464,7 +464,7 @@ def test_live_analytical_intelligence_includes_longitudinal_memory(monkeypatch) 
         observability_report,
     )
 
-    assert any("Longitudinal evolution panel" in message or "Operational memory layer" in message or "Executive insight engine" in message for message in captured)
+    assert any("Evolucao longitudinal" in message or "Memoria operacional" in message or "Insight" in message for message in captured)
 
 
 def test_live_analytical_intelligence_renders_executive_graphics(monkeypatch) -> None:
@@ -498,7 +498,7 @@ def test_live_analytical_intelligence_renders_executive_graphics(monkeypatch) ->
         observability_report,
     )
 
-    assert any("Executive analytical graphics" in message or "Average hits trend" in message or "Score-correlation trend" in message for message in captured)
+    assert any("Graficos executivos" in message or "Media de acertos" in message or "Score x acertos" in message for message in captured)
 
 
 def test_live_analytical_intelligence_shows_runtime_memory(monkeypatch) -> None:
@@ -577,7 +577,7 @@ def test_live_analytical_intelligence_reports_executive_continuity(monkeypatch) 
         observability_report,
     )
 
-    assert any("Executive continuity" in message or "forte" in message or "em consolidacao" in message for message in captured)
+    assert any("Continuidade executiva" in message or "forte" in message or "em consolidacao" in message for message in captured)
 
 
 def test_live_analytical_intelligence_shows_live_pulse(monkeypatch) -> None:
@@ -649,7 +649,7 @@ def test_live_analytical_intelligence_shows_institutional_presence(monkeypatch) 
         observability_report,
     )
 
-    assert any("Institutional analytical presence" in message or "memoria ativa" in message or "sistema vivo" in message for message in captured)
+    assert any("Presenca institucional" in message or "memoria ativa" in message or "sistema vivo" in message for message in captured)
 
 
 def test_live_analytical_intelligence_shows_consistency_seal(monkeypatch) -> None:
@@ -685,7 +685,7 @@ def test_live_analytical_intelligence_shows_consistency_seal(monkeypatch) -> Non
         observability_report,
     )
 
-    assert any("Analytical consistency seal" in message or "Traceability" in message or "Consistency" in message for message in captured)
+    assert any("Selo de consistencia" in message or "Traceability" in message or "Consistency" in message for message in captured)
 
 
 def test_live_analytical_intelligence_shows_institutional_evolution_summary(monkeypatch) -> None:
@@ -725,7 +725,7 @@ def test_live_analytical_intelligence_shows_institutional_evolution_summary(monk
         observability_report,
     )
 
-    assert any("Institutional evolution summary" in message or "resumo longitudinal" in message or "Direcao institucional" in message for message in captured)
+    assert any("Resumo evolutivo" in message or "resumo longitudinal" in message or "Direcao institucional" in message for message in captured)
 
 
 def test_live_analytical_intelligence_renders_longitudinal_comparison_rail(monkeypatch) -> None:
@@ -840,7 +840,7 @@ def test_live_analytical_intelligence_renders_consistency_seal(monkeypatch) -> N
         observability_report,
     )
 
-    assert any("Analytical consistency seal" in message or "Traceability" in message or "Institutional state" in message for message in captured)
+    assert any("Selo de consistencia" in message or "Traceability" in message or "Estado institucional" in message for message in captured)
 
 
 def test_live_analytical_intelligence_renders_final_institutional_posture(monkeypatch) -> None:
@@ -989,7 +989,7 @@ def test_live_analytical_intelligence_reports_timeline_depth(monkeypatch) -> Non
         observability_report,
     )
 
-    assert any("Timeline institutional depth" in message or "3 checkpoints" in message for message in captured)
+    assert any("Profundidade da timeline" in message or "3 checkpoints" in message for message in captured)
 
 
 def test_institutional_components_package_exports_are_callable() -> None:
