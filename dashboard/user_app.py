@@ -216,9 +216,12 @@ def _record_event(events: list[dict[str, Any]], event_type: str, details: str) -
 
 def render_generate_page(events: list[dict[str, Any]]) -> None:
     st.header("Gerar Jogos")
-    st.caption("Informe nome e WhatsApp para liberar a geracao.")
     st.markdown(
-        "<div style='font-size:0.95rem; font-weight:700; color:#1f2f44; margin:0.1rem 0 0.6rem 0;'>LotoIA</div>",
+        "<div style='font-size:0.78rem; text-transform:uppercase; letter-spacing:0.14em; color:#6b7f93; margin-bottom:0.15rem;'>Geracao assistida</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div style='font-size:1.0rem; font-weight:700; color:#1f2f44; margin:0 0 0.7rem 0;'>LotoIA</div>",
         unsafe_allow_html=True,
     )
     lead_col1, lead_col2 = st.columns(2)
