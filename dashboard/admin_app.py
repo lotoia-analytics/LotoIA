@@ -30,7 +30,14 @@ from lotoia.combinatorics import (
 from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
-from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    GenerationEvent,
+    GeneratedGame,
+    ReconciliationGame,
+    ReconciliationRun,
+    get_session,
+)
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
 from lotoia.governance.adaptive_governance_report import (
     ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
@@ -4392,167 +4399,129 @@ def _json_numbers(value: Any) -> list[int]:
 
 
 def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    run_row = _sqlite_execute_safe(
-        """
-        SELECT id, generation_event_id, contest_id, source, status, prize_count, total_hits, best_hits, created_at, payload
-        FROM reconciliation_runs
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1
-        """
-    )
-    run = run_row.fetchone() if run_row else None
-    if not run:
-        return None, []
-    generation_event_id = int(run[1] or 0)
-    contest_id = int(run[2] or 0)
-    source = str(run[3] or "")
-    payload = json.loads(run[9] or "{}") if len(run) > 9 else {}
+    with get_session(DEFAULT_DATABASE_PATH) as session:
+        run = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .first()
+        )
+        if run is None:
+            return None, []
+        generation_event_id = int(run.generation_event_id or 0)
+        contest_id = int(run.contest_id or 0)
+        source = str(run.source or "")
+        payload = dict(run.payload or {})
 
-    game_rows: list[dict[str, Any]] = []
-    games_cursor = _sqlite_execute_safe(
-        """
-        SELECT
-            rg.game_index,
-            rg.numbers,
-            rg.hits,
-            rg.matched_numbers,
-            rg.prize_status,
-            rg.prize_tier,
-            gg.profile_type,
-            gg.origin
-        FROM reconciliation_games rg
-        LEFT JOIN generated_games gg
-               ON gg.generation_event_id = rg.generation_event_id
-              AND gg.game_index = rg.game_index
-        WHERE rg.generation_event_id = ?
-          AND rg.contest_id = ?
-        ORDER BY rg.game_index
-        """,
-        (generation_event_id, contest_id),
-    )
-    if games_cursor is not None:
-        for row in games_cursor.fetchall():
-            numbers = _json_numbers(row[1])
-            matched_numbers = _json_numbers(row[3])
+        game_rows: list[dict[str, Any]] = []
+        rows = (
+            session.query(ReconciliationGame, GeneratedGame.profile_type, GeneratedGame.origin)
+            .outerjoin(
+                GeneratedGame,
+                (GeneratedGame.generation_event_id == ReconciliationGame.generation_event_id)
+                & (GeneratedGame.game_index == ReconciliationGame.game_index),
+            )
+            .filter(
+                ReconciliationGame.generation_event_id == generation_event_id,
+                ReconciliationGame.contest_id == contest_id,
+            )
+            .order_by(ReconciliationGame.game_index)
+            .all()
+        )
+        for reconciliation_game, profile_type, origin in rows:
+            numbers = list(reconciliation_game.numbers or [])
+            matched_numbers = list(reconciliation_game.matched_numbers or [])
             game_rows.append(
                 {
-                    "jogo": int(row[0] or 0),
-                    "dezenas": _format_numbers(numbers),
-                    "acertos": int(row[2] or 0),
-                    "dezenas_acertadas": _format_numbers(matched_numbers) if matched_numbers else "-",
-                    "perfil_estrategico": str(row[6] or ""),
-                    "origem": str(row[7] or "generated"),
-                    "status": str(row[4] or ""),
-                    "faixa": str(row[5] or ""),
+                    "jogo": int(reconciliation_game.game_index or 0),
+                    "dezenas": _format_numbers([int(number) for number in numbers]),
+                    "acertos": int(reconciliation_game.hits or 0),
+                    "dezenas_acertadas": _format_numbers([int(number) for number in matched_numbers]) if matched_numbers else "-",
+                    "perfil_estrategico": str(profile_type or ""),
+                    "origem": str(origin or "generated"),
+                    "status": str(reconciliation_game.prize_status or ""),
+                    "faixa": str(reconciliation_game.prize_tier or ""),
                 }
             )
+        expansion_rows: list[dict[str, Any]] = []
+        try:
+            for event in list_expansion_events(limit=20):
+                selected_numbers = [int(number) for number in event.get("selected_numbers", [])]
+                matched_numbers = sorted(set(selected_numbers) & set(baseline_numbers))
+                analysis = dict(event.get("analysis", {}))
+                expansion_rows.append(
+                    {
+                        "jogo": f"exp_{event.get('id')}",
+                        "dezenas": _format_numbers(selected_numbers),
+                        "acertos": len(matched_numbers),
+                        "dezenas_acertadas": _format_numbers(matched_numbers) if matched_numbers else "-",
+                        "perfil_estrategico": str(analysis.get("profile_type") or analysis.get("perfil_estrategico") or "expanded"),
+                        "origem": str(event.get("origin") or "expanded"),
+                        "status": "premiado" if len(matched_numbers) >= 11 else "nao_premiado",
+                        "faixa": f"faixa_{len(matched_numbers)}" if len(matched_numbers) >= 11 else "",
+                    }
+                )
+        except Exception:
+            pass
 
-    expansion_rows: list[dict[str, Any]] = []
-    try:
-        for event in list_expansion_events(limit=20):
-            selected_numbers = [int(number) for number in event.get("selected_numbers", [])]
-            matched_numbers = sorted(set(selected_numbers) & set(baseline_numbers))
-            analysis = dict(event.get("analysis", {}))
-            expansion_rows.append(
-                {
-                    "jogo": f"exp_{event.get('id')}",
-                    "dezenas": _format_numbers(selected_numbers),
-                    "acertos": len(matched_numbers),
-                    "dezenas_acertadas": _format_numbers(matched_numbers) if matched_numbers else "-",
-                    "perfil_estrategico": str(analysis.get("profile_type") or analysis.get("perfil_estrategico") or "expanded"),
-                    "origem": str(event.get("origin") or "expanded"),
-                    "status": "premiado" if len(matched_numbers) >= 11 else "nao_premiado",
-                    "faixa": f"faixa_{len(matched_numbers)}" if len(matched_numbers) >= 11 else "",
-                }
-            )
-    except Exception:
-        pass
-
-    summary = {
-        "result_informed": _format_numbers(baseline_numbers),
-        "contest_id": contest_id,
-        "source": source,
-        "status": str(run[4] or ""),
-        "prize_count": int(run[5] or 0),
-        "total_hits": int(run[6] or 0),
-        "best_hits": int(run[7] or 0),
-        "payload": payload,
-        "generation_event_id": generation_event_id,
-        "row_count": len(game_rows) + len(expansion_rows),
-    }
-    return summary, game_rows + expansion_rows
+        summary = {
+            "result_informed": _format_numbers(baseline_numbers),
+            "contest_id": contest_id,
+            "source": source,
+            "status": str(run.status or ""),
+            "prize_count": int(run.prize_count or 0),
+            "total_hits": int(run.total_hits or 0),
+            "best_hits": int(run.best_hits or 0),
+            "payload": payload,
+            "generation_event_id": generation_event_id,
+            "row_count": len(game_rows) + len(expansion_rows),
+        }
+        return summary, game_rows + expansion_rows
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
-    generation_cursor = _sqlite_execute_safe(
-        """
-        SELECT
-            generation_event_id,
-            lead_id,
-            target_contest,
-            origin,
-            generation_mode
-        FROM generated_games
-        ORDER BY generation_event_id DESC, game_index DESC
-        LIMIT 1
-        """
-    )
-    generation_row = generation_cursor.fetchone() if generation_cursor is not None else None
-    if generation_row is None:
-        generation_cursor = _sqlite_execute_safe(
-            """
-            SELECT
-                id AS generation_event_id,
-                NULL AS lead_id,
-                NULL AS target_contest,
-                'dashboard' AS origin,
-                strategy AS generation_mode
-            FROM generation_events
-            ORDER BY id DESC
-            LIMIT 1
-            """
+    with get_session(DEFAULT_DATABASE_PATH) as session:
+        generation_game = (
+            session.query(GeneratedGame)
+            .order_by(GeneratedGame.generation_event_id.desc(), GeneratedGame.game_index.desc())
+            .first()
         )
-        generation_row = generation_cursor.fetchone() if generation_cursor is not None else None
-    if generation_row is None:
-        return None
+        generation_event = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.id.desc())
+            .first()
+        )
+        if generation_game is None and generation_event is None:
+            return None
+        if generation_game is not None:
+            generation_event_id = int(generation_game.generation_event_id or 0)
+            lead_id = int(generation_game.lead_id or 0) or None
+            target_contest = int(generation_game.target_contest or 0) if generation_game.target_contest is not None else None
+            origin = str(generation_game.origin or "generated")
+            generation_mode = str(generation_game.generation_mode or "dashboard")
+        else:
+            generation_event_id = int(generation_event.id or 0) if generation_event is not None else 0
+            lead_id = int(generation_event.lead_id or 0) if generation_event is not None else None
+            target_contest = None
+            origin = "dashboard"
+            generation_mode = str(generation_event.strategy or "dashboard") if generation_event is not None else "dashboard"
 
-    generation_event_id = int(generation_row[0] or 0)
-    lead_id = int(generation_row[1] or 0) or None
-    target_contest = int(generation_row[2] or 0) if generation_row[2] is not None else None
-    origin = str(generation_row[3] or "generated")
-    generation_mode = str(generation_row[4] or "dashboard")
-
-    games_cursor = _sqlite_execute_safe(
-        """
-        SELECT
-            game_index,
-            numbers,
-            profile_type,
-            final_score,
-            quadra_score,
-            origin,
-            context_json
-        FROM generated_games
-        WHERE generation_event_id = ?
-        ORDER BY game_index
-        """,
-        (generation_event_id,),
-    )
-    games: list[dict[str, Any]] = []
-    if games_cursor is not None:
-        for row in games_cursor.fetchall():
-            final_score = json.loads(row[3] or "{}") if isinstance(row[3], str) else row[3] or {}
-            quadra_score = json.loads(row[4] or "{}") if isinstance(row[4], str) else row[4] or {}
-            context_json = json.loads(row[6] or "{}") if isinstance(row[6], str) else row[6] or {}
+        games_query = (
+            session.query(GeneratedGame)
+            .filter(GeneratedGame.generation_event_id == generation_event_id)
+            .order_by(GeneratedGame.game_index)
+            .all()
+        )
+        games: list[dict[str, Any]] = []
+        for game in games_query:
             games.append(
                 {
-                    "game_index": int(row[0] or 0),
-                    "numbers": _json_numbers(row[1]),
-                    "profile_type": str(row[2] or ""),
-                    "final_score": final_score,
-                    "quadra_score": quadra_score,
-                    "origin": str(row[5] or origin),
-                    "context_json": context_json,
+                    "game_index": int(game.game_index or 0),
+                    "numbers": [int(number) for number in (game.numbers or [])],
+                    "profile_type": str(game.profile_type or ""),
+                    "final_score": dict(game.final_score or {}),
+                    "quadra_score": dict(game.quadra_score or {}),
+                    "origin": str(game.origin or origin),
+                    "context_json": dict(game.context_json or {}),
                 }
             )
 
