@@ -440,6 +440,7 @@ def _sqlite_ensure_admin_schema() -> None:
             first_name TEXT NOT NULL,
             whatsapp TEXT NOT NULL,
             contest_id INTEGER,
+            selected_numbers TEXT NOT NULL DEFAULT '[]',
             hits INTEGER,
             result_payload TEXT NOT NULL DEFAULT '{}',
             execution_time_ms REAL,
@@ -544,6 +545,7 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("check_events", "first_name", "TEXT", "''")
     _sqlite_ensure_column("check_events", "whatsapp", "TEXT", "''")
     _sqlite_ensure_column("check_events", "contest_id", "INTEGER")
+    _sqlite_ensure_column("check_events", "selected_numbers", "TEXT", "'[]'")
     _sqlite_ensure_column("check_events", "hits", "INTEGER")
     _sqlite_ensure_column("check_events", "result_payload", "TEXT", "'{}'")
     _sqlite_ensure_column("check_events", "execution_time_ms", "REAL")

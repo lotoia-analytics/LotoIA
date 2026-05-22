@@ -168,6 +168,44 @@ def test_leitura_de_uso_is_available_in_analytic_mode() -> None:
     assert "leitura_uso" in admin_app.MODE_PAGES["analitico"]
 
 
+def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
+    values = {
+        "SELECT COUNT(*) FROM generation_events": 10,
+        "SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events": 2,
+        "SELECT COUNT(*) FROM check_events": 4,
+        "SELECT COUNT(*) FROM ml_usage_events": 3,
+        "SELECT COUNT(*) FROM imported_contests": 7,
+        "SELECT COUNT(*) FROM generated_games": 15,
+        "SELECT COUNT(*) FROM operational_logs": 1,
+        "SELECT COUNT(*) FROM operational_logs WHERE DATE(created_at) = DATE('now')": 1,
+    }
+
+    monkeypatch.setattr(admin_app, "_query_scalar", lambda query, params=(), default=0: values[query])
+    monkeypatch.setattr(admin_app, "_snapshot_count", lambda: 2)
+    monkeypatch.setattr(admin_app, "_sqlite_size_bytes", lambda: 123)
+
+    metrics = admin_app._operational_metrics()
+
+    assert metrics["ml_usage"] == 3
+    assert metrics["check_volume"] == 4
+    assert metrics["generated_games"] == 15
+
+
+def test_admin_schema_includes_institutional_check_event_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "admin_schema.db"
+    connection = sqlite3.connect(db_path)
+    try:
+        admin_app._sqlite_bind_connection(connection)
+        admin_app._sqlite_ensure_admin_schema()
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(check_events)").fetchall()
+        }
+        assert {"lead_id", "selected_numbers", "result_payload"}.issubset(columns)
+    finally:
+        connection.close()
+
+
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_app,
@@ -822,6 +860,11 @@ def test_lead_analytics_reacts_to_institutional_db_signature(monkeypatch) -> Non
 
     monkeypatch.setattr(admin_app, "_institutional_db_signature", lambda: 123456789)
     monkeypatch.setattr(admin_app, "_lead_history_dataframe", _lead_history_dataframe)
+    monkeypatch.setattr(
+        admin_app,
+        "_safe_count",
+        lambda table_name: {"generation_events": 1, "check_events": 1, "ml_usage_events": 0}.get(table_name, 0),
+    )
 
     analytics = admin_app._lead_analytics()
 
