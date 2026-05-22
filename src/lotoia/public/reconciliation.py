@@ -135,3 +135,28 @@ class ReconciliationEngine:
             best_hits=best_hits,
             status=status,
         )
+
+
+def reconcile_smoke_validation(
+    *,
+    generation_event_id: int,
+    lead_id: int | None,
+    generated_games: list[dict[str, Any]],
+    baseline_numbers: list[int],
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Persist an operational smoke reconciliation against a fixed manual baseline."""
+    engine = ReconciliationEngine(db_path)
+    summary = engine.reconcile_generation(
+        generation_event_id=generation_event_id,
+        contest_id=0,
+        generated_games=generated_games,
+        official_numbers=baseline_numbers,
+        lead_id=lead_id,
+        source="smoke_validation_baseline",
+    )
+    return {
+        **summary.to_dict(),
+        "baseline_numbers": sorted(int(number) for number in baseline_numbers),
+        "source": "smoke_validation_baseline",
+    }

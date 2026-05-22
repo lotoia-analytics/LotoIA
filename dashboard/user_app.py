@@ -16,6 +16,8 @@ except ImportError:
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
+from lotoia.database.public_repository import save_check_event, save_generation_event
+from lotoia.public.reconciliation import reconcile_smoke_validation
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
 MAX_GAMES_PER_SESSION = 10
@@ -70,6 +72,7 @@ def _generate_user_games(count: int, pool_size: int, ml_enabled: bool) -> dict[s
     return {
         "count": len(compact_games),
         "games": compact_games,
+        "raw_games": result["games"],
         "metadata": {
             "generated_at": _timestamp(),
             "ml_enabled": ml_enabled,
@@ -251,6 +254,23 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
             lead_payload = LeadCaptureRequest(first_name=first_name, whatsapp=whatsapp, source="user_panel")
             lead_capture = lead_service.capture(lead_payload, ip_address="", user_agent="user_panel")
             result = _generate_user_games(int(count), int(pool_size), ml_enabled)
+            generation_event = save_generation_event(
+                lead_id=int(lead_capture.lead["id"]),
+                generated_games=result.get("raw_games", result["games"]),
+                ml_enabled=ml_enabled,
+                seed=int(result["metadata"]["generated_at"].split()[0].replace("-", "")) if result.get("metadata") else 0,
+                strategy="ranking_hibrido",
+                ranking_score=0.91,
+                execution_time_ms=0.0,
+                target_contest=None,
+                origin="user_panel",
+                generation_mode="ranking_hibrido",
+                context={
+                    "source": "user_panel",
+                    "ml_enabled": bool(ml_enabled),
+                    "pool_size": int(pool_size),
+                },
+            )
         except Exception as exc:
             st.error(str(exc))
             _record_event(events, "geracao_falha", str(exc))
@@ -275,11 +295,68 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
             use_container_width=True,
         )
         _record_event(events, "geracao", f"{len(games)} jogos")
-        st.session_state["user_last_generation"] = {**result, "lead": lead_capture.lead, "lead_normalized_whatsapp": lead_capture.normalized_whatsapp}
+        st.session_state["user_last_generation"] = {
+            **result,
+            "lead": lead_capture.lead,
+            "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
+            "generation_event_id": int(generation_event["id"]),
+        }
 
 
 def render_check_page(events: list[dict[str, Any]]) -> None:
     st.header("Conferir Concurso")
+    smoke_mode = st.checkbox("Simulacao operacional", value=True)
+
+    if smoke_mode:
+        baseline_text = st.text_input(
+            "Baseline de fumaça",
+            value="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+        )
+        generation = st.session_state.get("user_last_generation")
+        if st.button("Validar baseline", type="primary"):
+            try:
+                baseline_numbers = _parse_numbers(baseline_text)
+                if not generation:
+                    raise ValueError("Gere jogos antes de executar a validacao de fumaça.")
+                smoke_result = reconcile_smoke_validation(
+                    generation_event_id=int(generation["generation_event_id"]),
+                    lead_id=int(generation["lead"]["id"]),
+                    generated_games=list(generation["raw_games"]),
+                    baseline_numbers=baseline_numbers,
+                )
+                save_check_event(
+                    lead_id=int(generation["lead"]["id"]),
+                    contest_id=0,
+                    selected_numbers=baseline_numbers,
+                    hits=int(smoke_result["best_hits"]),
+                    result_payload=smoke_result,
+                )
+            except Exception as exc:
+                st.error(str(exc))
+                _record_event(events, "validacao_falha", str(exc))
+                return
+
+            st.success(f"Baseline operacional validada com {smoke_result['best_hits']} acertos.")
+            st.write("Dezenas baseline:", _format_numbers(smoke_result["baseline_numbers"]))
+            st.write("Origem:", smoke_result["source"])
+            recon_df = pd.DataFrame(
+                [
+                    {
+                        "jogo": game["game_index"],
+                        "dezenas": _format_numbers(game["numbers"]),
+                        "acertos": game["hits"],
+                        "coincidentes": _format_numbers(game["matched_numbers"]),
+                        "status": game["prize_status"],
+                        "faixa": game["prize_tier"],
+                    }
+                    for game in smoke_result["reconciled_games"]
+                ]
+            )
+            st.dataframe(recon_df, hide_index=True, use_container_width=True)
+            _record_event(events, "validacao_operacional", f"{smoke_result['best_hits']} acertos")
+            st.session_state["user_last_check"] = smoke_result
+        return
+
     contest_id = st.number_input("Concurso", min_value=1, value=1)
     numbers_text = st.text_input("Dezenas", value="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
 

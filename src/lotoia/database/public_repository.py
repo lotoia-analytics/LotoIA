@@ -82,3 +82,33 @@ def save_check_event(
         hits=hits,
         result_payload=result_payload,
     )
+
+
+def save_reconciliation_run(
+    *,
+    generation_event_id: int,
+    lead_id: int | None,
+    contest_id: int,
+    source: str,
+    status: str,
+    prize_count: int,
+    total_hits: int,
+    best_hits: int,
+    payload: dict[str, Any],
+    games: list[dict[str, Any]],
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    initialize_public_persistence(db_path)
+    repository = ReconciliationRepository(db_path)
+    return repository.insert(
+        generation_event_id=generation_event_id,
+        lead_id=lead_id,
+        contest_id=contest_id,
+        source=source,
+        status=status,
+        prize_count=prize_count,
+        total_hits=total_hits,
+        best_hits=best_hits,
+        payload=payload,
+        games=games,
+    )
