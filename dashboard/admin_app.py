@@ -7,23 +7,20 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
     from labels import LABELS, PAGES  # type: ignore[no-redef]
 
+import io
 import json
 import sqlite3
 import shutil
 import time
 import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from lotoia.calibration.weight_calibrator import (
-    WeightConfiguration,
-    compare_weight_configurations,
-)
 from lotoia.combinatorics import (
     DEFAULT_STAKE_PRICE,
     ExpansionConfig,
@@ -50,16 +47,6 @@ from lotoia.standards import (
     ml_governance_payload,
     operational_event,
     report_payload,
-)
-from lotoia.ml import (
-    InterpretableLinearScoreML,
-    attach_score_ml,
-    calibrate_linear_score_ml,
-    ml_heartbeat,
-    extract_score_ml_features,
-    migrate_score_ml_snapshot,
-    ensure_calibration,
-    supervised_rerank_games,
 )
 from lotoia.reports import generate_backtest_report
 from lotoia.analytics import (
@@ -1251,6 +1238,16 @@ def _distribution_chart_advanced() -> go.Figure:
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int = 24, history_window: int = 180, seed: int = 42) -> dict[str, Any]:
+    from lotoia.ml import (
+        InterpretableLinearScoreML,
+        attach_score_ml,
+        calibrate_linear_score_ml,
+        ensure_calibration,
+        extract_score_ml_features,
+        ml_heartbeat,
+        supervised_rerank_games,
+    )
+
     start_time = time.monotonic()
     result = _safe_backtest(contests=contests, games_count=games_count, pool_size=pool_size, history_window=history_window, seed=seed)
     rows: list[dict[str, Any]] = []
@@ -1464,6 +1461,8 @@ def _observability_tables() -> dict[str, pd.DataFrame]:
 
 
 def _runtime_health() -> dict[str, Any]:
+    from lotoia.ml import ml_heartbeat
+
     logs = _observability_tables()["logs"]
     generation_logs = logs[logs["event_type"] == "generation"] if not logs.empty else pd.DataFrame()
     check_logs = logs[logs["event_type"] == "check"] if not logs.empty else pd.DataFrame()
@@ -2818,8 +2817,70 @@ def _export_csv(path: Path, dataframe: pd.DataFrame) -> Path:
     return path
 
 
+def _save_pdf_report_fallback(path: Path, title: str, lines: list[str], table: pd.DataFrame | None = None) -> Path:
+    del table
+    body_lines = [title, "LotoIA | Statistical Structural Platform | UTC", *lines[:24]]
+    text = "\n".join(body_lines)
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    wrapped = textwrap.wrap(escaped, width=72) or [""]
+
+    stream_lines = ["BT", "/F1 12 Tf", "72 760 Td"]
+    first = True
+    for line in wrapped:
+        if first:
+            stream_lines.append(f"({line}) Tj")
+            first = False
+        else:
+            stream_lines.append("T*")
+            stream_lines.append(f"({line}) Tj")
+    stream_lines.append("ET")
+    stream = "\n".join(stream_lines).encode("latin-1", "ignore")
+
+    objects = []
+    objects.append(b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n")
+    objects.append(b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n")
+    objects.append(
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n"
+    )
+    objects.append(b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n")
+    objects.append(
+        b"5 0 obj << /Length "
+        + str(len(stream)).encode("ascii")
+        + b" >> stream\n"
+        + stream
+        + b"\nendstream endobj\n"
+    )
+
+    output = io.BytesIO()
+    output.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(output.tell())
+        output.write(obj)
+    xref_offset = output.tell()
+    output.write(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.write(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.write(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.write(
+        (
+            "trailer << /Size {size} /Root 1 0 R >>\n"
+            "startxref\n{xref}\n%%EOF\n"
+        ).format(size=len(objects) + 1, xref=xref_offset).encode("ascii")
+    )
+    path.write_bytes(output.getvalue())
+    _record_operational_log("report", "success", 0.0, {"path": str(path), "format": "pdf", "title": title, "fallback": True})
+    return path
+
+
 def _save_pdf_report(path: Path, title: str, lines: list[str], table: pd.DataFrame | None = None) -> Path:
     _ensure_reports_dirs()
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return _save_pdf_report_fallback(path, title, lines, table)
+
     fig, ax = plt.subplots(figsize=(8.27, 11.69))
     ax.axis("off")
     ax.text(0.02, 0.98, title, fontsize=18, fontweight="bold", va="top")
@@ -3162,6 +3223,11 @@ def _cached_backtest(contests: int, games_count: int, pool_size: int, history_wi
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _cached_calibration(weights: dict[str, float], contests: int, games_count: int, pool_size: int, history_window: int, seed: int) -> dict[str, Any]:
+    from lotoia.calibration.weight_calibrator import (
+        WeightConfiguration,
+        compare_weight_configurations,
+    )
+
     official = WeightConfiguration(
         name="oficial",
         duo=FINAL_SCORE_WEIGHTS["duo_score"],
