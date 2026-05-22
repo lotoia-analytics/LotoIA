@@ -207,6 +207,64 @@ def test_user_generation_persists_institutional_event(monkeypatch) -> None:
     assert "raw_games" not in captured["generation"]
 
 
+def test_user_generation_with_ml_enabled_sets_institutional_flag(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _LeadCapture:
+        lead = {"id": 21, "first_name": "Ana"}
+        normalized_whatsapp = "5511999999999"
+
+    class _LeadService:
+        def __init__(self, db_path=None):
+            captured["lead_db_path"] = db_path
+
+        def capture(self, *_args, **_kwargs):
+            return _LeadCapture()
+
+    def _save_generation_event(**kwargs):
+        captured["generation"] = kwargs
+        return {"id": 77}
+
+    monkeypatch.setattr("dashboard.user_app.LeadCaptureService", _LeadService)
+    monkeypatch.setattr("dashboard.user_app.save_generation_event", _save_generation_event)
+    monkeypatch.setattr("dashboard.user_app.st.header", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.info", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.success", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.button", lambda *args, **kwargs: True)
+    monkeypatch.setattr("dashboard.user_app.st.toggle", lambda *args, **kwargs: True)
+    monkeypatch.setattr("dashboard.user_app.st.number_input", lambda *args, **kwargs: 1)
+
+    class _Column:
+        def text_input(self, label, key=None):
+            return "Ana" if "nome" in label.lower() else "5511999999999"
+
+    monkeypatch.setattr("dashboard.user_app.st.columns", lambda count: [_Column() for _ in range(count)])
+    monkeypatch.setattr("dashboard.user_app.st.session_state", {})
+    monkeypatch.setattr("dashboard.user_app.st.write", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.error", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.download_button", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.radio", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.title", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.set_page_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.sidebar", type("Sidebar", (), {"title": lambda self, *a, **k: None, "success": lambda self, *a, **k: None, "radio": lambda self, *a, **k: "Gerar Jogos"})())
+    monkeypatch.setattr(
+        "dashboard.user_app._generate_user_games",
+        lambda count, pool_size, ml_enabled: {
+            "count": 1,
+            "games": [{"ranking": 1, "numbers": list(range(1, 16)), "final_score": 80.0, "quadra_score": {}}],
+            "raw_games": [{"numbers": list(range(1, 16)), "profile_type": "hibrido", "final_score": {"final_score": 80.0}, "quadra_score": {}}],
+            "metadata": {"generated_at": "2026-05-22 00:00:00 UTC"},
+        },
+    )
+
+    render_generate_page([])
+
+    assert captured["generation"]["ml_enabled"] is True
+    assert captured["generation"]["origin"] == "user_panel"
+
+
 def test_user_check_page_supports_smoke_validation(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

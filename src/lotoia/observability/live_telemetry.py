@@ -65,6 +65,9 @@ def build_live_telemetry_snapshot(
         latest_generation = session.execute(
             text("SELECT created_at FROM generation_events ORDER BY created_at DESC, id DESC LIMIT 1")
         ).first()
+        latest_ml_usage = session.execute(
+            text("SELECT created_at FROM ml_usage_events ORDER BY created_at DESC, id DESC LIMIT 1")
+        ).first()
         latest_check = session.execute(
             text("SELECT created_at FROM check_events ORDER BY created_at DESC, id DESC LIMIT 1")
         ).first()
@@ -110,7 +113,7 @@ def build_live_telemetry_snapshot(
             "signal": "ml_usage",
             "value": ml_usage_events,
             "status": "active" if ml_usage_events else "idle",
-            "last_seen": _isoformat(latest_generation[0]) if latest_generation else None,
+            "last_seen": _isoformat(latest_ml_usage[0]) if latest_ml_usage else None,
         },
         {
             "signal": "caixa_sync",

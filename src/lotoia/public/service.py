@@ -161,6 +161,8 @@ def generate_public_games(
             target_contest=target_contest,
             origin=source,
             generation_mode="public_hybrid_statistical_v1",
+            first_name=str(lead["first_name"]),
+            whatsapp=str(lead["whatsapp"]),
             context={
                 "source": source,
                 "user_agent": user_agent,

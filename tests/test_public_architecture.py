@@ -179,6 +179,7 @@ def test_generate_public_games_persists_generation_and_games(tmp_path: Path) -> 
         assert session.execute(text("select count(*) from ml_usage_events")).scalar() == 1
         assert session.execute(text("select count(*) from generated_games")).scalar() == 2
         row = session.execute(text("select target_contest, origin, generation_mode, context_json from generated_games order by id limit 1")).first()
+        generation_row = session.execute(text("select first_name, whatsapp, ml_enabled from generation_events order by id limit 1")).first()
 
     assert response["metadata"]["target_contest"] is not None
     assert response["metadata"]["execution_id"].startswith("exec-")
@@ -186,12 +187,30 @@ def test_generate_public_games_persists_generation_and_games(tmp_path: Path) -> 
     assert row[1] == "public_api"
     assert row[2] == "public_hybrid_statistical_v1"
     assert "target_contest" in row[3]
+    assert generation_row is not None
+    assert generation_row[0] == "Ana"
+    assert generation_row[1] == "11999999999"
+    assert generation_row[2] == 1
     with get_session(db_path) as session:
         assert session.execute(text("select count(*) from runtime_executions")).scalar() == 1
         assert session.execute(text("select count(*) from runtime_spans")).scalar() == 1
         assert session.execute(text("select count(*) from runtime_metrics")).scalar() >= 1
         assert session.execute(text("select count(*) from runtime_lineage")).scalar() >= 1
         assert session.execute(text("select count(*) from runtime_snapshots")).scalar() >= 1
+
+
+def test_public_generation_with_ml_enabled_records_ml_usage_event(tmp_path: Path) -> None:
+    response = generate_public_games(
+        PublicGenerationRequest(first_name="Ana", whatsapp="11999999999", ml_enabled=True),
+        db_path=tmp_path / "lotoia.db",
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+        active_limiter=PublicLimiter(cooldown_seconds=0),
+    )
+
+    assert response["metadata"]["ml_enabled"] is True
+    with get_session(tmp_path / "lotoia.db") as session:
+        assert session.execute(text("select count(*) from ml_usage_events")).scalar() == 1
 
 
 def test_check_public_contest_is_readonly_and_persists_event(tmp_path: Path) -> None:
