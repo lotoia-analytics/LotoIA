@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from lotoia.database.database import DEFAULT_DATABASE_PATH
+
 from .live_telemetry import build_live_telemetry_snapshot
 from .operational_health import build_operational_health_snapshot
 
@@ -38,8 +40,9 @@ def build_runtime_storytelling(
     *,
     limit: int = 50,
 ) -> dict[str, Any]:
-    telemetry = build_live_telemetry_snapshot(db_path=db_path, limit=limit)
-    health = build_operational_health_snapshot(db_path=db_path, limit=limit)
+    resolved_db_path = db_path or DEFAULT_DATABASE_PATH
+    telemetry = build_live_telemetry_snapshot(db_path=resolved_db_path, limit=limit)
+    health = build_operational_health_snapshot(db_path=resolved_db_path, limit=limit)
 
     active_signals = telemetry.get("live_signals", [])
     signal_count = sum(1 for item in active_signals if item.get("status") == "active")
@@ -81,7 +84,7 @@ def build_runtime_storytelling(
 
     snapshot = RuntimeStorySnapshot(
         created_at=datetime.now(UTC),
-        source=str(db_path) if db_path else "",
+        source=str(resolved_db_path),
         headline=headline,
         summary={
             "telemetry_status": telemetry.get("summary", {}).get("telemetry_status", "-"),

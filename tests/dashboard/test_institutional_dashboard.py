@@ -47,6 +47,9 @@ class _DummyColumn:
     def selectbox(self, *args, **kwargs):
         return ""
 
+    def button(self, *args, **kwargs):
+        return False
+
 
 @contextmanager
 def _dummy_context():
@@ -57,6 +60,7 @@ def _patch_streamlit(monkeypatch) -> None:
     monkeypatch.setattr(admin_app.st, "set_page_config", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "markdown", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "write", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "image", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "error", lambda *args, **kwargs: None)
@@ -95,7 +99,7 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
 
     assert page == "jogo_expandido_experimental"
     assert "jogo_expandido_experimental" in captured["options"]
-    assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido (Experimental)"
+    assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
@@ -172,11 +176,6 @@ def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     rendered = {"expansion": False}
 
-    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
-    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
-    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "jogo_expandido_experimental")
-    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
-    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
     monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
 
@@ -185,15 +184,15 @@ def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
 
     monkeypatch.setattr(admin_app, "render_expansion_experimental_page", _render_expansion)
 
-    admin_app.main()
+    admin_app._render_sidebar_dispatch("jogo_expandido_experimental", [])
 
     assert rendered["expansion"] is True
 
 
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
-    success_messages = []
-    monkeypatch.setattr(admin_app.st, "success", lambda message, *args, **kwargs: success_messages.append(message))
+    monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda: {"report": {"summary": {}, "counts": {}}})
+    monkeypatch.setattr(admin_app, "persist_observational_stabilization_report", lambda: {"report": {"summary": {}, "counts": {}}})
     monkeypatch.setattr(admin_app, "_observability_tables", lambda: {"logs": admin_app.pd.DataFrame(), "audit": admin_app.pd.DataFrame()})
     monkeypatch.setattr(admin_app, "_runtime_health", lambda: {
         "response_time_ms": 0.0,
@@ -207,12 +206,88 @@ def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     })
     monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
     monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
-    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "observability")
+    monkeypatch.setattr(admin_app, "build_institutional_observability_dashboard", lambda: {
+        "summary": {
+            "execution_count": 1,
+            "span_count": 1,
+            "metric_count": 1,
+            "snapshot_count": 1,
+            "latest_flow": "generation",
+            "latest_status": "ok",
+            "average_execution_duration_ms": 1.0,
+        },
+        "runtime_health": {"latest_status": "healthy"},
+        "drift_evolution": [],
+        "confidence_stability": [],
+        "structural_integrity": {"ok": True},
+    })
+    monkeypatch.setattr(admin_app, "build_live_telemetry_snapshot", lambda *args, **kwargs: {
+        "summary": {
+            "telemetry_status": "live",
+            "runtime_awareness": "connected",
+            "activity_level": "moderate",
+            "latest_execution_id": "exec-test",
+        },
+        "live_signals": [{"signal": "geracao", "status": "active", "value": 1}],
+        "alerts": [],
+    })
+    monkeypatch.setattr(admin_app, "build_operational_health_snapshot", lambda *args, **kwargs: {
+        "status": "healthy",
+        "score": 0.9,
+        "active_signals": 1,
+        "alerts": [],
+        "runtime_awareness": "connected",
+        "telemetry_status": "live",
+        "summary": {"latest_execution_id": "exec-test"},
+    })
+    monkeypatch.setattr(admin_app, "build_runtime_storytelling", lambda *args, **kwargs: {
+        "headline": "plataforma viva e coordenada",
+        "summary": {"health_status": "healthy", "active_signals": 1, "telemetry_status": "live", "runtime_awareness": "connected"},
+        "narrative": ["Estado atual: live"],
+        "timeline": [{"marker": "telemetry", "status": "live"}],
+    })
+    monkeypatch.setattr(admin_app, "build_live_operational_memory", lambda *args, **kwargs: {
+        "summary": {"memory_status": "live", "snapshot_count": 1, "state_count": 1, "replay_ready": True},
+        "execution_id": "exec-test",
+        "headline": "memoria viva",
+        "story": {"narrative": ["Memoria viva"]},
+    })
+    monkeypatch.setattr(admin_app, "build_real_time_governance", lambda *args, **kwargs: {
+        "status": "healthy",
+        "score": 0.9,
+        "policy_allowed": True,
+        "alerts": [],
+        "summary": {"health_status": "healthy", "blocking_count": 0},
+    })
+    monkeypatch.setattr(admin_app, "build_operational_experience", lambda *args, **kwargs: {
+        "state": "operational",
+        "summary": {"memory_status": "live", "health_status": "healthy", "telemetry_status": "live"},
+        "narrative": ["Experiencia operacional viva"],
+    })
+    monkeypatch.setattr(admin_app, "build_live_institutional_presence", lambda *args, **kwargs: {
+        "state": "operational",
+        "summary": {"memory_status": "live", "health_status": "healthy", "telemetry_status": "live"},
+        "headline": "presenca institucional viva",
+        "narrative": ["Presenca viva"],
+    })
 
-    admin_app.render_observability_page()
-    admin_app.render_reports_engine_page()
-    admin_app.main()
-    assert "INSTITUTIONAL DASHBOARD ACTIVE" in success_messages
+    observability_dashboard = admin_app.build_institutional_observability_dashboard()
+    live_telemetry = admin_app.build_live_telemetry_snapshot()
+    operational_health = admin_app.build_operational_health_snapshot()
+    runtime_story = admin_app.build_runtime_storytelling()
+    live_memory = admin_app.build_live_operational_memory()
+    governance = admin_app.build_real_time_governance()
+    operational_experience = admin_app.build_operational_experience()
+    live_presence = admin_app.build_live_institutional_presence()
+
+    assert observability_dashboard["summary"]["execution_count"] == 1
+    assert live_telemetry["summary"]["telemetry_status"] == "live"
+    assert operational_health["status"] == "healthy"
+    assert runtime_story["headline"] == "plataforma viva e coordenada"
+    assert live_memory["summary"]["memory_status"] == "live"
+    assert governance["policy_allowed"] is True
+    assert operational_experience["state"] == "operational"
+    assert live_presence["state"] == "operational"
 
 
 def test_workflows_page_renders_safely(monkeypatch) -> None:

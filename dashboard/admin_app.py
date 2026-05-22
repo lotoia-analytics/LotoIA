@@ -98,6 +98,7 @@ from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
     build_operational_experience,
+    build_live_institutional_presence,
     build_live_operational_memory,
     build_live_telemetry_snapshot,
     build_operational_health_snapshot,

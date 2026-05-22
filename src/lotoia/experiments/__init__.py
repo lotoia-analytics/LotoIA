@@ -1,39 +1,9 @@
 """Scientific experiment governance primitives for LotoIA."""
 
-from lotoia.experiments.temporal_governance import (
-    ExperimentConsistencyReport,
-    TemporalSplit,
-    build_walk_forward_splits,
-    validate_experiment_manifest,
-    validate_supervised_rows,
-    validate_temporal_integrity,
-    validate_train_test_separation,
-)
-from lotoia.experiments.supervised_dataset import (
-    SUPERVISED_DATASET_REGISTRY_VERSION,
-    SUPERVISED_DATASET_STATUS,
-    SupervisedSampleBoundary,
-    validate_dataset_lineage,
-    validate_feature_manifest,
-    validate_supervised_dataset_manifest,
-    validate_supervised_dataset_registry,
-    validate_supervised_sample_boundaries,
-    validate_target_manifest,
-    validate_temporal_feature_contract,
-)
-from lotoia.experiments.supervised_scoring import (
-    SUPERVISED_SCORING_REGISTRY_VERSION,
-    SUPERVISED_SCORING_STATUS,
-    validate_score_ml_manifest,
-    validate_score_ml_rows,
-    validate_supervised_scoring_registry,
-)
-from lotoia.experiments.longitudinal_baseline import (
-    DEFAULT_CHECKPOINTS,
-    DEFAULT_LONGITUDINAL_DIR,
-    LongitudinalBaselineResult,
-    run_longitudinal_baseline,
-)
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     "ExperimentConsistencyReport",
@@ -63,3 +33,42 @@ __all__ = [
     "validate_train_test_separation",
     "run_longitudinal_baseline",
 ]
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "ExperimentConsistencyReport": ("lotoia.experiments.temporal_governance", "ExperimentConsistencyReport"),
+    "TemporalSplit": ("lotoia.experiments.temporal_governance", "TemporalSplit"),
+    "build_walk_forward_splits": ("lotoia.experiments.temporal_governance", "build_walk_forward_splits"),
+    "validate_experiment_manifest": ("lotoia.experiments.temporal_governance", "validate_experiment_manifest"),
+    "validate_supervised_rows": ("lotoia.experiments.temporal_governance", "validate_supervised_rows"),
+    "validate_temporal_integrity": ("lotoia.experiments.temporal_governance", "validate_temporal_integrity"),
+    "validate_train_test_separation": ("lotoia.experiments.temporal_governance", "validate_train_test_separation"),
+    "SUPERVISED_DATASET_REGISTRY_VERSION": ("lotoia.experiments.supervised_dataset", "SUPERVISED_DATASET_REGISTRY_VERSION"),
+    "SUPERVISED_DATASET_STATUS": ("lotoia.experiments.supervised_dataset", "SUPERVISED_DATASET_STATUS"),
+    "SupervisedSampleBoundary": ("lotoia.experiments.supervised_dataset", "SupervisedSampleBoundary"),
+    "validate_dataset_lineage": ("lotoia.experiments.supervised_dataset", "validate_dataset_lineage"),
+    "validate_feature_manifest": ("lotoia.experiments.supervised_dataset", "validate_feature_manifest"),
+    "validate_supervised_dataset_manifest": ("lotoia.experiments.supervised_dataset", "validate_supervised_dataset_manifest"),
+    "validate_supervised_dataset_registry": ("lotoia.experiments.supervised_dataset", "validate_supervised_dataset_registry"),
+    "validate_supervised_sample_boundaries": ("lotoia.experiments.supervised_dataset", "validate_supervised_sample_boundaries"),
+    "validate_target_manifest": ("lotoia.experiments.supervised_dataset", "validate_target_manifest"),
+    "validate_temporal_feature_contract": ("lotoia.experiments.supervised_dataset", "validate_temporal_feature_contract"),
+    "SUPERVISED_SCORING_REGISTRY_VERSION": ("lotoia.experiments.supervised_scoring", "SUPERVISED_SCORING_REGISTRY_VERSION"),
+    "SUPERVISED_SCORING_STATUS": ("lotoia.experiments.supervised_scoring", "SUPERVISED_SCORING_STATUS"),
+    "validate_score_ml_manifest": ("lotoia.experiments.supervised_scoring", "validate_score_ml_manifest"),
+    "validate_score_ml_rows": ("lotoia.experiments.supervised_scoring", "validate_score_ml_rows"),
+    "validate_supervised_scoring_registry": ("lotoia.experiments.supervised_scoring", "validate_supervised_scoring_registry"),
+    "DEFAULT_CHECKPOINTS": ("lotoia.experiments.longitudinal_baseline", "DEFAULT_CHECKPOINTS"),
+    "DEFAULT_LONGITUDINAL_DIR": ("lotoia.experiments.longitudinal_baseline", "DEFAULT_LONGITUDINAL_DIR"),
+    "LongitudinalBaselineResult": ("lotoia.experiments.longitudinal_baseline", "LongitudinalBaselineResult"),
+    "run_longitudinal_baseline": ("lotoia.experiments.longitudinal_baseline", "run_longitudinal_baseline"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    module_name, attr_name = _EXPORTS[name]
+    module = import_module(module_name)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
