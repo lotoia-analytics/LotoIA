@@ -25,4 +25,5 @@
 - [x] Entry point import policy is documented.
 - [x] ADR-021, ADR-022, and ADR-023 remain in place.
 - [x] Runtime validation stays separate from scientific logic.
-
+- [x] Mission 28 maintenance policy is documented.
+- [x] Institutional maintenance is governed as a recurring practice.
