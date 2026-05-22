@@ -86,6 +86,7 @@ from lotoia.assistance import build_adaptive_assistance_memory
 from lotoia.assistance import build_human_analytical_language
 from lotoia.assistance import build_institutional_support_experience
 from lotoia.assistance import build_assistance_governance
+from lotoia.assistance import build_full_executive_assistance_presence
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2277,6 +2278,20 @@ def render_observability_page() -> None:
         if assistance_governance.get("rules"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(assistance_governance.get("rules", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        full_presence = build_full_executive_assistance_presence()
+        st.subheader("Presenca executiva final")
+        full_cols = st.columns(4)
+        full_cols[0].metric("Estado", full_presence.get("state", "-"))
+        full_cols[1].metric("Suporte", full_presence.get("summary", {}).get("support_state", "-"))
+        full_cols[2].metric("Governanca", full_presence.get("summary", {}).get("governance_state", "-"))
+        full_cols[3].metric("Linguagem", full_presence.get("summary", {}).get("language_state", "-"))
+        st.caption(" | ".join(full_presence.get("narrative", [])))
+        if full_presence.get("presence"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(full_presence.get("presence", []))),
                 hide_index=True,
                 use_container_width=True,
             )

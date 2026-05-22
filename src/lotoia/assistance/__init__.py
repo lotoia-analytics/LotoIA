@@ -6,6 +6,7 @@ from .adaptive_memory import build_adaptive_assistance_memory, AdaptiveAssistanc
 from .human_language import build_human_analytical_language, HumanAnalyticalLanguageSnapshot
 from .institutional_support_experience import build_institutional_support_experience, InstitutionalSupportExperienceSnapshot
 from .governance import build_assistance_governance, AssistanceGovernanceSnapshot
+from .full_presence import build_full_executive_assistance_presence, FullExecutiveAssistancePresenceSnapshot
 from .executive_assistance import build_executive_assistance, ExecutiveAssistanceSnapshot
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "ExplainableAnalyticsSnapshot",
     "ExecutiveAssistanceSnapshot",
     "ExecutiveSummarySnapshot",
+    "FullExecutiveAssistancePresenceSnapshot",
     "HumanAnalyticalLanguageSnapshot",
     "InstitutionalSupportExperienceSnapshot",
     "OperationalGuidanceSnapshot",
@@ -24,6 +26,7 @@ __all__ = [
     "build_explainable_analytics",
     "build_executive_assistance",
     "build_executive_summary",
+    "build_full_executive_assistance_presence",
     "build_institutional_support_experience",
     "build_human_analytical_language",
     "build_operational_guidance",
