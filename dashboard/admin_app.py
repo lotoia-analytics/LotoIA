@@ -78,6 +78,7 @@ from lotoia.analytics import (
     publish_adaptive_institutional_intelligence,
 )
 from lotoia.assistance import build_executive_assistance
+from lotoia.assistance import build_contextual_recommendations
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2157,6 +2158,20 @@ def render_observability_page() -> None:
             )
         if assistance.get("guidance"):
             st.write(" | ".join(assistance.get("guidance", [])))
+        recommendations = build_contextual_recommendations()
+        st.subheader("Recomendacoes contextuais")
+        rec_cols = st.columns(4)
+        rec_cols[0].metric("Estado", recommendations.get("state", "-"))
+        rec_cols[1].metric("Presenca", recommendations.get("summary", {}).get("presence", "-"))
+        rec_cols[2].metric("Historico", recommendations.get("summary", {}).get("historical_trend", "-"))
+        rec_cols[3].metric("Saude", recommendations.get("summary", {}).get("health_status", "-"))
+        st.caption(" | ".join(recommendations.get("explanation", [])))
+        if recommendations.get("recommendations"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(recommendations.get("recommendations", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
         timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
         memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
         st.subheader("Linha temporal executiva da memória")
