@@ -4484,7 +4484,7 @@ def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
-    generation_row = _sqlite_execute_safe(
+    generation_cursor = _sqlite_execute_safe(
         """
         SELECT
             generation_event_id,
@@ -4497,8 +4497,9 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
         LIMIT 1
         """
     )
+    generation_row = generation_cursor.fetchone() if generation_cursor is not None else None
     if generation_row is None:
-        generation_row = _sqlite_execute_safe(
+        generation_cursor = _sqlite_execute_safe(
             """
             SELECT
                 id AS generation_event_id,
@@ -4511,6 +4512,7 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
             LIMIT 1
             """
         )
+        generation_row = generation_cursor.fetchone() if generation_cursor is not None else None
     if generation_row is None:
         return None
 
