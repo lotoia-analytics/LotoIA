@@ -15,7 +15,6 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
-from lotoia.generator.basic_generator import generate_best_games
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
 MAX_GAMES_PER_SESSION = 10
@@ -47,6 +46,8 @@ def _parse_numbers(text: str) -> list[int]:
 
 
 def _generate_user_games(count: int, pool_size: int, ml_enabled: bool) -> dict[str, Any]:
+    from lotoia.generator.basic_generator import generate_best_games
+
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
     if count > MAX_GAMES_PER_SESSION:
