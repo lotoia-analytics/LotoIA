@@ -5,16 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from lotoia.backtesting import run_backtest
-from lotoia.benchmark import run_benchmark
-from lotoia.calibration import WeightConfiguration, compare_weight_configurations
-from lotoia.analytics import publish_adaptive_institutional_intelligence, publish_institutional_analytics
 from lotoia.database import DEFAULT_DATABASE_PATH, ContestRepository, create_database, list_runs
+from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from lotoia.ingestion.result_sync_service import ResultSyncService
-from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
-from lotoia.observability import persist_observational_stabilization_report
-from lotoia.reports import generate_backtest_report
-from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +23,8 @@ def run_basic_analysis_cli() -> None:
 
 
 def run_backtest_cli(argv: list[str] | None = None) -> None:
+    from lotoia.backtesting import run_backtest
+
     parser = argparse.ArgumentParser(description="Executa backtesting historico do LotoIA.")
     parser.add_argument("--contests", type=int, default=5, help="Quantidade de concursos analisados.")
     parser.add_argument("--games", type=int, default=5, help="Quantidade de jogos por concurso.")
@@ -49,6 +44,8 @@ def run_backtest_cli(argv: list[str] | None = None) -> None:
 
 
 def run_benchmark_cli(argv: list[str] | None = None) -> None:
+    from lotoia.benchmark import run_benchmark
+
     parser = argparse.ArgumentParser(description="Executa benchmark cientifico do LotoIA.")
     parser.add_argument("--contests", type=int, default=5)
     parser.add_argument("--games", type=int, default=5)
@@ -95,6 +92,9 @@ def show_runs_cli() -> None:
 
 
 def run_weight_calibration_cli(argv: list[str] | None = None) -> None:
+    from lotoia.calibration import WeightConfiguration, compare_weight_configurations
+    from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
+
     parser = argparse.ArgumentParser(description="Compara configuracoes de pesos do LotoIA.")
     parser.add_argument("--contests", type=int, default=3)
     parser.add_argument("--games", type=int, default=3)
@@ -115,6 +115,11 @@ def run_weight_calibration_cli(argv: list[str] | None = None) -> None:
 
 
 def run_reports_cli(argv: list[str] | None = None) -> None:
+    from lotoia.backtesting import run_backtest
+    from lotoia.calibration import WeightConfiguration, compare_weight_configurations
+    from lotoia.reports import generate_backtest_report
+    from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
+
     parser = argparse.ArgumentParser(description="Gera relatorios analiticos do LotoIA.")
     parser.add_argument("--contests", type=int, default=3)
     parser.add_argument("--games", type=int, default=3)
@@ -144,6 +149,8 @@ def run_reports_cli(argv: list[str] | None = None) -> None:
 
 
 def run_institutional_analytics_cli(argv: list[str] | None = None) -> None:
+    from lotoia.analytics import publish_institutional_analytics
+
     parser = argparse.ArgumentParser(description="Publica a memoria analitica institucional do LotoIA.")
     parser.add_argument("--report-dir", type=Path, default=Path("reports") / "analytics")
     parser.add_argument(
@@ -176,6 +183,8 @@ def run_institutional_analytics_cli(argv: list[str] | None = None) -> None:
 
 
 def run_observational_stabilization_cli(argv: list[str] | None = None) -> None:
+    from lotoia.observability import persist_observational_stabilization_report
+
     parser = argparse.ArgumentParser(description="Gera o relatorio de estabilizacao observacional do LotoIA.")
     parser.add_argument("--report-path", type=Path, default=Path("reports") / "observability" / "observational_stabilization.json")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
@@ -196,7 +205,22 @@ def run_result_sync_cli(argv: list[str] | None = None) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def run_result_sync_scheduler_cli(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Executa o monitor automatico da sincronizacao oficial da Caixa.")
+    parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--stop-after-first-success", action="store_true")
+    args = parser.parse_args(argv)
+
+    scheduler = ResultSyncScheduler()
+    scheduler.run_forever(
+        poll_seconds=args.poll_seconds,
+        stop_after_first_success=bool(args.stop_after_first_success),
+    )
+
+
 def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
+    from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
+
     parser = argparse.ArgumentParser(description="Executa o fechamento operacional completo do LotoIA.")
     parser.add_argument("--contest-id", type=int, required=True)
     parser.add_argument("--generation-event-id", type=int, required=True)
@@ -224,6 +248,8 @@ def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
 
 
 def run_adaptive_institutional_intelligence_cli(argv: list[str] | None = None) -> None:
+    from lotoia.analytics import publish_adaptive_institutional_intelligence
+
     parser = argparse.ArgumentParser(description="Publica a inteligencia institucional adaptativa do LotoIA.")
     parser.add_argument("--report-dir", type=Path, default=Path("reports") / "analytics")
     parser.add_argument(
@@ -253,6 +279,9 @@ def run_adaptive_institutional_intelligence_cli(argv: list[str] | None = None) -
 
 
 def _official_configuration() -> WeightConfiguration:
+    from lotoia.calibration import WeightConfiguration
+    from lotoia.statistics.advanced import FINAL_SCORE_WEIGHTS
+
     return WeightConfiguration(
         name="official",
         duo=FINAL_SCORE_WEIGHTS["duo_score"],
@@ -267,6 +296,8 @@ def _official_configuration() -> WeightConfiguration:
 
 
 def _balanced_configuration() -> WeightConfiguration:
+    from lotoia.calibration import WeightConfiguration
+
     return WeightConfiguration("balanced_experimental", 12, 16, 20, 18, 12, 10, 6, 6)
 
 
