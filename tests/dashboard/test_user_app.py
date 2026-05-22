@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from dashboard.user_app import (
@@ -139,3 +141,14 @@ def test_user_generation_requires_lead(monkeypatch) -> None:
     render_generate_page([])
 
     assert captured == {}
+
+
+def test_user_app_import_is_lightweight() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import dashboard.user_app"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
