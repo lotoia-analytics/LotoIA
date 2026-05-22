@@ -392,6 +392,26 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
         try:
             numbers = _parse_numbers(numbers_text)
             result = _check_user_contest(int(contest_id), numbers)
+            lead_service = _build_lead_service()
+            lead_payload = LeadCaptureRequest(first_name=first_name, whatsapp=whatsapp, source="user_panel")
+            lead_capture = lead_service.capture(lead_payload, ip_address="", user_agent="user_panel")
+            save_check_event(
+                lead_id=int(lead_capture.lead["id"]),
+                contest_id=int(contest_id),
+                selected_numbers=numbers,
+                hits=int(result["hits"]),
+                result_payload={
+                    "contest_id": int(contest_id),
+                    "execution_time_ms": 0.0,
+                    "source": "user_panel",
+                    "user_agent": "user_panel",
+                    "correct_numbers": result["correct_numbers"],
+                    "selected_numbers": numbers,
+                    "hits": int(result["hits"]),
+                    "contest": int(result["contest"]),
+                },
+                db_path=USER_DB_PATH,
+            )
         except Exception as exc:
             st.error(str(exc))
             _record_event(events, "conferencia_falha", str(exc))
