@@ -34,6 +34,28 @@ class OperationalExperienceSnapshot:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class LiveInstitutionalPresenceSnapshot:
+    created_at: datetime
+    source: str
+    presence: str
+    summary: dict[str, Any]
+    experience: dict[str, Any]
+    narrative: list[str]
+    metadata: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "created_at": self.created_at.isoformat(),
+            "source": self.source,
+            "presence": self.presence,
+            "summary": self.summary,
+            "experience": self.experience,
+            "narrative": self.narrative,
+            "metadata": self.metadata,
+        }
+
+
 def build_operational_experience(
     db_path: Path | None = None,
     *,
@@ -74,6 +96,47 @@ def build_operational_experience(
             "layer": "operational_experience_live",
             "governed": governance.get("status") == "governed",
             "memory_ready": memory.get("summary", {}).get("memory_status") == "live",
+        },
+    )
+    return snapshot.to_dict()
+
+
+def build_live_institutional_presence(
+    db_path: Path | None = None,
+    *,
+    limit: int = 50,
+) -> dict[str, Any]:
+    effective_db_path = db_path or DEFAULT_DATABASE_PATH
+    operational_experience = build_operational_experience(effective_db_path, limit=limit)
+    memory = operational_experience.get("experience", {}).get("memory", {})
+    governance = operational_experience.get("experience", {}).get("governance", {})
+    story = operational_experience.get("experience", {}).get("story", {})
+    presence = "fully_live" if operational_experience.get("state") == "live" else "live_monitoring"
+    narrative = [
+        f"Presenca institucional: {presence}",
+        f"Estado operacional: {operational_experience.get('state', '-')}",
+        f"Memoria: {memory.get('summary', {}).get('snapshot_count', 0)} snapshots",
+        f"Governanca: {governance.get('status', '-')}",
+        f"Headline: {story.get('headline', '-')}",
+    ]
+    snapshot = LiveInstitutionalPresenceSnapshot(
+        created_at=datetime.now(UTC),
+        source=str(effective_db_path),
+        presence=presence,
+        summary={
+            "presence": presence,
+            "state": operational_experience.get("state", "-"),
+            "memory_status": memory.get("summary", {}).get("memory_status", "-"),
+            "health_status": governance.get("summary", {}).get("health_status", "-"),
+            "telemetry_status": story.get("summary", {}).get("telemetry_status", "-"),
+            "replay_ready": memory.get("summary", {}).get("replay_ready", False),
+        },
+        experience=operational_experience,
+        narrative=narrative,
+        metadata={
+            "layer": "live_institutional_presence",
+            "operational_state": operational_experience.get("state", "-"),
+            "governed": governance.get("status") == "governed",
         },
     )
     return snapshot.to_dict()
