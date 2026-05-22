@@ -3605,7 +3605,7 @@ def _persist_generation_events(
 
 
 def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, str]:
-    lead_service = LeadCaptureService(DEFAULT_DATABASE_PATH)
+    lead_service = LeadCaptureService(DB_PATH)
     lead_payload = LeadCaptureRequest(
         first_name=first_name,
         whatsapp=whatsapp,

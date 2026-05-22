@@ -15,7 +15,10 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+from lotoia.database.contest_repository import ContestRepository
+from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
+from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.database.public_repository import save_check_event, save_generation_event
 from lotoia.public.reconciliation import reconcile_smoke_validation
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
@@ -26,6 +29,7 @@ DEFAULT_POOL_SIZE = 20
 ONLINE_MARKER = "USER PANEL ONLINE"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+USER_DB_PATH = PROJECT_ROOT / DEFAULT_DATABASE_PATH
 
 
 def _timestamp() -> str:
@@ -133,7 +137,10 @@ def _recent_history_dataframe(events: list[dict[str, Any]]) -> pd.DataFrame:
 
 
 def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
-    scheduler = ResultSyncScheduler()
+    contest_repository = ContestRepository(USER_DB_PATH)
+    scheduler = ResultSyncScheduler(
+        service=ResultSyncService(repository=contest_repository),
+    )
     summaries = scheduler.run_due_checks()
     if any(summary.synced_contests for summary in summaries):
         try:
@@ -235,6 +242,13 @@ def _refresh_institutional_usage_views() -> None:
         pass
 
 
+def _build_lead_service() -> LeadCaptureService:
+    try:
+        return LeadCaptureService(db_path=USER_DB_PATH)
+    except TypeError:
+        return LeadCaptureService()
+
+
 def render_generate_page(events: list[dict[str, Any]]) -> None:
     st.header("Gerar Jogos")
     st.markdown(
@@ -257,7 +271,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
 
     if st.button("Gerar", type="primary", disabled=not lead_ready):
         try:
-            lead_service = LeadCaptureService()
+            lead_service = _build_lead_service()
             lead_payload = LeadCaptureRequest(first_name=first_name, whatsapp=whatsapp, source="user_panel")
             lead_capture = lead_service.capture(lead_payload, ip_address="", user_agent="user_panel")
             result = _generate_user_games(int(count), int(pool_size), ml_enabled)
@@ -279,6 +293,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
                 },
                 first_name=lead_capture.lead["first_name"],
                 whatsapp=lead_capture.normalized_whatsapp,
+                db_path=USER_DB_PATH,
             )
         except Exception as exc:
             st.error(str(exc))
@@ -333,6 +348,7 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
                     lead_id=int(generation["lead"]["id"]),
                     generated_games=list(generation["raw_games"]),
                     baseline_numbers=baseline_numbers,
+                    db_path=USER_DB_PATH,
                 )
                 save_check_event(
                     lead_id=int(generation["lead"]["id"]),
@@ -340,6 +356,7 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
                     selected_numbers=baseline_numbers,
                     hits=int(smoke_result["best_hits"]),
                     result_payload=smoke_result,
+                    db_path=USER_DB_PATH,
                 )
             except Exception as exc:
                 st.error(str(exc))
