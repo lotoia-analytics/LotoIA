@@ -13,7 +13,6 @@ PAGES = getattr(_labels_module, "PAGES", [])
 MODE_PAGES = {
     "operacional": [
         "geracao_jogos",
-        "historico_experimental",
         "reconciliacao_operacional",
         "jogo_expandido_experimental",
         "workflows",
@@ -25,12 +24,8 @@ MODE_PAGES = {
         "relatorios",
         "ml_governance",
         "observability",
-        "historico_experimental",
-        "calibracao_experimental",
-        "benchmark_cientifico",
         "historical_intelligence",
         "conferir_jogos",
-        "reports_engine",
     ],
 }
 

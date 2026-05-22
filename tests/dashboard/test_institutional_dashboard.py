@@ -135,13 +135,17 @@ def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
 
 
 def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
-    assert admin_app.MODE_PAGES["operacional"][:3] == [
+    assert admin_app.MODE_PAGES["operacional"][:4] == [
         "geracao_jogos",
-        "historico_experimental",
         "reconciliacao_operacional",
+        "jogo_expandido_experimental",
+        "workflows",
     ]
-    assert admin_app.MODE_PAGES["operacional"][-1] == "workflows"
     assert admin_app.PAGES[0] == "geracao_jogos"
+    assert "historico_experimental" not in admin_app.MODE_PAGES["operacional"]
+    assert "calibracao_experimental" not in admin_app.MODE_PAGES["analitico"]
+    assert "benchmark_cientifico" not in admin_app.MODE_PAGES["analitico"]
+    assert "reports_engine" not in admin_app.MODE_PAGES["analitico"]
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
