@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dashboard.user_app import (
     ONLINE_MARKER,
+    USER_DB_PATH,
     _build_light_report_pdf,
     _check_user_contest,
     _generate_user_games,
@@ -153,6 +154,9 @@ def test_user_generation_persists_institutional_event(monkeypatch) -> None:
         normalized_whatsapp = "5511999999999"
 
     class _LeadService:
+        def __init__(self, db_path=None):
+            captured["lead_db_path"] = db_path
+
         def capture(self, *_args, **_kwargs):
             return _LeadCapture()
 
@@ -196,6 +200,7 @@ def test_user_generation_persists_institutional_event(monkeypatch) -> None:
 
     render_generate_page([])
 
+    assert captured["lead_db_path"] == USER_DB_PATH
     assert captured["generation"]["origin"] == "user_panel"
     assert captured["generation"]["lead_id"] == 21
     assert len(captured["generation"]["generated_games"]) == 1
