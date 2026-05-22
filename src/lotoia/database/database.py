@@ -191,6 +191,31 @@ class ReportEvent(Base):
     )
 
 
+class ExpansionEvent(Base):
+    __tablename__ = "expansion_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True)
+    generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    origin: Mapped[str] = mapped_column(String, default="expanded", nullable=False)
+    expansion_type: Mapped[str] = mapped_column(String, default="expanded", nullable=False)
+    expansion_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    runtime_origin: Mapped[str] = mapped_column(String, default="", nullable=False)
+    strategy_profile: Mapped[str] = mapped_column(String, default="", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_expansion_events_created_at", "created_at"),
+        Index("ix_expansion_events_lead_id", "lead_id"),
+        Index("ix_expansion_events_generation_event_id", "generation_event_id"),
+        Index("ix_expansion_events_expansion_type", "expansion_type"),
+    )
+
+
 class ImportedContest(Base):
     __tablename__ = "imported_contests"
 

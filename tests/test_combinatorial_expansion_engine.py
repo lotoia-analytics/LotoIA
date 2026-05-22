@@ -5,6 +5,8 @@ from pathlib import Path
 from lotoia.combinatorics import ExpansionConfig, expand_lotofacil_numbers, estimate_expansion
 from lotoia.combinatorics.expansion_engine import iter_lotofacil_combinations
 from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
+from lotoia.database.public_repository import save_expansion_event as save_institutional_expansion_event
+from lotoia.public.persistence.repositories import ExpansionEventRepository
 
 
 def test_lotofacil_expansion_counts_are_official() -> None:
@@ -76,3 +78,39 @@ def test_expansion_store_persists_operational_event(tmp_path: Path) -> None:
     assert event_id == 1
     assert events[0]["total_combinations"] == 16
     assert events[0]["estimated_cost"] == 56.0
+
+
+def test_institutional_expansion_event_persists_operational_payload(tmp_path: Path) -> None:
+    db_path = tmp_path / "institutional.db"
+    payload = {
+        "origin": "expanded",
+        "selected_numbers": list(range(1, 17)),
+        "combinations": [list(range(1, 16))],
+        "total_combinations": 136,
+        "generated_count": 20,
+        "estimated_cost": 56.0,
+        "runtime_ms": 1.0,
+        "complete": False,
+        "stopped_reason": "preview_limit",
+        "metrics": {"profile_type": "hibrido"},
+        "analysis": {"profile_type": "hibrido"},
+    }
+
+    event = save_institutional_expansion_event(
+        lead_id=None,
+        generation_event_id=None,
+        expansion_type="expanded_preview",
+        expansion_size=16,
+        runtime_origin="admin_panel",
+        strategy_profile="hibrido",
+        payload=payload,
+        db_path=db_path,
+    )
+
+    repository = ExpansionEventRepository(db_path)
+
+    assert event["id"] == 1
+    assert repository.count() == 1
+    assert event["expansion_type"] == "expanded_preview"
+    assert event["expansion_size"] == 16
+    assert event["runtime_origin"] == "admin_panel"

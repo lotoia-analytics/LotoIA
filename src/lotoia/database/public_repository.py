@@ -6,6 +6,7 @@ from typing import Any
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.public.persistence import (
     CheckEventRepository,
+    ExpansionEventRepository,
     GenerationEventRepository,
     LeadRepository,
     ReportEventRepository,
@@ -139,6 +140,30 @@ def save_report_event(
         generation_event_id=generation_event_id,
         report_type=report_type,
         generation_origin=generation_origin,
+        runtime_origin=runtime_origin,
+        strategy_profile=strategy_profile,
+        payload=payload,
+    )
+
+
+def save_expansion_event(
+    *,
+    lead_id: int | None,
+    generation_event_id: int | None,
+    expansion_type: str,
+    expansion_size: int,
+    runtime_origin: str,
+    strategy_profile: str,
+    payload: dict[str, Any] | None = None,
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    initialize_public_persistence(db_path)
+    repository = ExpansionEventRepository(db_path)
+    return repository.insert(
+        lead_id=lead_id,
+        generation_event_id=generation_event_id,
+        expansion_type=expansion_type,
+        expansion_size=expansion_size,
         runtime_origin=runtime_origin,
         strategy_profile=strategy_profile,
         payload=payload,

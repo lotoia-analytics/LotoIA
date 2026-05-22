@@ -5,9 +5,17 @@ import streamlit as st
 from .design_system import render_institutional_design_system
 
 
-def render_secondary_operational_metrics(gen_count: int, check_count: int, ml_count: int, last_contest: str, total_games: str) -> None:
+def render_secondary_operational_metrics(
+    gen_count: int,
+    check_count: int,
+    ml_count: int,
+    last_contest: str,
+    total_games: str,
+    expansion_count: int = 0,
+) -> None:
     render_institutional_design_system()
-    with st.expander("Operacao secundaria", expanded=False):
+    with st.container(border=True):
+        st.markdown("#### Operacao secundaria")
         st.markdown(
             """
             <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
@@ -17,15 +25,16 @@ def render_secondary_operational_metrics(gen_count: int, check_count: int, ml_co
             """,
             unsafe_allow_html=True,
         )
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         cards = [
             (col1, "Geracoes", gen_count, "Eventos persistidos em generation_events"),
             (col2, "Conferencias", check_count, "Eventos persistidos em check_events"),
             (col3, "ML", ml_count, "Geracoes com ML habilitado"),
             (col4, "Ultimo concurso", last_contest, "Maior concurso conferido"),
             (col5, "Jogos totais", total_games, "Total operacional registrado"),
+            (col6, "Expansoes", expansion_count, "Eventos persistidos em expansion_events"),
         ]
-        markers = ["â–¸", "â–¸", "â–¸", "â–¸", "â–¸"]
+        markers = ["◦", "◦", "◦", "◦", "◦", "◦"]
         for (column, label, value, caption), marker in zip(cards, markers, strict=True):
             with column:
                 st.markdown(

@@ -58,6 +58,7 @@ from lotoia.combinatorics import (
 from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
+from lotoia.database.public_repository import save_expansion_event as save_institutional_expansion_event
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
     GeneratedGame,
@@ -188,7 +189,7 @@ USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -473,6 +474,20 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS expansion_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
+            generation_event_id INTEGER,
+            origin TEXT NOT NULL DEFAULT 'expanded',
+            expansion_type TEXT NOT NULL DEFAULT 'expanded',
+            expansion_size INTEGER NOT NULL DEFAULT 0,
+            runtime_origin TEXT NOT NULL DEFAULT '',
+            strategy_profile TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS generated_games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             generation_event_id INTEGER,
@@ -539,7 +554,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -568,6 +583,14 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("ml_usage_events", "strategy", "TEXT", "''")
     _sqlite_ensure_column("ml_usage_events", "execution_time_ms", "REAL", "0.0")
     _sqlite_ensure_column("ml_usage_events", "payload_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("expansion_events", "lead_id", "INTEGER")
+    _sqlite_ensure_column("expansion_events", "generation_event_id", "INTEGER")
+    _sqlite_ensure_column("expansion_events", "origin", "TEXT", "'expanded'")
+    _sqlite_ensure_column("expansion_events", "expansion_type", "TEXT", "'expanded'")
+    _sqlite_ensure_column("expansion_events", "expansion_size", "INTEGER", "0")
+    _sqlite_ensure_column("expansion_events", "runtime_origin", "TEXT", "''")
+    _sqlite_ensure_column("expansion_events", "strategy_profile", "TEXT", "''")
+    _sqlite_ensure_column("expansion_events", "payload_json", "TEXT", "'{}'")
     _sqlite_ensure_column("report_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("report_events", "generation_event_id", "INTEGER")
     _sqlite_ensure_column("report_events", "report_type", "TEXT", "'user_report'")
@@ -2024,6 +2047,7 @@ def _operational_metrics() -> dict[str, Any]:
     generation_days = int(_query_scalar("SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events"))
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
     ml_usage = int(_query_scalar("SELECT COUNT(*) FROM ml_usage_events"))
+    expansion_events = int(_query_scalar("SELECT COUNT(*) FROM expansion_events"))
     imported_total = int(_query_scalar("SELECT COUNT(*) FROM imported_contests"))
     generated_games_total = int(_query_scalar("SELECT COUNT(*) FROM generated_games"))
     logs_total = int(_query_scalar("SELECT COUNT(*) FROM operational_logs"))
@@ -2032,6 +2056,7 @@ def _operational_metrics() -> dict[str, Any]:
         "daily_generation_average": round(generation_total / generation_days, 2) if generation_days else 0.0,
         "check_volume": check_total,
         "ml_usage": ml_usage,
+        "expansion_events": expansion_events,
         "imported_contests": imported_total,
         "generated_games": generated_games_total,
         "snapshot_volume": _snapshot_count(),
@@ -4005,11 +4030,19 @@ def _render_kpi_cards() -> None:
     gen_count = _safe_count("generation_events")
     check_count = _safe_count("check_events")
     ml_count = _safe_count("ml_usage_events")
+    expansion_count = _safe_count("expansion_events")
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
     with st.container(border=True):
         st.caption("Resumo operacional")
-        render_secondary_operational_metrics(gen_count, check_count, ml_count, last_contest, total_games)
+        render_secondary_operational_metrics(
+            gen_count,
+            check_count,
+            ml_count,
+            last_contest,
+            total_games,
+            expansion_count,
+        )
 
 
 def _render_institutional_cockpit() -> None:
@@ -5071,6 +5104,28 @@ def render_expansion_experimental_page() -> None:
                                 },
                             }
                         )
+                        institutional_expansion_event = save_institutional_expansion_event(
+                            lead_id=None,
+                            generation_event_id=None,
+                            expansion_type="expanded_preview",
+                            expansion_size=len(expansion_payload.get("selected_numbers", numbers)),
+                            runtime_origin="admin_panel",
+                            strategy_profile=str(expansion_payload.get("metrics", {}).get("profile_type") or expansion_payload.get("profile_type") or "expanded"),
+                            payload={
+                                "origin": "expanded",
+                                "selected_numbers": expansion_payload.get("selected_numbers", numbers),
+                                "combinations_preview": expansion_payload.get("combinations", []),
+                                "total_combinations": expansion_payload.get("total_combinations", 0),
+                                "generated_count": expansion_payload.get("generated_count", 0),
+                                "estimated_cost": expansion_payload.get("estimated_cost", 0.0),
+                                "runtime_ms": expansion_payload.get("runtime_ms", 0.0),
+                                "complete": expansion_payload.get("complete", False),
+                                "stopped_reason": expansion_payload.get("stopped_reason", ""),
+                                "metrics": expansion_payload.get("metrics", {}),
+                                "analysis": institutional_analysis,
+                            },
+                        )
+                        st.session_state["admin_last_institutional_expansion_event"] = institutional_expansion_event
                         st.session_state["admin_last_expansion_experimental_snapshot"] = _write_snapshot(
                             "admin_expansion_experimental",
                             {

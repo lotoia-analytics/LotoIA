@@ -174,6 +174,7 @@ def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
         "SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events": 2,
         "SELECT COUNT(*) FROM check_events": 4,
         "SELECT COUNT(*) FROM ml_usage_events": 3,
+        "SELECT COUNT(*) FROM expansion_events": 2,
         "SELECT COUNT(*) FROM imported_contests": 7,
         "SELECT COUNT(*) FROM generated_games": 15,
         "SELECT COUNT(*) FROM operational_logs": 1,
@@ -188,6 +189,7 @@ def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
 
     assert metrics["ml_usage"] == 3
     assert metrics["check_volume"] == 4
+    assert metrics["expansion_events"] == 2
     assert metrics["generated_games"] == 15
 
 
@@ -202,6 +204,11 @@ def test_admin_schema_includes_institutional_check_event_columns(tmp_path: Path)
             for row in connection.execute("PRAGMA table_info(check_events)").fetchall()
         }
         assert {"lead_id", "selected_numbers", "result_payload"}.issubset(columns)
+        expansion_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(expansion_events)").fetchall()
+        }
+        assert {"lead_id", "generation_event_id", "expansion_type", "expansion_size", "runtime_origin", "strategy_profile", "payload_json"}.issubset(expansion_columns)
     finally:
         connection.close()
 
@@ -297,6 +304,7 @@ def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
 def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -> None:
     _patch_streamlit(monkeypatch)
     saved: dict[str, object] = {}
+    institutional_saved: dict[str, object] = {}
 
     monkeypatch.setattr(admin_app, "estimate_expansion", lambda numbers: {"total_combinations": 136, "estimated_cost": 56.0})
     monkeypatch.setattr(
@@ -315,6 +323,11 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
         },
     )
     monkeypatch.setattr(admin_app, "save_expansion_event", lambda payload, db_path=None: saved.setdefault("payload", payload) or 1)
+    monkeypatch.setattr(
+        admin_app,
+        "save_institutional_expansion_event",
+        lambda **kwargs: institutional_saved.setdefault("payload", kwargs) or {"id": 99},
+    )
     monkeypatch.setattr(admin_app, "_write_snapshot", lambda name, payload: tmp_path / f"{name}.json")
     monkeypatch.setattr(admin_app, "_export_csv", lambda path, df: path)
     monkeypatch.setattr(admin_app, "_save_pdf_report", lambda path, title, lines, df: path)
@@ -330,6 +343,9 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
     assert "analysis" in saved["payload"]
     assert saved["payload"]["metrics"]["historical_scope"] == "operational_institutional"
     assert saved["payload"]["metrics"]["retention_policy"] == "premiado_permanente_temporario_restante"
+    assert institutional_saved["payload"]["expansion_type"] == "expanded_preview"
+    assert institutional_saved["payload"]["runtime_origin"] == "admin_panel"
+    assert institutional_saved["payload"]["lead_id"] is None
 
 
 def test_institutional_history_includes_expanded_rows(monkeypatch) -> None:

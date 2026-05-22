@@ -5,6 +5,7 @@ from typing import Any
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    ExpansionEvent,
     GeneratedGame,
     CheckEvent,
     GenerationEvent,
@@ -207,6 +208,40 @@ class ReportEventRepository:
     def count(self) -> int:
         with get_session(self.db_path) as session:
             return int(session.query(ReportEvent).count())
+
+
+class ExpansionEventRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        lead_id: int | None,
+        generation_event_id: int | None,
+        expansion_type: str,
+        expansion_size: int,
+        runtime_origin: str,
+        strategy_profile: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = ExpansionEvent(
+                lead_id=lead_id,
+                generation_event_id=generation_event_id,
+                expansion_type=expansion_type,
+                expansion_size=expansion_size,
+                runtime_origin=runtime_origin,
+                strategy_profile=strategy_profile,
+                payload=payload or {},
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def count(self) -> int:
+        with get_session(self.db_path) as session:
+            return int(session.query(ExpansionEvent).count())
 
 
 class CheckEventRepository:
