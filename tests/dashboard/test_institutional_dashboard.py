@@ -135,11 +135,12 @@ def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
 
 
 def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
-    assert admin_app.MODE_PAGES["operacional"][:4] == [
+    assert admin_app.MODE_PAGES["operacional"][:5] == [
         "geracao_jogos",
+        "conferir_jogos",
         "reconciliacao_operacional",
         "jogo_expandido_experimental",
-        "workflows",
+        "historical_intelligence",
     ]
     assert admin_app.PAGES[0] == "geracao_jogos"
     assert "historico_experimental" not in admin_app.MODE_PAGES["operacional"]
