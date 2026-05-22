@@ -87,6 +87,7 @@ from lotoia.assistance import build_human_analytical_language
 from lotoia.assistance import build_institutional_support_experience
 from lotoia.assistance import build_assistance_governance
 from lotoia.assistance import build_full_executive_assistance_presence
+from lotoia.workflows import build_workflow_dashboard, WorkflowEngine
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -3838,6 +3839,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
         "jogo_expandido_experimental": render_expansion_experimental_page,
         "ml_governance": render_ml_governance_page,
         "observability": render_observability_page,
+        "workflows": render_workflows_page,
         "reports_engine": render_reports_engine_page,
     }
     handler = routes.get(page)
@@ -4076,7 +4078,10 @@ def render_generation_page() -> None:
         pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
         max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
         mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
-        if st.button("Gerar jogos", type="primary", disabled=not lead_ready):
+        if st.button("Gerar jogos", type="primary"):
+            if not lead_ready:
+                st.warning("Informe primeiro nome e WhatsApp para seguir com a geracao.")
+                return
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
                 try:
@@ -4261,6 +4266,51 @@ def render_backtesting_page() -> BacktestResult | None:
             st.dataframe(_backtest_games_dataframe(result), hide_index=True, use_container_width=True)
             return result
     return None
+
+
+def render_workflows_page() -> None:
+    with st.container(border=True):
+        _section_header("Fluxos Operacionais", "Orquestração governada de sincronização, reconciliação, telemetria e fechamento diário.")
+        workflow_dashboard = build_workflow_dashboard()
+        workflow_summary = workflow_dashboard.get("summary", {})
+        workflow_health = workflow_dashboard.get("health", {})
+        dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
+        dash_col1.metric("Workflows", workflow_summary.get("workflow_count", 0))
+        dash_col2.metric("Etapas", workflow_summary.get("step_count", 0))
+        dash_col3.metric("Falhas", workflow_summary.get("failure_count", 0))
+        dash_col4.metric("Retries", workflow_summary.get("retry_count", 0))
+        st.caption(
+            f"Status: {workflow_summary.get('workflow_status', '-')}"
+            f" | Saúde: {workflow_health.get('status', '-')}"
+            f" | Estabilidade runtime: {workflow_health.get('stability_score', 0.0):.2f}"
+        )
+        if workflow_dashboard.get("alerts"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(workflow_dashboard.get("alerts", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        action_engine = WorkflowEngine()
+        action_cols = st.columns(3)
+        if action_cols[0].button("Sincronizar agora", use_container_width=True):
+            sync_snapshot = action_engine.run_sync_workflow(trigger="dashboard")
+            st.success(f"Sincronizacao concluida: {sync_snapshot.state}")
+            st.json(sync_snapshot.to_dict())
+        if action_cols[1].button("Executar ciclo agendado", use_container_width=True):
+            cycle_snapshot = action_engine.run_schedule_cycle()
+            st.success(f"Ciclo executado: {cycle_snapshot.get('status', 'idle')}")
+            st.json(cycle_snapshot)
+        if action_cols[2].button("Atualizar telemetria", use_container_width=True):
+            st.rerun()
+        st.subheader("Workflows ativos")
+        if workflow_dashboard.get("live_workflows"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(workflow_dashboard.get("live_workflows", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhum workflow ativo no momento.")
 
 
 def render_calibration_page() -> None:
