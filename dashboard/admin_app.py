@@ -33,7 +33,6 @@ from lotoia.combinatorics import (
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.database.database import DEFAULT_DATABASE_PATH
-from lotoia.generator.basic_generator import generate_best_games, generate_multiple_games
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
 from lotoia.governance.adaptive_governance_report import (
     ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
@@ -3142,11 +3141,15 @@ def _load_draws():
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _cached_generate_best_games(count: int, pool_size: int) -> dict[str, Any]:
+    from lotoia.generator.basic_generator import generate_best_games
+
     return generate_best_games(count=count, pool_size=pool_size)
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _cached_generate_multiple_games(count: int, max_repeated: int) -> list[dict[str, Any]]:
+    from lotoia.generator.basic_generator import generate_multiple_games
+
     return generate_multiple_games(count=count, max_repeated=max_repeated)
 
 
@@ -3326,7 +3329,7 @@ def _persist_generation_events(
                     quadra_score,
                     context_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     generation_event_id,
@@ -3394,7 +3397,7 @@ def _persist_generation_events(
                             quadra_score,
                             context_json
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             generation_event_id,
