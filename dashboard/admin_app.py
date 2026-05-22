@@ -3940,7 +3940,8 @@ def _render_kpi_cards() -> None:
     ml_count = int(_query_scalar("SELECT COUNT(*) FROM generation_events WHERE ml_enabled = 1"))
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
-    render_secondary_operational_metrics(gen_count, check_count, ml_count, last_contest, total_games)
+    with st.expander("Resumo operacional", expanded=False):
+        render_secondary_operational_metrics(gen_count, check_count, ml_count, last_contest, total_games)
 
 
 def _render_institutional_cockpit() -> None:
