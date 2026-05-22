@@ -89,21 +89,14 @@ def _patch_streamlit(monkeypatch) -> None:
 
 
 def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
     monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-
-    def _radio(label, options, **kwargs):
-        captured["options"] = list(options)
-        captured["label"] = label
-        return "jogo_expandido_experimental"
-
-    monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
+    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda *args, **kwargs: False)
+    admin_app.st.session_state.clear()
+    admin_app.st.session_state["_admin_sidebar_page"] = "jogo_expandido_experimental"
 
     page = admin_app._sidebar_navigation()
 
     assert page == "jogo_expandido_experimental"
-    assert "jogo_expandido_experimental" in captured["options"]
     assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
 
 

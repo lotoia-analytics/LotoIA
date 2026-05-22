@@ -2,10 +2,10 @@ from __future__ import annotations
 
 try:
     from . import _bootstrap  # type: ignore[import-not-found]  # noqa: F401
-    from .labels import LABELS, PAGES
+    from .labels import LABELS, PAGE_GROUPS, PAGES
 except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
-    from labels import LABELS, PAGES  # type: ignore[no-redef]
+    from labels import LABELS, PAGE_GROUPS, PAGES  # type: ignore[no-redef]
 
 import io
 import json
@@ -3748,11 +3748,11 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
 
 def _lead_analytics() -> dict[str, Any]:
     history = _lead_history_dataframe(_institutional_db_signature())
-    total_leads = int(len(history))
+    total_leads = max(int(len(history)), _safe_count("leads"))
     recurring_leads = int((history["recurrence_score"] > 1).sum()) if not history.empty else 0
     ml_activations = int(history["ml_activations"].sum()) if not history.empty else 0
-    volume_generations = int(history["generations"].sum()) if not history.empty else 0
-    volume_checks = int(history["checks"].sum()) if not history.empty else 0
+    volume_generations = max(int(history["generations"].sum()) if not history.empty else 0, _safe_count("generation_events"))
+    volume_checks = max(int(history["checks"].sum()) if not history.empty else 0, _safe_count("check_events"))
     return {
         "total_leads": total_leads,
         "recurring_leads": recurring_leads,
@@ -3993,6 +3993,14 @@ def _sidebar_navigation() -> str:
             color: #7a8795;
             margin-bottom: 0.65rem;
         }
+        .lotoia-nav-group {
+            margin: 0.8rem 0 0.35rem 0;
+            font-size: 0.78rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #566476;
+            font-weight: 800;
+        }
         section[data-testid="stSidebar"] div[data-baseweb="radio"] {
             margin-top: -0.2rem;
         }
@@ -4002,12 +4010,36 @@ def _sidebar_navigation() -> str:
     )
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    return st.sidebar.radio(
-        "Navegacao",
-        options=PAGES,
-        format_func=lambda key: LABELS.get(key, key),
-        label_visibility="collapsed",
-    )
+    current_page = st.session_state.get("_admin_sidebar_page", PAGES[0])
+
+    def _activate_page(page: str) -> None:
+        st.session_state["_admin_sidebar_page"] = page
+
+    group_titles = {
+        "Analiticos": "Analíticos",
+        "Operacoes": "Operações",
+    }
+
+    def _render_group(group_label: str, pages: list[str]) -> None:
+        st.sidebar.markdown(
+            f'<div class="lotoia-nav-group">{group_titles.get(group_label, group_label)}</div>',
+            unsafe_allow_html=True,
+        )
+        for page in pages:
+            label = LABELS.get(page, page)
+            button_type = "primary" if page == current_page else "secondary"
+            if st.sidebar.button(
+                label,
+                key=f"_admin_sidebar_btn_{page}",
+                use_container_width=True,
+                type=button_type,
+            ):
+                _activate_page(page)
+
+    for group_label, pages in PAGE_GROUPS.items():
+        _render_group(group_label, pages)
+
+    return st.session_state.get("_admin_sidebar_page", current_page)
 
 
 def _render_sidebar_dispatch(page: str, draws) -> None:
