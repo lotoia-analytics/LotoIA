@@ -28,6 +28,7 @@ class LiveTelemetrySnapshot:
     live_signals: list[dict[str, Any]]
     runtime_status: dict[str, Any]
     metadata: dict[str, Any]
+    alerts: list[dict[str, Any]]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +39,7 @@ class LiveTelemetrySnapshot:
             "live_signals": self.live_signals,
             "runtime_status": self.runtime_status,
             "metadata": self.metadata,
+            "alerts": self.alerts,
         }
 
 
@@ -115,6 +117,30 @@ def build_live_telemetry_snapshot(
             "last_seen": None,
         },
     ]
+    alerts = [
+        {
+            "severity": "warning",
+            "signal": "caixa_sync",
+            "message": "Sincronizacao Caixa ainda sem eventos recentes",
+        }
+        if not imported_contests
+        else {
+            "severity": "ok",
+            "signal": "caixa_sync",
+            "message": "Sincronizacao Caixa ativa",
+        },
+        {
+            "severity": "warning",
+            "signal": "reconciliacao",
+            "message": "Reconciliação sem runs recentes",
+        }
+        if not reconciliation_runs
+        else {
+            "severity": "ok",
+            "signal": "reconciliacao",
+            "message": "Reconciliação ativa",
+        },
+    ]
 
     snapshot = LiveTelemetrySnapshot(
         created_at=datetime.now(UTC),
@@ -134,5 +160,6 @@ def build_live_telemetry_snapshot(
             "lineage_count": len(lineage),
             "snapshot_count": len(snapshots),
         },
+        alerts=alerts,
     )
     return snapshot.to_dict()

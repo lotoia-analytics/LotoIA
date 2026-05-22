@@ -38,3 +38,4 @@ def test_live_telemetry_snapshot_reads_runtime_activity(tmp_path: Path) -> None:
     assert snapshot["activity"]["generation_events"] == 1
     assert snapshot["runtime_status"]["execution_count"] == 1
     assert snapshot["summary"]["latest_execution_id"] == execution_id
+    assert len(snapshot["alerts"]) == 2

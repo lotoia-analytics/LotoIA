@@ -2044,6 +2044,15 @@ def render_observability_page() -> None:
             hide_index=True,
             use_container_width=True,
         )
+        live_alerts = live_telemetry.get("alerts", [])
+        if live_alerts:
+            st.caption("Alertas executivos")
+            alert_rows = pd.DataFrame(live_alerts)
+            st.dataframe(
+                _presentational_dataframe(alert_rows),
+                hide_index=True,
+                use_container_width=True,
+            )
         timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
         memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
         st.subheader("Linha temporal executiva da memória")
