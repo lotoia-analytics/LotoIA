@@ -155,6 +155,7 @@ ADMIN_EVENT_LIMIT = 200
 LEAD_HISTORY_LIMIT = 5000
 STREAMLIT_CACHE_TTL_SECONDS = 300
 STREAMLIT_CACHE_MAX_ENTRIES = 16
+USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
@@ -3619,7 +3620,7 @@ def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, 
     return int(lead_capture.lead["id"]), str(lead_capture.lead["first_name"]), str(lead_capture.normalized_whatsapp)
 
 
-@st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _lead_history_dataframe() -> pd.DataFrame:
     leads_df = _read_sql_query_safe(
         """
