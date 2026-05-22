@@ -86,6 +86,7 @@ from lotoia.public import OperationalLifecycleEngine
 from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
+    build_operational_experience,
     build_live_operational_memory,
     build_live_telemetry_snapshot,
     build_operational_health_snapshot,
@@ -2123,6 +2124,14 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
+        operational_experience = build_operational_experience()
+        st.subheader("Experiencia operacional")
+        exp_cols = st.columns(4)
+        exp_cols[0].metric("Estado", operational_experience.get("state", "-"))
+        exp_cols[1].metric("Memoria", operational_experience.get("summary", {}).get("memory_status", "-"))
+        exp_cols[2].metric("Governanca", operational_experience.get("summary", {}).get("health_status", "-"))
+        exp_cols[3].metric("Telemetria", operational_experience.get("summary", {}).get("telemetry_status", "-"))
+        st.caption(" | ".join(operational_experience.get("narrative", [])))
         timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
         memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
         st.subheader("Linha temporal executiva da memória")

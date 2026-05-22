@@ -8,6 +8,7 @@ from .institutional_dashboard import InstitutionalObservabilityDashboard, build_
 from .live_telemetry import build_live_telemetry_snapshot
 from .live_operational_memory import build_live_operational_memory
 from .operational_health import build_operational_health_snapshot
+from .operational_experience import build_operational_experience
 from .real_time_governance import build_real_time_governance
 from .runtime_storytelling import build_runtime_storytelling
 from .observability_report import ObservabilityReport
@@ -36,6 +37,7 @@ __all__ = [
     "build_live_telemetry_snapshot",
     "build_live_operational_memory",
     "build_operational_health_snapshot",
+    "build_operational_experience",
     "build_real_time_governance",
     "build_runtime_storytelling",
     "build_institutional_observability_dashboard",
