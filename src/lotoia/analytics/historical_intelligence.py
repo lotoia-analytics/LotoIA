@@ -284,6 +284,8 @@ def publish_institutional_analytics(
 
 
 def build_institutional_analytical_timeline(report_dir: Path = DEFAULT_ANALYTICS_DIR) -> dict[str, Any]:
+    historical_report = build_institutional_historical_intelligence(report_dir)
+    historical_summary = historical_report.get("summary", {}) if isinstance(historical_report, Mapping) else {}
     snapshots = _load_institutional_snapshots(report_dir)
     if not snapshots:
         snapshot = load_institutional_analytics_snapshot()
@@ -335,6 +337,7 @@ def build_institutional_analytical_timeline(report_dir: Path = DEFAULT_ANALYTICS
                 "latest_status": "",
                 "latest_headline": "",
                 "latest_recommendation": "",
+                "expanded_event_count": int(historical_summary.get("expanded_event_count", 0)),
             },
         }
 
@@ -358,6 +361,7 @@ def build_institutional_analytical_timeline(report_dir: Path = DEFAULT_ANALYTICS
             "latest_headline": last["headline"],
             "latest_recommendation": last["recommendation"],
             "latest_transition": last["status_transition"],
+            "expanded_event_count": int(historical_summary.get("expanded_event_count", 0)),
         },
     }
 

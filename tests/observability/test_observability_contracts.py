@@ -8,6 +8,7 @@ import pandas as pd
 from lotoia.database import create_database
 from lotoia.database.database import get_session, Lead, GenerationEvent, CheckEvent, ImportedContest, GeneratedGame
 from lotoia.observability import MetricSample, MetricType, ObservabilityRepository, build_institutional_observability_dashboard, build_observational_stabilization_report
+from lotoia.analytics.historical_intelligence import build_institutional_analytical_timeline
 
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
@@ -215,3 +216,4 @@ def test_institutional_observability_dashboard_counts_expansion_events(tmp_path,
 
     assert dashboard["summary"]["expansion_event_count"] == 1
     assert dashboard["metadata"]["expansion_events_ready"] is True
+

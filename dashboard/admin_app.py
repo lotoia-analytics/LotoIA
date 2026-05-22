@@ -2628,7 +2628,11 @@ def render_observability_page() -> None:
         st.subheader("Snapshot analitico")
         st.dataframe(_institutional_analytics_snapshot_table(), hide_index=True, use_container_width=True)
         st.subheader("Linha do tempo")
-        st.dataframe(_institutional_analytical_timeline(), hide_index=True, use_container_width=True)
+        institutional_timeline = _institutional_analytical_timeline()
+        st.dataframe(institutional_timeline, hide_index=True, use_container_width=True)
+        st.caption(
+            f"Eventos expandidos na timeline institucional: {institutional_timeline.get('summary', {}).get('expanded_event_count', 0) if isinstance(institutional_timeline, dict) else 0}"
+        )
         if ai_top_insights:
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(
