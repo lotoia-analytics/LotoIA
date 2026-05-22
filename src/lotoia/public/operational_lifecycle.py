@@ -317,6 +317,7 @@ class OperationalLifecycleEngine:
         generation_event_id: int,
         lead_id: int | None = None,
         strategic_games: set[int] | None = None,
+        retain_strategic_games: bool = False,
         cleanup: bool = True,
         report_dir: Path | None = None,
     ) -> OperationalClosureReport:
@@ -335,7 +336,10 @@ class OperationalLifecycleEngine:
                     matched_numbers=matched_numbers,
                 )
             )
-        decisions = self.retention_policy.decide(detections, strategic_games=strategic_games)
+        decisions = self.retention_policy.decide(
+            detections,
+            strategic_games=strategic_games if retain_strategic_games else None,
+        )
         keep_indexes = {decision.game_index for decision in decisions if decision.keep}
         retained_games = [game for index, game in enumerate(generated_games, start=1) if index in keep_indexes]
         removed_games = len(generated_games) - len(retained_games)

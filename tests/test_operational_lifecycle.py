@@ -117,3 +117,21 @@ def test_retention_policy_keeps_prize_and_strategic_games() -> None:
     assert decisions[1].keep is True
     assert decisions[0].reason == "premiado"
     assert decisions[1].reason == "estrategico"
+
+
+def test_operational_lifecycle_default_cleanup_keeps_only_prizes() -> None:
+    engine = OperationalLifecycleEngine()
+    detections = engine.prize_detection.detect(
+        [
+            {"hits": 15, "matched_numbers": list(range(1, 16))},
+            {"hits": 10, "matched_numbers": [1, 2, 3, 4, 5]},
+            {"hits": 11, "matched_numbers": [1, 2, 3, 4, 5, 6]},
+        ]
+    )
+
+    decisions = engine.retention_policy.decide(detections)
+
+    assert decisions[0].keep is True
+    assert decisions[1].keep is False
+    assert decisions[2].keep is True
+    assert decisions[1].reason == "abaixo_da_premiacao_minima"
