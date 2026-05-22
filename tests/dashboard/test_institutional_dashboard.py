@@ -781,6 +781,18 @@ def test_lead_analytics_reacts_to_institutional_db_signature(monkeypatch) -> Non
     assert analytics["volume_checks"] == 1
 
 
+def test_lead_analytics_falls_back_to_empty_dataframe_on_cache_error(monkeypatch) -> None:
+    monkeypatch.setattr(admin_app, "_institutional_db_signature", lambda: 123456789)
+    monkeypatch.setattr(admin_app, "_lead_history_dataframe", lambda signature: (_ for _ in ()).throw(RuntimeError("cache broken")))
+    monkeypatch.setattr(admin_app, "_safe_count", lambda table_name: 0)
+
+    analytics = admin_app._lead_analytics()
+
+    assert analytics["total_leads"] == 0
+    assert analytics["volume_generations"] == 0
+    assert analytics["volume_checks"] == 0
+
+
 def test_institutional_user_flow_updates_dashboard_and_history(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "institutional.db"
     expansion_db_path = tmp_path / "expansion.db"

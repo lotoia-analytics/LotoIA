@@ -3646,50 +3646,68 @@ def _institutional_db_signature() -> int:
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
     del db_signature
-    leads_df = _read_sql_query_safe(
-        """
-        SELECT
-            id,
-            first_name,
-            whatsapp,
-            created_at
-        FROM leads
-        ORDER BY created_at DESC, id DESC
-        LIMIT ?
-        """,
-        ["id", "first_name", "whatsapp", "created_at"],
-        params=(LEAD_HISTORY_LIMIT,),
-    )
-    gen_df = _read_sql_query_safe(
-        """
-        SELECT
-            lead_id,
-            first_name,
-            whatsapp,
-            created_at,
-            ml_enabled,
-            strategy
-        FROM generation_events
-        ORDER BY created_at DESC, id DESC
-        LIMIT ?
-        """,
-        ["lead_id", "first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
-        params=(LEAD_HISTORY_LIMIT,),
-    )
-    check_df = _read_sql_query_safe(
-        """
-        SELECT
-            lead_id,
-            created_at,
-            contest_id,
-            hits
-        FROM check_events
-        ORDER BY created_at DESC, id DESC
-        LIMIT ?
-        """,
-        ["lead_id", "created_at", "contest_id", "hits"],
-        params=(LEAD_HISTORY_LIMIT,),
-    )
+    try:
+        leads_df = _read_sql_query_safe(
+            """
+            SELECT
+                id,
+                first_name,
+                whatsapp,
+                created_at
+            FROM leads
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            ["id", "first_name", "whatsapp", "created_at"],
+            params=(LEAD_HISTORY_LIMIT,),
+        )
+        gen_df = _read_sql_query_safe(
+            """
+            SELECT
+                lead_id,
+                first_name,
+                whatsapp,
+                created_at,
+                ml_enabled,
+                strategy
+            FROM generation_events
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            ["lead_id", "first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
+            params=(LEAD_HISTORY_LIMIT,),
+        )
+        check_df = _read_sql_query_safe(
+            """
+            SELECT
+                lead_id,
+                created_at,
+                contest_id,
+                hits
+            FROM check_events
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            ["lead_id", "created_at", "contest_id", "hits"],
+            params=(LEAD_HISTORY_LIMIT,),
+        )
+    except Exception:
+        return pd.DataFrame(
+            columns=[
+                "lead_id",
+                "lead",
+                "first_name",
+                "whatsapp",
+                "created_at",
+                "origin",
+                "generations",
+                "checks",
+                "ml_activations",
+                "last_generation_at",
+                "last_check_at",
+                "recurrence_score",
+            ]
+        )
     if leads_df.empty:
         return pd.DataFrame(
             columns=[
@@ -3753,7 +3771,10 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
 
 
 def _lead_analytics() -> dict[str, Any]:
-    history = _lead_history_dataframe(_institutional_db_signature())
+    try:
+        history = _lead_history_dataframe(_institutional_db_signature())
+    except Exception:
+        history = pd.DataFrame()
     total_leads = max(int(len(history)), _safe_count("leads"))
     recurring_leads = int((history["recurrence_score"] > 1).sum()) if not history.empty else 0
     ml_activations = int(history["ml_activations"].sum()) if not history.empty else 0
