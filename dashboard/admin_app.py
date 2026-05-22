@@ -23,10 +23,14 @@ MODE_PAGES = {
         "analytics_intelligence",
         "ml_intelligence",
         "relatorios",
+        "workflows",
         "ml_governance",
         "observability",
-        "historical_intelligence",
-        "conferir_jogos",
+        "backtesting",
+        "calibracao_experimental",
+        "benchmark_cientifico",
+        "historico_experimental",
+        "reports_engine",
     ],
 }
 
