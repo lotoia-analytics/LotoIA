@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
+from lotoia.public.operational_lifecycle import OperationalLifecycleEngine, build_retention_policy_preview
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository, initialize_public_persistence
 
 
@@ -135,3 +135,19 @@ def test_operational_lifecycle_default_cleanup_keeps_only_prizes() -> None:
     assert decisions[1].keep is False
     assert decisions[2].keep is True
     assert decisions[1].reason == "abaixo_da_premiacao_minima"
+
+
+def test_retention_policy_preview_reports_persisted_and_removed_rows() -> None:
+    preview = build_retention_policy_preview(
+        [
+            {"numbers": list(range(1, 16))},
+            {"numbers": [1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]},
+        ],
+        list(range(1, 16)),
+    )
+
+    assert preview["summary"]["total"] == 2
+    assert preview["summary"]["persistidos"] == 1
+    assert preview["summary"]["removidos"] == 1
+    assert preview["rows"][0]["decisao"] == "persistido"
+    assert preview["rows"][1]["decisao"] == "removido"

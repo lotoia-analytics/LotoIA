@@ -100,6 +100,24 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
     assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
 
 
+def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
+    monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda *args, **kwargs: False)
+
+    def _radio(label, options, **kwargs):
+        if label == "Modo":
+            return "operacional"
+        return options[0]
+
+    monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
+    admin_app.st.session_state.clear()
+
+    page = admin_app._sidebar_navigation()
+
+    assert page in admin_app.MODE_PAGES["operacional"]
+    assert "estadisticas_historicas" not in admin_app.MODE_PAGES["operacional"]
+
+
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_app,

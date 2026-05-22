@@ -10,6 +10,7 @@ except ImportError:
 LABELS = getattr(_labels_module, "LABELS", {})
 PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
 PAGES = getattr(_labels_module, "PAGES", [])
+MODE_PAGES = getattr(_labels_module, "MODE_PAGES", {})
 
 import io
 import json
@@ -91,6 +92,7 @@ from lotoia.orchestration import (
     persist_intelligent_operational_orchestration,
 )
 from lotoia.public import OperationalLifecycleEngine
+from lotoia.public.operational_lifecycle import build_retention_policy_preview
 from lotoia.public.reconciliation import ReconciliationEngine
 from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
@@ -4014,7 +4016,19 @@ def _sidebar_navigation() -> str:
     )
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    current_page = st.session_state.get("_admin_sidebar_page", PAGES[0])
+    mode = st.sidebar.radio(
+        "Modo",
+        options=("operacional", "executivo", "auditoria"),
+        index=("operacional", "executivo", "auditoria").index(str(st.session_state.get("_admin_mode", "operacional")) if str(st.session_state.get("_admin_mode", "operacional")) in ("operacional", "executivo", "auditoria") else "operacional"),
+        format_func=lambda key: {"operacional": "Operacional", "executivo": "Executivo", "auditoria": "Auditoria"}.get(key, key.title()),
+        label_visibility="collapsed",
+        key="_admin_mode",
+    )
+    available_pages = MODE_PAGES.get(mode, PAGES) or PAGES
+    current_page = st.session_state.get("_admin_sidebar_page", available_pages[0] if available_pages else PAGES[0])
+    if current_page not in available_pages:
+        current_page = available_pages[0] if available_pages else PAGES[0]
+        st.session_state["_admin_sidebar_page"] = current_page
 
     def _activate_page(page: str) -> None:
         st.session_state["_admin_sidebar_page"] = page
@@ -4041,7 +4055,10 @@ def _sidebar_navigation() -> str:
                 _activate_page(page)
 
     for group_label, pages in PAGE_GROUPS.items():
-        _render_group(group_label, pages)
+        filtered_pages = [page for page in pages if page in available_pages]
+        if not filtered_pages:
+            continue
+        _render_group(group_label, filtered_pages)
 
     return st.session_state.get("_admin_sidebar_page", current_page)
 
@@ -4693,6 +4710,16 @@ def render_operational_reconciliation_page() -> None:
                 )
                 st.subheader("Tabela operacional")
                 st.dataframe(executive, hide_index=True, use_container_width=True)
+                retention_preview = build_retention_policy_preview(
+                    [
+                        {"numbers": [int(number) for number in str(row.get("dezenas", "")).split() if str(number).isdigit()]}
+                        for row in rows
+                    ],
+                    baseline_numbers,
+                )
+                st.subheader("Política de retenção")
+                st.caption("Sem premiação: removido | Premiado: persistido | Destaque institucional: persistido | Snapshot: persistido")
+                st.dataframe(pd.DataFrame(retention_preview["rows"]), hide_index=True, use_container_width=True)
             except Exception as exc:
                 st.error(f"Falha controlada na simulacao operacional: {exc}")
 
@@ -5342,12 +5369,14 @@ def main() -> None:
 
     try:
         page = _sidebar_navigation()
+        dashboard_mode = str(st.session_state.get("_admin_mode", "operacional"))
         _render_institutional_cockpit()
         _render_kpi_cards()
         st.markdown("---")
         _render_sidebar_dispatch(page, draws)
         st.markdown("---")
-        _render_lead_intelligence()
+        if dashboard_mode in {"executivo", "auditoria"}:
+            _render_lead_intelligence()
         dashboard_duration_ms = (time.monotonic() - dashboard_start_time) * 1000.0
         _record_operational_log("dashboard", "success", dashboard_duration_ms, {"page": page})
         _record_performance_metric("dashboard_load_ms", dashboard_duration_ms, {"page": page})
@@ -5356,7 +5385,8 @@ def main() -> None:
         st.error("Falha operacional controlada no dashboard. O runtime permaneceu ativo.")
         st.caption(f"Contexto técnico: {exc}")
         st.markdown("---")
-        _render_lead_intelligence()
+        if str(st.session_state.get("_admin_mode", "operacional")) in {"executivo", "auditoria"}:
+            _render_lead_intelligence()
 
 
 if __name__ == "__main__":

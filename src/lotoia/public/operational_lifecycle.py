@@ -454,3 +454,55 @@ class OperationalLifecycleEngine:
         path = report_dir / f"{stem}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         return path
+
+
+def build_retention_policy_preview(
+    generated_games: list[dict[str, Any]],
+    official_numbers: list[int],
+    *,
+    strategic_games: set[int] | None = None,
+) -> dict[str, Any]:
+    """Return a compact retention preview for operational dashboards."""
+
+    engine = OperationalLifecycleEngine()
+    official_set = {int(number) for number in official_numbers}
+    detections = []
+    for index, game in enumerate(generated_games, start=1):
+        numbers = [int(number) for number in game.get("numbers", [])]
+        matched_numbers = sorted(set(numbers) & official_set)
+        hits = int(game.get("hits", len(matched_numbers)))
+        if not hits:
+            hits = len(matched_numbers)
+        prize_tier = PrizeDetectionEngine._tier_for_hits(hits)
+        detections.append(
+            PrizeDetection(
+                game_index=index,
+                hits=hits,
+                prize_status="premiado" if prize_tier else "nao_premiado",
+                prize_tier=prize_tier,
+                matched_numbers=matched_numbers,
+            )
+        )
+    decisions = engine.retention_policy.decide(detections, strategic_games=strategic_games)
+    preview_rows = []
+    for detection, decision in zip(detections, decisions, strict=True):
+        preview_rows.append(
+            {
+                "jogo": detection.game_index,
+                "acertos": detection.hits,
+                "status": detection.prize_status,
+                "faixa": detection.prize_tier,
+                "decisao": "persistido" if decision.keep else "removido",
+                "motivo": decision.reason,
+            }
+        )
+    return {
+        "official_numbers": sorted(int(number) for number in official_numbers),
+        "decisions": [asdict(decision) for decision in decisions],
+        "summary": {
+            "total": len(preview_rows),
+            "persistidos": sum(1 for row in preview_rows if row["decisao"] == "persistido"),
+            "removidos": sum(1 for row in preview_rows if row["decisao"] == "removido"),
+        },
+        "rows": preview_rows,
+    }
