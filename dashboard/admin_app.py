@@ -4109,7 +4109,8 @@ def _sidebar_navigation() -> str:
 
 
 def _render_sidebar_dispatch(page: str, draws) -> None:
-    st.write(f"DEBUG PAGE => {page}")
+    if bool(st.session_state.get("_admin_debug", False)):
+        st.caption(f"DEBUG PAGE => {page}")
 
     routes: dict[str, Any] = {
         "geracao_jogos": render_generation_page,
