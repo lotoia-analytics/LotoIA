@@ -3893,15 +3893,17 @@ def _render_institutional_cockpit() -> None:
             "Visao geral",
             "Leitura executiva da saúde estrutural, baseline, confiança, drift e linha do tempo institucional.",
         )
-        render_executive_dashboard(
-            executive_report,
-            analytical_summary,
-            historical_summary,
-            snapshot_summary,
-            observability_report,
-            pd.DataFrame(timeline.get("timeline", [])),
-        )
-        render_operational_orchestration(orchestration_report)
+        st.caption("Camada operacional visivel; leitura institucional profunda recolhida por padrao.")
+        with st.expander("Visao institucional avancada", expanded=False):
+            render_executive_dashboard(
+                executive_report,
+                analytical_summary,
+                historical_summary,
+                snapshot_summary,
+                observability_report,
+                pd.DataFrame(timeline.get("timeline", [])),
+            )
+            render_operational_orchestration(orchestration_report)
 
 
 def _render_lead_intelligence() -> None:
