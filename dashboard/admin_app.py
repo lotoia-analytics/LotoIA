@@ -3955,8 +3955,35 @@ def _render_institutional_cockpit() -> None:
 
 
 def _render_lead_intelligence() -> None:
-    analytics = _lead_analytics()
-    history = _lead_history_dataframe()
+    try:
+        analytics = _lead_analytics()
+        history = _lead_history_dataframe(_institutional_db_signature())
+    except Exception as exc:
+        st.warning("Leitura de uso indisponivel no momento. O runtime permaneceu ativo.")
+        st.caption(f"Contexto técnico: {exc}")
+        analytics = {
+            "total_leads": 0,
+            "recurring_leads": 0,
+            "ml_activations": 0,
+            "volume_generations": 0,
+            "volume_checks": 0,
+        }
+        history = pd.DataFrame(
+            columns=[
+                "lead_id",
+                "lead",
+                "first_name",
+                "whatsapp",
+                "created_at",
+                "origin",
+                "generations",
+                "checks",
+                "ml_activations",
+                "last_generation_at",
+                "last_check_at",
+                "recurrence_score",
+            ]
+        )
     st.markdown("---")
     _section_header("Leitura de uso", "Uso institucional por usuario, recorrencia e padrao de uso.")
     a, b, c, d, e = st.columns(5)
