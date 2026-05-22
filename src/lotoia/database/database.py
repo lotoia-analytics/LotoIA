@@ -103,6 +103,8 @@ class GenerationEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True)
+    first_name: Mapped[str] = mapped_column(String, default="", nullable=False)
+    whatsapp: Mapped[str] = mapped_column(String, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -117,6 +119,8 @@ class GenerationEvent(Base):
     __table_args__ = (
         Index("ix_generation_events_created_at", "created_at"),
         Index("ix_generation_events_lead_id", "lead_id"),
+        Index("ix_generation_events_first_name", "first_name"),
+        Index("ix_generation_events_whatsapp", "whatsapp"),
         Index("ix_generation_events_ml_enabled", "ml_enabled"),
     )
 
@@ -672,6 +676,10 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         }
         if "lead_id" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN lead_id INTEGER")
+        if "first_name" not in generation_event_columns:
+            connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
+        if "whatsapp" not in generation_event_columns:
+            connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN whatsapp TEXT NOT NULL DEFAULT ''")
         for column_sql, column_name in (
             ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
             ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),

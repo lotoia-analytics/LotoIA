@@ -78,10 +78,14 @@ class GenerationEventRepository:
         origin: str = "public_api",
         generation_mode: str = "public_hybrid_statistical_v1",
         context: dict[str, Any] | None = None,
+        first_name: str = "",
+        whatsapp: str = "",
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
             event = GenerationEvent(
                 lead_id=lead_id,
+                first_name=first_name,
+                whatsapp=whatsapp,
                 generated_games=generated_games,
                 ml_enabled=int(ml_enabled),
                 seed=seed,

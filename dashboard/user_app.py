@@ -270,6 +270,8 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
                     "ml_enabled": bool(ml_enabled),
                     "pool_size": int(pool_size),
                 },
+                first_name=lead_capture.lead["first_name"],
+                whatsapp=lead_capture.normalized_whatsapp,
             )
         except Exception as exc:
             st.error(str(exc))

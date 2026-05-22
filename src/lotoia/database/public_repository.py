@@ -45,6 +45,8 @@ def save_generation_event(
     origin: str = "public_api",
     generation_mode: str = "public_hybrid_statistical_v1",
     context: dict[str, Any] | None = None,
+    first_name: str = "",
+    whatsapp: str = "",
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
     initialize_public_persistence(db_path)
@@ -61,6 +63,8 @@ def save_generation_event(
         origin=origin,
         generation_mode=generation_mode,
         context=context,
+        first_name=first_name,
+        whatsapp=whatsapp,
     )
 
 
