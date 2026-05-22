@@ -460,6 +460,19 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS report_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
+            generation_event_id INTEGER,
+            report_type TEXT NOT NULL DEFAULT 'user_report',
+            generation_origin TEXT NOT NULL DEFAULT '',
+            runtime_origin TEXT NOT NULL DEFAULT '',
+            strategy_profile TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS generated_games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             generation_event_id INTEGER,
@@ -526,7 +539,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "ml_usage_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -555,6 +568,13 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("ml_usage_events", "strategy", "TEXT", "''")
     _sqlite_ensure_column("ml_usage_events", "execution_time_ms", "REAL", "0.0")
     _sqlite_ensure_column("ml_usage_events", "payload_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("report_events", "lead_id", "INTEGER")
+    _sqlite_ensure_column("report_events", "generation_event_id", "INTEGER")
+    _sqlite_ensure_column("report_events", "report_type", "TEXT", "'user_report'")
+    _sqlite_ensure_column("report_events", "generation_origin", "TEXT", "''")
+    _sqlite_ensure_column("report_events", "runtime_origin", "TEXT", "''")
+    _sqlite_ensure_column("report_events", "strategy_profile", "TEXT", "''")
+    _sqlite_ensure_column("report_events", "payload_json", "TEXT", "'{}'")
     _sqlite_ensure_column("generated_games", "target_contest", "INTEGER")
     _sqlite_ensure_column("generated_games", "origin", "TEXT", "'dashboard'")
     _sqlite_ensure_column("generated_games", "generation_mode", "TEXT", "''")

@@ -16,6 +16,7 @@ from dashboard.user_app import (
     _user_indicator,
     render_generate_page,
     render_check_page,
+    render_reports_page,
 )
 
 
@@ -329,6 +330,43 @@ def test_user_check_page_supports_smoke_validation(monkeypatch) -> None:
     assert captured["check"]["contest_id"] == 0
     assert captured["check"]["hits"] == 15
     assert captured["check"]["result_payload"]["source"] == "smoke_validation_baseline"
+
+
+def test_user_reports_persist_institutional_event(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("dashboard.user_app.st.header", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.info", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.download_button", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.success", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.write", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.session_state", {
+        "user_last_generation": {
+            "lead": {"id": 21, "first_name": "Ana"},
+            "generation_event_id": 77,
+            "metadata": {"strategy": "ranking_hibrido"},
+            "count": 1,
+            "games": [{"final_score": 80.0}],
+            "raw_games": [{"numbers": list(range(1, 16))}],
+        },
+        "user_last_check": {
+            "lead": {"id": 21, "first_name": "Ana"},
+            "contest": 3691,
+            "hits": 15,
+        },
+    })
+    monkeypatch.setattr(
+        "dashboard.user_app.save_report_event",
+        lambda **kwargs: (captured.setdefault("report", kwargs), {"id": 88})[1],
+    )
+
+    render_reports_page([])
+
+    assert captured["report"]["report_type"] == "user_report"
+    assert captured["report"]["generation_origin"] == "user_panel"
+    assert captured["report"]["lead_id"] == 21
 
 
 def test_user_app_import_is_lightweight() -> None:

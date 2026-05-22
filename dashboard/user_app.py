@@ -19,7 +19,7 @@ from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from lotoia.ingestion.result_sync_service import ResultSyncService
-from lotoia.database.public_repository import save_check_event, save_generation_event
+from lotoia.database.public_repository import save_check_event, save_generation_event, save_report_event
 from lotoia.public.reconciliation import reconcile_smoke_validation
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
@@ -421,7 +421,11 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
         st.write("Dezenas sorteadas:", _format_numbers(result["correct_numbers"]))
         st.write("Dezenas enviadas:", _format_numbers(result["selected_numbers"]))
         _record_event(events, "conferencia", f"concurso {result['contest']} com {result['hits']} acertos")
-        st.session_state["user_last_check"] = result
+        st.session_state["user_last_check"] = {
+            **result,
+            "lead": lead_capture.lead,
+            "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
+        }
         _refresh_institutional_usage_views()
 
 
@@ -438,6 +442,7 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
     st.header("Relatorios")
     generation = st.session_state.get("user_last_generation")
     check = st.session_state.get("user_last_check")
+    report_event_payload = None
 
     summary_rows = []
     if generation:
@@ -457,6 +462,27 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
             }
         )
     summary = pd.DataFrame(summary_rows)
+    report_lead = None
+    if generation and isinstance(generation.get("lead"), dict):
+        report_lead = generation["lead"]
+    elif check and isinstance(check.get("lead"), dict):
+        report_lead = check["lead"]
+    if report_lead:
+        report_event_payload = save_report_event(
+            lead_id=int(report_lead["id"]),
+            generation_event_id=int(generation["generation_event_id"]) if generation and generation.get("generation_event_id") is not None else None,
+            report_type="user_report",
+            generation_origin="user_panel",
+            runtime_origin="user_panel",
+            strategy_profile=str(generation["metadata"].get("strategy", "")) if generation and isinstance(generation.get("metadata"), dict) else "",
+            payload={
+                "summary_rows": summary_rows,
+                "has_generation": bool(generation),
+                "has_check": bool(check),
+                "event_count": len(events),
+            },
+            db_path=USER_DB_PATH,
+        )
     if summary.empty:
         st.info("Nenhum relatorio disponivel ainda.")
     else:
@@ -476,6 +502,8 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
     if csv_bytes:
         st.download_button("Baixar CSV", data=csv_bytes, file_name="lotoia_user_report.csv", mime="text/csv")
     st.download_button("Baixar PDF", data=pdf_bytes, file_name="lotoia_user_report.pdf", mime="application/pdf")
+    if report_event_payload:
+        st.caption(f"Relatorio institucional persistido: {report_event_payload['id']}")
 
 
 def main() -> None:
