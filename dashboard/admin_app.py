@@ -26,6 +26,8 @@ MODE_PAGES = {
         "workflows",
         "ml_governance",
         "observability",
+        "historical_intelligence",
+        "conferir_jogos",
         "backtesting",
         "calibracao_experimental",
         "benchmark_cientifico",
