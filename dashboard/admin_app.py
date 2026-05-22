@@ -4116,21 +4116,22 @@ def _render_institutional_cockpit() -> None:
     analytical_summary = ai_report.get("analytical_summary", {})
     snapshot_summary = snapshot.get("summary", {}) if isinstance(snapshot, dict) else {}
 
-    with st.container(border=True):
-        _section_header(
-            "Visao geral",
-            "Leitura executiva da saúde estrutural, baseline, confiança, drift e linha do tempo institucional.",
-        )
-        st.caption("Camada operacional visivel; leitura institucional profunda recolhida por padrao.")
-        render_executive_dashboard(
-            executive_report,
-            analytical_summary,
-            historical_summary,
-            snapshot_summary,
-            observability_report,
-            pd.DataFrame(timeline.get("timeline", [])),
-        )
-        render_operational_orchestration(orchestration_report)
+    with st.expander("Visao institucional avancada", expanded=False):
+        with st.container(border=True):
+            _section_header(
+                "Visao geral",
+                "Leitura executiva da saúde estrutural, baseline, confiança, drift e linha do tempo institucional.",
+            )
+            st.caption("Camada operacional visivel; leitura institucional profunda recolhida por padrao.")
+            render_executive_dashboard(
+                executive_report,
+                analytical_summary,
+                historical_summary,
+                snapshot_summary,
+                observability_report,
+                pd.DataFrame(timeline.get("timeline", [])),
+            )
+            render_operational_orchestration(orchestration_report)
 
 
 def _render_lead_intelligence() -> None:

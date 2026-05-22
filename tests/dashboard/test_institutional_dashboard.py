@@ -552,6 +552,41 @@ def test_workflows_page_renders_safely(monkeypatch) -> None:
     admin_app.render_workflows_page()
 
 
+def test_institutional_cockpit_is_collapsed_by_default(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    calls: dict[str, object] = {}
+
+    class _DummyExpander:
+        def __init__(self, label: str, expanded: bool) -> None:
+            calls["label"] = label
+            calls["expanded"] = expanded
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(admin_app.st, "expander", lambda label, expanded=False: _DummyExpander(label, expanded))
+    monkeypatch.setattr(admin_app, "build_analytical_intelligence", lambda: {})
+    monkeypatch.setattr(admin_app, "build_executive_analytical_report", lambda: {})
+    monkeypatch.setattr(admin_app, "build_institutional_historical_intelligence", lambda: {"summary": {}})
+    monkeypatch.setattr(admin_app, "load_institutional_analytics_snapshot", lambda *args, **kwargs: {})
+    monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda *args, **kwargs: {})
+    monkeypatch.setattr(admin_app, "load_institutional_analytical_timeline", lambda *args, **kwargs: {"timeline": []})
+    monkeypatch.setattr(admin_app, "ensure_institutional_analytical_timeline", lambda *args, **kwargs: {"timeline": []})
+    monkeypatch.setattr(admin_app, "build_intelligent_operational_orchestration", lambda: {})
+    monkeypatch.setattr(admin_app, "load_intelligent_operational_orchestration", lambda: {})
+    monkeypatch.setattr(admin_app, "persist_intelligent_operational_orchestration", lambda *args, **kwargs: {})
+    monkeypatch.setattr(admin_app, "render_executive_dashboard", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "render_operational_orchestration", lambda *args, **kwargs: None)
+
+    admin_app._render_institutional_cockpit()
+
+    assert calls["label"] == "Visao institucional avancada"
+    assert calls["expanded"] is False
+
+
 def test_dashboard_uses_live_generation_events(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "dashboard_live.db"
     connection = sqlite3.connect(db_path)
