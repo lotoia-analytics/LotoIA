@@ -4580,7 +4580,10 @@ def render_operational_reconciliation_page() -> None:
             value="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
             height=100,
         )
-        if st.button("Simular Resultado", type="primary"):
+        action_col1, action_col2 = st.columns(2)
+        simulate_clicked = action_col1.button("Simular Resultado", type="primary", use_container_width=True)
+        reconcile_clicked = action_col2.button("Executar Reconciliação", use_container_width=True)
+        if simulate_clicked or reconcile_clicked:
             try:
                 baseline_numbers = _parse_check_numbers(baseline_text)
                 summary, rows = _load_operational_reconciliation_rows(baseline_numbers)

@@ -753,7 +753,11 @@ def test_operational_reconciliation_page_renders_summary(monkeypatch) -> None:
     monkeypatch.setattr(admin_app.st, "caption", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "error", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    class DummyColumn:
+        def button(self, *args, **kwargs):
+            return True
+
+    monkeypatch.setattr(admin_app.st, "columns", lambda *args, **kwargs: [DummyColumn(), DummyColumn()])
     monkeypatch.setattr(admin_app.st, "text_area", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
     monkeypatch.setattr(
         admin_app,
@@ -804,7 +808,11 @@ def test_operational_reconciliation_page_autoreconciles_latest_generation(monkey
     monkeypatch.setattr(admin_app.st, "caption", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app.st, "error", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    class DummyColumn:
+        def button(self, *args, **kwargs):
+            return True
+
+    monkeypatch.setattr(admin_app.st, "columns", lambda *args, **kwargs: [DummyColumn(), DummyColumn()])
     monkeypatch.setattr(admin_app.st, "text_area", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
     monkeypatch.setattr(admin_app, "_load_operational_reconciliation_rows", lambda baseline_numbers: (None, []))
     monkeypatch.setattr(
