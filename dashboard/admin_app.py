@@ -84,6 +84,8 @@ from lotoia.assistance import build_operational_guidance
 from lotoia.assistance import build_executive_summary
 from lotoia.assistance import build_adaptive_assistance_memory
 from lotoia.assistance import build_human_analytical_language
+from lotoia.assistance import build_institutional_support_experience
+from lotoia.assistance import build_assistance_governance
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2247,6 +2249,34 @@ def render_observability_page() -> None:
         if human_language.get("highlights"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(human_language.get("highlights", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        support_experience = build_institutional_support_experience()
+        st.subheader("Experiencia de suporte institucional")
+        support_cols = st.columns(4)
+        support_cols[0].metric("Estado", support_experience.get("state", "-"))
+        support_cols[1].metric("Presenca", support_experience.get("summary", {}).get("presence", "-"))
+        support_cols[2].metric("Saude", support_experience.get("summary", {}).get("health_status", "-"))
+        support_cols[3].metric("Memoria", support_experience.get("summary", {}).get("memory_state", "-"))
+        st.caption(" | ".join(support_experience.get("narrative", [])))
+        if support_experience.get("experience"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(support_experience.get("experience", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        assistance_governance = build_assistance_governance()
+        st.subheader("Governanca da assistencia")
+        gov_support_cols = st.columns(4)
+        gov_support_cols[0].metric("Estado", assistance_governance.get("state", "-"))
+        gov_support_cols[1].metric("Presenca", assistance_governance.get("summary", {}).get("presence", "-"))
+        gov_support_cols[2].metric("Saude", assistance_governance.get("summary", {}).get("health_status", "-"))
+        gov_support_cols[3].metric("Memoria", assistance_governance.get("summary", {}).get("memory_state", "-"))
+        st.caption(" | ".join(assistance_governance.get("narrative", [])))
+        if assistance_governance.get("rules"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(assistance_governance.get("rules", []))),
                 hide_index=True,
                 use_container_width=True,
             )
