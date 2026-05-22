@@ -161,6 +161,11 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
 def test_sidebar_labels_separate_past_games_from_check_games() -> None:
     assert admin_app.LABELS["estatisticas_historicas"] == "Jogos Passados"
     assert admin_app.LABELS["conferir_jogos"] == "Conferir Jogos"
+    assert admin_app.LABELS["leitura_uso"] == "Leitura de Uso"
+
+
+def test_leitura_de_uso_is_available_in_analytic_mode() -> None:
+    assert "leitura_uso" in admin_app.MODE_PAGES["analitico"]
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
@@ -1005,11 +1010,11 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     monkeypatch.setattr(admin_app, "render_statistics_page", lambda draws: calls.append("estatisticas_historicas"))
     monkeypatch.setattr(admin_app, "render_historical_intelligence_page", lambda draws: calls.append("historical_intelligence"))
     monkeypatch.setattr(admin_app, "render_analytics_intelligence_page", lambda: calls.append("analytics_intelligence"))
+    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: calls.append("leitura_uso"))
     monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
     monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
     monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "geracao_jogos")
     monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
-    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
     monkeypatch.setattr(admin_app, "_render_institutional_cockpit", lambda: None)
     monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
@@ -1020,6 +1025,7 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     admin_app._render_sidebar_dispatch("estatisticas_historicas", [])
     admin_app._render_sidebar_dispatch("historical_intelligence", [])
     admin_app._render_sidebar_dispatch("analytics_intelligence", [])
+    admin_app._render_sidebar_dispatch("leitura_uso", [])
 
     assert calls == [
         "geracao_jogos",
@@ -1028,6 +1034,7 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
         "estatisticas_historicas",
         "historical_intelligence",
         "analytics_intelligence",
+        "leitura_uso",
     ]
 
 

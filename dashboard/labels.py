@@ -14,6 +14,7 @@ PAGES = [
     "relatorios",
     "ml_governance",
     "observability",
+    "leitura_uso",
     "workflows",
     "reports_engine",
 ]
@@ -34,6 +35,7 @@ PAGE_AUDIT_MATRIX = {
     "relatorios": {"category": "analitica", "usage": "medio", "action": "recolher"},
     "ml_governance": {"category": "governanca", "usage": "medio", "action": "recolher"},
     "observability": {"category": "governanca", "usage": "medio", "action": "recolher"},
+    "leitura_uso": {"category": "governanca", "usage": "medio", "action": "recolher"},
     "workflows": {"category": "operacional", "usage": "alto", "action": "permanecer"},
     "reports_engine": {"category": "governanca", "usage": "baixo", "action": "ocultar"},
 }
@@ -54,6 +56,7 @@ LABELS = {
     "relatorios": "Analiticas Persistidas",
     "ml_governance": "Auditoria Técnica",
     "observability": "Monitoramento",
+    "leitura_uso": "Leitura de Uso",
     "workflows": "Fluxo Operacional",
     "reports_engine": "Relatorios Tecnicos",
 }

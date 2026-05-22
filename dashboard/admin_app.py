@@ -26,6 +26,7 @@ MODE_PAGES = {
         "workflows",
         "ml_governance",
         "observability",
+        "leitura_uso",
         "backtesting",
         "calibracao_experimental",
         "benchmark_cientifico",
@@ -4127,6 +4128,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
         "jogo_expandido_experimental": render_expansion_experimental_page,
         "ml_governance": render_ml_governance_page,
         "observability": render_observability_page,
+        "leitura_uso": _render_lead_intelligence,
         "workflows": render_workflows_page,
         "reports_engine": render_reports_engine_page,
     }
