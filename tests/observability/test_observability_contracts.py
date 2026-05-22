@@ -217,3 +217,57 @@ def test_institutional_observability_dashboard_counts_expansion_events(tmp_path,
     assert dashboard["summary"]["expansion_event_count"] == 1
     assert dashboard["metadata"]["expansion_events_ready"] is True
 
+
+def test_institutional_analytical_timeline_carries_expanded_event_count(monkeypatch) -> None:
+    import lotoia.analytics.historical_intelligence as historical_intelligence
+
+    monkeypatch.setattr(
+        historical_intelligence,
+        "build_institutional_historical_intelligence",
+        lambda report_dir=historical_intelligence.DEFAULT_ANALYTICS_DIR: {
+            "summary": {
+                "trend": "estavel",
+                "latest_status": "ok",
+                "latest_headline": "ok",
+                "latest_recommendation": "seguir",
+                "verdict_count": 1,
+                "expanded_event_count": 2,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        historical_intelligence,
+        "_load_institutional_snapshots",
+        lambda report_dir=historical_intelligence.DEFAULT_ANALYTICS_DIR: [
+            {
+                "_path": "snapshot-1.json",
+                "source": "reports/analytics",
+                "executive_report": {
+                    "generated_at": "2026-05-22T10:00:00",
+                    "status": "ok",
+                    "headline": "ok",
+                    "recommendation": "seguir",
+                    "confidence": "alta",
+                },
+                "historical_report": {
+                    "summary": {
+                        "trend": "estavel",
+                        "latest_status": "ok",
+                        "latest_headline": "ok",
+                        "latest_recommendation": "seguir",
+                        "verdict_count": 1,
+                        "expanded_event_count": 2,
+                    }
+                },
+                "summary": {
+                    "status": "ok",
+                    "headline": "ok",
+                },
+            }
+        ],
+    )
+
+    timeline = historical_intelligence.build_institutional_analytical_timeline()
+
+    assert timeline["summary"]["expanded_event_count"] == 2
+    assert timeline["timeline"][0]["trend"] == "estavel"
