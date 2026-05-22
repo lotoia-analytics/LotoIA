@@ -197,3 +197,21 @@ def test_institutional_observability_dashboard_aggregates_runtime_history(tmp_pa
     assert dashboard["summary"]["snapshot_count"] == 1
     assert dashboard["summary"]["latest_execution_id"] == execution_id
     assert dashboard["structural_integrity"]["ok"] is True
+
+
+def test_institutional_observability_dashboard_counts_expansion_events(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "observability.db"
+    create_database(db_path)
+    repository = ObservabilityRepository(db_path)
+    execution_id = repository.start_execution(flow_name="expansion", stage="runtime", context={"source": "test"})
+    repository.finish_execution(execution_id, status="ok", stage="done", duration_ms=1.0)
+
+    monkeypatch.setattr(
+        "lotoia.observability.institutional_dashboard.list_expansion_events",
+        lambda limit=50: [{"id": 1, "origin": "expanded"}],
+    )
+
+    dashboard = build_institutional_observability_dashboard(db_path)
+
+    assert dashboard["summary"]["expansion_event_count"] == 1
+    assert dashboard["metadata"]["expansion_events_ready"] is True

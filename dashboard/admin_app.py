@@ -2105,6 +2105,7 @@ def render_observability_page() -> None:
         dash_col2.metric("Spans", observability_summary.get("span_count", 0))
         dash_col3.metric("Metricas", observability_summary.get("metric_count", 0))
         dash_col4.metric("Snapshots", observability_summary.get("snapshot_count", 0))
+        st.caption(f"Expansões institucionais: {observability_summary.get('expansion_event_count', 0)}")
         st.caption(
             f"Fluxo recente: {observability_summary.get('latest_flow', '-')}"
             f" | Status: {observability_summary.get('latest_status', '-')}"

@@ -8,6 +8,7 @@ from statistics import fmean
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.combinatorics.expansion_store import list_expansion_events
 
 from .observability_repository import ObservabilityRepository
 
@@ -57,6 +58,7 @@ def build_institutional_observability_dashboard(
     metrics = repository.list_metrics(limit=limit)
     lineage = repository.list_lineage(limit=limit)
     snapshots = repository.list_snapshots(limit=limit)
+    expansion_events = list_expansion_events(limit=limit)
     latest_execution = executions[0] if executions else {}
 
     runtime_health = _runtime_health(executions, spans, metrics, lineage, snapshots)
@@ -81,6 +83,7 @@ def build_institutional_observability_dashboard(
             "metric_count": runtime_health["metric_count"],
             "lineage_count": runtime_health["lineage_count"],
             "snapshot_count": runtime_health["snapshot_count"],
+            "expansion_event_count": runtime_health["expansion_event_count"],
             "average_execution_duration_ms": runtime_health["average_execution_duration_ms"],
             "latest_flow": runtime_health["latest_flow"],
             "latest_status": runtime_health["latest_status"],
@@ -100,6 +103,7 @@ def build_institutional_observability_dashboard(
             "lineage_ready": bool(lineage),
             "snapshot_ready": bool(snapshots),
             "metrics_ready": bool(metrics),
+            "expansion_events_ready": bool(expansion_events),
         },
     }
 
@@ -123,6 +127,7 @@ def _runtime_health(
         "metric_count": len(metrics),
         "lineage_count": len(lineage),
         "snapshot_count": len(snapshots),
+        "expansion_event_count": len(list_expansion_events(limit=50)),
         "average_execution_duration_ms": round(fmean(durations), 2) if durations else 0.0,
         "latest_flow": latest_execution.get("flow_name", "-"),
         "latest_status": latest_execution.get("status", "-"),
