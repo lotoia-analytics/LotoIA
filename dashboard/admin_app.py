@@ -125,6 +125,7 @@ from lotoia.statistics.advanced import (
 )
 from lotoia.statistics.historical_intelligence import (
     GENERATION_PROFILE_RATIOS,
+    DrawLike,
     classify_profile,
     profile_score,
 )
@@ -738,6 +739,13 @@ def _draw_contest(draw: Any) -> int:
     if isinstance(draw, Draw):
         return int(draw.contest)
     if isinstance(draw, dict):
+        if str(draw.get("origin") or "").strip().lower() == "expanded":
+            source_event_id = draw.get("source_event_id")
+            if source_event_id is not None:
+                try:
+                    return 1_000_000 + int(source_event_id)
+                except Exception:
+                    pass
         for key in ("concurso", "contest", "id"):
             value = draw.get(key)
             if value is not None:
@@ -750,7 +758,24 @@ def _draw_contest(draw: Any) -> int:
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _historical_dataset() -> dict[str, Any]:
-    draws = _load_draws()
+    draws: list[Any] = list(_load_draws())
+    expansion_rows = list_expansion_events(limit=500)
+    for row in expansion_rows:
+        numbers = [int(item) for item in row.get("selected_numbers", [])]
+        if len(numbers) == 15:
+            continue
+        if not numbers:
+            continue
+        draws.append(
+            {
+                "contest": 1_000_000 + int(row["id"]),
+                "date": row.get("created_at"),
+                "numbers": numbers,
+                "origin": "expanded",
+                "source_event_id": int(row["id"]),
+                "analysis": row.get("analysis", {}),
+            }
+        )
     historical_map: dict[tuple[int, ...], list[int]] = {}
     all_numbers: list[int] = []
     for draw in draws:
@@ -775,7 +800,11 @@ def _historical_match_engine(numbers: list[int]) -> dict[str, Any]:
     normalized = _normalize_numbers(numbers)
     total_draws = int(dataset["total_draws"])
     occurrences = historical_map.get(normalized, [])
-    history = dataset["draws"]
+    history = [
+        DrawLike(contest=_draw_contest(draw), numbers=_draw_numbers(draw))
+        for draw in dataset["draws"]
+        if _draw_numbers(draw)
+    ]
     similar_contests: list[dict[str, Any]] = []
     for historical_numbers, contests in historical_map.items():
         overlap = len(set(normalized).intersection(historical_numbers))
@@ -1131,6 +1160,7 @@ def _analytics_base_tables() -> dict[str, pd.DataFrame]:
         history_rows.append(
             {
                 "concurso": _draw_contest(draw),
+                "origin": str(draw.get("origin") if isinstance(draw, dict) else "official"),
                 "dezenas": _format_numbers(numbers),
                 "soma": sum(numbers),
                 "pares": sum(1 for value in numbers if value % 2 == 0),
@@ -1140,7 +1170,7 @@ def _analytics_base_tables() -> dict[str, pd.DataFrame]:
         )
     history = pd.DataFrame(history_rows)
     if history.empty:
-        history = pd.DataFrame(columns=["concurso", "dezenas", "soma", "pares", "impares", "repeticao"])
+        history = pd.DataFrame(columns=["concurso", "origin", "dezenas", "soma", "pares", "impares", "repeticao"])
     return {
         "frequency": frequency,
         "history": history,
@@ -4011,6 +4041,15 @@ def render_historical_intelligence_page(draws) -> None:
         st.subheader("Tabela histrica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
 
+        institutional_history = _analytics_base_tables()["history"]
+        if not institutional_history.empty:
+            st.subheader("Historico institucional consolidado")
+            st.dataframe(
+                _presentational_dataframe(institutional_history[["concurso", "origin", "dezenas", "soma", "pares", "impares", "repeticao"]]),
+                hide_index=True,
+                use_container_width=True,
+            )
+
         tabs = st.tabs(["Recorrentes", "Hibridos", "Caoticos"])
         for tab, profile in zip(tabs, GENERATION_PROFILE_RATIOS, strict=True):
             with tab:
@@ -4555,9 +4594,12 @@ def render_expansion_experimental_page() -> None:
                     )
                     expansion_payload = st.session_state["admin_last_expansion_experimental"]
                     if isinstance(expansion_payload, dict):
+                        institutional_analysis = _historical_match_engine(expansion_payload.get("selected_numbers", numbers))
                         save_expansion_event(
                             {
                                 **expansion_payload,
+                                "origin": "expanded",
+                                "analysis": institutional_analysis,
                                 "metrics": {
                                     **dict(expansion_payload.get("metrics", {})),
                                     "historical_scope": "operational_institutional",

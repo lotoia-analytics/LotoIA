@@ -111,6 +111,7 @@ def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
             Draw(contest=2, date=None, numbers=list(range(2, 17))),
         ],
     )
+    monkeypatch.setattr(admin_app, "list_expansion_events", lambda limit=500: [])
     admin_app._historical_dataset.clear()
     admin_app._analytics_base_tables.clear()
 
@@ -221,8 +222,45 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
 
     admin_app.render_expansion_experimental_page()
 
+    assert saved["payload"]["origin"] == "expanded"
+    assert "analysis" in saved["payload"]
     assert saved["payload"]["metrics"]["historical_scope"] == "operational_institutional"
     assert saved["payload"]["metrics"]["retention_policy"] == "premiado_permanente_temporario_restante"
+
+
+def test_institutional_history_includes_expanded_rows(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_draws",
+        lambda: [Draw(contest=1, date="2025-01-01", numbers=list(range(1, 16)))],
+    )
+    monkeypatch.setattr(
+        admin_app,
+        "list_expansion_events",
+        lambda limit=500: [
+            {
+                "id": 7,
+                "created_at": "2025-02-01T00:00:00",
+                "origin": "expanded",
+                "selected_numbers": list(range(1, 17)),
+                "total_combinations": 136,
+                "generated_count": 20,
+                "estimated_cost": 56.0,
+                "runtime_ms": 1.0,
+                "complete": False,
+                "stopped_reason": "preview_limit",
+                "analysis": {"profile_type": "hibrido"},
+            }
+        ],
+    )
+    admin_app._historical_dataset.clear()
+    admin_app._analytics_base_tables.clear()
+
+    tables = admin_app._analytics_base_tables()
+
+    assert "origin" in tables["history"].columns
+    assert "expanded" in set(tables["history"]["origin"])
+    assert int(tables["history"].iloc[-1]["concurso"]) == 1_000_007
 
 
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:

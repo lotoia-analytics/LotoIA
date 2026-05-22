@@ -21,6 +21,7 @@ def create_expansion_store(db_path: Path = DEFAULT_EXPANSION_DB_PATH) -> None:
             CREATE TABLE IF NOT EXISTS user_expansion_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
+                origin TEXT NOT NULL DEFAULT 'expanded',
                 selected_numbers TEXT NOT NULL,
                 preview_combinations TEXT NOT NULL,
                 total_combinations INTEGER NOT NULL,
@@ -29,10 +30,16 @@ def create_expansion_store(db_path: Path = DEFAULT_EXPANSION_DB_PATH) -> None:
                 runtime_ms REAL NOT NULL,
                 complete INTEGER NOT NULL,
                 stopped_reason TEXT NOT NULL,
-                metrics TEXT NOT NULL
+                metrics TEXT NOT NULL,
+                analysis_json TEXT NOT NULL DEFAULT '{}'
             )
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(user_expansion_events)").fetchall()}
+        if "origin" not in columns:
+            connection.execute("ALTER TABLE user_expansion_events ADD COLUMN origin TEXT NOT NULL DEFAULT 'expanded'")
+        if "analysis_json" not in columns:
+            connection.execute("ALTER TABLE user_expansion_events ADD COLUMN analysis_json TEXT NOT NULL DEFAULT '{}'")
         connection.commit()
 
 
@@ -47,6 +54,7 @@ def save_expansion_event(
             """
             INSERT INTO user_expansion_events (
                 created_at,
+                origin,
                 selected_numbers,
                 preview_combinations,
                 total_combinations,
@@ -55,11 +63,13 @@ def save_expansion_event(
                 runtime_ms,
                 complete,
                 stopped_reason,
-                metrics
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metrics,
+                analysis_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(UTC).replace(microsecond=0).isoformat(),
+                str(payload.get("origin") or "expanded"),
                 json.dumps(payload["selected_numbers"]),
                 json.dumps(payload.get("combinations", [])),
                 int(payload["total_combinations"]),
@@ -69,6 +79,7 @@ def save_expansion_event(
                 1 if payload["complete"] else 0,
                 str(payload.get("stopped_reason") or ""),
                 json.dumps(payload.get("metrics", {}), ensure_ascii=False),
+                json.dumps(payload.get("analysis", {}), ensure_ascii=False),
             ),
         )
         connection.commit()
@@ -87,13 +98,15 @@ def list_expansion_events(
             SELECT
                 id,
                 created_at,
+                origin,
                 selected_numbers,
                 total_combinations,
                 generated_count,
                 estimated_cost,
                 runtime_ms,
                 complete,
-                stopped_reason
+                stopped_reason,
+                analysis_json
             FROM user_expansion_events
             ORDER BY id DESC
             LIMIT ?
@@ -105,13 +118,15 @@ def list_expansion_events(
         {
             "id": row[0],
             "created_at": row[1],
-            "selected_numbers": json.loads(row[2]),
-            "total_combinations": row[3],
-            "generated_count": row[4],
-            "estimated_cost": row[5],
-            "runtime_ms": row[6],
-            "complete": bool(row[7]),
-            "stopped_reason": row[8],
+            "origin": row[2],
+            "selected_numbers": json.loads(row[3]),
+            "total_combinations": row[4],
+            "generated_count": row[5],
+            "estimated_cost": row[6],
+            "runtime_ms": row[7],
+            "complete": bool(row[8]),
+            "stopped_reason": row[9],
+            "analysis": json.loads(row[10] or "{}"),
         }
         for row in rows
     ]
