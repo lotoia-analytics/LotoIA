@@ -5,7 +5,7 @@ try:
     from .labels import LABELS, PAGE_GROUPS, PAGES
 except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
-    from labels import LABELS, PAGE_GROUPS, PAGES  # type: ignore[no-redef]
+    from dashboard.labels import LABELS, PAGE_GROUPS, PAGES  # type: ignore[no-redef]
 
 import io
 import json
