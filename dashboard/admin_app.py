@@ -87,6 +87,7 @@ from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
     build_live_telemetry_snapshot,
+    build_operational_health_snapshot,
     build_memory_timeline,
     build_observational_stabilization_report,
     load_observational_stabilization_report,
@@ -2050,6 +2051,24 @@ def render_observability_page() -> None:
             alert_rows = pd.DataFrame(live_alerts)
             st.dataframe(
                 _presentational_dataframe(alert_rows),
+                hide_index=True,
+                use_container_width=True,
+            )
+        operational_health = build_operational_health_snapshot()
+        st.subheader("Saude operacional")
+        health_cols = st.columns(4)
+        health_cols[0].metric("Status", operational_health.get("status", "-"))
+        health_cols[1].metric("Score", f"{float(operational_health.get('score', 0.0)):.2f}")
+        health_cols[2].metric("Sinais", operational_health.get("active_signals", 0))
+        health_cols[3].metric("Alertas", len(operational_health.get("alerts", [])))
+        st.caption(
+            f"Runtime: {operational_health.get('runtime_awareness', '-')}"
+            f" | Telemetria: {operational_health.get('telemetry_status', '-')}"
+            f" | Execucao: {operational_health.get('summary', {}).get('latest_execution_id', '-')}"
+        )
+        if operational_health.get("alerts"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(operational_health.get("alerts", []))),
                 hide_index=True,
                 use_container_width=True,
             )
