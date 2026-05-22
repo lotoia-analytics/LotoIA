@@ -20,7 +20,6 @@ MODE_PAGES = {
         "historical_intelligence",
     ],
     "analitico": [
-        "estatisticas_historicas",
         "analytics_intelligence",
         "ml_intelligence",
         "relatorios",
