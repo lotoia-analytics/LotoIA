@@ -788,3 +788,61 @@ def test_operational_reconciliation_page_renders_summary(monkeypatch) -> None:
     assert ("Melhor jogo", 1) in metrics
     assert ("Perfil vencedor", "hibrido") in metrics
     assert any(isinstance(frame, admin_app.pd.DataFrame) and "jogo" in frame.columns for frame in frames)
+
+
+def test_operational_reconciliation_page_autoreconciles_latest_generation(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    metrics: list[tuple[str, object]] = []
+    frames: list[object] = []
+    reconcile_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "st", admin_app.st)
+    monkeypatch.setattr(admin_app.st, "container", lambda *args, **kwargs: type("Ctx", (), {"__enter__": lambda self: self, "__exit__": lambda self, exc_type, exc, tb: False})())
+    monkeypatch.setattr(admin_app.st, "metric", lambda label, value, **kwargs: metrics.append((label, value)))
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda df, **kwargs: frames.append(df))
+    monkeypatch.setattr(admin_app.st, "subheader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(admin_app.st, "text_area", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
+    monkeypatch.setattr(admin_app, "_load_operational_reconciliation_rows", lambda baseline_numbers: (None, []))
+    monkeypatch.setattr(
+        admin_app,
+        "_load_latest_generated_games",
+        lambda: {
+            "generation_event_id": 88,
+            "lead_id": 7,
+            "target_contest": 3691,
+            "origin": "generated",
+            "generation_mode": "dashboard",
+            "games": [
+                {
+                    "game_index": 1,
+                    "numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                    "profile_type": "hibrido",
+                    "final_score": {"final_score": 91.0},
+                    "quadra_score": {"quadra_score": 4},
+                    "origin": "generated",
+                    "context_json": {},
+                }
+            ],
+        },
+    )
+
+    class DummyEngine:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def reconcile_generation(self, **kwargs):
+            reconcile_calls.append(kwargs)
+            return None
+
+    monkeypatch.setattr(admin_app, "ReconciliationEngine", DummyEngine)
+
+    admin_app.render_operational_reconciliation_page()
+
+    assert reconcile_calls
+    assert reconcile_calls[0]["generation_event_id"] == 88
+    assert reconcile_calls[0]["contest_id"] == 3691
+    assert reconcile_calls[0]["lead_id"] == 7

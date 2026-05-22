@@ -81,6 +81,7 @@ from lotoia.orchestration import (
     persist_intelligent_operational_orchestration,
 )
 from lotoia.public import OperationalLifecycleEngine
+from lotoia.public.reconciliation import ReconciliationEngine
 from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
@@ -4482,6 +4483,90 @@ def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[
     return summary, game_rows + expansion_rows
 
 
+def _load_latest_generated_games() -> dict[str, Any] | None:
+    generation_row = _sqlite_execute_safe(
+        """
+        SELECT
+            generation_event_id,
+            lead_id,
+            target_contest,
+            origin,
+            generation_mode
+        FROM generated_games
+        ORDER BY generation_event_id DESC, game_index DESC
+        LIMIT 1
+        """
+    )
+    if generation_row is None:
+        generation_row = _sqlite_execute_safe(
+            """
+            SELECT
+                id AS generation_event_id,
+                lead_id,
+                target_contest,
+                origin,
+                generation_mode
+            FROM generation_events
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+    if generation_row is None:
+        return None
+
+    generation_event_id = int(generation_row[0] or 0)
+    lead_id = int(generation_row[1] or 0) or None
+    target_contest = int(generation_row[2] or 0) if generation_row[2] is not None else None
+    origin = str(generation_row[3] or "generated")
+    generation_mode = str(generation_row[4] or "dashboard")
+
+    games_cursor = _sqlite_execute_safe(
+        """
+        SELECT
+            game_index,
+            numbers,
+            profile_type,
+            final_score,
+            quadra_score,
+            origin,
+            context_json
+        FROM generated_games
+        WHERE generation_event_id = ?
+        ORDER BY game_index
+        """,
+        (generation_event_id,),
+    )
+    games: list[dict[str, Any]] = []
+    if games_cursor is not None:
+        for row in games_cursor.fetchall():
+            final_score = json.loads(row[3] or "{}") if isinstance(row[3], str) else row[3] or {}
+            quadra_score = json.loads(row[4] or "{}") if isinstance(row[4], str) else row[4] or {}
+            context_json = json.loads(row[6] or "{}") if isinstance(row[6], str) else row[6] or {}
+            games.append(
+                {
+                    "game_index": int(row[0] or 0),
+                    "numbers": _json_numbers(row[1]),
+                    "profile_type": str(row[2] or ""),
+                    "final_score": final_score,
+                    "quadra_score": quadra_score,
+                    "origin": str(row[5] or origin),
+                    "context_json": context_json,
+                }
+            )
+
+    if not games:
+        return None
+
+    return {
+        "generation_event_id": generation_event_id,
+        "lead_id": lead_id,
+        "target_contest": target_contest,
+        "origin": origin,
+        "generation_mode": generation_mode,
+        "games": games,
+    }
+
+
 def render_operational_reconciliation_page() -> None:
     with st.container(border=True):
         _section_header(
@@ -4497,6 +4582,19 @@ def render_operational_reconciliation_page() -> None:
             try:
                 baseline_numbers = _parse_check_numbers(baseline_text)
                 summary, rows = _load_operational_reconciliation_rows(baseline_numbers)
+                if summary is None:
+                    latest_generation = _load_latest_generated_games()
+                    if latest_generation is not None:
+                        engine = ReconciliationEngine(DEFAULT_DATABASE_PATH)
+                        engine.reconcile_generation(
+                            generation_event_id=latest_generation["generation_event_id"],
+                            contest_id=int(latest_generation["target_contest"] or 0),
+                            generated_games=latest_generation["games"],
+                            official_numbers=baseline_numbers,
+                            lead_id=latest_generation["lead_id"],
+                            source="operational_dashboard_manual_baseline",
+                        )
+                        summary, rows = _load_operational_reconciliation_rows(baseline_numbers)
                 if summary is None:
                     st.warning("Nenhuma reconciliação operacional encontrada ainda.")
                     return
