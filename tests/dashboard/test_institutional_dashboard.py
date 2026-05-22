@@ -400,6 +400,44 @@ def test_dashboard_uses_live_generation_events(tmp_path: Path, monkeypatch) -> N
         connection.close()
 
 
+def test_statistics_page_uses_official_last_contest(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(admin_app, "_load_draws", lambda: [Draw(contest=3689, date=None, numbers=list(range(1, 16)))])
+    monkeypatch.setattr(admin_app, "_cached_stats", lambda: {
+        "frequency": {},
+        "delay": {},
+        "duos": {},
+        "ternos": {},
+        "quadras": {},
+        "quinas": {},
+        "senas": {},
+    })
+    monkeypatch.setattr(admin_app, "summarize_draws", lambda draws: {"total_draws": 1, "last_contest": {"contest": 3689}, "numbers_tracked": 15, "frequencies": {}})
+    monkeypatch.setattr(admin_app, "calculate_hot_cold_numbers", lambda draws, window=20: {"hot": [], "cold": []})
+    monkeypatch.setattr(admin_app, "_safe_last_contest", lambda: "3691")
+    def _capture_metric(self, label: str, value: object, *args, **kwargs) -> None:
+        captured.setdefault(label, value)
+
+    monkeypatch.setattr(_DummyColumn, "metric", _capture_metric, raising=False)
+    monkeypatch.setattr(admin_app.st, "subheader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "plotly_chart", lambda *args, **kwargs: None)
+    class _DummyTab:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(admin_app.st, "tabs", lambda labels: [_DummyTab() for _ in labels])
+
+    admin_app.render_statistics_page([Draw(contest=3689, date=None, numbers=list(range(1, 16)))])
+
+    assert captured["Último concurso"] == "3691"
+
+
 def test_cache_invalidates_after_generation(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(admin_app, "_invalidate_runtime_cache", lambda: calls.append("clear"))

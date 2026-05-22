@@ -4341,12 +4341,13 @@ def render_check_page() -> None:
 def render_statistics_page(draws) -> None:
     with st.container(border=True):
         _section_header("Resultados Passados", "Base histórica, frequências, atrasos e leituras estruturais do acervo.")
+        official_last_contest = _safe_last_contest()
         summary = summarize_draws(draws)
         hot_cold = calculate_hot_cold_numbers(draws, window=20)
         stats = _cached_stats()
         col1, col2, col3 = st.columns(3)
         col1.metric("Concursos carregados", summary["total_draws"])
-        col2.metric("Último concurso", summary["last_contest"]["contest"])
+        col2.metric("Último concurso", official_last_contest)
         col3.metric("Dezenas rastreadas", summary["numbers_tracked"])
         col1, col2 = st.columns(2)
         with col1:
