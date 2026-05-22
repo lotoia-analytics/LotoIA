@@ -32,7 +32,6 @@ from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
-    GenerationEvent,
     GeneratedGame,
     ReconciliationGame,
     ReconciliationRun,
@@ -4485,11 +4484,18 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
             .order_by(GeneratedGame.generation_event_id.desc(), GeneratedGame.game_index.desc())
             .first()
         )
-        generation_event = (
-            session.query(GenerationEvent)
-            .order_by(GenerationEvent.id.desc())
-            .first()
-        )
+        if generation_game is None:
+            generation_event_row = _sqlite_execute_safe(
+                """
+                SELECT id, strategy
+                FROM generation_events
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            )
+            generation_event = generation_event_row.fetchone() if generation_event_row is not None else None
+        else:
+            generation_event = None
         if generation_game is None and generation_event is None:
             return None
         if generation_game is not None:
@@ -4499,11 +4505,11 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
             origin = str(generation_game.origin or "generated")
             generation_mode = str(generation_game.generation_mode or "dashboard")
         else:
-            generation_event_id = int(generation_event.id or 0) if generation_event is not None else 0
+            generation_event_id = int(generation_event[0] or 0) if generation_event is not None else 0
             lead_id = None
             target_contest = None
             origin = "dashboard"
-            generation_mode = str(generation_event.strategy or "dashboard") if generation_event is not None else "dashboard"
+            generation_mode = str(generation_event[1] or "dashboard") if generation_event is not None else "dashboard"
 
         games_query = (
             session.query(GeneratedGame)
