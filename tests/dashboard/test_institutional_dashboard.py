@@ -127,10 +127,14 @@ def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
 
 
 def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
-    assert admin_app.LABELS["backtesting"] == "Backtesting"
-    assert admin_app.LABELS["calibracao_experimental"] == "Ajustes Operacionais"
-    assert admin_app.LABELS["benchmark_cientifico"] == "Comparativos Cientificos"
+    assert admin_app.LABELS["analytics_intelligence"] == "Análise Inteligente"
+    assert admin_app.LABELS["ml_intelligence"] == "Aprendizado Estatístico"
+    assert admin_app.LABELS["backtesting"] == "Testar Estratégias"
+    assert admin_app.LABELS["calibracao_experimental"] == "Estratégia Operacional"
+    assert admin_app.LABELS["benchmark_cientifico"] == "Comparativos Operacionais"
     assert admin_app.LABELS["historico_experimental"] == "Historico Operacional"
+    assert admin_app.LABELS["ml_governance"] == "Auditoria Técnica"
+    assert admin_app.LABELS["workflows"] == "Fluxo Operacional"
     assert admin_app.LABELS["reports_engine"] == "Relatorios Tecnicos"
 
 
