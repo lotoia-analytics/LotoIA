@@ -4072,6 +4072,11 @@ def render_historical_intelligence_page(draws) -> None:
                 hide_index=True,
                 use_container_width=True,
             )
+            historical_report = build_institutional_historical_intelligence()
+            historical_summary = historical_report.get("summary", {}) if isinstance(historical_report, dict) else {}
+            st.caption(
+                f"Jogos expandidos no relatório histórico: {historical_summary.get('expanded_event_count', 0)}"
+            )
 
         tabs = st.tabs(["Recorrentes", "Hibridos", "Caoticos"])
         for tab, profile in zip(tabs, GENERATION_PROFILE_RATIOS, strict=True):

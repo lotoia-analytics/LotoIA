@@ -263,6 +263,33 @@ def test_institutional_history_includes_expanded_rows(monkeypatch) -> None:
     assert int(tables["history"].iloc[-1]["concurso"]) == 1_000_007
 
 
+def test_institutional_historical_report_counts_expanded_events(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "list_expansion_events",
+        lambda limit=50: [
+            {
+                "id": 1,
+                "created_at": "2026-05-22T00:00:00",
+                "origin": "expanded",
+                "selected_numbers": list(range(1, 18)),
+                "total_combinations": 136,
+                "generated_count": 17,
+                "estimated_cost": 56.0,
+                "runtime_ms": 12.5,
+                "complete": True,
+                "stopped_reason": "",
+                "analysis": {"profile_type": "expanded"},
+            }
+        ],
+    )
+
+    report = admin_app.build_institutional_historical_intelligence()
+
+    assert report["summary"]["expanded_event_count"] == 1
+    assert report["expanded_events"][0]["origin"] == "expanded"
+
+
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda: {"report": {"summary": {}, "counts": {}}})

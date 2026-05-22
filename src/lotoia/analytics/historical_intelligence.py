@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from lotoia.analytics.intelligence_layer import build_executive_analytical_report
+from lotoia.combinatorics.expansion_store import list_expansion_events
 
 DEFAULT_ANALYTICS_DIR = Path("reports") / "analytics"
 DEFAULT_INSTITUTIONAL_HISTORICAL_REPORT = Path("reports") / "analytics" / "institutional_historical_intelligence.json"
@@ -123,6 +124,7 @@ def _load_executive_reports(report_dir: Path = DEFAULT_ANALYTICS_DIR) -> list[di
 
 def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALYTICS_DIR) -> dict[str, Any]:
     snapshots = _load_executive_reports(report_dir)
+    expansion_events = list_expansion_events(limit=50)
     if not snapshots:
         return {
             "source": str(report_dir),
@@ -132,6 +134,7 @@ def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALY
                 "stability_trend": 0.0,
                 "drift_trend": 0.0,
                 "confidence_trend": 0.0,
+                "expanded_event_count": len(expansion_events),
             },
         }
 
@@ -182,7 +185,23 @@ def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALY
             "latest_status": last["status"],
             "latest_headline": last["headline"],
             "latest_recommendation": last["recommendation"],
+            "expanded_event_count": len(expansion_events),
         },
+        "expanded_events": [
+            {
+                "id": event.get("id"),
+                "created_at": event.get("created_at", ""),
+                "origin": event.get("origin", "expanded"),
+                "selected_numbers": event.get("selected_numbers", []),
+                "total_combinations": event.get("total_combinations", 0),
+                "generated_count": event.get("generated_count", 0),
+                "estimated_cost": event.get("estimated_cost", 0.0),
+                "runtime_ms": event.get("runtime_ms", 0.0),
+                "complete": bool(event.get("complete", False)),
+                "stopped_reason": event.get("stopped_reason", ""),
+            }
+            for event in expansion_events
+        ],
     }
 
 
