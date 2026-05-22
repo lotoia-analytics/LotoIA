@@ -8,6 +8,7 @@ from lotoia.public.persistence import (
     CheckEventRepository,
     GenerationEventRepository,
     LeadRepository,
+    ReconciliationRepository,
     initialize_public_persistence,
 )
 

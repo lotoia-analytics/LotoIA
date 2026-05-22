@@ -3400,6 +3400,10 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
         connection, _ = _sqlite_ensure_runtime_connection()
         if connection is None:
             return pd.DataFrame(columns=columns)
+        try:
+            connection.rollback()
+        except Exception:
+            pass
         return pd.read_sql_query(query, connection, params=params)
     except Exception as exc:
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
@@ -3645,7 +3649,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
             created_at
         FROM leads
         ORDER BY created_at DESC, id DESC
-        LIMIT 
+        LIMIT ?
         """,
         ["id", "first_name", "whatsapp", "created_at"],
         params=(LEAD_HISTORY_LIMIT,),
@@ -3653,6 +3657,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
     gen_df = _read_sql_query_safe(
         """
         SELECT
+            lead_id,
             first_name,
             whatsapp,
             created_at,
@@ -3660,24 +3665,23 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
             strategy
         FROM generation_events
         ORDER BY created_at DESC, id DESC
-        LIMIT 
+        LIMIT ?
         """,
-        ["first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
+        ["lead_id", "first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
         params=(LEAD_HISTORY_LIMIT,),
     )
     check_df = _read_sql_query_safe(
         """
         SELECT
-            first_name,
-            whatsapp,
+            lead_id,
             created_at,
             contest_id,
             hits
         FROM check_events
         ORDER BY created_at DESC, id DESC
-        LIMIT 
+        LIMIT ?
         """,
-        ["first_name", "whatsapp", "created_at", "contest_id", "hits"],
+        ["lead_id", "created_at", "contest_id", "hits"],
         params=(LEAD_HISTORY_LIMIT,),
     )
     if leads_df.empty:
@@ -3697,21 +3701,22 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
             ]
         )
 
-    base = leads_df.drop_duplicates(subset=["first_name", "whatsapp"], keep="first").copy()
+    base = leads_df.drop_duplicates(subset=["id"], keep="first").copy()
+    base = base.rename(columns={"id": "lead_id"})
     if gen_df.empty:
-        gen_summary = pd.DataFrame(columns=["first_name", "whatsapp", "generations", "ml_activations", "last_generation_at"])
+        gen_summary = pd.DataFrame(columns=["lead_id", "generations", "ml_activations", "last_generation_at"])
     else:
         gen_summary = (
             gen_df.assign(ml_enabled=gen_df["ml_enabled"].fillna(0).astype(int))
-            .groupby(["first_name", "whatsapp"], as_index=False)
+            .groupby(["lead_id"], as_index=False)
             .agg(generations=("created_at", "size"), ml_activations=("ml_enabled", "sum"), last_generation_at=("created_at", "max"))
         )
     if check_df.empty:
-        check_summary = pd.DataFrame(columns=["first_name", "whatsapp", "checks", "last_check_at"])
+        check_summary = pd.DataFrame(columns=["lead_id", "checks", "last_check_at"])
     else:
-        check_summary = check_df.groupby(["first_name", "whatsapp"], as_index=False).agg(checks=("created_at", "size"), last_check_at=("created_at", "max"))
+        check_summary = check_df.groupby(["lead_id"], as_index=False).agg(checks=("created_at", "size"), last_check_at=("created_at", "max"))
 
-    dataframe = base.merge(gen_summary, on=["first_name", "whatsapp"], how="left").merge(check_summary, on=["first_name", "whatsapp"], how="left")
+    dataframe = base.merge(gen_summary, on=["lead_id"], how="left").merge(check_summary, on=["lead_id"], how="left")
     for column in ("generations", "checks", "ml_activations"):
         dataframe[column] = pd.to_numeric(dataframe[column], errors="coerce").fillna(0).astype(int)
     dataframe["lead"] = dataframe.apply(lambda row: _lead_identifier(str(row["first_name"]), str(row["whatsapp"])), axis=1)
@@ -3719,6 +3724,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
     dataframe["recurrence_score"] = dataframe["generations"] + dataframe["checks"]
     dataframe = dataframe[
         [
+            "lead_id",
             "lead",
             "first_name",
             "whatsapp",

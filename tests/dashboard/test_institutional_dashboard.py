@@ -6,6 +6,11 @@ from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
 
+from lotoia.analytics import historical_intelligence
+from lotoia.combinatorics.expansion_store import save_expansion_event
+from lotoia.database import create_database
+from lotoia.database.public_repository import save_check_event, save_generation_event, save_lead, save_reconciliation_run
+
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
     pyplot = types.ModuleType("matplotlib.pyplot")
@@ -763,6 +768,163 @@ def test_lead_analytics_reacts_to_institutional_db_signature(monkeypatch) -> Non
     assert analytics["total_leads"] == 1
     assert analytics["volume_generations"] == 1
     assert analytics["volume_checks"] == 1
+
+
+def test_institutional_user_flow_updates_dashboard_and_history(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "institutional.db"
+    expansion_db_path = tmp_path / "expansion.db"
+    create_database(db_path)
+    admin_conn = sqlite3.connect(db_path)
+    admin_app._sqlite_bind_connection(admin_conn)
+    monkeypatch.setattr(admin_app, "_institutional_db_signature", lambda: int(db_path.stat().st_mtime_ns))
+    admin_app._lead_history_dataframe.clear()
+    admin_app._observability_tables.clear()
+    admin_app._analytics_base_tables.clear()
+
+    lead = save_lead(
+        first_name="Ana",
+        whatsapp="11999999999",
+        source="user_panel",
+        ip_hash="hash",
+        user_agent="agent",
+        db_path=db_path,
+    )
+    generation = save_generation_event(
+        lead_id=lead["id"],
+        generated_games=[
+            {
+                "game_index": 1,
+                "numbers": list(range(1, 16)),
+                "profile_type": "hibrido",
+                "final_score": {"final_score": 90.0},
+                "quadra_score": {"quadra_score": 4},
+                "origin": "generated",
+                "context_json": {"source": "user_panel"},
+            }
+        ],
+        ml_enabled=False,
+        seed=7,
+        strategy="historical_recalibrated_v2",
+        ranking_score=90.0,
+        execution_time_ms=10.0,
+        target_contest=3691,
+        origin="user_panel",
+        generation_mode="dashboard",
+        context={"source": "user_panel"},
+        first_name="Ana",
+        whatsapp="11999999999",
+        db_path=db_path,
+    )
+    save_check_event(
+        lead_id=lead["id"],
+        contest_id=3691,
+        selected_numbers=list(range(1, 16)),
+        hits=15,
+        result_payload={"hits": 15, "status": "reconciliado"},
+        db_path=db_path,
+    )
+    save_reconciliation_run(
+        generation_event_id=generation["id"],
+        lead_id=lead["id"],
+        contest_id=3691,
+        source="operational_smoke_validation",
+        status="reconciliado",
+        prize_count=1,
+        total_hits=15,
+        best_hits=15,
+        payload={"baseline_numbers": list(range(1, 16)), "origin": "smoke"},
+        games=[
+            {
+                "game_index": 1,
+                "numbers": list(range(1, 16)),
+                "hits": 15,
+                "matched_numbers": list(range(1, 16)),
+                "prize_status": "premiado",
+                "prize_tier": "faixa_15",
+                "context_json": {"origin": "generated"},
+            }
+        ],
+        db_path=db_path,
+    )
+    save_expansion_event(
+        {
+            "origin": "expanded",
+            "selected_numbers": list(range(1, 16)),
+            "combinations": [list(range(1, 16))],
+            "total_combinations": 1,
+            "generated_count": 1,
+            "estimated_cost": 0.0,
+            "runtime_ms": 1.0,
+            "complete": True,
+            "stopped_reason": "",
+            "metrics": {"coverage": 1.0},
+            "analysis": {"profile_type": "expanded"},
+        },
+        db_path=expansion_db_path,
+    )
+
+    monkeypatch.setattr(
+        historical_intelligence,
+        "list_expansion_events",
+        lambda limit=50: [
+            {
+                "id": 1,
+                "created_at": "2026-05-22T10:00:00",
+                "origin": "expanded",
+                "selected_numbers": list(range(1, 16)),
+                "total_combinations": 1,
+                "generated_count": 1,
+                "estimated_cost": 0.0,
+                "runtime_ms": 1.0,
+                "complete": True,
+                "stopped_reason": "",
+            }
+        ],
+    )
+    report_dir = tmp_path / "analytics"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        historical_intelligence,
+        "_load_institutional_snapshots",
+        lambda report_dir=report_dir: [
+            {
+                "_path": str(report_dir / "snapshot-1.json"),
+                "source": str(report_dir),
+                "executive_report": {
+                    "generated_at": "2026-05-22T10:00:00",
+                    "status": "ok",
+                    "headline": "ok",
+                    "recommendation": "seguir",
+                    "confidence": "alta",
+                },
+                "historical_report": {
+                    "summary": {
+                        "trend": "estavel",
+                        "latest_status": "ok",
+                        "latest_headline": "ok",
+                        "latest_recommendation": "seguir",
+                        "verdict_count": 1,
+                        "expanded_event_count": 1,
+                    }
+                },
+                "summary": {
+                    "status": "ok",
+                    "headline": "ok",
+                },
+            }
+        ],
+    )
+    lead_analytics = admin_app._lead_analytics()
+    dashboard = admin_app.build_institutional_observability_dashboard(db_path)
+    historical = historical_intelligence.build_institutional_historical_intelligence(report_dir=report_dir)
+    timeline = historical_intelligence.build_institutional_analytical_timeline(report_dir=report_dir)
+
+    assert lead_analytics["total_leads"] == 1
+    assert lead_analytics["volume_generations"] == 1
+    assert lead_analytics["volume_checks"] == 1
+    assert dashboard["summary"]["expansion_event_count"] == 1
+    assert historical["summary"]["expanded_event_count"] == 1
+    assert timeline["summary"]["expanded_event_count"] == 1
 
 
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
