@@ -4,6 +4,8 @@ import sys
 import types
 from copy import deepcopy
 
+import lotoia.ml as lotoia_ml
+
 if "matplotlib" not in sys.modules:
     matplotlib = types.ModuleType("matplotlib")
     pyplot = types.ModuleType("matplotlib.pyplot")
@@ -30,10 +32,10 @@ def _sample_game() -> dict[str, object]:
 
 def test_ml_helpers_keep_temporal_and_ranking_contracts() -> None:
     game = _sample_game()
-    features = admin_app.extract_score_ml_features(game)
-    scorer = admin_app.InterpretableLinearScoreML()
+    features = lotoia_ml.extract_score_ml_features(game)
+    scorer = lotoia_ml.InterpretableLinearScoreML()
     result = scorer.score(game)
-    reranked = admin_app.supervised_rerank_games([deepcopy(game), deepcopy(game)], model=scorer)
+    reranked = lotoia_ml.supervised_rerank_games([deepcopy(game), deepcopy(game)], model=scorer)
 
     assert features
     assert result.score_ml >= 0
@@ -46,7 +48,7 @@ def test_ml_helpers_keep_temporal_and_ranking_contracts() -> None:
 
 
 def test_ml_runtime_model_initializes_calibration() -> None:
-    scorer = admin_app.InterpretableLinearScoreML()
+    scorer = lotoia_ml.InterpretableLinearScoreML()
 
     assert scorer.calibration is not None
     assert scorer.calibration["status"] == "active"
@@ -54,7 +56,7 @@ def test_ml_runtime_model_initializes_calibration() -> None:
 
 
 def test_ml_heartbeat_reports_active_runtime() -> None:
-    state = admin_app.ml_heartbeat()
+    state = lotoia_ml.ml_heartbeat()
 
     assert state["status"] == "active"
     assert state["engine_version"] == "historical_recalibrated_v2"
@@ -97,9 +99,9 @@ def test_ml_training_payload_has_governance_contract(monkeypatch) -> None:
             return {"odd_balance": 0.5, "sum_balance": 0.5}
 
     monkeypatch.setattr(admin_app, "_cached_backtest", lambda *args, **kwargs: fake_result)
-    monkeypatch.setattr(admin_app, "calibrate_linear_score_ml", lambda rows, target_field="target_hits": _StubCalibration())
-    monkeypatch.setattr(admin_app, "attach_score_ml", lambda game, model=None: {**game, "score_ml": 50.0})
-    monkeypatch.setattr(admin_app, "supervised_rerank_games", lambda games, model=None: games)
+    monkeypatch.setattr(lotoia_ml, "calibrate_linear_score_ml", lambda rows, target_field="target_hits": _StubCalibration())
+    monkeypatch.setattr(lotoia_ml, "attach_score_ml", lambda game, model=None: {**game, "score_ml": 50.0, "score_ml_details": {"attribution": []}})
+    monkeypatch.setattr(lotoia_ml, "supervised_rerank_games", lambda games, model=None: games)
 
     payload = admin_app._ml_training_result.__wrapped__()
 
@@ -109,3 +111,46 @@ def test_ml_training_payload_has_governance_contract(monkeypatch) -> None:
     assert payload["ml_report_paths"]["json"].exists()
     assert payload["runtime"]["fallback_used"] is False
     assert payload["runtime"]["calibration_loaded"] is True
+
+
+def test_ml_training_payload_does_not_require_model_attribution(monkeypatch) -> None:
+    fake_game = _sample_game()
+    fake_result = type(
+        "FakeBacktest",
+        (),
+        {
+            "contest_results": [
+                {"contest": 1, "games": [deepcopy(fake_game)]},
+                {"contest": 2, "games": [deepcopy(fake_game)]},
+                {"contest": 3, "games": [deepcopy(fake_game)]},
+                {"contest": 4, "games": [deepcopy(fake_game)]},
+            ]
+        },
+    )()
+
+    class _StubCalibration:
+        model_version = "stub-v1"
+        feature_schema_version = "stub-schema"
+        training_summary = {}
+        calibration = {}
+
+        def score(self, game):
+            return type(
+                "ScoreResult",
+                (),
+                {"score_ml": 50.0, "features": {"odd_balance": 0.5, "sum_balance": 0.5}, "attribution": []},
+            )()
+
+        def _weights(self):
+            return {"odd_balance": 0.5, "sum_balance": 0.5}
+
+    monkeypatch.setattr(admin_app, "_cached_backtest", lambda *args, **kwargs: fake_result)
+    monkeypatch.setattr(lotoia_ml, "calibrate_linear_score_ml", lambda rows, target_field="target_hits": _StubCalibration())
+    monkeypatch.setattr(lotoia_ml, "attach_score_ml", lambda game, model=None: {**game, "score_ml": 50.0, "score_ml_details": {"attribution": []}})
+    monkeypatch.setattr(lotoia_ml, "supervised_rerank_games", lambda games, model=None: games)
+
+    payload = admin_app._ml_training_result.__wrapped__()
+
+    assert payload["ml_snapshot"].exists()
+    assert payload["payload"]["model_version"] == "stub-v1"
+    assert payload["scored_games"][0]["score_ml_details"]["attribution"] == []

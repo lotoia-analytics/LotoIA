@@ -1330,6 +1330,11 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
             scored_games.append(attach_score_ml(dict(game), model=calibration_report))
     reranked = supervised_rerank_games(scored_games, model=calibration_report)
     sample_row = rows[0] if rows else {}
+    attribution_payload = []
+    if scored_games:
+        first_score_details = scored_games[0].get("score_ml_details", {})
+        if isinstance(first_score_details, dict):
+            attribution_payload = list(first_score_details.get("attribution", []))
     feature_rows = []
     for feature_name, weight in calibration_report._weights().items():
         feature_values = [row["features"][feature_name] for row in rows] if rows else [0.0]
@@ -1376,7 +1381,7 @@ def _ml_training_result(contests: int = 5, games_count: int = 8, pool_size: int 
         {
             **payload,
             "calibration": dict(calibration_report.calibration or {}),
-            "attribution": [item.as_dict() for item in calibration_report.attribution],
+            "attribution": attribution_payload,
             "sample_row": sample_row,
         },
     )
