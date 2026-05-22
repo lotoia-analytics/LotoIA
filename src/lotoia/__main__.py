@@ -15,6 +15,7 @@ def main() -> None:
     subparsers.add_parser("observational-stabilization", help="Gera o relatorio de estabilizacao observacional.")
     subparsers.add_parser("result-sync", help="Sincroniza concursos oficiais da Caixa.")
     subparsers.add_parser("result-sync-scheduler", help="Monitora automatico da sincronizacao oficial da Caixa.")
+    subparsers.add_parser("operational-cleanup-scheduler", help="Executa a limpeza operacional diaria.")
     subparsers.add_parser("operational-lifecycle", help="Executa o fechamento operacional completo.")
     subparsers.add_parser("backtest", help="Executa backtesting historico.")
     subparsers.add_parser("benchmark", help="Executa benchmark cientifico.")
@@ -34,6 +35,8 @@ def main() -> None:
         cli.run_result_sync_cli(remaining)
     elif args.command == "result-sync-scheduler":
         cli.run_result_sync_scheduler_cli(remaining)
+    elif args.command == "operational-cleanup-scheduler":
+        cli.run_operational_cleanup_scheduler_cli(remaining)
     elif args.command == "operational-lifecycle":
         cli.run_operational_lifecycle_cli(remaining)
     elif args.command == "backtest":

@@ -428,6 +428,26 @@ class OperationalLifecycleEngine:
                 session.query(ReconciliationGame).filter(ReconciliationGame.generation_event_id == generation_event_id).delete(synchronize_session=False)
             session.commit()
 
+    def prune_generation_event(self, *, generation_event_id: int, keep_indexes: set[int]) -> int:
+        """Remove non-prized rows for a reconciled generation event."""
+
+        with get_session(self.db_path) as session:
+            query = session.query(GeneratedGame).filter(GeneratedGame.generation_event_id == generation_event_id)
+            if keep_indexes:
+                query = query.filter(~GeneratedGame.game_index.in_(sorted(keep_indexes)))
+            removed_generated = query.delete(synchronize_session=False)
+
+            query_reconciliation = session.query(ReconciliationGame).filter(
+                ReconciliationGame.generation_event_id == generation_event_id,
+            )
+            if keep_indexes:
+                query_reconciliation = query_reconciliation.filter(
+                    ~ReconciliationGame.game_index.in_(sorted(keep_indexes))
+                )
+            removed_reconciliation = query_reconciliation.delete(synchronize_session=False)
+            session.commit()
+            return int(removed_generated) + int(removed_reconciliation)
+
     @staticmethod
     def _persist_operational_report(report_dir: Path, stem: str, payload: dict[str, Any]) -> Path:
         report_dir.mkdir(parents=True, exist_ok=True)

@@ -218,6 +218,17 @@ def run_result_sync_scheduler_cli(argv: list[str] | None = None) -> None:
     )
 
 
+def run_operational_cleanup_scheduler_cli(argv: list[str] | None = None) -> None:
+    from lotoia.scheduling.daily_cleanup_scheduler import DailyOperationalCleanupScheduler
+
+    parser = argparse.ArgumentParser(description="Executa a limpeza operacional diaria da LotoIA.")
+    parser.add_argument("--poll-seconds", type=int, default=60)
+    args = parser.parse_args(argv)
+
+    scheduler = DailyOperationalCleanupScheduler()
+    scheduler.run_forever(poll_seconds=args.poll_seconds)
+
+
 def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
     from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
 
