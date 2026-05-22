@@ -12,6 +12,7 @@ def render_secondary_operational_metrics(
     last_contest: str,
     total_games: str,
     expansion_count: int = 0,
+    reconciliation_count: int = 0,
 ) -> None:
     render_institutional_design_system()
     with st.container(border=True):
@@ -25,7 +26,7 @@ def render_secondary_operational_metrics(
             """,
             unsafe_allow_html=True,
         )
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
         cards = [
             (col1, "Geracoes", gen_count, "Eventos persistidos em generation_events"),
             (col2, "Conferencias", check_count, "Eventos persistidos em check_events"),
@@ -33,8 +34,9 @@ def render_secondary_operational_metrics(
             (col4, "Ultimo concurso", last_contest, "Maior concurso conferido"),
             (col5, "Jogos totais", total_games, "Total operacional registrado"),
             (col6, "Expansoes", expansion_count, "Eventos persistidos em expansion_events"),
+            (col7, "ReconciliaÃ§Ãµes", reconciliation_count, "Eventos persistidos em reconciliation_events"),
         ]
-        markers = ["◦", "◦", "◦", "◦", "◦", "◦"]
+        markers = ["◦", "◦", "◦", "◦", "◦", "◦", "◦"]
         for (column, label, value, caption), marker in zip(cards, markers, strict=True):
             with column:
                 st.markdown(

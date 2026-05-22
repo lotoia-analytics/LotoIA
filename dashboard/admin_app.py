@@ -189,7 +189,7 @@ USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -488,6 +488,19 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS reconciliation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
+            generation_event_id INTEGER,
+            reconciliation_type TEXT NOT NULL DEFAULT 'operational',
+            hits INTEGER NOT NULL DEFAULT 0,
+            matched_numbers TEXT NOT NULL DEFAULT '[]',
+            runtime_origin TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS generated_games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             generation_event_id INTEGER,
@@ -554,7 +567,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "reconciliation_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -591,6 +604,13 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("expansion_events", "runtime_origin", "TEXT", "''")
     _sqlite_ensure_column("expansion_events", "strategy_profile", "TEXT", "''")
     _sqlite_ensure_column("expansion_events", "payload_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("reconciliation_events", "lead_id", "INTEGER")
+    _sqlite_ensure_column("reconciliation_events", "generation_event_id", "INTEGER")
+    _sqlite_ensure_column("reconciliation_events", "reconciliation_type", "TEXT", "'operational'")
+    _sqlite_ensure_column("reconciliation_events", "hits", "INTEGER", "0")
+    _sqlite_ensure_column("reconciliation_events", "matched_numbers", "TEXT", "'[]'")
+    _sqlite_ensure_column("reconciliation_events", "runtime_origin", "TEXT", "''")
+    _sqlite_ensure_column("reconciliation_events", "payload_json", "TEXT", "'{}'")
     _sqlite_ensure_column("report_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("report_events", "generation_event_id", "INTEGER")
     _sqlite_ensure_column("report_events", "report_type", "TEXT", "'user_report'")
@@ -2048,6 +2068,7 @@ def _operational_metrics() -> dict[str, Any]:
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
     ml_usage = int(_query_scalar("SELECT COUNT(*) FROM ml_usage_events"))
     expansion_events = int(_query_scalar("SELECT COUNT(*) FROM expansion_events"))
+    reconciliation_events = int(_query_scalar("SELECT COUNT(*) FROM reconciliation_events"))
     imported_total = int(_query_scalar("SELECT COUNT(*) FROM imported_contests"))
     generated_games_total = int(_query_scalar("SELECT COUNT(*) FROM generated_games"))
     logs_total = int(_query_scalar("SELECT COUNT(*) FROM operational_logs"))
@@ -2057,6 +2078,7 @@ def _operational_metrics() -> dict[str, Any]:
         "check_volume": check_total,
         "ml_usage": ml_usage,
         "expansion_events": expansion_events,
+        "reconciliation_events": reconciliation_events,
         "imported_contests": imported_total,
         "generated_games": generated_games_total,
         "snapshot_volume": _snapshot_count(),
@@ -4031,6 +4053,7 @@ def _render_kpi_cards() -> None:
     check_count = _safe_count("check_events")
     ml_count = _safe_count("ml_usage_events")
     expansion_count = _safe_count("expansion_events")
+    reconciliation_count = _safe_count("reconciliation_events")
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
     with st.container(border=True):
@@ -4042,6 +4065,7 @@ def _render_kpi_cards() -> None:
             last_contest,
             total_games,
             expansion_count,
+            reconciliation_count,
         )
 
 

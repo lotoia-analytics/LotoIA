@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.database.public_repository import save_reconciliation_event
 from lotoia.public.persistence import ReconciliationRepository
 
 
@@ -124,6 +125,27 @@ class ReconciliationEngine:
             best_hits=best_hits,
             payload=payload,
             games=[game.to_dict() | {"context_json": {"official_numbers": official_numbers}} for game in reconciled_games],
+        )
+        lead_for_event = lead_id
+        if lead_for_event is None:
+            lead_for_event = 0
+        save_reconciliation_event(
+            lead_id=lead_for_event if lead_for_event else None,
+            generation_event_id=generation_event_id,
+            reconciliation_type=source,
+            hits=total_hits,
+            matched_numbers=sorted({number for game in reconciled_games for number in game.matched_numbers}),
+            runtime_origin="public_reconciliation",
+            payload={
+                "source": source,
+                "contest_id": contest_id,
+                "status": status,
+                "prize_count": prize_count,
+                "total_hits": total_hits,
+                "best_hits": best_hits,
+                "reconciled_games": [game.to_dict() for game in reconciled_games],
+            },
+            db_path=self.db_path,
         )
         return ReconciliationSummary(
             generation_event_id=generation_event_id,

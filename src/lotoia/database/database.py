@@ -216,6 +216,30 @@ class ExpansionEvent(Base):
     )
 
 
+class ReconciliationEvent(Base):
+    __tablename__ = "reconciliation_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True)
+    generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    reconciliation_type: Mapped[str] = mapped_column(String, default="operational", nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    matched_numbers: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    runtime_origin: Mapped[str] = mapped_column(String, default="", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_reconciliation_events_created_at", "created_at"),
+        Index("ix_reconciliation_events_lead_id", "lead_id"),
+        Index("ix_reconciliation_events_generation_event_id", "generation_event_id"),
+        Index("ix_reconciliation_events_reconciliation_type", "reconciliation_type"),
+    )
+
+
 class ImportedContest(Base):
     __tablename__ = "imported_contests"
 
@@ -577,6 +601,21 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         )
         connection.exec_driver_sql(
             """
+            CREATE TABLE IF NOT EXISTS reconciliation_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER,
+                generation_event_id INTEGER,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                reconciliation_type TEXT NOT NULL DEFAULT 'operational',
+                hits INTEGER NOT NULL DEFAULT 0,
+                matched_numbers JSON NOT NULL DEFAULT '[]',
+                runtime_origin TEXT NOT NULL DEFAULT '',
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS workflow_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 workflow_id TEXT NOT NULL UNIQUE,
@@ -774,6 +813,21 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE reconciliation_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
         ):
             if column_name not in reconciliation_game_columns:
+                connection.exec_driver_sql(column_sql)
+        reconciliation_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(reconciliation_events)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE reconciliation_events ADD COLUMN lead_id INTEGER", "lead_id"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN generation_event_id INTEGER", "generation_event_id"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN reconciliation_type TEXT NOT NULL DEFAULT 'operational'", "reconciliation_type"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN hits INTEGER NOT NULL DEFAULT 0", "hits"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN matched_numbers JSON NOT NULL DEFAULT '[]'", "matched_numbers"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN runtime_origin TEXT NOT NULL DEFAULT ''", "runtime_origin"),
+            ("ALTER TABLE reconciliation_events ADD COLUMN payload JSON NOT NULL DEFAULT '{}'", "payload"),
+        ):
+            if column_name not in reconciliation_event_columns:
                 connection.exec_driver_sql(column_sql)
         workflow_run_columns = {
             row[1]

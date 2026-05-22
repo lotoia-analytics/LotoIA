@@ -10,6 +10,7 @@ from lotoia.public.persistence import (
     GenerationEventRepository,
     LeadRepository,
     ReportEventRepository,
+    ReconciliationEventRepository,
     ReconciliationRepository,
     initialize_public_persistence,
 )
@@ -166,5 +167,29 @@ def save_expansion_event(
         expansion_size=expansion_size,
         runtime_origin=runtime_origin,
         strategy_profile=strategy_profile,
+        payload=payload,
+    )
+
+
+def save_reconciliation_event(
+    *,
+    lead_id: int | None,
+    generation_event_id: int | None,
+    reconciliation_type: str,
+    hits: int,
+    matched_numbers: list[int],
+    runtime_origin: str,
+    payload: dict[str, Any] | None = None,
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    initialize_public_persistence(db_path)
+    repository = ReconciliationEventRepository(db_path)
+    return repository.insert(
+        lead_id=lead_id,
+        generation_event_id=generation_event_id,
+        reconciliation_type=reconciliation_type,
+        hits=hits,
+        matched_numbers=matched_numbers,
+        runtime_origin=runtime_origin,
         payload=payload,
     )

@@ -11,6 +11,7 @@ from lotoia.database.database import (
     GenerationEvent,
     MlUsageEvent,
     ReportEvent,
+    ReconciliationEvent,
     ReconciliationGame,
     ReconciliationRun,
     Lead,
@@ -242,6 +243,40 @@ class ExpansionEventRepository:
     def count(self) -> int:
         with get_session(self.db_path) as session:
             return int(session.query(ExpansionEvent).count())
+
+
+class ReconciliationEventRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        lead_id: int | None,
+        generation_event_id: int | None,
+        reconciliation_type: str,
+        hits: int,
+        matched_numbers: list[int],
+        runtime_origin: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = ReconciliationEvent(
+                lead_id=lead_id,
+                generation_event_id=generation_event_id,
+                reconciliation_type=reconciliation_type,
+                hits=hits,
+                matched_numbers=matched_numbers,
+                runtime_origin=runtime_origin,
+                payload=payload or {},
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def count(self) -> int:
+        with get_session(self.db_path) as session:
+            return int(session.query(ReconciliationEvent).count())
 
 
 class CheckEventRepository:

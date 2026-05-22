@@ -6,6 +6,7 @@ from lotoia.public.persistence.repositories import (
     LeadRepository,
     MlUsageEventRepository,
     ReportEventRepository,
+    ReconciliationEventRepository,
     ReconciliationRepository,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "LeadRepository",
     "MlUsageEventRepository",
     "ReportEventRepository",
+    "ReconciliationEventRepository",
     "ReconciliationRepository",
     "initialize_public_persistence",
 ]
