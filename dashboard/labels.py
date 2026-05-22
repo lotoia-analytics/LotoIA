@@ -40,9 +40,9 @@ PAGE_AUDIT_MATRIX = {
 
 LABELS = {
     "geracao_jogos": "Gerar Jogos",
-    "conferir_jogos": "Jogos Passados",
+    "conferir_jogos": "Conferir Jogos",
     "reconciliacao_operacional": "Simular Resultado",
-    "estatisticas_historicas": "Resultados Passados",
+    "estatisticas_historicas": "Jogos Passados",
     "historical_intelligence": "Historico",
     "analytics_intelligence": "Analises",
     "ml_intelligence": "ML",

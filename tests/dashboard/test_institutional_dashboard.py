@@ -137,6 +137,7 @@ def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
 def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
     assert admin_app.MODE_PAGES["operacional"] == [
         "geracao_jogos",
+        "estatisticas_historicas",
         "conferir_jogos",
         "reconciliacao_operacional",
         "jogo_expandido_experimental",
@@ -150,6 +151,11 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
     assert "reports_engine" in admin_app.MODE_PAGES["analitico"]
     assert "historical_intelligence" in admin_app.MODE_PAGES["analitico"]
     assert "conferir_jogos" in admin_app.MODE_PAGES["analitico"]
+
+
+def test_sidebar_labels_separate_past_games_from_check_games() -> None:
+    assert admin_app.LABELS["estatisticas_historicas"] == "Jogos Passados"
+    assert admin_app.LABELS["conferir_jogos"] == "Conferir Jogos"
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
