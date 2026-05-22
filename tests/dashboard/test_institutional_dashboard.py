@@ -189,6 +189,42 @@ def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
     assert rendered["expansion"] is True
 
 
+def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -> None:
+    _patch_streamlit(monkeypatch)
+    saved: dict[str, object] = {}
+
+    monkeypatch.setattr(admin_app, "estimate_expansion", lambda numbers: {"total_combinations": 136, "estimated_cost": 56.0})
+    monkeypatch.setattr(
+        admin_app,
+        "_run_admin_expansion",
+        lambda numbers, preview_limit=20: {
+            "selected_numbers": numbers,
+            "combinations": [list(range(1, 16))],
+            "total_combinations": 136,
+            "generated_count": 1,
+            "estimated_cost": 56.0,
+            "runtime_ms": 1.0,
+            "complete": False,
+            "stopped_reason": "preview_limit",
+            "metrics": {"engine": "combinatorial_expansion_v1_admin_experimental"},
+        },
+    )
+    monkeypatch.setattr(admin_app, "save_expansion_event", lambda payload, db_path=None: saved.setdefault("payload", payload) or 1)
+    monkeypatch.setattr(admin_app, "_write_snapshot", lambda name, payload: tmp_path / f"{name}.json")
+    monkeypatch.setattr(admin_app, "_export_csv", lambda path, df: path)
+    monkeypatch.setattr(admin_app, "_save_pdf_report", lambda path, title, lines, df: path)
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16")
+    monkeypatch.setattr(admin_app.st, "selectbox", lambda *args, **kwargs: 16)
+    monkeypatch.setattr(admin_app.st, "slider", lambda *args, **kwargs: 20)
+    monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
+
+    admin_app.render_expansion_experimental_page()
+
+    assert saved["payload"]["metrics"]["historical_scope"] == "operational_institutional"
+    assert saved["payload"]["metrics"]["retention_policy"] == "premiado_permanente_temporario_restante"
+
+
 def test_observability_and_reports_pages_render_safely(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda: {"report": {"summary": {}, "counts": {}}})

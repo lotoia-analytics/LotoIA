@@ -27,6 +27,7 @@ from lotoia.combinatorics import (
     expand_lotofacil_numbers,
     estimate_expansion,
 )
+from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -591,6 +592,40 @@ def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
                 "dezenas": _format_numbers(game),
             }
             for index, game in enumerate(combinations)
+        ]
+    )
+
+
+def _expansion_events_dataframe(limit: int = 20) -> pd.DataFrame:
+    rows = list_expansion_events(limit=limit)
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "id",
+                "created_at",
+                "selected_numbers",
+                "total_combinations",
+                "generated_count",
+                "estimated_cost",
+                "runtime_ms",
+                "complete",
+                "stopped_reason",
+            ]
+        )
+    return pd.DataFrame(
+        [
+            {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "selected_numbers": _format_numbers(row["selected_numbers"]),
+                "total_combinations": row["total_combinations"],
+                "generated_count": row["generated_count"],
+                "estimated_cost": row["estimated_cost"],
+                "runtime_ms": row["runtime_ms"],
+                "complete": row["complete"],
+                "stopped_reason": row["stopped_reason"],
+            }
+            for row in rows
         ]
     )
 
@@ -4493,6 +4528,26 @@ def render_expansion_experimental_page() -> None:
                         numbers,
                         preview_limit=int(preview_limit),
                     )
+                    expansion_payload = st.session_state["admin_last_expansion_experimental"]
+                    if isinstance(expansion_payload, dict):
+                        save_expansion_event(
+                            {
+                                **expansion_payload,
+                                "metrics": {
+                                    **dict(expansion_payload.get("metrics", {})),
+                                    "historical_scope": "operational_institutional",
+                                    "retention_policy": "premiado_permanente_temporario_restante",
+                                },
+                            }
+                        )
+                        st.session_state["admin_last_expansion_experimental_snapshot"] = _write_snapshot(
+                            "admin_expansion_experimental",
+                            {
+                                "timestamp": _report_timestamp(),
+                                "source": "admin_expansion_experimental",
+                                "payload": expansion_payload,
+                            },
+                        )
             except Exception as exc:
                 st.error("Falha controlada no motor combinatorio experimental.")
                 st.caption(str(exc))
@@ -4539,6 +4594,8 @@ def render_expansion_experimental_page() -> None:
             st.download_button("Exportar CSV", data=csv_bytes, file_name=csv_path.name, mime="text/csv")
         if pdf_bytes is not None:
             st.download_button("Exportar PDF", data=pdf_bytes, file_name=pdf_path.name, mime="application/pdf")
+        st.subheader("Historico institucional de expansao")
+        st.dataframe(_expansion_events_dataframe(), hide_index=True, use_container_width=True)
 
 
 def render_history_page() -> None:
