@@ -228,6 +228,13 @@ def _record_event(events: list[dict[str, Any]], event_type: str, details: str) -
     events.append({"timestamp": _timestamp(), "type": event_type, "details": details})
 
 
+def _refresh_institutional_usage_views() -> None:
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+
 def render_generate_page(events: list[dict[str, Any]]) -> None:
     st.header("Gerar Jogos")
     st.markdown(
@@ -303,6 +310,7 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
             "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
             "generation_event_id": int(generation_event["id"]),
         }
+        _refresh_institutional_usage_views()
 
 
 def render_check_page(events: list[dict[str, Any]]) -> None:
@@ -357,6 +365,7 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
             st.dataframe(recon_df, hide_index=True, use_container_width=True)
             _record_event(events, "validacao_operacional", f"{smoke_result['best_hits']} acertos")
             st.session_state["user_last_check"] = smoke_result
+            _refresh_institutional_usage_views()
         return
 
     contest_id = st.number_input("Concurso", min_value=1, value=1)
@@ -376,6 +385,7 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
         st.write("Dezenas enviadas:", _format_numbers(result["selected_numbers"]))
         _record_event(events, "conferencia", f"concurso {result['contest']} com {result['hits']} acertos")
         st.session_state["user_last_check"] = result
+        _refresh_institutional_usage_views()
 
 
 def render_history_page(events: list[dict[str, Any]]) -> None:
