@@ -82,6 +82,7 @@ from lotoia.assistance import build_contextual_recommendations
 from lotoia.assistance import build_explainable_analytics
 from lotoia.assistance import build_operational_guidance
 from lotoia.assistance import build_executive_summary
+from lotoia.assistance import build_adaptive_assistance_memory
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2214,6 +2215,23 @@ def render_observability_page() -> None:
         if executive_summary.get("highlights"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(executive_summary.get("highlights", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        adaptive_memory = build_adaptive_assistance_memory()
+        st.subheader("Memoria assistiva adaptativa")
+        memory_cols = st.columns(4)
+        memory_cols[0].metric("Estado", adaptive_memory.get("state", "-"))
+        memory_cols[1].metric("Execucao", adaptive_memory.get("summary", {}).get("execution_id", "-"))
+        memory_cols[2].metric("Snapshots", adaptive_memory.get("summary", {}).get("snapshot_count", 0))
+        memory_cols[3].metric("Replay", "sim" if adaptive_memory.get("memory", {}).get("replay_available") else "nao")
+        st.caption(
+            f"Memoria: {adaptive_memory.get('summary', {}).get('state', '-')}"
+            f" | Linha de memoria: {adaptive_memory.get('metadata', {}).get('layer', '-')}"
+        )
+        if adaptive_memory.get("memory_items"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(adaptive_memory.get("memory_items", []))),
                 hide_index=True,
                 use_container_width=True,
             )

@@ -2,14 +2,17 @@ from .contextual_recommendation import build_contextual_recommendations, Context
 from .explainable_analytics import build_explainable_analytics, ExplainableAnalyticsSnapshot
 from .operational_guidance import build_operational_guidance, OperationalGuidanceSnapshot
 from .executive_summary import build_executive_summary, ExecutiveSummarySnapshot
+from .adaptive_memory import build_adaptive_assistance_memory, AdaptiveAssistanceMemorySnapshot
 from .executive_assistance import build_executive_assistance, ExecutiveAssistanceSnapshot
 
 __all__ = [
+    "AdaptiveAssistanceMemorySnapshot",
     "ContextualRecommendationSnapshot",
     "ExplainableAnalyticsSnapshot",
     "ExecutiveAssistanceSnapshot",
     "ExecutiveSummarySnapshot",
     "OperationalGuidanceSnapshot",
+    "build_adaptive_assistance_memory",
     "build_contextual_recommendations",
     "build_explainable_analytics",
     "build_executive_assistance",
