@@ -89,6 +89,7 @@ from lotoia.observability import (
     build_live_operational_memory,
     build_live_telemetry_snapshot,
     build_operational_health_snapshot,
+    build_real_time_governance,
     build_runtime_storytelling,
     build_memory_timeline,
     build_observational_stabilization_report,
@@ -2105,6 +2106,23 @@ def render_observability_page() -> None:
         memory_story = live_memory.get("story", {})
         if memory_story.get("narrative"):
             st.write(" | ".join(memory_story.get("narrative", [])))
+        governance = build_real_time_governance()
+        st.subheader("Governanca em tempo real")
+        gov_cols = st.columns(4)
+        gov_cols[0].metric("Status", governance.get("status", "-"))
+        gov_cols[1].metric("Score", f"{float(governance.get('score', 0.0)):.2f}")
+        gov_cols[2].metric("Policy", "ok" if governance.get("policy_allowed") else "review")
+        gov_cols[3].metric("Alertas", len(governance.get("alerts", [])))
+        st.caption(
+            f"Saude: {governance.get('summary', {}).get('health_status', '-')}"
+            f" | Bloqueios: {governance.get('summary', {}).get('blocking_count', 0)}"
+        )
+        if governance.get("alerts"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(governance.get("alerts", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
         timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
         memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
         st.subheader("Linha temporal executiva da memória")
