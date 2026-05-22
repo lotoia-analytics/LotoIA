@@ -704,6 +704,40 @@ def test_presentational_dataframe_renames_artifact_columns() -> None:
     assert "Confianca" in dataframe.columns
 
 
+def test_lead_analytics_reacts_to_institutional_db_signature(monkeypatch) -> None:
+    calls: list[int] = []
+
+    def _lead_history_dataframe(signature: int):
+        calls.append(signature)
+        return admin_app.pd.DataFrame(
+            [
+                {
+                    "lead": "Ana | 11999999999",
+                    "first_name": "Ana",
+                    "whatsapp": "11999999999",
+                    "created_at": "2026-05-22",
+                    "origin": "user_panel",
+                    "generations": 1,
+                    "checks": 1,
+                    "ml_activations": 0,
+                    "last_generation_at": "2026-05-22",
+                    "last_check_at": "2026-05-22",
+                    "recurrence_score": 2,
+                }
+            ]
+        )
+
+    monkeypatch.setattr(admin_app, "_institutional_db_signature", lambda: 123456789)
+    monkeypatch.setattr(admin_app, "_lead_history_dataframe", _lead_history_dataframe)
+
+    analytics = admin_app._lead_analytics()
+
+    assert calls == [123456789]
+    assert analytics["total_leads"] == 1
+    assert analytics["volume_generations"] == 1
+    assert analytics["volume_checks"] == 1
+
+
 def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []

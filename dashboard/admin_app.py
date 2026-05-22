@@ -3621,7 +3621,16 @@ def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, 
 
 
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _lead_history_dataframe() -> pd.DataFrame:
+def _institutional_db_signature() -> int:
+    try:
+        return int(DB_PATH.stat().st_mtime_ns)
+    except Exception:
+        return 0
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
+    del db_signature
     leads_df = _read_sql_query_safe(
         """
         SELECT
@@ -3727,7 +3736,7 @@ def _lead_history_dataframe() -> pd.DataFrame:
 
 
 def _lead_analytics() -> dict[str, Any]:
-    history = _lead_history_dataframe()
+    history = _lead_history_dataframe(_institutional_db_signature())
     total_leads = int(len(history))
     recurring_leads = int((history["recurrence_score"] > 1).sum()) if not history.empty else 0
     ml_activations = int(history["ml_activations"].sum()) if not history.empty else 0
