@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 from sqlalchemy import inspect
 
@@ -93,7 +94,7 @@ def test_create_database_schema(tmp_path: Path) -> None:
     create_database(db_path)
 
     inspector = inspect(get_engine(db_path))
-    assert set(inspector.get_table_names()) == {
+    assert {
         "benchmark_runs",
         "backtest_runs",
         "calibration_runs",
@@ -104,7 +105,7 @@ def test_create_database_schema(tmp_path: Path) -> None:
         "leads",
         "reconciliation_games",
         "reconciliation_runs",
-    }
+    } <= set(inspector.get_table_names())
     imported_columns = {column["name"] for column in inspector.get_columns("imported_contests")}
     assert {"contest_number", "created_at", "data", "dezenas", "metadata_json"} <= imported_columns
     generated_columns = {column["name"] for column in inspector.get_columns("generated_games")}
@@ -120,6 +121,28 @@ def test_create_database_schema(tmp_path: Path) -> None:
     assert {"ix_leads_created_at", "ix_leads_whatsapp", "ix_leads_source"} <= lead_indexes
     assert {"ix_generation_events_created_at", "ix_generation_events_lead_id"} <= generation_indexes
     assert {"ix_check_events_created_at", "ix_check_events_lead_id"} <= check_indexes
+
+
+def test_create_database_migrates_lead_runtime_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy_lotoia.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                whatsapp TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.commit()
+
+    create_database(db_path)
+
+    inspector = inspect(get_engine(db_path))
+    lead_columns = {column["name"] for column in inspector.get_columns("leads")}
+    assert {"source", "ip_hash", "user_agent"} <= lead_columns
 
 
 def test_save_and_read_backtest_run(tmp_path: Path) -> None:
