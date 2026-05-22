@@ -18,10 +18,61 @@ if "matplotlib" not in sys.modules:
     sys.modules["matplotlib"] = matplotlib
     sys.modules["matplotlib.pyplot"] = pyplot
 
-import dashboard.admin_app as admin_app
+
+def _install_admin_app_stubs() -> None:
+    stubs: dict[str, dict[str, object]] = {
+        "lotoia.reports": {
+            "generate_backtest_report": lambda *args, **kwargs: None,
+        },
+        "lotoia.backtesting": {
+            "BacktestResult": type("BacktestResult", (), {}),
+            "run_backtest": lambda *args, **kwargs: None,
+        },
+        "lotoia.benchmark": {
+            "BenchmarkResult": type("BenchmarkResult", (), {}),
+            "run_benchmark": lambda *args, **kwargs: None,
+        },
+        "lotoia.calibration.weight_calibrator": {
+            "WeightConfiguration": type("WeightConfiguration", (), {}),
+            "compare_weight_configurations": lambda *args, **kwargs: None,
+        },
+        "lotoia.generator.basic_generator": {
+            "_build_game": lambda *args, **kwargs: {},
+            "_is_valid_game": lambda *args, **kwargs: True,
+            "generate_best_games": lambda *args, **kwargs: [],
+            "generate_multiple_games": lambda *args, **kwargs: [],
+        },
+        "lotoia.experiments.temporal_governance": {
+            "build_walk_forward_splits": lambda *args, **kwargs: [],
+        },
+        "lotoia.ml": {
+            "InterpretableLinearScoreML": type("InterpretableLinearScoreML", (), {}),
+            "attach_score_ml": lambda *args, **kwargs: None,
+            "calibrate_linear_score_ml": lambda *args, **kwargs: None,
+            "activate_score_ml_runtime": lambda *args, **kwargs: {},
+            "ml_heartbeat": lambda *args, **kwargs: {"engine_version": "historical_recalibrated_v2", "model_version": "historical_recalibrated_v2", "status": "active", "fallback_used": False},
+            "extract_score_ml_features": lambda *args, **kwargs: [],
+            "migrate_score_ml_snapshot": lambda *args, **kwargs: None,
+            "ensure_calibration": lambda *args, **kwargs: None,
+            "supervised_rerank_games": lambda *args, **kwargs: [],
+        },
+        "lotoia.generator.engine": {
+            "generate_ranked_games": lambda *args, **kwargs: [],
+        },
+    }
+    for module_name, attributes in stubs.items():
+        if module_name in sys.modules:
+            continue
+        module = types.ModuleType(module_name)
+        for attribute_name, attribute_value in attributes.items():
+            setattr(module, attribute_name, attribute_value)
+        sys.modules[module_name] = module
 
 
 def test_runtime_health_and_metrics_table_are_safe(monkeypatch, tmp_path) -> None:
+    _install_admin_app_stubs()
+    import dashboard.admin_app as admin_app
+
     conn = sqlite3.connect(tmp_path / "observability.db")
     cursor = conn.cursor()
     cursor.execute(

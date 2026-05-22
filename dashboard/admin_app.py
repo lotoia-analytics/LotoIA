@@ -20,8 +20,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from lotoia.backtesting import BacktestResult, run_backtest
-from lotoia.benchmark import BenchmarkResult, run_benchmark
 from lotoia.calibration.weight_calibrator import (
     WeightConfiguration,
     compare_weight_configurations,
@@ -88,6 +86,7 @@ from lotoia.public import OperationalLifecycleEngine
 from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
     build_institutional_observability_dashboard,
+    build_live_telemetry_snapshot,
     build_memory_timeline,
     build_observational_stabilization_report,
     load_observational_stabilization_report,
@@ -1992,6 +1991,7 @@ def render_observability_page() -> None:
         observability_dashboard = build_institutional_observability_dashboard()
         observability_summary = observability_dashboard.get("summary", {})
         observability_health = observability_dashboard.get("runtime_health", {})
+        live_telemetry = build_live_telemetry_snapshot()
         st.subheader("Painel executivo de observabilidade")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
         dash_col1.metric("Execuções", observability_summary.get("execution_count", 0))
@@ -2027,6 +2027,19 @@ def render_observability_page() -> None:
                         },
                     ]
             )
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.subheader("Telemetria viva")
+        live_cols = st.columns(4)
+        live_cols[0].metric("Estado", live_telemetry.get("summary", {}).get("telemetry_status", "-"))
+        live_cols[1].metric("Runtime", live_telemetry.get("summary", {}).get("runtime_awareness", "-"))
+        live_cols[2].metric("Atividade", live_telemetry.get("summary", {}).get("activity_level", "-"))
+        live_cols[3].metric("Execucao", live_telemetry.get("summary", {}).get("latest_execution_id", "-"))
+        st.dataframe(
+            _presentational_dataframe(
+                pd.DataFrame(live_telemetry.get("live_signals", [])),
             ),
             hide_index=True,
             use_container_width=True,
@@ -2886,6 +2899,8 @@ def _cached_generate_multiple_games(count: int, max_repeated: int) -> list[dict[
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _cached_backtest(contests: int, games_count: int, pool_size: int, history_window: int, seed: int) -> BacktestResult:
+    from lotoia.backtesting import run_backtest
+
     return run_backtest(contests_analyzed=contests, games_count=games_count, pool_size=pool_size, history_window=history_window, seed=seed)
 
 
@@ -2921,6 +2936,8 @@ def _cached_stats() -> dict[str, dict[str, Any]]:
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _cached_benchmark(contests: int, games_count: int, pool_size: int, history_window: int, seed: int) -> BenchmarkResult:
+    from lotoia.benchmark import run_benchmark
+
     return run_benchmark(contests_analyzed=contests, games_count=games_count, pool_size=pool_size, history_window=history_window, seed=seed)
 
 
