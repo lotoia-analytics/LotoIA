@@ -88,6 +88,7 @@ from lotoia.observability import (
     build_institutional_observability_dashboard,
     build_live_telemetry_snapshot,
     build_operational_health_snapshot,
+    build_runtime_storytelling,
     build_memory_timeline,
     build_observational_stabilization_report,
     load_observational_stabilization_report,
@@ -2069,6 +2070,23 @@ def render_observability_page() -> None:
         if operational_health.get("alerts"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(operational_health.get("alerts", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        runtime_story = build_runtime_storytelling()
+        st.subheader("Narrativa operacional viva")
+        story_cols = st.columns(3)
+        story_cols[0].metric("Headline", runtime_story.get("headline", "-"))
+        story_cols[1].metric("Saude", runtime_story.get("summary", {}).get("health_status", "-"))
+        story_cols[2].metric("Sinais", runtime_story.get("summary", {}).get("active_signals", 0))
+        st.caption(
+            f"Telemetria: {runtime_story.get('summary', {}).get('telemetry_status', '-')}"
+            f" | Runtime: {runtime_story.get('summary', {}).get('runtime_awareness', '-')}"
+        )
+        st.write(" | ".join(runtime_story.get("narrative", [])))
+        if runtime_story.get("timeline"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(runtime_story.get("timeline", []))),
                 hide_index=True,
                 use_container_width=True,
             )

@@ -7,6 +7,7 @@ from .observability_repository import ObservabilityRepository, ObservabilityTrac
 from .institutional_dashboard import InstitutionalObservabilityDashboard, build_institutional_observability_dashboard
 from .live_telemetry import build_live_telemetry_snapshot
 from .operational_health import build_operational_health_snapshot
+from .runtime_storytelling import build_runtime_storytelling
 from .observability_report import ObservabilityReport
 from .observational_stabilization import (
     build_observational_stabilization_report,
@@ -32,6 +33,7 @@ __all__ = [
     "InstitutionalObservabilityDashboard",
     "build_live_telemetry_snapshot",
     "build_operational_health_snapshot",
+    "build_runtime_storytelling",
     "build_institutional_observability_dashboard",
     "OperationalMonitoring",
     "OperationalMonitoringSnapshot",
