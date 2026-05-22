@@ -102,7 +102,7 @@ class GenerationEvent(Base):
     __tablename__ = "generation_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -666,6 +666,12 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(generated_games)").fetchall()
         }
+        generation_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(generation_events)").fetchall()
+        }
+        if "lead_id" not in generation_event_columns:
+            connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN lead_id INTEGER")
         for column_sql, column_name in (
             ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
             ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),

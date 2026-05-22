@@ -391,6 +391,7 @@ def _sqlite_ensure_admin_schema() -> None:
         """
         CREATE TABLE IF NOT EXISTS generation_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
             first_name TEXT NOT NULL,
             whatsapp TEXT NOT NULL,
             seed INTEGER,
@@ -487,6 +488,7 @@ def _sqlite_ensure_admin_schema() -> None:
 
     _sqlite_ensure_column("generation_events", "first_name", "TEXT", "''")
     _sqlite_ensure_column("generation_events", "whatsapp", "TEXT", "''")
+    _sqlite_ensure_column("generation_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("generation_events", "seed", "INTEGER")
     _sqlite_ensure_column("generation_events", "strategy", "TEXT")
     _sqlite_ensure_column("generation_events", "ranking_score", "REAL")
