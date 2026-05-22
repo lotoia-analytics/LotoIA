@@ -2,10 +2,14 @@ from __future__ import annotations
 
 try:
     from . import _bootstrap  # type: ignore[import-not-found]  # noqa: F401
-    from .labels import LABELS, PAGE_GROUPS, PAGES
+    from . import labels as _labels_module
 except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
-    from dashboard.labels import LABELS, PAGE_GROUPS, PAGES  # type: ignore[no-redef]
+    from dashboard import labels as _labels_module
+
+LABELS = getattr(_labels_module, "LABELS", {})
+PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
+PAGES = getattr(_labels_module, "PAGES", [])
 
 import io
 import json
