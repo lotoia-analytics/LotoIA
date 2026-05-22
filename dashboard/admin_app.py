@@ -3805,7 +3805,7 @@ def _sidebar_navigation() -> str:
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     return st.sidebar.radio(
-        "Navegao",
+        "Navegacao",
         options=PAGES,
         format_func=lambda key: LABELS.get(key, key),
         label_visibility="collapsed",

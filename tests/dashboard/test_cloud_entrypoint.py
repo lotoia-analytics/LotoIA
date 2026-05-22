@@ -38,7 +38,7 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
     page = admin_app._sidebar_navigation()
 
     assert page == "observability"
-    assert captured["label"] == "Navegao"
+    assert captured["label"] == "Navegacao"
     assert captured["options"] == [
         "geracao_jogos",
         "conferir_jogos",
