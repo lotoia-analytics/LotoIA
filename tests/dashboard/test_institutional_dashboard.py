@@ -149,8 +149,8 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
     assert "calibracao_experimental" in admin_app.MODE_PAGES["analitico"]
     assert "benchmark_cientifico" in admin_app.MODE_PAGES["analitico"]
     assert "reports_engine" in admin_app.MODE_PAGES["analitico"]
-    assert "historical_intelligence" in admin_app.MODE_PAGES["analitico"]
-    assert "conferir_jogos" in admin_app.MODE_PAGES["analitico"]
+    assert "historical_intelligence" not in admin_app.MODE_PAGES["analitico"]
+    assert "conferir_jogos" not in admin_app.MODE_PAGES["analitico"]
     assert "estatisticas_historicas" not in admin_app.MODE_PAGES["analitico"]
 
 
