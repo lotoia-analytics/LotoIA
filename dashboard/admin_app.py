@@ -81,6 +81,7 @@ from lotoia.assistance import build_executive_assistance
 from lotoia.assistance import build_contextual_recommendations
 from lotoia.assistance import build_explainable_analytics
 from lotoia.assistance import build_operational_guidance
+from lotoia.assistance import build_executive_summary
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2199,6 +2200,20 @@ def render_observability_page() -> None:
         if guidance.get("guidance"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(guidance.get("guidance", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        executive_summary = build_executive_summary()
+        st.subheader("Resumo executivo")
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("Estado", executive_summary.get("state", "-"))
+        summary_cols[1].metric("Presenca", executive_summary.get("summary", {}).get("presence", "-"))
+        summary_cols[2].metric("Saude", executive_summary.get("summary", {}).get("health_status", "-"))
+        summary_cols[3].metric("Historico", executive_summary.get("summary", {}).get("historical_trend", "-"))
+        st.caption(" | ".join(executive_summary.get("bullets", [])))
+        if executive_summary.get("highlights"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(executive_summary.get("highlights", []))),
                 hide_index=True,
                 use_container_width=True,
             )
