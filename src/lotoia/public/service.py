@@ -10,6 +10,7 @@ from uuid import uuid4
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.ml import activate_score_ml_runtime
+from lotoia.database.public_repository import save_check_event
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository, initialize_public_persistence
 from lotoia.public.models import PublicCheckRequest, PublicGenerationRequest
 from lotoia.observability import MetricsRegistry, ObservabilityRepository, ObservabilityTracer
@@ -257,6 +258,35 @@ def check_public_contest(
                 duration_ms=round(execution_time_ms, 2),
                 context={"source": source, "contest_id": request.contest_id},
             )
+    if db_path is not None:
+        initialize_public_persistence(db_path)
+        lead_repository = LeadRepository(db_path)
+        lead = lead_repository.find_by_first_name_and_whatsapp(request.first_name.strip(), request.whatsapp)
+        if lead is None:
+            lead = lead_repository.insert(
+                first_name=request.first_name.strip(),
+                whatsapp=request.whatsapp,
+                source=source,
+                ip_hash="",
+                user_agent=user_agent,
+            )
+        save_check_event(
+            lead_id=int(lead["id"]),
+            contest_id=request.contest_id,
+            selected_numbers=checked_numbers,
+            hits=hits,
+            result_payload={
+                "contest_id": request.contest_id,
+                "execution_time_ms": round(execution_time_ms, 2),
+                "source": source,
+                "user_agent": user_agent,
+                "execution_id": execution_id,
+                "correct_numbers": correct_numbers,
+                "selected_numbers": checked_numbers,
+                "hits": hits,
+            },
+            db_path=db_path,
+        )
     return {
         "hits": hits,
         "correct_numbers": correct_numbers,

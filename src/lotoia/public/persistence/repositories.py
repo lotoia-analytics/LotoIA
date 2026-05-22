@@ -8,6 +8,7 @@ from lotoia.database.database import (
     GeneratedGame,
     CheckEvent,
     GenerationEvent,
+    MlUsageEvent,
     ReconciliationGame,
     ReconciliationRun,
     Lead,
@@ -111,6 +112,17 @@ class GenerationEventRepository:
                         context_json=context or {},
                     )
                 )
+            if ml_enabled:
+                session.add(
+                    MlUsageEvent(
+                        lead_id=lead_id,
+                        generation_event_id=event.id,
+                        source=origin,
+                        strategy=strategy,
+                        execution_time_ms=execution_time_ms,
+                        payload=context or {},
+                    )
+                )
             session.commit()
             return _model_to_dict(event)
 
@@ -128,6 +140,38 @@ class GenerationEventRepository:
         with get_session(self.db_path) as session:
             event = session.get(GenerationEvent, event_id)
             return _model_to_dict(event) if event else None
+
+
+class MlUsageEventRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        lead_id: int,
+        generation_event_id: int,
+        source: str,
+        strategy: str,
+        execution_time_ms: float,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = MlUsageEvent(
+                lead_id=lead_id,
+                generation_event_id=generation_event_id,
+                source=source,
+                strategy=strategy,
+                execution_time_ms=execution_time_ms,
+                payload=payload or {},
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def count(self) -> int:
+        with get_session(self.db_path) as session:
+            return int(session.query(MlUsageEvent).count())
 
 
 class CheckEventRepository:

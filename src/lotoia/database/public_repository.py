@@ -52,7 +52,7 @@ def save_generation_event(
 ) -> dict[str, Any]:
     initialize_public_persistence(db_path)
     repository = GenerationEventRepository(db_path)
-    return repository.insert(
+    event = repository.insert(
         lead_id=lead_id,
         generated_games=generated_games,
         ml_enabled=ml_enabled,
@@ -67,6 +67,7 @@ def save_generation_event(
         first_name=first_name,
         whatsapp=whatsapp,
     )
+    return event
 
 
 def save_check_event(

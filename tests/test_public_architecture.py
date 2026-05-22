@@ -176,6 +176,7 @@ def test_generate_public_games_persists_generation_and_games(tmp_path: Path) -> 
 
     with get_session(db_path) as session:
         assert session.execute(text("select count(*) from generation_events")).scalar() == 1
+        assert session.execute(text("select count(*) from ml_usage_events")).scalar() == 1
         assert session.execute(text("select count(*) from generated_games")).scalar() == 2
         row = session.execute(text("select target_contest, origin, generation_mode, context_json from generated_games order by id limit 1")).first()
 
@@ -221,6 +222,7 @@ def test_check_public_contest_is_readonly_and_persists_event(tmp_path: Path) -> 
         assert session.execute(text("select count(*) from runtime_spans")).scalar() == 1
         assert session.execute(text("select count(*) from runtime_metrics")).scalar() >= 1
         assert session.execute(text("select count(*) from runtime_lineage")).scalar() >= 1
+        assert session.execute(text("select count(*) from check_events")).scalar() == 1
 
 
 def test_observability_repository_persists_runtime_execution_tracing_metrics(tmp_path: Path) -> None:

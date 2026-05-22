@@ -188,7 +188,7 @@ USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -424,6 +424,7 @@ def _sqlite_ensure_admin_schema() -> None:
             lead_id INTEGER,
             first_name TEXT NOT NULL,
             whatsapp TEXT NOT NULL,
+            generated_games TEXT NOT NULL DEFAULT '[]',
             seed INTEGER,
             strategy TEXT,
             ranking_score REAL,
@@ -435,11 +436,25 @@ def _sqlite_ensure_admin_schema() -> None:
         """
         CREATE TABLE IF NOT EXISTS check_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER,
             first_name TEXT NOT NULL,
             whatsapp TEXT NOT NULL,
             contest_id INTEGER,
             hits INTEGER,
+            result_payload TEXT NOT NULL DEFAULT '{}',
             execution_time_ms REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ml_usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id INTEGER NOT NULL,
+            generation_event_id INTEGER NOT NULL,
+            source TEXT NOT NULL DEFAULT 'public_api',
+            strategy TEXT NOT NULL DEFAULT '',
+            execution_time_ms REAL NOT NULL DEFAULT 0.0,
+            payload_json TEXT NOT NULL DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
@@ -510,7 +525,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -518,17 +533,26 @@ def _sqlite_ensure_admin_schema() -> None:
 
     _sqlite_ensure_column("generation_events", "first_name", "TEXT", "''")
     _sqlite_ensure_column("generation_events", "whatsapp", "TEXT", "''")
+    _sqlite_ensure_column("generation_events", "generated_games", "TEXT", "'[]'")
     _sqlite_ensure_column("generation_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("generation_events", "seed", "INTEGER")
     _sqlite_ensure_column("generation_events", "strategy", "TEXT")
     _sqlite_ensure_column("generation_events", "ranking_score", "REAL")
     _sqlite_ensure_column("generation_events", "execution_time_ms", "REAL")
     _sqlite_ensure_column("generation_events", "ml_enabled", "INTEGER", "0")
+    _sqlite_ensure_column("check_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("check_events", "first_name", "TEXT", "''")
     _sqlite_ensure_column("check_events", "whatsapp", "TEXT", "''")
     _sqlite_ensure_column("check_events", "contest_id", "INTEGER")
     _sqlite_ensure_column("check_events", "hits", "INTEGER")
+    _sqlite_ensure_column("check_events", "result_payload", "TEXT", "'{}'")
     _sqlite_ensure_column("check_events", "execution_time_ms", "REAL")
+    _sqlite_ensure_column("ml_usage_events", "lead_id", "INTEGER")
+    _sqlite_ensure_column("ml_usage_events", "generation_event_id", "INTEGER")
+    _sqlite_ensure_column("ml_usage_events", "source", "TEXT", "'public_api'")
+    _sqlite_ensure_column("ml_usage_events", "strategy", "TEXT", "''")
+    _sqlite_ensure_column("ml_usage_events", "execution_time_ms", "REAL", "0.0")
+    _sqlite_ensure_column("ml_usage_events", "payload_json", "TEXT", "'{}'")
     _sqlite_ensure_column("generated_games", "target_contest", "INTEGER")
     _sqlite_ensure_column("generated_games", "origin", "TEXT", "'dashboard'")
     _sqlite_ensure_column("generated_games", "generation_mode", "TEXT", "''")
@@ -1977,7 +2001,7 @@ def _operational_metrics() -> dict[str, Any]:
     generation_total = int(_query_scalar("SELECT COUNT(*) FROM generation_events"))
     generation_days = int(_query_scalar("SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events"))
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
-    ml_usage = int(_query_scalar("SELECT COUNT(*) FROM generation_events WHERE ml_enabled = 1"))
+    ml_usage = int(_query_scalar("SELECT COUNT(*) FROM ml_usage_events"))
     imported_total = int(_query_scalar("SELECT COUNT(*) FROM imported_contests"))
     generated_games_total = int(_query_scalar("SELECT COUNT(*) FROM generated_games"))
     logs_total = int(_query_scalar("SELECT COUNT(*) FROM operational_logs"))
@@ -3700,6 +3724,18 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
             ["lead_id", "first_name", "whatsapp", "created_at", "ml_enabled", "strategy"],
             params=(LEAD_HISTORY_LIMIT,),
         )
+        ml_df = _read_sql_query_safe(
+            """
+            SELECT
+                lead_id,
+                created_at
+            FROM ml_usage_events
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            ["lead_id", "created_at"],
+            params=(LEAD_HISTORY_LIMIT,),
+        )
         check_df = _read_sql_query_safe(
             """
             SELECT
@@ -3727,6 +3763,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
                 "checks",
                 "ml_activations",
                 "last_generation_at",
+                "last_ml_at",
                 "last_check_at",
                 "recurrence_score",
             ]
@@ -3743,6 +3780,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
                 "checks",
                 "ml_activations",
                 "last_generation_at",
+                "last_ml_at",
                 "last_check_at",
                 "recurrence_score",
             ]
@@ -3751,19 +3789,26 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
     base = leads_df.drop_duplicates(subset=["id"], keep="first").copy()
     base = base.rename(columns={"id": "lead_id"})
     if gen_df.empty:
-        gen_summary = pd.DataFrame(columns=["lead_id", "generations", "ml_activations", "last_generation_at"])
+        gen_summary = pd.DataFrame(columns=["lead_id", "generations", "last_generation_at"])
     else:
         gen_summary = (
             gen_df.assign(ml_enabled=gen_df["ml_enabled"].fillna(0).astype(int))
             .groupby(["lead_id"], as_index=False)
-            .agg(generations=("created_at", "size"), ml_activations=("ml_enabled", "sum"), last_generation_at=("created_at", "max"))
+            .agg(generations=("created_at", "size"), last_generation_at=("created_at", "max"))
+        )
+    if ml_df.empty:
+        ml_summary = pd.DataFrame(columns=["lead_id", "ml_activations", "last_ml_at"])
+    else:
+        ml_summary = ml_df.groupby(["lead_id"], as_index=False).agg(
+            ml_activations=("created_at", "size"),
+            last_ml_at=("created_at", "max"),
         )
     if check_df.empty:
         check_summary = pd.DataFrame(columns=["lead_id", "checks", "last_check_at"])
     else:
         check_summary = check_df.groupby(["lead_id"], as_index=False).agg(checks=("created_at", "size"), last_check_at=("created_at", "max"))
 
-    dataframe = base.merge(gen_summary, on=["lead_id"], how="left").merge(check_summary, on=["lead_id"], how="left")
+    dataframe = base.merge(gen_summary, on=["lead_id"], how="left").merge(ml_summary, on=["lead_id"], how="left").merge(check_summary, on=["lead_id"], how="left")
     for column in ("generations", "checks", "ml_activations"):
         dataframe[column] = pd.to_numeric(dataframe[column], errors="coerce").fillna(0).astype(int)
     dataframe["lead"] = dataframe.apply(lambda row: _lead_identifier(str(row["first_name"]), str(row["whatsapp"])), axis=1)
@@ -3781,6 +3826,7 @@ def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
             "checks",
             "ml_activations",
             "last_generation_at",
+            "last_ml_at",
             "last_check_at",
             "recurrence_score",
         ]
@@ -3936,7 +3982,7 @@ def _section_header(title: str, subtitle: str) -> None:
 def _render_kpi_cards() -> None:
     gen_count = _safe_count("generation_events")
     check_count = _safe_count("check_events")
-    ml_count = int(_query_scalar("SELECT COUNT(*) FROM generation_events WHERE ml_enabled = 1"))
+    ml_count = _safe_count("ml_usage_events")
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
     with st.container(border=True):
@@ -4004,6 +4050,7 @@ def _render_lead_intelligence() -> None:
                 "checks",
                 "ml_activations",
                 "last_generation_at",
+                "last_ml_at",
                 "last_check_at",
                 "recurrence_score",
             ]

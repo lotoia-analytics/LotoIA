@@ -57,6 +57,7 @@ def build_live_telemetry_snapshot(
     with get_session(db_path) as session:
         generation_events = int(session.execute(text("SELECT COUNT(*) FROM generation_events")).scalar() or 0)
         check_events = int(session.execute(text("SELECT COUNT(*) FROM check_events")).scalar() or 0)
+        ml_usage_events = int(session.execute(text("SELECT COUNT(*) FROM ml_usage_events")).scalar() or 0)
         imported_contests = int(session.execute(text("SELECT COUNT(*) FROM imported_contests")).scalar() or 0)
         reconciliation_runs = int(session.execute(text("SELECT COUNT(*) FROM reconciliation_runs")).scalar() or 0)
         reconciliation_games = int(session.execute(text("SELECT COUNT(*) FROM reconciliation_games")).scalar() or 0)
@@ -85,6 +86,7 @@ def build_live_telemetry_snapshot(
     activity = {
         "generation_events": generation_events,
         "check_events": check_events,
+        "ml_usage_events": ml_usage_events,
         "imported_contests": imported_contests,
         "reconciliation_runs": reconciliation_runs,
         "reconciliation_games": reconciliation_games,
@@ -103,6 +105,12 @@ def build_live_telemetry_snapshot(
             "value": check_events,
             "status": "active" if check_events else "idle",
             "last_seen": _isoformat(latest_check[0]) if latest_check else None,
+        },
+        {
+            "signal": "ml_usage",
+            "value": ml_usage_events,
+            "status": "active" if ml_usage_events else "idle",
+            "last_seen": _isoformat(latest_generation[0]) if latest_generation else None,
         },
         {
             "signal": "caixa_sync",

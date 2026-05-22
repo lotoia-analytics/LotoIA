@@ -125,6 +125,28 @@ class GenerationEvent(Base):
     )
 
 
+class MlUsageEvent(Base):
+    __tablename__ = "ml_usage_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), nullable=False)
+    generation_event_id: Mapped[int] = mapped_column(ForeignKey("generation_events.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String, default="public_api", nullable=False)
+    strategy: Mapped[str] = mapped_column(String, default="", nullable=False)
+    execution_time_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_ml_usage_events_created_at", "created_at"),
+        Index("ix_ml_usage_events_lead_id", "lead_id"),
+        Index("ix_ml_usage_events_generation_event_id", "generation_event_id"),
+    )
+
+
 class CheckEvent(Base):
     __tablename__ = "check_events"
 

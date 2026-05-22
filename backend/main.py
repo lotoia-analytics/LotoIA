@@ -108,6 +108,7 @@ def public_check(payload: PublicCheckRequest, request: Request) -> dict[str, obj
     try:
         return check_public_contest(
             payload,
+            db_path=DEFAULT_DATABASE_PATH,
             ip_address=_client_host(request),
             user_agent=request.headers.get("user-agent", ""),
             source="public_api",
