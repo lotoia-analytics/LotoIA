@@ -76,8 +76,6 @@ class ResultSyncScheduler:
 
     def due_window_labels(self, now: datetime | None = None) -> list[str]:
         current = self._normalize_now(now)
-        if current.date() in self.state.successful_dates:
-            return []
         attempted_windows = self.state.attempted_windows_by_date.get(current.date(), set())
         return [
             window.label()
@@ -87,9 +85,6 @@ class ResultSyncScheduler:
 
     def run_due_checks(self, now: datetime | None = None) -> list[ResultSyncSummary]:
         current = self._normalize_now(now)
-        if current.date() in self.state.successful_dates:
-            return []
-
         summaries: list[ResultSyncSummary] = []
         for label in self.due_window_labels(current)[:1]:
             summary = self.service.sync_latest()

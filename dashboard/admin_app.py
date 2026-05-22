@@ -690,6 +690,8 @@ def _safe_float(value: Any, default: float, minimum: float | None = None, maximu
 def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
     scheduler = ResultSyncScheduler()
     summaries = scheduler.run_due_checks()
+    if any(summary.synced_contests for summary in summaries):
+        _invalidate_runtime_cache()
     return [summary.to_dict() for summary in summaries]
 
 
@@ -3244,6 +3246,21 @@ def _historical_metric_chart(runs: list[dict[str, Any]], metric: str, title: str
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _load_draws():
     try:
+        rows = _sqlite_execute_safe(
+            """
+            SELECT contest_number, data, dezenas
+            FROM imported_contests
+            ORDER BY contest_number
+            """
+        )
+        if rows is not None:
+            draws = []
+            for contest, data, dezenas in rows.fetchall():
+                numbers = [int(number) for number in str(dezenas).replace(",", " ").split() if str(number).strip()]
+                if len(numbers) == 15:
+                    draws.append(Draw(contest=int(contest), date=str(data), numbers=numbers))
+            if draws:
+                return draws
         return load_draws_csv(DEFAULT_HISTORY_PATH)
     except Exception as exc:
         _record_operational_log("load_draws", "failed", 0.0, {"error": str(exc), "path": str(DEFAULT_HISTORY_PATH)})

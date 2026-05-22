@@ -39,7 +39,7 @@ def test_scheduler_marks_due_windows(tmp_path: Path) -> None:
     assert scheduler.due_window_labels(current) == ["21:15", "21:30"]
 
 
-def test_scheduler_runs_only_once_per_day(tmp_path: Path) -> None:
+def test_scheduler_advances_to_next_window_same_day(tmp_path: Path) -> None:
     service = FakeService()
     scheduler = ResultSyncScheduler(service=service, state_path=tmp_path / "scheduler_state.json")
     current = datetime(2026, 5, 21, 21, 31)
@@ -51,8 +51,9 @@ def test_scheduler_runs_only_once_per_day(tmp_path: Path) -> None:
     assert scheduler.state.last_synced_window == "21:15"
 
     again = scheduler.run_due_checks(current)
-    assert again == []
-    assert service.calls == 1
+    assert len(again) == 1
+    assert service.calls == 2
+    assert scheduler.state.last_synced_window == "21:30"
 
 
 def test_scheduler_advances_to_next_window_after_no_sync(tmp_path: Path) -> None:
@@ -86,4 +87,11 @@ def test_scheduler_persists_bootstrap_state(tmp_path: Path) -> None:
     assert state_path.exists()
 
     resumed = ResultSyncScheduler(service=service, state_path=state_path)
-    assert resumed.due_window_labels(current) == []
+    assert resumed.due_window_labels(current) == ["21:30"]
+
+
+def test_scheduler_keeps_later_windows_after_success_same_day(tmp_path: Path) -> None:
+    scheduler = ResultSyncScheduler(service=FakeService(), state_path=tmp_path / "scheduler_state.json")
+    current = datetime(2026, 5, 21, 21, 31)
+    scheduler.state.successful_dates.add(current.date())
+    assert scheduler.due_window_labels(current) == ["21:15", "21:30"]

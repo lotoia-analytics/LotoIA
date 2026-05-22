@@ -132,6 +132,11 @@ def _recent_history_dataframe(events: list[dict[str, Any]]) -> pd.DataFrame:
 def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
     scheduler = ResultSyncScheduler()
     summaries = scheduler.run_due_checks()
+    if any(summary.synced_contests for summary in summaries):
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
     return [summary.to_dict() for summary in summaries]
 
 
