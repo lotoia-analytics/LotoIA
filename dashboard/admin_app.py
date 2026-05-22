@@ -4503,10 +4503,10 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
             """
             SELECT
                 id AS generation_event_id,
-                lead_id,
-                target_contest,
-                origin,
-                generation_mode
+                NULL AS lead_id,
+                NULL AS target_contest,
+                'dashboard' AS origin,
+                strategy AS generation_mode
             FROM generation_events
             ORDER BY id DESC
             LIMIT 1
