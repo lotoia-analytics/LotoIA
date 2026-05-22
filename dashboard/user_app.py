@@ -15,6 +15,7 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
 MAX_GAMES_PER_SESSION = 10
@@ -126,6 +127,12 @@ def _recent_history_dataframe(events: list[dict[str, Any]]) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
+    scheduler = ResultSyncScheduler()
+    summaries = scheduler.run_due_checks()
+    return [summary.to_dict() for summary in summaries]
 
 
 def _build_light_report_pdf(title: str, lines: list[str], table: pd.DataFrame | None = None) -> bytes:
@@ -342,6 +349,13 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA User", page_icon="L", layout="wide")
+
+    sync_summaries = _bootstrap_official_results_sync()
+    if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
+        latest_synced = sync_summaries[-1]
+        contests = latest_synced.get("synced_contests", [])
+        if contests:
+            st.caption("Resultados oficiais sincronizados: " + ", ".join(str(contest) for contest in contests))
 
     events = st.session_state.setdefault("user_events", [])
     page = _render_sidebar()

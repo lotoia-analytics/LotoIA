@@ -97,6 +97,7 @@ from lotoia.observability import (
     persist_observational_stabilization_report,
 )
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
+from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from dashboard.components import (
     render_adaptive_institutional_intelligence,
     render_analytical_cards,
@@ -684,6 +685,12 @@ def _safe_float(value: Any, default: float, minimum: float | None = None, maximu
     if maximum is not None:
         candidate = min(maximum, candidate)
     return candidate
+
+
+def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
+    scheduler = ResultSyncScheduler()
+    summaries = scheduler.run_due_checks()
+    return [summary.to_dict() for summary in summaries]
 
 
 def _safe_text(value: Any, default: str = "", max_length: int = 120) -> str:
@@ -4811,6 +4818,12 @@ def main() -> None:
         st.set_page_config(page_title="LotoIA", layout="wide")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
+    sync_summaries = _bootstrap_official_results_sync()
+    if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
+        latest_synced = sync_summaries[-1]
+        contests = latest_synced.get("synced_contests", [])
+        if contests:
+            st.caption("Resultados oficiais sincronizados: " + ", ".join(str(contest) for contest in contests))
     _render_sqlite_bootstrap_diagnostics()
 
     st.markdown(
