@@ -77,6 +77,7 @@ from lotoia.analytics import (
     publish_institutional_analytics,
     publish_adaptive_institutional_intelligence,
 )
+from lotoia.assistance import build_executive_assistance
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2140,6 +2141,22 @@ def render_observability_page() -> None:
         presence_cols[2].metric("Memoria", live_presence.get("summary", {}).get("memory_status", "-"))
         presence_cols[3].metric("Governanca", live_presence.get("summary", {}).get("health_status", "-"))
         st.caption(" | ".join(live_presence.get("narrative", [])))
+        assistance = build_executive_assistance()
+        st.subheader("Assistencia executiva")
+        assist_cols = st.columns(4)
+        assist_cols[0].metric("Estado", assistance.get("state", "-"))
+        assist_cols[1].metric("Presenca", assistance.get("summary", {}).get("presence", "-"))
+        assist_cols[2].metric("Saude", assistance.get("summary", {}).get("health_status", "-"))
+        assist_cols[3].metric("Historico", assistance.get("summary", {}).get("historical_trend", "-"))
+        st.caption(" | ".join(assistance.get("explanation", [])))
+        if assistance.get("recommendations"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(assistance.get("recommendations", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        if assistance.get("guidance"):
+            st.write(" | ".join(assistance.get("guidance", [])))
         timeline_execution_id = str(observability_summary.get("latest_execution_id", "-"))
         memory_timeline = build_memory_timeline(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {"summary": {"marker_count": 0, "snapshot_count": 0, "state_count": 0, "replay_ready": False, "latest_event": "-"}, "execution_id": timeline_execution_id, "entries": []}
         st.subheader("Linha temporal executiva da memória")
