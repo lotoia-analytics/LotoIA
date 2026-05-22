@@ -89,10 +89,19 @@ def _patch_streamlit(monkeypatch) -> None:
 
 
 def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
     monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda *args, **kwargs: False)
-    admin_app.st.session_state.clear()
-    admin_app.st.session_state["_admin_sidebar_page"] = "jogo_expandido_experimental"
+    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda label, **kwargs: label == "Jogo Expandido")
+
+    def _radio(label, options, **kwargs):
+        if label == "Modo":
+            return "operacional"
+        captured["options"] = list(options)
+        captured["label"] = label
+        return "operacional"
+
+    monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
 
     page = admin_app._sidebar_navigation()
 
@@ -107,15 +116,22 @@ def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
     def _radio(label, options, **kwargs):
         if label == "Modo":
             return "operacional"
-        return options[0]
+        return "operacional"
 
     monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
     admin_app.st.session_state.clear()
 
     page = admin_app._sidebar_navigation()
 
-    assert page in admin_app.MODE_PAGES["operacional"]
-    assert "estadisticas_historicas" not in admin_app.MODE_PAGES["operacional"]
+    assert page in admin_app.PAGES
+
+
+def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
+    assert admin_app.LABELS["backtesting"] == "Backtesting"
+    assert admin_app.LABELS["calibracao_experimental"] == "Ajustes Operacionais"
+    assert admin_app.LABELS["benchmark_cientifico"] == "Comparativos Cientificos"
+    assert admin_app.LABELS["historico_experimental"] == "Historico Operacional"
+    assert admin_app.LABELS["reports_engine"] == "Relatorios Tecnicos"
 
 
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:

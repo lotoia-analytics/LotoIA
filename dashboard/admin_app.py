@@ -8,9 +8,29 @@ except ImportError:
     from dashboard import labels as _labels_module
 
 LABELS = getattr(_labels_module, "LABELS", {})
-PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
 PAGES = getattr(_labels_module, "PAGES", [])
-MODE_PAGES = getattr(_labels_module, "MODE_PAGES", {})
+
+MODE_PAGES = {
+    "operacional": [
+        "geracao_jogos",
+        "historico_experimental",
+        "reconciliacao_operacional",
+        "jogo_expandido_experimental",
+    ],
+    "analitico": [
+        "estatisticas_historicas",
+        "analytics_intelligence",
+        "ml_intelligence",
+        "reports_engine",
+        "ml_governance",
+        "observability",
+        "historico_experimental",
+        "calibracao_experimental",
+        "benchmark_cientifico",
+        "historical_intelligence",
+        "conferir_jogos",
+    ],
+}
 
 import io
 import json
@@ -3942,16 +3962,15 @@ def _render_institutional_cockpit() -> None:
             "Leitura executiva da saúde estrutural, baseline, confiança, drift e linha do tempo institucional.",
         )
         st.caption("Camada operacional visivel; leitura institucional profunda recolhida por padrao.")
-        with st.expander("Visao institucional avancada", expanded=False):
-            render_executive_dashboard(
-                executive_report,
-                analytical_summary,
-                historical_summary,
-                snapshot_summary,
-                observability_report,
-                pd.DataFrame(timeline.get("timeline", [])),
-            )
-            render_operational_orchestration(orchestration_report)
+        render_executive_dashboard(
+            executive_report,
+            analytical_summary,
+            historical_summary,
+            snapshot_summary,
+            observability_report,
+            pd.DataFrame(timeline.get("timeline", [])),
+        )
+        render_operational_orchestration(orchestration_report)
 
 
 def _render_lead_intelligence() -> None:
@@ -4047,66 +4066,39 @@ def _sidebar_navigation() -> str:
             color: #7a8795;
             margin-bottom: 0.65rem;
         }
-        .lotoia-nav-group {
-            margin: 0.8rem 0 0.35rem 0;
-            font-size: 0.78rem;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #566476;
-            font-weight: 800;
-        }
-        section[data-testid="stSidebar"] div[data-baseweb="radio"] {
-            margin-top: -0.2rem;
-        }
         </style>
     """,
         unsafe_allow_html=True,
     )
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    mode = st.sidebar.radio(
+    modes = ("operacional", "analitico")
+    selected_mode = st.sidebar.radio(
         "Modo",
-        options=("operacional", "executivo", "auditoria"),
-        index=("operacional", "executivo", "auditoria").index(str(st.session_state.get("_admin_mode", "operacional")) if str(st.session_state.get("_admin_mode", "operacional")) in ("operacional", "executivo", "auditoria") else "operacional"),
-        format_func=lambda key: {"operacional": "Operacional", "executivo": "Executivo", "auditoria": "Auditoria"}.get(key, key.title()),
+        options=modes,
+        index=modes.index(str(st.session_state.get("_admin_mode", "operacional")) if str(st.session_state.get("_admin_mode", "operacional")) in modes else "operacional"),
+        format_func=lambda key: {"operacional": "Operacional", "analitico": "Analítico"}.get(key, key.title()),
         label_visibility="collapsed",
         key="_admin_mode",
     )
-    available_pages = MODE_PAGES.get(mode, PAGES) or PAGES
-    current_page = st.session_state.get("_admin_sidebar_page", available_pages[0] if available_pages else PAGES[0])
+
+    available_pages = MODE_PAGES.get(selected_mode, PAGES)
+    current_page = st.session_state.get("_admin_sidebar_page", available_pages[0])
     if current_page not in available_pages:
-        current_page = available_pages[0] if available_pages else PAGES[0]
+        current_page = available_pages[0]
         st.session_state["_admin_sidebar_page"] = current_page
 
-    def _activate_page(page: str) -> None:
+    def _activate(page: str) -> None:
         st.session_state["_admin_sidebar_page"] = page
 
-    group_titles = {
-        "Analiticos": "Analíticos",
-        "Operacoes": "Operações",
-    }
+    section_titles = {"operacional": "Opera\u00e7\u00f5es", "analitico": "Anal\u00edticos"}
+    st.sidebar.markdown(f"**{section_titles[selected_mode]}**")
 
-    def _render_group(group_label: str, pages: list[str]) -> None:
-        st.sidebar.markdown(
-            f'<div class="lotoia-nav-group">{group_titles.get(group_label, group_label)}</div>',
-            unsafe_allow_html=True,
-        )
-        for page in pages:
-            label = LABELS.get(page, page)
-            button_type = "primary" if page == current_page else "secondary"
-            if st.sidebar.button(
-                label,
-                key=f"_admin_sidebar_btn_{page}",
-                use_container_width=True,
-                type=button_type,
-            ):
-                _activate_page(page)
-
-    for group_label, pages in PAGE_GROUPS.items():
-        filtered_pages = [page for page in pages if page in available_pages]
-        if not filtered_pages:
-            continue
-        _render_group(group_label, filtered_pages)
+    for page in available_pages:
+        label = LABELS.get(page, page)
+        button_type = "primary" if page == current_page else "secondary"
+        if st.sidebar.button(label, key=f"_admin_sidebar_btn_{selected_mode}_{page}", use_container_width=True, type=button_type):
+            _activate(page)
 
     return st.session_state.get("_admin_sidebar_page", current_page)
 
