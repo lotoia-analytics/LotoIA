@@ -4439,7 +4439,7 @@ def render_generation_page() -> None:
             _invalidate_runtime_cache()
 def render_check_page() -> None:
     with st.container(border=True):
-        _section_header("Conferir Jogos", "Conferencia operacional contra concursos historicos carregados.")
+        _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
