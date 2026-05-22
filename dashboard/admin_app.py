@@ -80,6 +80,7 @@ from lotoia.analytics import (
 from lotoia.assistance import build_executive_assistance
 from lotoia.assistance import build_contextual_recommendations
 from lotoia.assistance import build_explainable_analytics
+from lotoia.assistance import build_operational_guidance
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2184,6 +2185,20 @@ def render_observability_page() -> None:
         if explainable.get("explanation"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(explainable.get("explanation", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        guidance = build_operational_guidance()
+        st.subheader("Orientacao operacional")
+        guidance_cols = st.columns(4)
+        guidance_cols[0].metric("Estado", guidance.get("state", "-"))
+        guidance_cols[1].metric("Presenca", guidance.get("summary", {}).get("presence", "-"))
+        guidance_cols[2].metric("Saude", guidance.get("summary", {}).get("health_status", "-"))
+        guidance_cols[3].metric("Drift", guidance.get("summary", {}).get("drift", 0.0))
+        st.caption(" | ".join(guidance.get("narrative", [])))
+        if guidance.get("guidance"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(guidance.get("guidance", []))),
                 hide_index=True,
                 use_container_width=True,
             )
