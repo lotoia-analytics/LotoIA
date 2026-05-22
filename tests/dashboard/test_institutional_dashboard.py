@@ -710,6 +710,7 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
 
     monkeypatch.setattr(admin_app, "render_generation_page", lambda: calls.append("geracao_jogos"))
     monkeypatch.setattr(admin_app, "render_check_page", lambda: calls.append("conferir_jogos"))
+    monkeypatch.setattr(admin_app, "render_operational_reconciliation_page", lambda: calls.append("reconciliacao_operacional"))
     monkeypatch.setattr(admin_app, "render_statistics_page", lambda draws: calls.append("estatisticas_historicas"))
     monkeypatch.setattr(admin_app, "render_historical_intelligence_page", lambda draws: calls.append("historical_intelligence"))
     monkeypatch.setattr(admin_app, "render_analytics_intelligence_page", lambda: calls.append("analytics_intelligence"))
@@ -724,6 +725,7 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
 
     admin_app._render_sidebar_dispatch("geracao_jogos", [])
     admin_app._render_sidebar_dispatch("conferir_jogos", [])
+    admin_app._render_sidebar_dispatch("reconciliacao_operacional", [])
     admin_app._render_sidebar_dispatch("estatisticas_historicas", [])
     admin_app._render_sidebar_dispatch("historical_intelligence", [])
     admin_app._render_sidebar_dispatch("analytics_intelligence", [])
@@ -731,7 +733,58 @@ def test_sidebar_dispatch_routes_operational_pages(monkeypatch) -> None:
     assert calls == [
         "geracao_jogos",
         "conferir_jogos",
+        "reconciliacao_operacional",
         "estatisticas_historicas",
         "historical_intelligence",
         "analytics_intelligence",
     ]
+
+
+def test_operational_reconciliation_page_renders_summary(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    metrics: list[tuple[str, object]] = []
+    frames: list[object] = []
+    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app, "st", admin_app.st)
+    monkeypatch.setattr(admin_app.st, "container", lambda *args, **kwargs: type("Ctx", (), {"__enter__": lambda self: self, "__exit__": lambda self, exc_type, exc, tb: False})())
+    monkeypatch.setattr(admin_app.st, "metric", lambda label, value, **kwargs: metrics.append((label, value)))
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda df, **kwargs: frames.append(df))
+    monkeypatch.setattr(admin_app.st, "subheader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(admin_app.st, "text_area", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15")
+    monkeypatch.setattr(
+        admin_app,
+        "_load_operational_reconciliation_rows",
+        lambda baseline_numbers: (
+            {
+                "result_informed": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+                "contest_id": 0,
+                "source": "smoke_validation_baseline",
+                "status": "reconciled",
+                "prize_count": 2,
+                "total_hits": 29,
+                "best_hits": 15,
+                "payload": {"source": "smoke_validation_baseline"},
+                "generation_event_id": 77,
+                "row_count": 3,
+            },
+            [
+                {"jogo": 1, "acertos": 15, "dezenas_acertadas": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", "perfil_estrategico": "hibrido", "status": "premiado", "origem": "dashboard", "faixa": "faixa_15", "dezenas": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15"},
+                {"jogo": "exp_7", "acertos": 14, "dezenas_acertadas": "01 02 03 04 05 06 07 08 09 10 11 12 13 14", "perfil_estrategico": "expanded", "status": "premiado", "origem": "expanded", "faixa": "faixa_14", "dezenas": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 16"},
+                {"jogo": 2, "acertos": 0, "dezenas_acertadas": "-", "perfil_estrategico": "recorrente", "status": "nao_premiado", "origem": "dashboard", "faixa": "", "dezenas": "02 03 04 05 06 07 08 09 10 11 12 13 14 15 16"},
+            ],
+        ),
+    )
+
+    admin_app.render_operational_reconciliation_page()
+
+    assert ("Resultado informado", "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15") in metrics
+    assert ("Concurso simulado", 0) in metrics
+    assert ("Jogos analisados", 3) in metrics
+    assert ("Jogos premiados", 2) in metrics
+    assert ("Melhor jogo", 1) in metrics
+    assert ("Perfil vencedor", "hibrido") in metrics
+    assert any(isinstance(frame, admin_app.pd.DataFrame) and "jogo" in frame.columns for frame in frames)

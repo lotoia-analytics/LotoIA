@@ -3984,6 +3984,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
     routes: dict[str, Any] = {
         "geracao_jogos": render_generation_page,
         "conferir_jogos": render_check_page,
+        "reconciliacao_operacional": render_operational_reconciliation_page,
         "estatisticas_historicas": lambda: render_statistics_page(draws),
         "backtesting": render_backtesting_page,
         "calibracao_experimental": render_calibration_page,
@@ -4374,6 +4375,182 @@ def render_check_page() -> None:
                 duration_ms = (time.monotonic() - start_time) * 1000.0
                 _record_operational_log("check", "failed", duration_ms, {"contest_id": int(contest_id), "error": str(exc)})
                 st.warning(str(exc))
+
+
+def _json_numbers(value: Any) -> list[int]:
+    if isinstance(value, list):
+        return [int(number) for number in value]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [int(number) for number in parsed]
+        except Exception:
+            pass
+    return []
+
+
+def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    run_row = _sqlite_execute_safe(
+        """
+        SELECT id, generation_event_id, contest_id, source, status, prize_count, total_hits, best_hits, created_at, payload
+        FROM reconciliation_runs
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    run = run_row.fetchone() if run_row else None
+    if not run:
+        return None, []
+    generation_event_id = int(run[1] or 0)
+    contest_id = int(run[2] or 0)
+    source = str(run[3] or "")
+    payload = json.loads(run[9] or "{}") if len(run) > 9 else {}
+
+    game_rows: list[dict[str, Any]] = []
+    games_cursor = _sqlite_execute_safe(
+        """
+        SELECT
+            rg.game_index,
+            rg.numbers,
+            rg.hits,
+            rg.matched_numbers,
+            rg.prize_status,
+            rg.prize_tier,
+            gg.profile_type,
+            gg.origin
+        FROM reconciliation_games rg
+        LEFT JOIN generated_games gg
+               ON gg.generation_event_id = rg.generation_event_id
+              AND gg.game_index = rg.game_index
+        WHERE rg.generation_event_id = ?
+          AND rg.contest_id = ?
+        ORDER BY rg.game_index
+        """,
+        (generation_event_id, contest_id),
+    )
+    if games_cursor is not None:
+        for row in games_cursor.fetchall():
+            numbers = _json_numbers(row[1])
+            matched_numbers = _json_numbers(row[3])
+            game_rows.append(
+                {
+                    "jogo": int(row[0] or 0),
+                    "dezenas": _format_numbers(numbers),
+                    "acertos": int(row[2] or 0),
+                    "dezenas_acertadas": _format_numbers(matched_numbers) if matched_numbers else "-",
+                    "perfil_estrategico": str(row[6] or ""),
+                    "origem": str(row[7] or "generated"),
+                    "status": str(row[4] or ""),
+                    "faixa": str(row[5] or ""),
+                }
+            )
+
+    expansion_rows: list[dict[str, Any]] = []
+    try:
+        for event in list_expansion_events(limit=20):
+            selected_numbers = [int(number) for number in event.get("selected_numbers", [])]
+            matched_numbers = sorted(set(selected_numbers) & set(baseline_numbers))
+            analysis = dict(event.get("analysis", {}))
+            expansion_rows.append(
+                {
+                    "jogo": f"exp_{event.get('id')}",
+                    "dezenas": _format_numbers(selected_numbers),
+                    "acertos": len(matched_numbers),
+                    "dezenas_acertadas": _format_numbers(matched_numbers) if matched_numbers else "-",
+                    "perfil_estrategico": str(analysis.get("profile_type") or analysis.get("perfil_estrategico") or "expanded"),
+                    "origem": str(event.get("origin") or "expanded"),
+                    "status": "premiado" if len(matched_numbers) >= 11 else "nao_premiado",
+                    "faixa": f"faixa_{len(matched_numbers)}" if len(matched_numbers) >= 11 else "",
+                }
+            )
+    except Exception:
+        pass
+
+    summary = {
+        "result_informed": _format_numbers(baseline_numbers),
+        "contest_id": contest_id,
+        "source": source,
+        "status": str(run[4] or ""),
+        "prize_count": int(run[5] or 0),
+        "total_hits": int(run[6] or 0),
+        "best_hits": int(run[7] or 0),
+        "payload": payload,
+        "generation_event_id": generation_event_id,
+        "row_count": len(game_rows) + len(expansion_rows),
+    }
+    return summary, game_rows + expansion_rows
+
+
+def render_operational_reconciliation_page() -> None:
+    with st.container(border=True):
+        _section_header(
+            "Simular Resultado",
+            "Painel executivo de reconciliação operacional com baseline manual, jogos gerados e jogos expandidos.",
+        )
+        baseline_text = st.text_area(
+            "Resultado informado",
+            value="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+            height=100,
+        )
+        if st.button("Simular Resultado", type="primary"):
+            try:
+                baseline_numbers = _parse_check_numbers(baseline_text)
+                summary, rows = _load_operational_reconciliation_rows(baseline_numbers)
+                if summary is None:
+                    st.warning("Nenhuma reconciliação operacional encontrada ainda.")
+                    return
+                _record_operational_log(
+                    "operational_reconciliation",
+                    "success",
+                    0.0,
+                    {"contest_id": summary["contest_id"], "source": summary["source"], "games": summary["row_count"]},
+                )
+                st.metric("Resultado informado", summary["result_informed"])
+                st.metric("Concurso simulado", summary["contest_id"])
+                st.metric("Jogos analisados", summary["row_count"])
+                st.metric("Jogos premiados", summary["prize_count"])
+                best_row = max(rows, key=lambda item: int(item["acertos"]), default=None)
+                st.metric("Melhor jogo", best_row["jogo"] if best_row else 0)
+                st.metric("Perfil vencedor", best_row["perfil_estrategico"] if best_row else "")
+                coverage = (summary["prize_count"] / summary["row_count"] * 100.0) if summary["row_count"] else 0.0
+                st.metric("Cobertura", f"{coverage:.1f}%")
+                st.caption(f"Acertos totais: {summary['total_hits']} | Origem: {summary['source']}")
+                executive = pd.DataFrame(
+                    [
+                        {
+                            "jogo": row["jogo"],
+                            "acertos": row["acertos"],
+                            "dezenas_acertadas": row["dezenas_acertadas"],
+                            "perfil_estrategico": row["perfil_estrategico"],
+                            "status": row["status"],
+                            "origem": row["origem"],
+                        }
+                        for row in sorted(rows, key=lambda item: (int(item["acertos"]), str(item["jogo"])), reverse=True)
+                    ]
+                )
+                st.subheader("Resumo executivo")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "resultado_informado": summary["result_informed"],
+                                "concurso_simulado": summary["contest_id"],
+                                "jogos_analisados": summary["row_count"],
+                                "jogos_premiados": summary["prize_count"],
+                                "maior_acerto": summary["best_hits"],
+                                "perfil_vencedor": best_row["perfil_estrategico"] if best_row else "",
+                                "cobertura": f"{coverage:.1f}%",
+                            }
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.subheader("Tabela operacional")
+                st.dataframe(executive, hide_index=True, use_container_width=True)
+            except Exception as exc:
+                st.error(f"Falha controlada na simulacao operacional: {exc}")
 
 
 
