@@ -3807,17 +3807,7 @@ def _sidebar_navigation() -> str:
     return st.sidebar.radio(
         "Navegao",
         options=PAGES,
-        format_func=lambda key: {
-            **LABELS,
-            "estatisticas_historicas": "Resultados Passados",
-            "historical_intelligence": "Historico",
-            "analytics_intelligence": "Analises",
-            "ml_intelligence": "ML",
-            "jogo_expandido_experimental": "Jogo Expandido",
-            "ml_governance": "Governanca ML",
-            "observability": "Monitoramento",
-            "reports_engine": "Relatorios",
-        }.get(key, key),
+        format_func=lambda key: LABELS.get(key, key),
         label_visibility="collapsed",
     )
 
