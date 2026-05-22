@@ -4500,7 +4500,7 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
             generation_mode = str(generation_game.generation_mode or "dashboard")
         else:
             generation_event_id = int(generation_event.id or 0) if generation_event is not None else 0
-            lead_id = int(generation_event.lead_id or 0) if generation_event is not None else None
+            lead_id = None
             target_contest = None
             origin = "dashboard"
             generation_mode = str(generation_event.strategy or "dashboard") if generation_event is not None else "dashboard"
