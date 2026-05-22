@@ -83,6 +83,7 @@ from lotoia.assistance import build_explainable_analytics
 from lotoia.assistance import build_operational_guidance
 from lotoia.assistance import build_executive_summary
 from lotoia.assistance import build_adaptive_assistance_memory
+from lotoia.assistance import build_human_analytical_language
 from lotoia.orchestration import (
     build_intelligent_operational_orchestration,
     load_intelligent_operational_orchestration,
@@ -2232,6 +2233,20 @@ def render_observability_page() -> None:
         if adaptive_memory.get("memory_items"):
             st.dataframe(
                 _presentational_dataframe(pd.DataFrame(adaptive_memory.get("memory_items", []))),
+                hide_index=True,
+                use_container_width=True,
+            )
+        human_language = build_human_analytical_language()
+        st.subheader("Linguagem analitica humana")
+        human_cols = st.columns(4)
+        human_cols[0].metric("Estado", human_language.get("state", "-"))
+        human_cols[1].metric("Guia", human_language.get("summary", {}).get("guidance_state", "-"))
+        human_cols[2].metric("Saude", human_language.get("summary", {}).get("health_status", "-"))
+        human_cols[3].metric("Memoria", human_language.get("summary", {}).get("memory_state", "-"))
+        st.caption(" | ".join(human_language.get("phrases", [])))
+        if human_language.get("highlights"):
+            st.dataframe(
+                _presentational_dataframe(pd.DataFrame(human_language.get("highlights", []))),
                 hide_index=True,
                 use_container_width=True,
             )
