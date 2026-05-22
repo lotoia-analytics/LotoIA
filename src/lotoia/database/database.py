@@ -215,6 +215,46 @@ class ReconciliationGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class WorkflowRun(Base):
+    __tablename__ = "workflow_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    workflow_name: Mapped[str] = mapped_column(String, nullable=False)
+    trigger: Mapped[str] = mapped_column(String, default="manual", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="running", nullable=False)
+    retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    telemetry_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(String, default="", nullable=False)
+
+
+class WorkflowStep(Base):
+    __tablename__ = "workflow_steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[str] = mapped_column(String, nullable=False)
+    step_name: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="running", nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(String, default="", nullable=False)
+
+
 class RuntimeExecution(Base):
     __tablename__ = "runtime_executions"
 
@@ -463,6 +503,40 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         )
         connection.exec_driver_sql(
             """
+            CREATE TABLE IF NOT EXISTS workflow_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT NOT NULL UNIQUE,
+                workflow_name TEXT NOT NULL,
+                trigger TEXT NOT NULL DEFAULT 'manual',
+                status TEXT NOT NULL DEFAULT 'running',
+                retries INTEGER NOT NULL DEFAULT 0,
+                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                duration_ms REAL,
+                context_json JSON NOT NULL DEFAULT '{}',
+                telemetry_json JSON NOT NULL DEFAULT '{}',
+                error_message TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS workflow_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT NOT NULL,
+                step_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                attempt INTEGER NOT NULL DEFAULT 1,
+                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                duration_ms REAL,
+                payload_json JSON NOT NULL DEFAULT '{}',
+                error_message TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS runtime_executions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 execution_id TEXT NOT NULL UNIQUE,
@@ -616,6 +690,36 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE reconciliation_games ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
         ):
             if column_name not in reconciliation_game_columns:
+                connection.exec_driver_sql(column_sql)
+        workflow_run_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(workflow_runs)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE workflow_runs ADD COLUMN trigger TEXT NOT NULL DEFAULT 'manual'", "trigger"),
+            ("ALTER TABLE workflow_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running'", "status"),
+            ("ALTER TABLE workflow_runs ADD COLUMN retries INTEGER NOT NULL DEFAULT 0", "retries"),
+            ("ALTER TABLE workflow_runs ADD COLUMN finished_at TIMESTAMP", "finished_at"),
+            ("ALTER TABLE workflow_runs ADD COLUMN duration_ms REAL", "duration_ms"),
+            ("ALTER TABLE workflow_runs ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
+            ("ALTER TABLE workflow_runs ADD COLUMN telemetry_json JSON NOT NULL DEFAULT '{}'", "telemetry_json"),
+            ("ALTER TABLE workflow_runs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''", "error_message"),
+        ):
+            if column_name not in workflow_run_columns:
+                connection.exec_driver_sql(column_sql)
+        workflow_step_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(workflow_steps)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE workflow_steps ADD COLUMN status TEXT NOT NULL DEFAULT 'running'", "status"),
+            ("ALTER TABLE workflow_steps ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1", "attempt"),
+            ("ALTER TABLE workflow_steps ADD COLUMN finished_at TIMESTAMP", "finished_at"),
+            ("ALTER TABLE workflow_steps ADD COLUMN duration_ms REAL", "duration_ms"),
+            ("ALTER TABLE workflow_steps ADD COLUMN payload_json JSON NOT NULL DEFAULT '{}'", "payload_json"),
+            ("ALTER TABLE workflow_steps ADD COLUMN error_message TEXT NOT NULL DEFAULT ''", "error_message"),
+        ):
+            if column_name not in workflow_step_columns:
                 connection.exec_driver_sql(column_sql)
         runtime_execution_columns = {
             row[1]

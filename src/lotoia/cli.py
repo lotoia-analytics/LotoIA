@@ -229,6 +229,22 @@ def run_operational_cleanup_scheduler_cli(argv: list[str] | None = None) -> None
     scheduler.run_forever(poll_seconds=args.poll_seconds)
 
 
+def run_workflow_scheduler_cli(argv: list[str] | None = None) -> None:
+    from lotoia.workflows.workflow_scheduler import WorkflowScheduler
+
+    parser = argparse.ArgumentParser(description="Executa o agendamento institucional de workflows.")
+    parser.add_argument("--poll-seconds", type=int, default=60)
+    parser.add_argument("--run-once", action="store_true")
+    args = parser.parse_args(argv)
+
+    scheduler = WorkflowScheduler()
+    if args.run_once:
+        payload = scheduler.run_due_workflows()
+        print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        return
+    scheduler.run_forever(poll_seconds=args.poll_seconds)
+
+
 def run_operational_lifecycle_cli(argv: list[str] | None = None) -> None:
     from lotoia.public.operational_lifecycle import OperationalLifecycleEngine
 

@@ -115,3 +115,18 @@ def test_package_entrypoint_dispatches_operational_lifecycle(monkeypatch) -> Non
             "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
         )
     ]
+
+
+def test_package_entrypoint_dispatches_workflow_scheduler(monkeypatch) -> None:
+    calls = []
+
+    monkeypatch.setattr(
+        lotoia_main.cli,
+        "run_workflow_scheduler_cli",
+        lambda argv=None: calls.append(tuple(argv or [])),
+    )
+    monkeypatch.setattr(sys, "argv", ["lotoia", "workflow-scheduler", "--run-once"])
+
+    lotoia_main.main()
+
+    assert calls == [("--run-once",)]

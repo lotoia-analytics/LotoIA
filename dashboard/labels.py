@@ -14,6 +14,7 @@ PAGES = [
     "relatorios",
     "ml_governance",
     "observability",
+    "workflows",
     "reports_engine",
 ]
 
@@ -32,5 +33,6 @@ LABELS = {
     "relatorios": "Analiticas Persistidas",
     "ml_governance": "Auditoria Tecnica",
     "observability": "Monitoramento Analitico",
+    "workflows": "Fluxos Operacionais",
     "reports_engine": "Relatorios Gerais",
 }
