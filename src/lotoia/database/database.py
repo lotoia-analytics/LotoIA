@@ -240,6 +240,33 @@ class ReconciliationEvent(Base):
     )
 
 
+class WorkflowEvent(Base):
+    __tablename__ = "workflow_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[str] = mapped_column(String, nullable=False)
+    workflow_name: Mapped[str] = mapped_column(String, nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String, default="", nullable=False)
+    stage: Mapped[str] = mapped_column(String, default="", nullable=False)
+    source: Mapped[str] = mapped_column(String, default="manual", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="running", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(String, default="", nullable=False)
+    __table_args__ = (
+        Index("ix_workflow_events_workflow_id", "workflow_id"),
+        Index("ix_workflow_events_workflow_name", "workflow_name"),
+        Index("ix_workflow_events_status", "status"),
+        Index("ix_workflow_events_started_at", "started_at"),
+    )
+
+
 class ImportedContest(Base):
     __tablename__ = "imported_contests"
 
@@ -634,6 +661,24 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         )
         connection.exec_driver_sql(
             """
+            CREATE TABLE IF NOT EXISTS workflow_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT NOT NULL,
+                workflow_name TEXT NOT NULL,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                stage TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'manual',
+                status TEXT NOT NULL DEFAULT 'running',
+                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP,
+                duration_ms REAL,
+                payload JSON NOT NULL DEFAULT '{}',
+                error_message TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS workflow_steps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 workflow_id TEXT NOT NULL,
@@ -844,6 +889,24 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE workflow_runs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''", "error_message"),
         ):
             if column_name not in workflow_run_columns:
+                connection.exec_driver_sql(column_sql)
+        workflow_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(workflow_events)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE workflow_events ADD COLUMN workflow_id TEXT NOT NULL DEFAULT ''", "workflow_id"),
+            ("ALTER TABLE workflow_events ADD COLUMN workflow_name TEXT NOT NULL DEFAULT ''", "workflow_name"),
+            ("ALTER TABLE workflow_events ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''", "correlation_id"),
+            ("ALTER TABLE workflow_events ADD COLUMN stage TEXT NOT NULL DEFAULT ''", "stage"),
+            ("ALTER TABLE workflow_events ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'", "source"),
+            ("ALTER TABLE workflow_events ADD COLUMN status TEXT NOT NULL DEFAULT 'running'", "status"),
+            ("ALTER TABLE workflow_events ADD COLUMN finished_at TIMESTAMP", "finished_at"),
+            ("ALTER TABLE workflow_events ADD COLUMN duration_ms REAL", "duration_ms"),
+            ("ALTER TABLE workflow_events ADD COLUMN payload JSON NOT NULL DEFAULT '{}'", "payload"),
+            ("ALTER TABLE workflow_events ADD COLUMN error_message TEXT NOT NULL DEFAULT ''", "error_message"),
+        ):
+            if column_name not in workflow_event_columns:
                 connection.exec_driver_sql(column_sql)
         workflow_step_columns = {
             row[1]

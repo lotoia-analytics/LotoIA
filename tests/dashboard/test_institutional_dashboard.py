@@ -176,6 +176,7 @@ def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
         "SELECT COUNT(*) FROM ml_usage_events": 3,
         "SELECT COUNT(*) FROM expansion_events": 2,
         "SELECT COUNT(*) FROM reconciliation_events": 5,
+        "SELECT COUNT(*) FROM workflow_events": 6,
         "SELECT COUNT(*) FROM imported_contests": 7,
         "SELECT COUNT(*) FROM generated_games": 15,
         "SELECT COUNT(*) FROM operational_logs": 1,
@@ -192,6 +193,7 @@ def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
     assert metrics["check_volume"] == 4
     assert metrics["expansion_events"] == 2
     assert metrics["reconciliation_events"] == 5
+    assert metrics["workflow_events"] == 6
     assert metrics["generated_games"] == 15
 
 
@@ -216,6 +218,11 @@ def test_admin_schema_includes_institutional_check_event_columns(tmp_path: Path)
             for row in connection.execute("PRAGMA table_info(reconciliation_events)").fetchall()
         }
         assert {"lead_id", "generation_event_id", "reconciliation_type", "hits", "matched_numbers", "runtime_origin", "payload_json"}.issubset(reconciliation_columns)
+        workflow_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(workflow_events)").fetchall()
+        }
+        assert {"workflow_id", "workflow_name", "correlation_id", "stage", "source", "status", "payload_json", "error_message"}.issubset(workflow_columns)
     finally:
         connection.close()
 

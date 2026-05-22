@@ -189,7 +189,7 @@ USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "workflow_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -501,6 +501,22 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS workflow_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id TEXT NOT NULL,
+            workflow_name TEXT NOT NULL,
+            correlation_id TEXT NOT NULL DEFAULT '',
+            stage TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT 'manual',
+            status TEXT NOT NULL DEFAULT 'running',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            finished_at TIMESTAMP,
+            duration_ms REAL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            error_message TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS generated_games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             generation_event_id INTEGER,
@@ -567,7 +583,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "reconciliation_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "reconciliation_events", "workflow_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -611,6 +627,16 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("reconciliation_events", "matched_numbers", "TEXT", "'[]'")
     _sqlite_ensure_column("reconciliation_events", "runtime_origin", "TEXT", "''")
     _sqlite_ensure_column("reconciliation_events", "payload_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("workflow_events", "workflow_id", "TEXT", "''")
+    _sqlite_ensure_column("workflow_events", "workflow_name", "TEXT", "''")
+    _sqlite_ensure_column("workflow_events", "correlation_id", "TEXT", "''")
+    _sqlite_ensure_column("workflow_events", "stage", "TEXT", "''")
+    _sqlite_ensure_column("workflow_events", "source", "TEXT", "'manual'")
+    _sqlite_ensure_column("workflow_events", "status", "TEXT", "'running'")
+    _sqlite_ensure_column("workflow_events", "finished_at", "TIMESTAMP")
+    _sqlite_ensure_column("workflow_events", "duration_ms", "REAL")
+    _sqlite_ensure_column("workflow_events", "payload_json", "TEXT", "'{}'")
+    _sqlite_ensure_column("workflow_events", "error_message", "TEXT", "''")
     _sqlite_ensure_column("report_events", "lead_id", "INTEGER")
     _sqlite_ensure_column("report_events", "generation_event_id", "INTEGER")
     _sqlite_ensure_column("report_events", "report_type", "TEXT", "'user_report'")
@@ -2069,6 +2095,7 @@ def _operational_metrics() -> dict[str, Any]:
     ml_usage = int(_query_scalar("SELECT COUNT(*) FROM ml_usage_events"))
     expansion_events = int(_query_scalar("SELECT COUNT(*) FROM expansion_events"))
     reconciliation_events = int(_query_scalar("SELECT COUNT(*) FROM reconciliation_events"))
+    workflow_events = int(_query_scalar("SELECT COUNT(*) FROM workflow_events"))
     imported_total = int(_query_scalar("SELECT COUNT(*) FROM imported_contests"))
     generated_games_total = int(_query_scalar("SELECT COUNT(*) FROM generated_games"))
     logs_total = int(_query_scalar("SELECT COUNT(*) FROM operational_logs"))
@@ -2079,6 +2106,7 @@ def _operational_metrics() -> dict[str, Any]:
         "ml_usage": ml_usage,
         "expansion_events": expansion_events,
         "reconciliation_events": reconciliation_events,
+        "workflow_events": workflow_events,
         "imported_contests": imported_total,
         "generated_games": generated_games_total,
         "snapshot_volume": _snapshot_count(),
@@ -4054,6 +4082,7 @@ def _render_kpi_cards() -> None:
     ml_count = _safe_count("ml_usage_events")
     expansion_count = _safe_count("expansion_events")
     reconciliation_count = _safe_count("reconciliation_events")
+    workflow_count = _safe_count("workflow_events")
     last_contest = _safe_last_contest()
     total_games = _safe_total_games()
     with st.container(border=True):
@@ -4066,6 +4095,7 @@ def _render_kpi_cards() -> None:
             total_games,
             expansion_count,
             reconciliation_count,
+            workflow_count,
         )
 
 

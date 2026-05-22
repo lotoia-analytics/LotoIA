@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, WorkflowRun, WorkflowStep, get_session
+from lotoia.database.database import WorkflowEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,17 @@ class WorkflowRepository:
         workflow_id = f"workflow-{uuid4().hex}"
         with get_session(self.db_path) as session:
             session.add(
+                WorkflowEvent(
+                    workflow_id=workflow_id,
+                    workflow_name=workflow_name,
+                    correlation_id=workflow_id,
+                    stage=str((context or {}).get("stage", "")),
+                    source=trigger,
+                    status="running",
+                    payload=context or {},
+                )
+            )
+            session.add(
                 WorkflowRun(
                     workflow_id=workflow_id,
                     workflow_name=workflow_name,
@@ -107,6 +119,13 @@ class WorkflowRepository:
             run.duration_ms = duration_ms
             run.telemetry_json = telemetry or {}
             run.error_message = error_message
+            event = session.query(WorkflowEvent).filter(WorkflowEvent.workflow_id == workflow_id).first()
+            if event is not None:
+                event.status = status
+                event.finished_at = datetime.now(UTC)
+                event.duration_ms = duration_ms
+                event.payload = telemetry or {}
+                event.error_message = error_message
             session.commit()
 
     def record_step(self, workflow_id: str, *, step_name: str, status: str, payload: dict[str, Any] | None = None, duration_ms: float | None = None, attempt: int = 1, error_message: str = "") -> WorkflowStepSnapshot:
