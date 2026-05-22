@@ -16,12 +16,13 @@ MODE_PAGES = {
         "historico_experimental",
         "reconciliacao_operacional",
         "jogo_expandido_experimental",
+        "workflows",
     ],
     "analitico": [
         "estatisticas_historicas",
         "analytics_intelligence",
         "ml_intelligence",
-        "reports_engine",
+        "relatorios",
         "ml_governance",
         "observability",
         "historico_experimental",
@@ -29,6 +30,7 @@ MODE_PAGES = {
         "benchmark_cientifico",
         "historical_intelligence",
         "conferir_jogos",
+        "reports_engine",
     ],
 }
 

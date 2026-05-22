@@ -134,6 +134,16 @@ def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
     assert admin_app.LABELS["reports_engine"] == "Relatorios Tecnicos"
 
 
+def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
+    assert admin_app.MODE_PAGES["operacional"][:3] == [
+        "geracao_jogos",
+        "historico_experimental",
+        "reconciliacao_operacional",
+    ]
+    assert admin_app.MODE_PAGES["operacional"][-1] == "workflows"
+    assert admin_app.PAGES[0] == "geracao_jogos"
+
+
 def test_analytics_base_tables_accept_draw_objects(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_app,

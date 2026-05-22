@@ -18,6 +18,26 @@ PAGES = [
     "reports_engine",
 ]
 
+PAGE_AUDIT_MATRIX = {
+    "geracao_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
+    "conferir_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
+    "reconciliacao_operacional": {"category": "operacional", "usage": "alto", "action": "permanecer"},
+    "jogo_expandido_experimental": {"category": "operacional", "usage": "medio", "action": "recolher"},
+    "estatisticas_historicas": {"category": "analitica", "usage": "medio", "action": "recolher"},
+    "historical_intelligence": {"category": "analitica", "usage": "medio", "action": "recolher"},
+    "analytics_intelligence": {"category": "analitica", "usage": "medio", "action": "recolher"},
+    "ml_intelligence": {"category": "analitica", "usage": "baixo", "action": "recolher"},
+    "backtesting": {"category": "analitica", "usage": "baixo", "action": "ocultar"},
+    "calibracao_experimental": {"category": "analitica", "usage": "baixo", "action": "ocultar"},
+    "benchmark_cientifico": {"category": "governanca", "usage": "baixo", "action": "ocultar"},
+    "historico_experimental": {"category": "operacional", "usage": "baixo", "action": "ocultar"},
+    "relatorios": {"category": "analitica", "usage": "medio", "action": "recolher"},
+    "ml_governance": {"category": "governanca", "usage": "medio", "action": "recolher"},
+    "observability": {"category": "governanca", "usage": "medio", "action": "recolher"},
+    "workflows": {"category": "operacional", "usage": "alto", "action": "permanecer"},
+    "reports_engine": {"category": "governanca", "usage": "baixo", "action": "ocultar"},
+}
+
 LABELS = {
     "geracao_jogos": "Gerar Jogos",
     "conferir_jogos": "Jogos Passados",
