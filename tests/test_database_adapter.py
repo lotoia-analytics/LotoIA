@@ -8,7 +8,7 @@ from lotoia.database.adapter import (
     SQLiteInstitutionalAdapter,
     resolve_institutional_adapter,
 )
-from lotoia.database.database import database_url
+from lotoia.database.database import bootstrap_institutional_database, database_url
 
 
 def test_adapter_uses_sqlite_path_when_database_url_is_absent(monkeypatch, tmp_path: Path) -> None:
@@ -71,3 +71,11 @@ def test_resolve_institutional_adapter_switches_by_backend(monkeypatch, tmp_path
     postgres_adapter = resolve_institutional_adapter(tmp_path / "lotoia.db")
     assert isinstance(postgres_adapter, PostgresInstitutionalAdapter)
     assert postgres_adapter.is_shared_cloud_ready is True
+
+
+def test_bootstrap_institutional_database_reports_backend(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    info = bootstrap_institutional_database(tmp_path / "lotoia.db")
+
+    assert info["backend"] == "sqlite"
+    assert info["database_url"].startswith("sqlite:///")

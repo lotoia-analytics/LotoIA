@@ -66,6 +66,7 @@ from lotoia.database.database import (
     GeneratedGame,
     ReconciliationGame,
     ReconciliationRun,
+    bootstrap_institutional_database,
     get_session,
 )
 from lotoia.experiments.temporal_governance import build_walk_forward_splits
@@ -5707,6 +5708,8 @@ def main() -> None:
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     _render_shared_backend_status()
+    if resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
+        bootstrap_institutional_database(DB_PATH)
     sync_summaries = _bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]

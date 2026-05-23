@@ -1355,6 +1355,15 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
 
 
+def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
+    """Create or migrate the institutional schema for the active backend."""
+    create_database(path)
+    return {
+        "database_url": database_url(path),
+        "backend": "postgresql" if database_url(path).startswith(("postgresql://", "postgresql+psycopg://", "postgres://")) else "sqlite",
+    }
+
+
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:
     create_database(path)
     session_factory = sessionmaker(bind=get_engine(path), expire_on_commit=False, future=True)
