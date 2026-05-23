@@ -5317,30 +5317,24 @@ def render_history_page() -> None:
             scope_labels = {
                 ResetScope.visual.value: "Limpar Painel",
                 ResetScope.operational.value: "Limpar Jogos e Histórico",
-                ResetScope.telemetry.value: "Limpar Telemetria Operacional",
-                ResetScope.full_operational.value: "Resetar Operação Completa",
             }
             scope_descriptions = {
                 ResetScope.visual.value: "Remove apenas estados visuais e cache da interface.",
                 ResetScope.operational.value: "Remove jogos gerados, conferências e histórico operacional.",
-                ResetScope.telemetry.value: "Remove eventos operacionais e métricas de uso.",
-                ResetScope.full_operational.value: "Limpa toda a operação institucional sem afetar benchmark, baseline ou ML científico.",
             }
             with st.form("governed_history_reset_form", clear_on_submit=False):
-                scope = st.selectbox(
-                    "Escopo do reset",
+                scope = st.radio(
+                    "Escolha o tipo de limpeza",
                     list(scope_labels.keys()),
                     format_func=lambda key: scope_labels.get(key, key),
-                    help="Escolha o nível de limpeza operacional permitido pela governança.",
+                    help="Escolha apenas uma das duas limpezas operacionais disponíveis.",
+                    horizontal=False,
                 )
+                if scope not in scope_labels:
+                    scope = ResetScope.operational.value
                 st.markdown("**Resultado visual recomendado**")
                 st.markdown(
-                    "\n".join(
-                        [
-                            f"- **{scope_labels[key]}**  \n  {scope_descriptions[key]}"
-                            for key in scope_labels
-                        ]
-                    )
+                    f"- **{scope_labels[scope]}**  \n  {scope_descriptions[scope]}"
                 )
                 ack = st.checkbox("Entendo que a operação afeta apenas a camada operacional selecionada.")
                 submitted = st.form_submit_button("Executar limpeza", type="primary")
