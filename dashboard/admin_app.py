@@ -4761,19 +4761,24 @@ def render_ml_governance_page() -> None:
 
 def render_generation_page() -> None:
     with st.container(border=True):
+        _runtime_audit("generate.page.start")
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
+        st.caption("Formulario operacional priorizado; contexto institucional permanece opcional.")
         show_generation_context = st.toggle(
             "Exibir contexto institucional",
             value=bool(st.session_state.get("_admin_show_generation_context", False)),
             key="_admin_show_generation_context",
         )
         if show_generation_context:
+            _runtime_audit("generate.context.start")
             executive_report = build_executive_analytical_report()
             historical_report = build_institutional_historical_intelligence()
             observability_report = load_observational_stabilization_report()
             render_generation_context(executive_report, historical_report, observability_report)
+            _runtime_audit("generate.context.end")
         else:
             st.info("Contexto institucional recolhido para acelerar o primeiro paint.")
+        _runtime_audit("generate.form.ready")
         lead_col1, lead_col2 = st.columns(2)
         first_name = lead_col1.text_input("Primeiro nome do lead", key="admin_first_name")
         whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
@@ -4790,7 +4795,9 @@ def render_generation_page() -> None:
         pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
         max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
         mode = st.radio("Modo", ["Analitico", "LotoIA"], horizontal=True)
+        _runtime_audit("generate.form.inputs")
         if st.button("Gerar jogos", type="primary"):
+            _runtime_audit("generate.submit")
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
                 try:
@@ -4849,19 +4856,24 @@ def render_generation_page() -> None:
             _invalidate_runtime_cache()
 def render_check_page() -> None:
     with st.container(border=True):
+        _runtime_audit("check.page.start")
         _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
+        st.caption("Formulario operacional priorizado; contexto institucional permanece opcional.")
         show_check_context = st.toggle(
             "Exibir contexto institucional",
             value=bool(st.session_state.get("_admin_show_check_context", False)),
             key="_admin_show_check_context",
         )
         if show_check_context:
+            _runtime_audit("check.context.start")
             executive_report = build_executive_analytical_report()
             historical_report = build_institutional_historical_intelligence()
             observability_report = load_observational_stabilization_report()
             render_generation_context(executive_report, historical_report, observability_report)
+            _runtime_audit("check.context.end")
         else:
             st.info("Contexto institucional recolhido para manter a conferencia leve.")
+        _runtime_audit("check.form.ready")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
@@ -4872,7 +4884,9 @@ def render_check_page() -> None:
         col1, col2 = st.columns([1, 3])
         contest_id = col1.number_input("Concurso", min_value=1, step=1, value=max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1))
         numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220)
+        _runtime_audit("check.form.inputs")
         if st.button("Conferir jogo", type="primary"):
+            _runtime_audit("check.submit")
             start_time = time.monotonic()
             try:
                 games = _parse_check_games(numbers_text)
