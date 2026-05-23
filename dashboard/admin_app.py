@@ -38,6 +38,7 @@ MODE_PAGES = {
 
 import io
 import json
+import os
 import sqlite3
 import shutil
 import time
@@ -213,6 +214,7 @@ SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
 SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
 SQLITE_BOOTSTRAP_STATE = {"fallback_used": False, "requested_path": "", "active_path": ""}
+AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
@@ -907,6 +909,12 @@ def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
     if any(summary.synced_contests for summary in summaries):
         _invalidate_runtime_cache()
     return [summary.to_dict() for summary in summaries]
+
+
+def _maybe_bootstrap_official_results_sync() -> list[dict[str, Any]]:
+    if not AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP:
+        return []
+    return _bootstrap_official_results_sync()
 
 
 def _safe_text(value: Any, default: str = "", max_length: int = 120) -> str:
@@ -5709,7 +5717,7 @@ def main() -> None:
     _render_shared_backend_status()
     if resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
         bootstrap_institutional_database(DB_PATH)
-    sync_summaries = _bootstrap_official_results_sync()
+    sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]
         contests = latest_synced.get("synced_contests", [])

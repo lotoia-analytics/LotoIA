@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ MAX_GAMES_PER_SESSION = 10
 DEFAULT_GAMES_COUNT = 5
 DEFAULT_POOL_SIZE = 20
 ONLINE_MARKER = "USER PANEL ONLINE"
+AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 USER_DB_PATH = PROJECT_ROOT / DEFAULT_DATABASE_PATH
@@ -164,6 +166,12 @@ def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
         except Exception:
             pass
     return [summary.to_dict() for summary in summaries]
+
+
+def _maybe_bootstrap_official_results_sync() -> list[dict[str, Any]]:
+    if not AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP:
+        return []
+    return _bootstrap_official_results_sync()
 
 
 def _build_light_report_pdf(title: str, lines: list[str], table: pd.DataFrame | None = None) -> bytes:
@@ -602,7 +610,7 @@ def main() -> None:
     if adapter.is_shared_cloud_ready:
         bootstrap_institutional_database(USER_DB_PATH)
 
-    sync_summaries = _bootstrap_official_results_sync()
+    sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]
         contests = latest_synced.get("synced_contests", [])
