@@ -20,6 +20,7 @@ __all__ = [
     "persist_institutional_analytical_timeline",
     "persist_institutional_analytics_snapshot",
     "persist_institutional_historical_intelligence",
+    "build_user_lifecycle_analytics",
     "ADAPTIVE_INSTITUTIONAL_SCHEMA_VERSION",
     "build_adaptive_executive_insights",
     "build_adaptive_institutional_intelligence",
@@ -57,6 +58,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "persist_institutional_analytical_timeline": ("lotoia.analytics.historical_intelligence", "persist_institutional_analytical_timeline"),
     "persist_institutional_analytics_snapshot": ("lotoia.analytics.historical_intelligence", "persist_institutional_analytics_snapshot"),
     "persist_institutional_historical_intelligence": ("lotoia.analytics.historical_intelligence", "persist_institutional_historical_intelligence"),
+    "build_user_lifecycle_analytics": ("lotoia.analytics.user_lifecycle", "build_user_lifecycle_analytics"),
     "ADAPTIVE_INSTITUTIONAL_SCHEMA_VERSION": ("lotoia.analytics.adaptive_intelligence", "ADAPTIVE_INSTITUTIONAL_SCHEMA_VERSION"),
     "build_adaptive_executive_insights": ("lotoia.analytics.adaptive_intelligence", "build_adaptive_executive_insights"),
     "build_adaptive_institutional_intelligence": ("lotoia.analytics.adaptive_intelligence", "build_adaptive_institutional_intelligence"),
@@ -86,4 +88,3 @@ def __getattr__(name: str) -> Any:
     value = getattr(module, attr_name)
     globals()[name] = value
     return value
-

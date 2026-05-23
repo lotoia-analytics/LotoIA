@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.analytics import build_user_lifecycle_analytics
 from lotoia.observability.observability_alerts import ObservabilityAlertEngine
 
 from .live_telemetry import build_live_telemetry_snapshot
@@ -42,11 +43,15 @@ def build_operational_health_snapshot(
     limit: int = 50,
 ) -> dict[str, Any]:
     telemetry = build_live_telemetry_snapshot(db_path=db_path or DEFAULT_DATABASE_PATH, limit=limit)
+    lifecycle = build_user_lifecycle_analytics(db_path=db_path or DEFAULT_DATABASE_PATH, limit=limit)
     metrics = {
         "execution.failure_rate": float(telemetry["runtime_status"]["latest_status"] == "failed"),
         "execution.queue_depth": float(telemetry["activity"]["generation_events"] + telemetry["activity"]["check_events"]),
         "worker.available_count": 1.0 if telemetry["summary"]["runtime_awareness"] == "connected" else 0.0,
         "api.route_count": float(telemetry["activity"]["imported_contests"] > 0),
+        "user.lifecycle_event_volume": float(lifecycle["lifecycle"]["event_volume"]),
+        "user.active_sessions": float(lifecycle["lifecycle"]["active_sessions"]),
+        "user.institutional_users": float(lifecycle["lifecycle"]["institutional_users"]),
     }
     alert_engine = ObservabilityAlertEngine()
     alerts = [asdict(alert) for alert in alert_engine.evaluate(metrics)]
@@ -66,11 +71,15 @@ def build_operational_health_snapshot(
             "activity_level": telemetry["summary"]["activity_level"],
             "telemetry_status": telemetry["summary"]["telemetry_status"],
             "runtime_awareness": telemetry["summary"]["runtime_awareness"],
+            "lifecycle_status": lifecycle["summary"]["status"],
+            "lifecycle_event_volume": lifecycle["lifecycle"]["event_volume"],
+            "lifecycle_active_sessions": lifecycle["lifecycle"]["active_sessions"],
         },
         metadata={
             "layer": "operational_health_engine",
             "active_signal_count": active_signals,
             "alert_count": len(alerts),
+            "lifecycle_timeline_size": lifecycle["summary"]["timeline_size"],
         },
     )
     return snapshot.to_dict()

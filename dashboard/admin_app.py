@@ -90,6 +90,7 @@ from lotoia.analytics import (
     build_executive_analytical_report,
     build_institutional_analytical_timeline,
     build_institutional_historical_intelligence,
+    build_user_lifecycle_analytics,
     load_adaptive_institutional_insights,
     load_adaptive_institutional_intelligence,
     load_adaptive_institutional_timeline,
@@ -2329,6 +2330,23 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
+        user_lifecycle = build_user_lifecycle_analytics()
+        st.subheader("Lifecycle institucional")
+        lifecycle_cols = st.columns(4)
+        lifecycle_cols[0].metric("Usuarios", user_lifecycle.get("summary", {}).get("active_users", 0))
+        lifecycle_cols[1].metric("Sessoes", user_lifecycle.get("summary", {}).get("active_sessions", 0))
+        lifecycle_cols[2].metric("Eventos", user_lifecycle.get("summary", {}).get("event_volume", 0))
+        lifecycle_cols[3].metric("Features", user_lifecycle.get("summary", {}).get("feature_usage_events", 0))
+        st.caption(
+            f"Status: {user_lifecycle.get('summary', {}).get('status', '-')}"
+            f" | Sessoes ativas: {user_lifecycle.get('lifecycle', {}).get('active_sessions', 0)}"
+            f" | Governanca: {float(user_lifecycle.get('analytics', {}).get('feature_governance_density', 0.0)):.2f}"
+        )
+        st.dataframe(
+            _presentational_dataframe(pd.DataFrame([user_lifecycle.get("lifecycle", {})])),
+            hide_index=True,
+            use_container_width=True,
+        )
         runtime_story = build_runtime_storytelling()
         st.subheader("Narrativa operacional viva")
         story_cols = st.columns(3)
