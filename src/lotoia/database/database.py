@@ -1371,8 +1371,15 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
 
 def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
     """Create or migrate the institutional schema for the active backend."""
-    resolved_url = database_url(path)
-    backend = "postgresql" if resolved_url.startswith(("postgresql://", "postgresql+psycopg://", "postgres://")) else "sqlite"
+    try:
+        from .adapter import resolve_institutional_adapter
+    except Exception:
+        resolved_url = database_url(path)
+        backend = "postgresql" if resolved_url.startswith(("postgresql://", "postgresql+psycopg://", "postgres://")) else "sqlite"
+    else:
+        adapter = resolve_institutional_adapter(path)
+        resolved_url = adapter.database_url
+        backend = adapter.backend
     if backend == "sqlite":
         create_database(path)
         return {"database_url": resolved_url, "backend": backend}
