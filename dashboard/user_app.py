@@ -16,6 +16,7 @@ except ImportError:
 
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database.contest_repository import ContestRepository
+from lotoia.database.adapter import resolve_institutional_adapter
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from lotoia.ingestion.result_sync_service import ResultSyncService
@@ -592,6 +593,12 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA User", page_icon="L", layout="wide")
+    adapter = resolve_institutional_adapter(USER_DB_PATH)
+    st.sidebar.caption(
+        "Banco institucional: "
+        f"{'compartilhado' if adapter.is_shared_cloud_ready else 'local'} "
+        f"({adapter.backend})"
+    )
 
     sync_summaries = _bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):

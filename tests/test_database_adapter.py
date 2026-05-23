@@ -30,6 +30,17 @@ def test_adapter_prefers_database_url_environment(monkeypatch) -> None:
     assert adapter.is_shared_cloud_ready is True
 
 
+def test_adapter_supports_named_cloud_database_env(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("LOTOIA_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/lotoia")
+    adapter = InstitutionalDatabaseAdapter(Path("data/lotoia.db"))
+
+    assert adapter.backend == "postgresql"
+    assert adapter.database_url == "postgresql+psycopg://user:pass@host:5432/lotoia"
+    assert adapter.database_source == "LOTOIA_DATABASE_URL"
+    assert adapter.is_shared_cloud_ready is True
+
+
 def test_database_url_follows_institutional_adapter(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     resolved = database_url(tmp_path / "lotoia.db")

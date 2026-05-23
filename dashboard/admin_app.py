@@ -709,6 +709,16 @@ def _render_sqlite_bootstrap_diagnostics() -> None:
     st.code(last["sql"], language="sql")
 
 
+def _render_shared_backend_status() -> None:
+    adapter = resolve_institutional_adapter(DB_PATH)
+    if adapter.is_shared_cloud_ready:
+        st.sidebar.success("Banco compartilhado ativo")
+        st.sidebar.caption(f"Backend: {adapter.backend} via {adapter.database_source}")
+    else:
+        st.sidebar.warning("Banco compartilhado inativo")
+        st.sidebar.caption("Configure DATABASE_URL para ativar a persistência compartilhada.")
+
+
 def _render_sidebar_logo() -> None:
     logo_candidates = (
         LOGO_DIRECTORY / "logo.png",
@@ -5696,6 +5706,7 @@ def main() -> None:
         st.set_page_config(page_title="LotoIA", layout="wide")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
+    _render_shared_backend_status()
     sync_summaries = _bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]

@@ -33,6 +33,16 @@ from lotoia.public.persistence.repositories import (
     ReconciliationEventRepository,
 )
 
+_INSTITUTIONAL_DATABASE_ENV_VARS = ("DATABASE_URL", "LOTOIA_DATABASE_URL", "STREAMLIT_DATABASE_URL")
+
+
+def _read_database_url_from_env() -> tuple[str, str]:
+    for env_name in _INSTITUTIONAL_DATABASE_ENV_VARS:
+        env_value = os.getenv(env_name, "").strip()
+        if env_value:
+            return env_value, env_name
+    return "", ""
+
 
 @dataclass(frozen=True)
 class InstitutionalDatabaseAdapter:
@@ -42,7 +52,7 @@ class InstitutionalDatabaseAdapter:
 
     @property
     def database_url(self) -> str:
-        env_url = os.getenv("DATABASE_URL", "").strip()
+        env_url, _ = _read_database_url_from_env()
         if env_url:
             return env_url
         resolved = self.path if self.path.is_absolute() else self.path.resolve()
@@ -64,6 +74,13 @@ class InstitutionalDatabaseAdapter:
     @property
     def is_shared_cloud_ready(self) -> bool:
         return self.backend == "postgresql"
+
+    @property
+    def database_source(self) -> str:
+        _, env_name = _read_database_url_from_env()
+        if env_name:
+            return env_name
+        return "sqlite_fallback"
 
     def save_lead(self, **kwargs: Any) -> dict[str, Any]:
         repository = LeadRepository(self.sqlite_path)
