@@ -9,6 +9,9 @@ __all__ = [
     "PublicLimiter",
     "check_public_contest",
     "generate_public_games",
+    "InstitutionalResetService",
+    "ResetResult",
+    "ResetScope",
     "ReconciliationEngine",
     "OperationalLifecycleEngine",
 ]
@@ -20,6 +23,9 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "PublicLimiter": ("lotoia.public.service", "PublicLimiter"),
     "check_public_contest": ("lotoia.public.service", "check_public_contest"),
     "generate_public_games": ("lotoia.public.service", "generate_public_games"),
+    "InstitutionalResetService": ("lotoia.public.reset_service", "InstitutionalResetService"),
+    "ResetResult": ("lotoia.public.reset_service", "ResetResult"),
+    "ResetScope": ("lotoia.public.reset_service", "ResetScope"),
     "ReconciliationEngine": ("lotoia.public.reconciliation", "ReconciliationEngine"),
     "OperationalLifecycleEngine": ("lotoia.public.operational_lifecycle", "OperationalLifecycleEngine"),
 }

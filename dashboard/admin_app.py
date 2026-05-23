@@ -119,6 +119,7 @@ from lotoia.orchestration import (
 )
 from lotoia.public import OperationalLifecycleEngine
 from lotoia.public.operational_lifecycle import build_retention_policy_preview
+from lotoia.public.reset_service import InstitutionalResetService, ResetScope
 from lotoia.public.reconciliation import ReconciliationEngine
 from lotoia.memory import build_adaptive_evolution_tracking
 from lotoia.observability import (
@@ -5305,6 +5306,47 @@ def render_history_page() -> None:
         st.dataframe(gen_df, use_container_width=True, hide_index=True)
         st.subheader("check_events")
         st.dataframe(check_df, use_container_width=True, hide_index=True)
+        st.markdown("---")
+        with st.container(border=True):
+            st.subheader("Zerar Histórico")
+            st.caption("Operação governada para limpar histórico operacional sem tocar em benchmark, baseline ou datasets científicos.")
+            if st.session_state.get("last_reset_result"):
+                st.success("Último reset operacional executado com sucesso.")
+                st.json(st.session_state["last_reset_result"])
+            scope_labels = {
+                ResetScope.visual.value: "Reset Visual",
+                ResetScope.operational.value: "Reset Operacional",
+                ResetScope.telemetry.value: "Reset Telemetry",
+                ResetScope.full_operational.value: "Reset Operacional Completo",
+            }
+            with st.form("governed_history_reset_form", clear_on_submit=False):
+                scope = st.selectbox(
+                    "Escopo do reset",
+                    list(scope_labels.keys()),
+                    format_func=lambda key: scope_labels.get(key, key),
+                    help="Escolha o nível de limpeza operacional permitido pela governança.",
+                )
+                triggered_by = st.text_input("Executado por", value="admin")
+                confirm_text = st.text_input("Digite confirmar para prosseguir", value="")
+                ack = st.checkbox("Entendo que a operação afeta apenas a camada operacional selecionada.")
+                submitted = st.form_submit_button("Zerar Histórico", type="primary")
+            if submitted:
+                if not ack:
+                    st.error("Confirme a operação antes de prosseguir.")
+                else:
+                    try:
+                        result = _run_governed_history_reset(
+                            scope=scope,
+                            triggered_by=triggered_by.strip() or "admin",
+                            confirm_token=confirm_text,
+                            notes="reset operacional governado acionado pelo ADM",
+                        )
+                    except Exception as exc:
+                        st.error(f"Falha ao zerar histórico: {exc}")
+                    else:
+                        st.success("Histórico operacional zerado com governança e auditoria.")
+                        st.json(result)
+                        st.rerun()
         tabs = st.tabs(["Benchmarks", "Backtests", "Calibrações"])
         with tabs[0]:
             if benchmark_runs:
@@ -5389,6 +5431,38 @@ def _latest_generation_games() -> list[dict[str, Any]]:
 
 def _latest_check_context() -> dict[str, Any]:
     return st.session_state.get("last_check_context", {})
+
+
+def _clear_operational_session_state() -> None:
+    keys = [
+        "last_generation_games",
+        "last_generation_context",
+        "last_check_context",
+        "last_report_paths",
+        "admin_last_expansion_experimental",
+        "admin_last_institutional_expansion_event",
+        "admin_last_expansion_experimental_snapshot",
+    ]
+    for key in keys:
+        st.session_state.pop(key, None)
+    st.cache_data.clear()
+
+
+def _run_governed_history_reset(scope: str, triggered_by: str, confirm_token: str, notes: str = "") -> dict[str, Any]:
+    service = InstitutionalResetService(DB_PATH)
+    result = service.reset_operational_history(
+        scope=ResetScope(scope),
+        triggered_by=triggered_by,
+        confirm_token=confirm_token,
+        payload={
+            "notes": notes,
+            "source": "dashboard_admin",
+        },
+    )
+    _clear_operational_session_state()
+    result_payload = result.to_dict()
+    st.session_state["last_reset_result"] = result_payload
+    return result_payload
 
 
 def render_reports_engine_page() -> None:

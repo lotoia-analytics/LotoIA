@@ -418,6 +418,23 @@ class WorkflowEvent(Base):
     )
 
 
+class ResetEvent(Base):
+    __tablename__ = "reset_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reset_type: Mapped[str] = mapped_column(String, default="operational", nullable=False)
+    triggered_by: Mapped[str] = mapped_column(String, default="system", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    affected_tables: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="completed", nullable=False)
+    notes: Mapped[str] = mapped_column(String, default="", nullable=False)
+
+
 class ImportedContest(Base):
     __tablename__ = "imported_contests"
 
@@ -932,6 +949,20 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         )
         connection.exec_driver_sql(
             """
+            CREATE TABLE IF NOT EXISTS reset_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reset_type TEXT NOT NULL DEFAULT 'operational',
+                triggered_by TEXT NOT NULL DEFAULT 'system',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                affected_tables JSON NOT NULL DEFAULT '[]',
+                payload JSON NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'completed',
+                notes TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS workflow_steps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 workflow_id TEXT NOT NULL,
@@ -1160,6 +1191,20 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             ("ALTER TABLE workflow_events ADD COLUMN error_message TEXT NOT NULL DEFAULT ''", "error_message"),
         ):
             if column_name not in workflow_event_columns:
+                connection.exec_driver_sql(column_sql)
+        reset_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(reset_events)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE reset_events ADD COLUMN reset_type TEXT NOT NULL DEFAULT 'operational'", "reset_type"),
+            ("ALTER TABLE reset_events ADD COLUMN triggered_by TEXT NOT NULL DEFAULT 'system'", "triggered_by"),
+            ("ALTER TABLE reset_events ADD COLUMN affected_tables JSON NOT NULL DEFAULT '[]'", "affected_tables"),
+            ("ALTER TABLE reset_events ADD COLUMN payload JSON NOT NULL DEFAULT '{}'", "payload"),
+            ("ALTER TABLE reset_events ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'", "status"),
+            ("ALTER TABLE reset_events ADD COLUMN notes TEXT NOT NULL DEFAULT ''", "notes"),
+        ):
+            if column_name not in reset_event_columns:
                 connection.exec_driver_sql(column_sql)
         workflow_step_columns = {
             row[1]

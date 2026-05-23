@@ -20,6 +20,7 @@ from lotoia.database.database import (
     MlUsageEvent,
     ReportEvent,
     ReconciliationEvent,
+    ResetEvent,
     get_session,
 )
 from lotoia.public.persistence.repositories import (
@@ -236,6 +237,20 @@ class InstitutionalDatabaseAdapter:
         repository = ReconciliationEventRepository(self.sqlite_path)
         return repository.insert(**kwargs)
 
+    def save_reset_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            event = ResetEvent(
+                reset_type=str(kwargs.get("reset_type", "operational")),
+                triggered_by=str(kwargs.get("triggered_by", "system")),
+                affected_tables=list(kwargs.get("affected_tables") or []),
+                payload=dict(kwargs.get("payload") or {}),
+                status=str(kwargs.get("status", "completed")),
+                notes=str(kwargs.get("notes", "")),
+            )
+            session.add(event)
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
     def fetch_generation_events(self, lead_id: int | None = None) -> list[dict[str, Any]]:
         with get_session(self.sqlite_path) as session:
             query = session.query(GenerationEvent)
@@ -263,6 +278,7 @@ class InstitutionalDatabaseAdapter:
                 "report_events": int(session.query(ReportEvent).count()),
                 "expansion_events": int(session.query(ExpansionEvent).count()),
                 "reconciliation_events": int(session.query(ReconciliationEvent).count()),
+                "reset_events": int(session.query(ResetEvent).count()),
             }
 
     def fetch_latest_usage_snapshot(self) -> dict[str, Any]:

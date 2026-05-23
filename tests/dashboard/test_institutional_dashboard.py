@@ -1266,3 +1266,68 @@ def test_operational_reconciliation_page_autoreconciles_latest_generation(monkey
     assert reconcile_calls[0]["generation_event_id"] == 88
     assert reconcile_calls[0]["contest_id"] == 3691
     assert reconcile_calls[0]["lead_id"] == 7
+
+
+def test_governed_history_reset_helper_clears_operational_state(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    cleared: list[str] = []
+    monkeypatch.setattr(admin_app.st, "cache_data", type("Cache", (), {"clear": lambda self=None: cleared.append("cache")})())
+    admin_app.st.session_state.update(
+        {
+            "last_generation_games": [1],
+            "last_generation_context": {"x": 1},
+            "last_check_context": {"y": 1},
+            "last_report_paths": {"z": 1},
+            "admin_last_expansion_experimental": {"a": 1},
+            "admin_last_institutional_expansion_event": {"b": 1},
+            "admin_last_expansion_experimental_snapshot": {"c": 1},
+        }
+    )
+
+    class DummyService:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def reset_operational_history(self, **kwargs):
+            return type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "reset_type": kwargs["scope"].value,
+                        "triggered_by": kwargs["triggered_by"],
+                        "timestamp": "2026-05-22T12:00:00+00:00",
+                        "affected_tables": ["generation_events"],
+                        "removed_rows": {"generation_events": 1},
+                        "status": "completed",
+                        "notes": "ok",
+                    }
+                },
+            )()
+
+    monkeypatch.setattr(admin_app, "InstitutionalResetService", DummyService)
+
+    result = admin_app._run_governed_history_reset("operational", "admin", "confirmar", "test")
+
+    assert result["reset_type"] == "operational"
+    assert "last_generation_games" not in admin_app.st.session_state
+    assert "last_check_context" not in admin_app.st.session_state
+    assert cleared == ["cache"]
+
+
+def test_history_page_renders_governed_reset_panel(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    monkeypatch.setattr(admin_app, "_cached_runs", lambda: {"benchmark": [], "backtest": [], "calibration": []})
+    monkeypatch.setattr(admin_app, "_load_admin_events", lambda table_name: admin_app.pd.DataFrame(columns=["id"]))
+    monkeypatch.setattr(admin_app.st, "container", lambda *args, **kwargs: _dummy_context())
+    monkeypatch.setattr(admin_app.st, "tabs", lambda labels: [_dummy_context() for _ in labels])
+    monkeypatch.setattr(admin_app.st, "form", lambda *args, **kwargs: _dummy_context())
+    monkeypatch.setattr(admin_app.st, "form_submit_button", lambda *args, **kwargs: False)
+    monkeypatch.setattr(admin_app.st, "selectbox", lambda *args, **kwargs: "operational")
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "admin")
+    monkeypatch.setattr(admin_app.st, "checkbox", lambda *args, **kwargs: False)
+    monkeypatch.setattr(admin_app.st, "plotly_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "metric", lambda *args, **kwargs: None)
+
+    admin_app.render_history_page()
