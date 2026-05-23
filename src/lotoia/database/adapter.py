@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -35,6 +35,11 @@ from lotoia.public.persistence.repositories import (
 )
 
 _INSTITUTIONAL_DATABASE_ENV_VARS = ("DATABASE_URL", "LOTOIA_DATABASE_URL", "STREAMLIT_DATABASE_URL")
+_INSTITUTIONAL_DATABASE_POOLER_ENV_VARS = (
+    "LOTOIA_DATABASE_POOLER_URL",
+    "STREAMLIT_DATABASE_POOLER_URL",
+)
+_DEFAULT_SUPABASE_POOLER_HOST = "aws-1-us-west-1.pooler.supabase.com"
 
 
 def _read_database_url_from_env() -> tuple[str, str]:
@@ -45,6 +50,30 @@ def _read_database_url_from_env() -> tuple[str, str]:
     return "", ""
 
 
+def _read_pooler_database_url_from_env() -> tuple[str, str]:
+    for env_name in _INSTITUTIONAL_DATABASE_POOLER_ENV_VARS:
+        env_value = os.getenv(env_name, "").strip()
+        if env_value:
+            return env_value, env_name
+    return "", ""
+
+
+def _rewrite_supabase_url_to_pooler(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    host = (parsed.hostname or "").lower()
+    if "supabase.co" not in host or "pooler" in host:
+        return database_url
+    pooler_host = os.getenv("LOTOIA_SUPABASE_POOLER_HOST", _DEFAULT_SUPABASE_POOLER_HOST).strip() or _DEFAULT_SUPABASE_POOLER_HOST
+    port = parsed.port or 5432
+    username = parsed.username or "postgres"
+    password = parsed.password or ""
+    netloc = username
+    if password:
+        netloc += f":{password}"
+    netloc += f"@{pooler_host}:{port}"
+    return urlunparse((parsed.scheme, netloc, parsed.path or "", parsed.params, urlencode(parse_qsl(parsed.query)), parsed.fragment))
+
+
 @dataclass(frozen=True)
 class InstitutionalDatabaseAdapter:
     """Resolve the institutional database backend and connection target."""
@@ -53,9 +82,12 @@ class InstitutionalDatabaseAdapter:
 
     @property
     def database_url(self) -> str:
+        pooler_url, _ = _read_pooler_database_url_from_env()
+        if pooler_url:
+            return pooler_url
         env_url, _ = _read_database_url_from_env()
         if env_url:
-            return env_url
+            return _rewrite_supabase_url_to_pooler(env_url)
         resolved = self.path if self.path.is_absolute() else self.path.resolve()
         return f"sqlite:///{resolved.as_posix()}"
 
@@ -78,6 +110,9 @@ class InstitutionalDatabaseAdapter:
 
     @property
     def database_source(self) -> str:
+        pooler_url, pooler_env_name = _read_pooler_database_url_from_env()
+        if pooler_url:
+            return pooler_env_name
         _, env_name = _read_database_url_from_env()
         if env_name:
             return env_name
