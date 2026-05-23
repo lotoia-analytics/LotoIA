@@ -1880,7 +1880,9 @@ def _recurrence_table() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _observability_tables() -> dict[str, pd.DataFrame]:
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _observability_tables(db_signature: object) -> dict[str, pd.DataFrame]:
+    del db_signature
     try:
         logs = pd.read_sql_query(
             """
@@ -1913,7 +1915,7 @@ def _runtime_health(db_signature: object) -> dict[str, Any]:
     del db_signature
     from lotoia.ml import ml_heartbeat
 
-    logs = _observability_tables()["logs"]
+    logs = _observability_tables(db_signature)["logs"]
     generation_logs = logs[logs["event_type"] == "generation"] if not logs.empty else pd.DataFrame()
     check_logs = logs[logs["event_type"] == "check"] if not logs.empty else pd.DataFrame()
     ml_logs = logs[logs["event_type"] == "ml"] if not logs.empty else pd.DataFrame()
@@ -2354,7 +2356,7 @@ def _source_of_truth_map() -> pd.DataFrame:
 
 def _performance_metrics_table() -> pd.DataFrame:
     rows = []
-    logs = _observability_tables()["logs"]
+    logs = _observability_tables(_institutional_db_signature())["logs"]
     families = {
         "generation": "tempo geraÃ§Ã£o",
         "check": "tempo conferÃªncia",
@@ -2411,7 +2413,7 @@ def _alert_contracts() -> pd.DataFrame:
 
 
 def _cloud_failure_table() -> pd.DataFrame:
-    logs = _observability_tables()["logs"]
+    logs = _observability_tables(_institutional_db_signature())["logs"]
     event_types = ("dashboard", "load_draws", "export", "sqlite", "ml")
     if logs.empty:
         return pd.DataFrame([{"event_type": event_type, "failures": 0} for event_type in event_types])
@@ -2428,7 +2430,7 @@ def _cloud_failure_table() -> pd.DataFrame:
 
 
 def _observability_metrics_table() -> pd.DataFrame:
-    logs = _observability_tables()["logs"]
+    logs = _observability_tables(_institutional_db_signature())["logs"]
     if logs.empty:
         return pd.DataFrame(columns=["event_type", "count", "avg_duration_ms"])
     grouped = logs.groupby("event_type", dropna=False)
@@ -3125,7 +3127,7 @@ def render_observability_page() -> None:
                 use_container_width=True,
             )
 
-        tables = _observability_tables()
+        tables = _observability_tables(_institutional_db_signature())
         st.subheader("Logs recentes")
         st.dataframe(_presentational_dataframe(tables["logs"].head(50)), hide_index=True, use_container_width=True)
         st.subheader("Auditoria institucional")
@@ -4293,7 +4295,9 @@ def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
     return dataframe
 
 
-def _lead_analytics() -> dict[str, Any]:
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _lead_analytics(db_signature: object) -> dict[str, Any]:
+    del db_signature
     try:
         history = _lead_history_dataframe(_institutional_db_signature())
     except Exception:
@@ -4557,8 +4561,9 @@ def _render_institutional_cockpit() -> None:
 
 def _render_lead_intelligence() -> None:
     try:
-        analytics = _lead_analytics()
-        history = _lead_history_dataframe(_institutional_db_signature())
+        db_signature = _institutional_db_signature()
+        analytics = _lead_analytics(db_signature)
+        history = _lead_history_dataframe(db_signature)
     except Exception as exc:
         st.warning("Leitura de uso indisponivel no momento. O runtime permaneceu ativo.")
         st.caption(f"Contexto tÃ©cnico: {exc}")
