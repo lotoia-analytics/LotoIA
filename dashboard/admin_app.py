@@ -190,7 +190,13 @@ LEAD_HISTORY_LIMIT = 5000
 STREAMLIT_CACHE_TTL_SECONDS = 300
 STREAMLIT_CACHE_MAX_ENTRIES = 16
 USAGE_CACHE_TTL_SECONDS = 15
-ADMIN_EXPANSION_ALLOWED_SIZES = (16, 17)
+ADMIN_EXPANSION_ROLE_SIZES = {
+    "basic": (16,),
+    "premium": (16, 17),
+    "operator": (16, 17, 18),
+    "admin": (16, 17, 18, 19, 20),
+}
+ADMIN_EXPANSION_DEFAULT_ROLE = "admin"
 ADMIN_EXPANSION_PREVIEW_LIMIT = 136
 ADMIN_EXPANSION_PAGE_SIZE = 50
 ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "workflow_events", "operational_logs", "audit_trail", "leads"})
@@ -727,11 +733,42 @@ def _format_numbers(numbers: list[int]) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
 
 
-def _parse_admin_expansion_numbers(text: str) -> list[int]:
+def _format_allowed_expansion_sizes(sizes: tuple[int, ...]) -> str:
+    if not sizes:
+        return ""
+    if len(sizes) == 1:
+        return str(sizes[0])
+    if len(sizes) == 2:
+        return f"{sizes[0]} ou {sizes[1]}"
+    return ", ".join(str(size) for size in sizes[:-1]) + f" e {sizes[-1]}"
+
+
+def _normalize_admin_expansion_role(role: str | None) -> str:
+    cleaned = str(role or "").strip().lower()
+    return cleaned if cleaned in ADMIN_EXPANSION_ROLE_SIZES else ADMIN_EXPANSION_DEFAULT_ROLE
+
+
+def _resolve_admin_expansion_role() -> str:
+    return _normalize_admin_expansion_role(
+        st.session_state.get("admin_expansion_access_role")
+        or st.session_state.get("_admin_role")
+        or st.session_state.get("_admin_access_role")
+    )
+
+
+def _admin_expansion_allowed_sizes(role: str | None = None) -> tuple[int, ...]:
+    normalized_role = _normalize_admin_expansion_role(role)
+    return ADMIN_EXPANSION_ROLE_SIZES.get(normalized_role, ADMIN_EXPANSION_ROLE_SIZES[ADMIN_EXPANSION_DEFAULT_ROLE])
+
+
+def _parse_admin_expansion_numbers(text: str, allowed_sizes: tuple[int, ...] | None = None) -> list[int]:
     tokens = [token for token in text.replace(",", " ").split() if token]
     numbers = sorted(int(token) for token in tokens)
-    if len(numbers) not in ADMIN_EXPANSION_ALLOWED_SIZES:
-        raise ValueError("Modo experimental interno permite apenas 16 ou 17 dezenas.")
+    valid_sizes = allowed_sizes or ADMIN_EXPANSION_ROLE_SIZES[ADMIN_EXPANSION_DEFAULT_ROLE]
+    if len(numbers) not in valid_sizes:
+        raise ValueError(
+            f"Modo governado permite apenas { _format_allowed_expansion_sizes(valid_sizes) } dezenas."
+        )
     if len(set(numbers)) != len(numbers):
         raise ValueError("As dezenas nao podem se repetir no jogo expandido.")
     if any(number < 1 or number > 25 for number in numbers):
@@ -739,8 +776,9 @@ def _parse_admin_expansion_numbers(text: str) -> list[int]:
     return numbers
 
 
-def _default_admin_expansion_numbers(selected_count: int) -> str:
-    size = selected_count if selected_count in ADMIN_EXPANSION_ALLOWED_SIZES else ADMIN_EXPANSION_ALLOWED_SIZES[0]
+def _default_admin_expansion_numbers(selected_count: int, allowed_sizes: tuple[int, ...] | None = None) -> str:
+    valid_sizes = allowed_sizes or ADMIN_EXPANSION_ROLE_SIZES[ADMIN_EXPANSION_DEFAULT_ROLE]
+    size = selected_count if selected_count in valid_sizes else valid_sizes[0]
     return _format_numbers(list(range(1, size + 1)))
 
 
@@ -790,8 +828,13 @@ def _expansion_events_dataframe(limit: int = 20) -> pd.DataFrame:
     )
 
 
-def _run_admin_expansion(numbers: list[int], preview_limit: int = ADMIN_EXPANSION_PREVIEW_LIMIT) -> dict[str, Any]:
+def _run_admin_expansion(
+    numbers: list[int],
+    preview_limit: int = ADMIN_EXPANSION_PREVIEW_LIMIT,
+    allowed_sizes: tuple[int, ...] | None = None,
+) -> dict[str, Any]:
     start_time = time.monotonic()
+    valid_sizes = allowed_sizes or _admin_expansion_allowed_sizes(None)
     result = expand_lotofacil_numbers(
         numbers,
         config=ExpansionConfig(
@@ -803,7 +846,7 @@ def _run_admin_expansion(numbers: list[int], preview_limit: int = ADMIN_EXPANSIO
     payload = result.as_dict()
     payload["metrics"] = {
         "engine": "combinatorial_expansion_v1_admin_experimental",
-        "allowed_sizes": list(ADMIN_EXPANSION_ALLOWED_SIZES),
+        "allowed_sizes": list(valid_sizes),
         "memory_policy": "preview_paginated_no_full_ui_dump",
         "runtime_guard_seconds": 1.5,
     }
@@ -5154,38 +5197,68 @@ def render_expansion_experimental_page() -> None:
     with st.container(border=True):
         _section_header(
             "Jogo Expandido",
-            "Validacao operacional interna do motor combinatorio, restrita a 16 e 17 dezenas.",
+            "Validacao operacional interna do motor combinatorio, governada por perfil de acesso.",
         )
-        st.warning("Modo interno: 18, 19 e 20 dezenas permanecem desabilitadas no ADMIN.")
-        selected_count = st.selectbox(
-            "Quantidade de dezenas",
-            options=list(ADMIN_EXPANSION_ALLOWED_SIZES),
-            index=0,
-            key="admin_expansion_selected_count",
-        )
-        default_numbers = _default_admin_expansion_numbers(int(selected_count))
-        numbers_text = st.text_input("Dezenas", value=default_numbers, key=f"admin_expansion_numbers_{selected_count}")
-        preview_limit = st.slider(
-            "Limite de preview",
-            min_value=16,
-            max_value=ADMIN_EXPANSION_PREVIEW_LIMIT,
-            value=ADMIN_EXPANSION_PREVIEW_LIMIT,
-            step=10,
-            key="admin_expansion_preview_limit",
+        st.warning("Modos avançados aumentam significativamente o processamento operacional.")
+        col_role, col_count, col_preview = st.columns(3)
+        with col_role:
+            selected_role = st.selectbox(
+                "Perfil de acesso",
+                options=list(ADMIN_EXPANSION_ROLE_SIZES.keys()),
+                index=list(ADMIN_EXPANSION_ROLE_SIZES.keys()).index(
+                    _resolve_admin_expansion_role()
+                ),
+                key="admin_expansion_access_role",
+            )
+        allowed_sizes = _admin_expansion_allowed_sizes(str(selected_role))
+        with col_count:
+            selected_count = st.selectbox(
+                "Quantidade de dezenas",
+                options=list(allowed_sizes),
+                index=0,
+                key=f"admin_expansion_selected_count_{selected_role}",
+            )
+        with col_preview:
+            preview_limit = st.slider(
+                "Limite de preview",
+                min_value=16,
+                max_value=ADMIN_EXPANSION_PREVIEW_LIMIT,
+                value=ADMIN_EXPANSION_PREVIEW_LIMIT,
+                step=10,
+                key="admin_expansion_preview_limit",
+            )
+
+        default_numbers = _default_admin_expansion_numbers(int(selected_count), allowed_sizes=allowed_sizes)
+        numbers_text = st.text_input(
+            "Dezenas",
+            value=default_numbers,
+            key=f"admin_expansion_numbers_{selected_role}_{selected_count}",
         )
 
         try:
-            numbers = _parse_admin_expansion_numbers(numbers_text)
+            numbers = _parse_admin_expansion_numbers(numbers_text, allowed_sizes=allowed_sizes)
             estimate = estimate_expansion(numbers)
         except Exception as exc:
             st.error(str(exc))
-            _record_operational_log("admin_expansion_experimental", "blocked", 0.0, {"error": str(exc)})
+            _record_operational_log(
+                "admin_expansion_experimental",
+                "blocked",
+                0.0,
+                {
+                    "error": str(exc),
+                    "role": selected_role,
+                    "allowed_sizes": list(allowed_sizes),
+                },
+            )
             return
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Dezenas", len(numbers))
         col2.metric("Apostas internas", f"{estimate['total_combinations']:,}".replace(",", "."))
         col3.metric("Custo estimado", f"R$ {float(estimate['estimated_cost']):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.caption(
+            f"Perfil {selected_role} habilita: {_format_allowed_expansion_sizes(allowed_sizes)} dezenas."
+        )
 
         if st.button("Gerar preview experimental", type="primary"):
             try:
@@ -5193,6 +5266,7 @@ def render_expansion_experimental_page() -> None:
                     st.session_state["admin_last_expansion_experimental"] = _run_admin_expansion(
                         numbers,
                         preview_limit=int(preview_limit),
+                        allowed_sizes=allowed_sizes,
                     )
                     expansion_payload = st.session_state["admin_last_expansion_experimental"]
                     if isinstance(expansion_payload, dict):
@@ -5218,6 +5292,7 @@ def render_expansion_experimental_page() -> None:
                             strategy_profile=str(expansion_payload.get("metrics", {}).get("profile_type") or expansion_payload.get("profile_type") or "expanded"),
                             payload={
                                 "origin": "expanded",
+                                "role_scope": str(selected_role),
                                 "selected_numbers": expansion_payload.get("selected_numbers", numbers),
                                 "combinations_preview": expansion_payload.get("combinations", []),
                                 "total_combinations": expansion_payload.get("total_combinations", 0),

@@ -281,24 +281,36 @@ def test_check_helpers_validate_and_score_contest(monkeypatch) -> None:
     assert games[0] == list(range(1, 16))
 
 
-def test_admin_expansion_experimental_allows_only_16_and_17(monkeypatch) -> None:
+def test_admin_expansion_experimental_allows_governed_sizes_by_role(monkeypatch) -> None:
     monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
 
-    assert admin_app._default_admin_expansion_numbers(16).endswith("16")
-    assert admin_app._default_admin_expansion_numbers(17).endswith("17")
+    assert admin_app._admin_expansion_allowed_sizes("basic") == (16,)
+    assert admin_app._admin_expansion_allowed_sizes("premium") == (16, 17)
+    assert admin_app._admin_expansion_allowed_sizes("operator") == (16, 17, 18)
+    assert admin_app._admin_expansion_allowed_sizes("admin") == (16, 17, 18, 19, 20)
+
+    assert admin_app._default_admin_expansion_numbers(16, allowed_sizes=admin_app._admin_expansion_allowed_sizes("basic")).endswith("16")
+    assert admin_app._default_admin_expansion_numbers(17, allowed_sizes=admin_app._admin_expansion_allowed_sizes("premium")).endswith("17")
+    assert admin_app._default_admin_expansion_numbers(20, allowed_sizes=admin_app._admin_expansion_allowed_sizes("admin")).endswith("20")
     assert admin_app._parse_admin_expansion_numbers(
-        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16"
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16",
+        allowed_sizes=admin_app._admin_expansion_allowed_sizes("basic"),
     ) == list(range(1, 17))
     assert len(admin_app._parse_admin_expansion_numbers(
-        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17"
-    )) == 17
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18",
+        allowed_sizes=admin_app._admin_expansion_allowed_sizes("operator"),
+    )) == 18
+    assert len(admin_app._parse_admin_expansion_numbers(
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+        allowed_sizes=admin_app._admin_expansion_allowed_sizes("admin"),
+    )) == 20
 
     for value in [
         "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
-        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18",
+        "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 21",
     ]:
         try:
-            admin_app._parse_admin_expansion_numbers(value)
+            admin_app._parse_admin_expansion_numbers(value, allowed_sizes=admin_app._admin_expansion_allowed_sizes("premium"))
         except ValueError as exc:
             assert "16 ou 17" in str(exc)
         else:
@@ -313,7 +325,7 @@ def test_admin_expansion_experimental_uses_guarded_preview(monkeypatch) -> None:
     assert result["total_combinations"] == 136
     assert result["generated_count"] == 20
     assert result["stopped_reason"] == "preview_limit"
-    assert result["metrics"]["allowed_sizes"] == [16, 17]
+    assert result["metrics"]["allowed_sizes"] == [16, 17, 18, 19, 20]
 
 
 def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
@@ -342,7 +354,7 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
     monkeypatch.setattr(
         admin_app,
         "_run_admin_expansion",
-        lambda numbers, preview_limit=20: {
+        lambda numbers, preview_limit=20, allowed_sizes=None: {
             "selected_numbers": numbers,
             "combinations": [list(range(1, 16))],
             "total_combinations": 136,
@@ -364,8 +376,14 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
     monkeypatch.setattr(admin_app, "_export_csv", lambda path, df: path)
     monkeypatch.setattr(admin_app, "_save_pdf_report", lambda path, title, lines, df: path)
     monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
-    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16")
-    monkeypatch.setattr(admin_app.st, "selectbox", lambda *args, **kwargs: 16)
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20")
+    def _selectbox(label, options, index=0, key=None):
+        if "Perfil de acesso" in label:
+            return "admin"
+        if "Quantidade" in label:
+            return 20
+        return options[index]
+    monkeypatch.setattr(admin_app.st, "selectbox", _selectbox)
     monkeypatch.setattr(admin_app.st, "slider", lambda *args, **kwargs: 20)
     monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
 
@@ -378,6 +396,7 @@ def test_expansion_page_persists_governed_history(monkeypatch, tmp_path: Path) -
     assert institutional_saved["payload"]["expansion_type"] == "expanded_preview"
     assert institutional_saved["payload"]["runtime_origin"] == "admin_panel"
     assert institutional_saved["payload"]["lead_id"] is None
+    assert institutional_saved["payload"]["payload"]["role_scope"] == "admin"
 
 
 def test_institutional_history_includes_expanded_rows(monkeypatch) -> None:
