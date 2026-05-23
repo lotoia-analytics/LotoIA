@@ -4231,28 +4231,27 @@ def _render_kpi_cards() -> None:
 
 
 def _render_institutional_cockpit() -> None:
-    ai_report = build_analytical_intelligence()
-    executive_report = build_executive_analytical_report()
-    historical_report = build_institutional_historical_intelligence()
-    snapshot = load_institutional_analytics_snapshot()
-    observability_report = load_observational_stabilization_report()
-    timeline = load_institutional_analytical_timeline()
-    if not timeline:
-        timeline = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
-    orchestration_report = load_intelligent_operational_orchestration()
-    if not orchestration_report:
-        orchestration_report = persist_intelligent_operational_orchestration(report_dir=REPORTS_DIR / "orchestration")
-
-    historical_summary = historical_report.get("summary", {})
-    analytical_summary = ai_report.get("analytical_summary", {})
-    snapshot_summary = snapshot.get("summary", {}) if isinstance(snapshot, dict) else {}
-
     show_institutional_cockpit = st.toggle(
         "Visao institucional avancada",
         value=bool(st.session_state.get("_admin_show_institutional_cockpit", False)),
         key="_admin_show_institutional_cockpit",
     )
     if show_institutional_cockpit:
+        ai_report = build_analytical_intelligence()
+        executive_report = build_executive_analytical_report()
+        historical_report = build_institutional_historical_intelligence()
+        snapshot = load_institutional_analytics_snapshot()
+        observability_report = load_observational_stabilization_report()
+        timeline = load_institutional_analytical_timeline()
+        if not timeline:
+            timeline = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
+        orchestration_report = load_intelligent_operational_orchestration()
+        if not orchestration_report:
+            orchestration_report = persist_intelligent_operational_orchestration(report_dir=REPORTS_DIR / "orchestration")
+
+        historical_summary = historical_report.get("summary", {})
+        analytical_summary = ai_report.get("analytical_summary", {})
+        snapshot_summary = snapshot.get("summary", {}) if isinstance(snapshot, dict) else {}
         with st.container(border=True):
             _section_header(
                 "Visao geral",
