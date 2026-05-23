@@ -4421,7 +4421,7 @@ def render_historical_intelligence_page(draws) -> None:
 
         match_raw_df = _historical_intelligence_dataframe(games)
         match_df = _presentational_historical_intelligence_dataframe(games)
-        st.subheader("Tabela histrica")
+        st.subheader("Tabela Histórica")
         st.dataframe(match_df, hide_index=True, use_container_width=True)
 
         institutional_history = _analytics_base_tables()["history"]
