@@ -5333,8 +5333,15 @@ def render_history_page() -> None:
                     format_func=lambda key: scope_labels.get(key, key),
                     help="Escolha o nível de limpeza operacional permitido pela governança.",
                 )
-                triggered_by = st.text_input("Executado por", value="admin")
-                confirm_text = st.text_input("Digite confirmar para prosseguir", value="")
+                st.markdown("**Resultado visual recomendado**")
+                st.markdown(
+                    "\n".join(
+                        [
+                            f"- **{scope_labels[key]}**  \n  {scope_descriptions[key]}"
+                            for key in scope_labels
+                        ]
+                    )
+                )
                 ack = st.checkbox("Entendo que a operação afeta apenas a camada operacional selecionada.")
                 submitted = st.form_submit_button("Executar limpeza", type="primary")
             if submitted:
@@ -5344,8 +5351,8 @@ def render_history_page() -> None:
                     try:
                         result = _run_governed_history_reset(
                             scope=scope,
-                            triggered_by=triggered_by.strip() or "admin",
-                            confirm_token=confirm_text,
+                            triggered_by="admin",
+                            confirm_token="confirmar",
                             notes="reset operacional governado acionado pelo ADM",
                         )
                     except Exception as exc:
