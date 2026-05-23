@@ -16,12 +16,14 @@ from lotoia.database.database import (
     ReconciliationEvent,
     get_session,
 )
-from lotoia.database.public_repository import (
-    save_check_event,
-    save_expansion_event,
-    save_generation_event,
-    save_report_event,
-    save_reconciliation_event,
+from lotoia.public.persistence.repositories import (
+    CheckEventRepository,
+    ExpansionEventRepository,
+    GenerationEventRepository,
+    LeadRepository,
+    MlUsageEventRepository,
+    ReportEventRepository,
+    ReconciliationEventRepository,
 )
 
 
@@ -56,30 +58,33 @@ class InstitutionalDatabaseAdapter:
     def is_shared_cloud_ready(self) -> bool:
         return self.backend == "postgresql"
 
+    def save_lead(self, **kwargs: Any) -> dict[str, Any]:
+        repository = LeadRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
+
     def save_generation_event(self, **kwargs: Any) -> dict[str, Any]:
-        return save_generation_event(db_path=self.sqlite_path, **kwargs)
+        repository = GenerationEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def save_check_event(self, **kwargs: Any) -> dict[str, Any]:
-        return save_check_event(db_path=self.sqlite_path, **kwargs)
+        repository = CheckEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def save_ml_usage_event(self, **kwargs: Any) -> dict[str, Any]:
-        with get_session(self.sqlite_path) as session:
-            event = MlUsageEvent(**kwargs)
-            session.add(event)
-            session.commit()
-            return {
-                column.name: getattr(event, column.name)
-                for column in event.__table__.columns
-            }
+        repository = MlUsageEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def save_report_event(self, **kwargs: Any) -> dict[str, Any]:
-        return save_report_event(db_path=self.sqlite_path, **kwargs)
+        repository = ReportEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def save_expansion_event(self, **kwargs: Any) -> dict[str, Any]:
-        return save_expansion_event(db_path=self.sqlite_path, **kwargs)
+        repository = ExpansionEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def save_reconciliation_event(self, **kwargs: Any) -> dict[str, Any]:
-        return save_reconciliation_event(db_path=self.sqlite_path, **kwargs)
+        repository = ReconciliationEventRepository(self.sqlite_path)
+        return repository.insert(**kwargs)
 
     def fetch_generation_events(self, lead_id: int | None = None) -> list[dict[str, Any]]:
         with get_session(self.sqlite_path) as session:

@@ -3,17 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.database import DEFAULT_DATABASE_PATH
-from lotoia.public.persistence import (
-    CheckEventRepository,
-    ExpansionEventRepository,
-    GenerationEventRepository,
-    LeadRepository,
-    ReportEventRepository,
-    ReconciliationEventRepository,
-    ReconciliationRepository,
-    initialize_public_persistence,
-)
+
+
+def _adapter(db_path: Path = DEFAULT_DATABASE_PATH) -> InstitutionalDatabaseAdapter:
+    return InstitutionalDatabaseAdapter(db_path)
 
 
 def save_lead(
@@ -25,9 +20,7 @@ def save_lead(
     user_agent: str,
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = LeadRepository(db_path)
-    return repository.insert(
+    return _adapter(db_path).save_lead(
         first_name=first_name,
         whatsapp=whatsapp,
         source=source,
@@ -53,9 +46,7 @@ def save_generation_event(
     whatsapp: str = "",
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = GenerationEventRepository(db_path)
-    event = repository.insert(
+    return _adapter(db_path).save_generation_event(
         lead_id=lead_id,
         generated_games=generated_games,
         ml_enabled=ml_enabled,
@@ -70,7 +61,6 @@ def save_generation_event(
         first_name=first_name,
         whatsapp=whatsapp,
     )
-    return event
 
 
 def save_check_event(
@@ -82,9 +72,7 @@ def save_check_event(
     result_payload: dict[str, Any],
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = CheckEventRepository(db_path)
-    return repository.insert(
+    return _adapter(db_path).save_check_event(
         lead_id=lead_id,
         contest_id=contest_id,
         selected_numbers=selected_numbers,
@@ -107,19 +95,20 @@ def save_reconciliation_run(
     games: list[dict[str, Any]],
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = ReconciliationRepository(db_path)
-    return repository.insert(
-        generation_event_id=generation_event_id,
+    return _adapter(db_path).save_reconciliation_event(
         lead_id=lead_id,
-        contest_id=contest_id,
-        source=source,
-        status=status,
-        prize_count=prize_count,
-        total_hits=total_hits,
-        best_hits=best_hits,
-        payload=payload,
-        games=games,
+        generation_event_id=generation_event_id,
+        reconciliation_type=source,
+        hits=total_hits,
+        matched_numbers=[],
+        runtime_origin=status,
+        payload={
+            "contest_id": contest_id,
+            "prize_count": prize_count,
+            "best_hits": best_hits,
+            "payload": payload,
+            "games": games,
+        },
     )
 
 
@@ -134,9 +123,7 @@ def save_report_event(
     payload: dict[str, Any] | None = None,
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = ReportEventRepository(db_path)
-    return repository.insert(
+    return _adapter(db_path).save_report_event(
         lead_id=lead_id,
         generation_event_id=generation_event_id,
         report_type=report_type,
@@ -158,9 +145,7 @@ def save_expansion_event(
     payload: dict[str, Any] | None = None,
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = ExpansionEventRepository(db_path)
-    return repository.insert(
+    return _adapter(db_path).save_expansion_event(
         lead_id=lead_id,
         generation_event_id=generation_event_id,
         expansion_type=expansion_type,
@@ -182,9 +167,7 @@ def save_reconciliation_event(
     payload: dict[str, Any] | None = None,
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    initialize_public_persistence(db_path)
-    repository = ReconciliationEventRepository(db_path)
-    return repository.insert(
+    return _adapter(db_path).save_reconciliation_event(
         lead_id=lead_id,
         generation_event_id=generation_event_id,
         reconciliation_type=reconciliation_type,
