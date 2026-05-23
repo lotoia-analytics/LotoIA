@@ -7,6 +7,7 @@ __all__ = [
     "BacktestRun",
     "BenchmarkRun",
     "CalibrationRun",
+    "InstitutionalDatabaseAdapter",
     "CheckEvent",
     "ContestRepository",
     "DEFAULT_DATABASE_PATH",
@@ -24,6 +25,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "BacktestRun": ("lotoia.database.database", "BacktestRun"),
     "BenchmarkRun": ("lotoia.database.database", "BenchmarkRun"),
     "CalibrationRun": ("lotoia.database.database", "CalibrationRun"),
+    "InstitutionalDatabaseAdapter": ("lotoia.database.adapter", "InstitutionalDatabaseAdapter"),
     "CheckEvent": ("lotoia.database.database", "CheckEvent"),
     "DEFAULT_DATABASE_PATH": ("lotoia.database.database", "DEFAULT_DATABASE_PATH"),
     "GenerationEvent": ("lotoia.database.database", "GenerationEvent"),
@@ -46,4 +48,3 @@ def __getattr__(name: str) -> Any:
     value = getattr(module, attr_name)
     globals()[name] = value
     return value
-

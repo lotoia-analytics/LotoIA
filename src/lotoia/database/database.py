@@ -11,6 +11,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 DEFAULT_DATABASE_PATH = Path("data/lotoia.db")
 
 
+def _resolve_institutional_database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
+    try:
+        from .adapter import InstitutionalDatabaseAdapter
+    except Exception:
+        resolved = path if path.is_absolute() else path.resolve()
+        return f"sqlite:///{resolved.as_posix()}"
+    return InstitutionalDatabaseAdapter(path).database_url
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -535,24 +544,24 @@ class InstitutionalMemoryReplay(Base):
 
 
 def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
-    resolved = path if path.is_absolute() else path.resolve()
-    return f"sqlite:///{resolved.as_posix()}"
+    return _resolve_institutional_database_url(path)
 
 
 def get_engine(path: Path = DEFAULT_DATABASE_PATH):
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(database_url(path), future=True)
 
-    @event.listens_for(engine, "connect")
-    def _configure_sqlite(dbapi_connection, connection_record):  # type: ignore[unused-ignore]
-        try:
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL;")
-            cursor.execute("PRAGMA synchronous=NORMAL;")
-            cursor.execute("PRAGMA wal_autocheckpoint=100;")
-            cursor.close()
-        except Exception:
-            pass
+    if database_url(path).startswith("sqlite:///"):
+        @event.listens_for(engine, "connect")
+        def _configure_sqlite(dbapi_connection, connection_record):  # type: ignore[unused-ignore]
+            try:
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA synchronous=NORMAL;")
+                cursor.execute("PRAGMA wal_autocheckpoint=100;")
+                cursor.close()
+            except Exception:
+                pass
 
     return engine
 
