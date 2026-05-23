@@ -300,6 +300,7 @@ ALERT_DASHBOARD_LOAD_MS = 8_000.0
 ALERT_REPEATED_FAILURES = 3
 ALERT_SQLITE_SIZE_BYTES = 256 * 1024 * 1024
 ALERT_LOG_GROWTH_EVENTS = 1_000
+APP_BUILD = "4daf997"
 SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
 SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
@@ -829,12 +830,14 @@ def _render_shared_backend_status() -> None:
         st.sidebar.success("Banco compartilhado ativo")
         pooler_mode = bool(getattr(adapter, "uses_pooler", False))
         connection_kind = "pooler" if pooler_mode else "conexao direta"
+        st.sidebar.caption(f"build={APP_BUILD}")
         st.sidebar.caption(
             f"Backend: {getattr(adapter, 'backend', 'unknown')} via {getattr(adapter, 'database_source', 'sqlite_fallback')} "
             f"({connection_kind} / {getattr(adapter, 'database_host', '') or 'host indefinido'})"
         )
     else:
         st.sidebar.warning("Banco compartilhado inativo")
+        st.sidebar.caption(f"build={APP_BUILD}")
         st.sidebar.caption("Configure DATABASE_URL para ativar a persistência compartilhada.")
 
 

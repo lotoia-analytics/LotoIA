@@ -29,6 +29,7 @@ MAX_GAMES_PER_SESSION = 10
 DEFAULT_GAMES_COUNT = 5
 DEFAULT_POOL_SIZE = 20
 ONLINE_MARKER = "USER PANEL ONLINE"
+APP_BUILD = "4daf997"
 AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 BOOTSTRAP_SCHEMA_ON_STARTUP = os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -612,6 +613,7 @@ def main() -> None:
         f"({database_backend} / {database_source} / "
         f"{'pooler' if pooler_mode else 'direto'})"
     )
+    st.sidebar.caption(f"build={APP_BUILD}")
     if BOOTSTRAP_SCHEMA_ON_STARTUP and adapter.is_shared_cloud_ready:
         bootstrap_institutional_database(USER_DB_PATH)
 
