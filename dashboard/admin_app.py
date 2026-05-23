@@ -215,6 +215,8 @@ SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
 SQLITE_BOOTSTRAP_STATE = {"fallback_used": False, "requested_path": "", "active_path": ""}
 AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
+DISABLE_INSTITUTIONAL_COCKPIT = os.getenv("LOTOIA_DISABLE_INSTITUTIONAL_COCKPIT", "").strip().lower() in {"1", "true", "yes", "on"}
+RUNTIME_AUDIT_ENABLED = os.getenv("LOTOIA_RUNTIME_AUDIT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
@@ -725,6 +727,24 @@ def _render_shared_backend_status() -> None:
     else:
         st.sidebar.warning("Banco compartilhado inativo")
         st.sidebar.caption("Configure DATABASE_URL para ativar a persistência compartilhada.")
+
+
+def _runtime_audit(stage: str, detail: str | None = None, *, elapsed_ms: float | None = None) -> None:
+    if not RUNTIME_AUDIT_ENABLED:
+        return
+    message = f"[RUNTIME] {stage}"
+    if detail:
+        message = f"{message} :: {detail}"
+    if elapsed_ms is not None:
+        message = f"{message} ({elapsed_ms:.1f} ms)"
+    try:
+        st.sidebar.caption(message)
+    except Exception:
+        pass
+    try:
+        _record_operational_log("runtime_audit", "success", elapsed_ms or 0.0, {"stage": stage, "detail": detail or ""})
+    except Exception:
+        pass
 
 
 def _render_sidebar_logo() -> None:
@@ -4244,6 +4264,9 @@ def _render_kpi_cards() -> None:
 
 
 def _render_institutional_cockpit() -> None:
+    if DISABLE_INSTITUTIONAL_COCKPIT:
+        st.info("Visao institucional avancada desativada temporariamente para auditoria de runtime.")
+        return
     show_institutional_cockpit = st.toggle(
         "Visao institucional avancada",
         value=bool(st.session_state.get("_admin_show_institutional_cockpit", False)),
@@ -5712,23 +5735,28 @@ def render_reports_engine_page() -> None:
 
 def main() -> None:
     dashboard_start_time = time.monotonic()
+    _runtime_audit("main.start")
     try:
         icon = Path("assets/favicon.ico")
         st.set_page_config(page_title="LotoIA", page_icon=str(icon) if icon.exists() else "L", layout="wide")
     except Exception:
         st.set_page_config(page_title="LotoIA", layout="wide")
+    _runtime_audit("page_config")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     _render_shared_backend_status()
     if resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
         bootstrap_institutional_database(DB_PATH)
+        _runtime_audit("bootstrap", "shared_backend")
     sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]
         contests = latest_synced.get("synced_contests", [])
         if contests:
             st.caption("Resultados oficiais sincronizados: " + ", ".join(str(contest) for contest in contests))
+        _runtime_audit("official_sync", f"synced={len(contests)}")
     _render_sqlite_bootstrap_diagnostics()
+    _runtime_audit("bootstrap_diagnostics")
 
     st.markdown(
         """
@@ -5845,6 +5873,7 @@ def main() -> None:
             st.sidebar.image(str(LOGO_PATH), use_container_width=True)
     except Exception:
         pass
+    _runtime_audit("sidebar_logo")
 
     try:
         draws = _load_draws()
@@ -5862,20 +5891,27 @@ def main() -> None:
         _record_operational_log("load_draws", "failed", 0.0, {"error": str(exc), "path": str(DEFAULT_HISTORY_PATH)})
         st.warning("O carregamento do acervo histÃ³rico encontrou uma falha controlada. O dashboard seguirÃ¡ em modo seguro parcial.")
         draws = []
+    _runtime_audit("load_draws", f"count={len(draws)}")
 
     try:
         page = _sidebar_navigation()
+        _runtime_audit("sidebar_navigation", f"page={page}")
         dashboard_mode = str(st.session_state.get("_admin_mode", "operacional"))
         _render_institutional_cockpit()
+        _runtime_audit("institutional_cockpit")
         _render_kpi_cards()
+        _runtime_audit("kpi_cards")
         st.markdown("---")
         _render_sidebar_dispatch(page, draws)
+        _runtime_audit("page_dispatch", f"page={page}")
         st.markdown("---")
         if dashboard_mode in {"executivo", "auditoria"}:
             _render_lead_intelligence()
+            _runtime_audit("lead_intelligence")
         dashboard_duration_ms = (time.monotonic() - dashboard_start_time) * 1000.0
         _record_operational_log("dashboard", "success", dashboard_duration_ms, {"page": page})
         _record_performance_metric("dashboard_load_ms", dashboard_duration_ms, {"page": page})
+        _runtime_audit("dashboard.finished", f"page={page}", elapsed_ms=dashboard_duration_ms)
     except Exception as exc:
         _record_operational_log("dashboard", "failed", 0.0, {"page": locals().get("page", "unknown"), "error": str(exc)})
         st.error("Falha operacional controlada no dashboard. O runtime permaneceu ativo.")
@@ -5883,6 +5919,7 @@ def main() -> None:
         st.markdown("---")
         if str(st.session_state.get("_admin_mode", "operacional")) in {"executivo", "auditoria"}:
             _render_lead_intelligence()
+        _runtime_audit("dashboard.failed", str(exc))
 
 
 if __name__ == "__main__":
