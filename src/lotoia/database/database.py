@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -708,9 +709,20 @@ def database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
 
 def get_engine(path: Path = DEFAULT_DATABASE_PATH):
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(database_url(path), future=True)
+    resolved_url = database_url(path)
+    connect_args: dict[str, Any] = {}
+    if resolved_url.startswith(("postgresql://", "postgresql+psycopg://", "postgres://")):
+        connect_timeout = int(os.getenv("LOTOIA_DATABASE_CONNECT_TIMEOUT_SECONDS", "5"))
+        connect_args["connect_timeout"] = connect_timeout
+    engine = create_engine(
+        resolved_url,
+        future=True,
+        pool_pre_ping=True if not resolved_url.startswith("sqlite:///") else False,
+        pool_recycle=300 if not resolved_url.startswith("sqlite:///") else -1,
+        connect_args=connect_args,
+    )
 
-    if database_url(path).startswith("sqlite:///"):
+    if resolved_url.startswith("sqlite:///"):
         @event.listens_for(engine, "connect")
         def _configure_sqlite(dbapi_connection, connection_record):  # type: ignore[unused-ignore]
             try:
@@ -1370,6 +1382,8 @@ def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:
-    create_database(path)
-    session_factory = sessionmaker(bind=get_engine(path), expire_on_commit=False, future=True)
+    engine = get_engine(path)
+    if engine.url.get_backend_name() == "sqlite" or os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_SESSION", "").strip().lower() in {"1", "true", "yes", "on"}:
+        create_database(path)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
     return session_factory()
