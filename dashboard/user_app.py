@@ -614,7 +614,9 @@ def main() -> None:
         f"{'pooler' if pooler_mode else 'direto'})"
     )
     st.sidebar.caption(f"build={APP_BUILD}")
-    if BOOTSTRAP_SCHEMA_ON_STARTUP and adapter.is_shared_cloud_ready:
+    if adapter.is_shared_cloud_ready:
+        bootstrap_institutional_database(USER_DB_PATH)
+    elif BOOTSTRAP_SCHEMA_ON_STARTUP:
         bootstrap_institutional_database(USER_DB_PATH)
 
     sync_summaries = _maybe_bootstrap_official_results_sync()

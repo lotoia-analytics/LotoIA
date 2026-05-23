@@ -5962,12 +5962,19 @@ def main() -> None:
     _runtime_audit("main.start")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
-    _render_shared_backend_status()
-    if BOOTSTRAP_SCHEMA_ON_STARTUP and resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
+    adapter = resolve_institutional_adapter(DB_PATH)
+    if adapter.is_shared_cloud_ready:
         from lotoia.database.database import bootstrap_institutional_database
 
         bootstrap_institutional_database(DB_PATH)
         _runtime_audit("bootstrap", "shared_backend")
+    elif BOOTSTRAP_SCHEMA_ON_STARTUP:
+        from lotoia.database.database import bootstrap_institutional_database
+
+        bootstrap_institutional_database(DB_PATH)
+        _runtime_audit("bootstrap", "local_backend")
+
+    _render_shared_backend_status()
     sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]
