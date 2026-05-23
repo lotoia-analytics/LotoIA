@@ -94,15 +94,13 @@ def test_shared_institutional_backend_round_trip(tmp_path: Path, monkeypatch) ->
     snapshot = adapter.fetch_latest_usage_snapshot()
     generation_events = adapter.fetch_generation_events(lead_id=lead["id"])
 
-    assert metrics == {
-        "leads": 1,
-        "generation_events": 1,
-        "ml_usage_events": 1,
-        "check_events": 1,
-        "report_events": 1,
-        "expansion_events": 1,
-        "reconciliation_events": 1,
-    }
+    assert metrics["leads"] == 1
+    assert metrics["generation_events"] == 1
+    assert metrics["ml_usage_events"] == 1
+    assert metrics["check_events"] == 1
+    assert metrics["report_events"] == 1
+    assert metrics["expansion_events"] == 1
+    assert metrics["reconciliation_events"] == 1
     assert snapshot["backend"] == "sqlite"
     assert snapshot["shared_cloud_ready"] is False
     assert snapshot["sqlite_path"].endswith("shared_institutional.db")

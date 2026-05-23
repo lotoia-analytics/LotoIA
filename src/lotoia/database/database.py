@@ -107,6 +107,73 @@ class Lead(Base):
     )
 
 
+class InstitutionalUser(Base):
+    __tablename__ = "institutional_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, default="user", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_institutional_users_email", "email"),
+        Index("ix_institutional_users_status", "status"),
+        Index("ix_institutional_users_role", "role"),
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("institutional_users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    runtime_origin: Mapped[str] = mapped_column(String, default="unknown", nullable=False)
+    ip_hash: Mapped[str] = mapped_column(String, default="", nullable=False)
+    user_agent: Mapped[str] = mapped_column(String, default="", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_auth_sessions_session_id", "session_id"),
+        Index("ix_auth_sessions_user_id", "user_id"),
+        Index("ix_auth_sessions_status", "status"),
+    )
+
+
+class AuthEvent(Base):
+    __tablename__ = "auth_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("institutional_users.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    runtime_origin: Mapped[str] = mapped_column(String, default="unknown", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_auth_events_user_id", "user_id"),
+        Index("ix_auth_events_session_id", "session_id"),
+        Index("ix_auth_events_event_type", "event_type"),
+    )
+
+
 class GenerationEvent(Base):
     __tablename__ = "generation_events"
 
@@ -597,6 +664,49 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 final_score JSON NOT NULL DEFAULT '{}',
                 quadra_score JSON NOT NULL DEFAULT '{}',
                 context_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_login_at TIMESTAMP,
+                metadata_json JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ended_at TIMESTAMP,
+                status TEXT NOT NULL DEFAULT 'active',
+                runtime_origin TEXT NOT NULL DEFAULT 'unknown',
+                ip_hash TEXT NOT NULL DEFAULT '',
+                user_agent TEXT NOT NULL DEFAULT '',
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS auth_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                runtime_origin TEXT NOT NULL DEFAULT 'unknown',
+                payload JSON NOT NULL DEFAULT '{}'
             )
             """
         )

@@ -7,6 +7,9 @@ from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.database.database import (
+    AuthEvent,
+    AuthSession,
+    InstitutionalUser,
     CheckEvent,
     ExpansionEvent,
     GenerationEvent,
@@ -62,6 +65,66 @@ class InstitutionalDatabaseAdapter:
         repository = LeadRepository(self.sqlite_path)
         return repository.insert(**kwargs)
 
+    def save_institutional_user(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            user = InstitutionalUser(
+                email=str(kwargs["email"]).strip().lower(),
+                password_hash=str(kwargs["password_hash"]),
+                role=str(kwargs.get("role", "user")),
+                status=str(kwargs.get("status", "active")),
+                metadata_json=dict(kwargs.get("metadata_json") or {}),
+            )
+            session.add(user)
+            session.commit()
+            return {column.name: getattr(user, column.name) for column in user.__table__.columns}
+
+    def save_login_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            event = AuthEvent(
+                user_id=int(kwargs["user_id"]),
+                session_id=str(kwargs["session_id"]),
+                event_type="login",
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                payload=dict(kwargs.get("payload") or {}),
+            )
+            auth_session = AuthSession(
+                session_id=str(kwargs["session_id"]),
+                user_id=int(kwargs["user_id"]),
+                status="active",
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                ip_hash=str(kwargs.get("ip_hash", "")),
+                user_agent=str(kwargs.get("user_agent", "")),
+                payload=dict(kwargs.get("payload") or {}),
+            )
+            user = session.get(InstitutionalUser, int(kwargs["user_id"]))
+            if user is not None:
+                user.last_login_at = event.created_at
+            session.add_all([event, auth_session])
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
+    def save_logout_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            event = AuthEvent(
+                user_id=int(kwargs["user_id"]),
+                session_id=str(kwargs["session_id"]),
+                event_type="logout",
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                payload=dict(kwargs.get("payload") or {}),
+            )
+            auth_session = (
+                session.query(AuthSession)
+                .filter(AuthSession.session_id == str(kwargs["session_id"]))
+                .order_by(AuthSession.created_at.desc(), AuthSession.id.desc())
+                .first()
+            )
+            if auth_session is not None:
+                auth_session.status = "ended"
+                auth_session.ended_at = event.created_at
+            session.add(event)
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
     def save_generation_event(self, **kwargs: Any) -> dict[str, Any]:
         repository = GenerationEventRepository(self.sqlite_path)
         return repository.insert(**kwargs)
@@ -101,6 +164,9 @@ class InstitutionalDatabaseAdapter:
         with get_session(self.sqlite_path) as session:
             return {
                 "leads": int(session.query(Lead).count()),
+                "institutional_users": int(session.query(InstitutionalUser).count()),
+                "auth_events": int(session.query(AuthEvent).count()),
+                "auth_sessions": int(session.query(AuthSession).count()),
                 "generation_events": int(session.query(GenerationEvent).count()),
                 "ml_usage_events": int(session.query(MlUsageEvent).count()),
                 "check_events": int(session.query(CheckEvent).count()),
@@ -117,6 +183,18 @@ class InstitutionalDatabaseAdapter:
             "database_url": self.database_url,
             "sqlite_path": str(self.sqlite_path),
             "shared_cloud_ready": self.is_shared_cloud_ready,
+        }
+
+    def fetch_latest_auth_snapshot(self) -> dict[str, Any]:
+        metrics = self.fetch_usage_metrics()
+        return {
+            "backend": self.backend,
+            "database_url": self.database_url,
+            "sqlite_path": str(self.sqlite_path),
+            "shared_cloud_ready": self.is_shared_cloud_ready,
+            "institutional_users": metrics["institutional_users"],
+            "auth_events": metrics["auth_events"],
+            "auth_sessions": metrics["auth_sessions"],
         }
 
 
