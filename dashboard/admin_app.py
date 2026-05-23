@@ -2295,8 +2295,12 @@ def _sqlite_size_bytes() -> int:
 
 def _query_scalar(query: str, params: tuple[Any, ...] = (), default: Any = 0) -> Any:
     try:
+        start_time = time.monotonic()
         row = _sqlite_execute_safe(query, params)
         value = row.fetchone()[0] if row else default
+        duration_ms = (time.monotonic() - start_time) * 1000.0
+        if duration_ms >= 50.0:
+            _record_performance_metric("sql_scalar_ms", duration_ms, {"query": query[:80]})
         return default if value is None else value
     except Exception:
         return default
@@ -3287,19 +3291,29 @@ def _sqlite_health_check() -> bool:
 
 def _sqlite_execute_safe(query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor | None:
     try:
+        start_time = time.monotonic()
         connection, current_cursor = _sqlite_ensure_runtime_connection()
         if connection is None or current_cursor is None:
             return None
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-        return current_cursor.execute(query, params)
+        cursor = current_cursor.execute(query, params)
+        duration_ms = (time.monotonic() - start_time) * 1000.0
+        if duration_ms >= 50.0:
+            _record_performance_metric("sqlite_exec_ms", duration_ms, {"query": query[:80]})
+        return cursor
     except sqlite3.DatabaseError as exc:
         SQLITE_MEMORY_LOGS.append({"event_type": "sqlite", "status": "failed", "query": query[:80], "error": str(exc)})
         if _sqlite_maybe_recover_connection(exc):
             connection, current_cursor = _sqlite_ensure_runtime_connection()
             if connection is not None and current_cursor is not None:
                 try:
+                    start_time = time.monotonic()
                     connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-                    return current_cursor.execute(query, params)
+                    cursor = current_cursor.execute(query, params)
+                    duration_ms = (time.monotonic() - start_time) * 1000.0
+                    if duration_ms >= 50.0:
+                        _record_performance_metric("sqlite_exec_ms", duration_ms, {"query": query[:80], "recovered": True})
+                    return cursor
                 except sqlite3.Error:
                     pass
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
@@ -3851,11 +3865,17 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
     error_message: str | None = None
     if adapter.backend != "sqlite":
         try:
+            start_time = time.monotonic()
             with get_session(DB_PATH) as session:
-                return pd.read_sql_query(query, session.connection(), params=params)
+                dataframe = pd.read_sql_query(query, session.connection(), params=params)
+            duration_ms = (time.monotonic() - start_time) * 1000.0
+            if duration_ms >= 50.0:
+                _record_performance_metric("sql_read_ms", duration_ms, {"backend": adapter.backend, "query": query[:80]})
+            return dataframe
         except Exception as exc:
             error_message = str(exc)
     try:
+        start_time = time.monotonic()
         connection, _ = _sqlite_ensure_runtime_connection()
         if connection is not None:
             try:
@@ -3863,7 +3883,11 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
             except Exception:
                 pass
             try:
-                return pd.read_sql_query(query, connection, params=params)
+                dataframe = pd.read_sql_query(query, connection, params=params)
+                duration_ms = (time.monotonic() - start_time) * 1000.0
+                if duration_ms >= 50.0:
+                    _record_performance_metric("sql_read_ms", duration_ms, {"backend": "sqlite", "query": query[:80]})
+                return dataframe
             except Exception as fallback_exc:
                 _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(fallback_exc)})
         if error_message is not None:
