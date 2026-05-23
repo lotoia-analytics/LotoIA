@@ -7,12 +7,19 @@ dashboard entrypoint must load the complete institutional admin dashboard.
 
 from __future__ import annotations
 
+import sys
 import traceback
+from pathlib import Path
 
 import streamlit as st
 
 
-PUBLIC_APP_BUILD = "8cf21fe"
+PUBLIC_APP_BUILD = "9d35eb2"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def _configure_public_page() -> None:
