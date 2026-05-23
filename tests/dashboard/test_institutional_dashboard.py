@@ -724,7 +724,7 @@ def test_cache_invalidates_after_generation(monkeypatch) -> None:
     monkeypatch.setattr(admin_app.st, "spinner", lambda *args, **kwargs: _dummy_context())
     monkeypatch.setattr(admin_app.st, "session_state", {})
     monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
-    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking hibrido")
+    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Analitico")
     monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
         admin_app.st,
@@ -771,7 +771,7 @@ def test_generation_page_can_run_without_lead_on_admin(monkeypatch) -> None:
     monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
     monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "")
     monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking hibrido")
+    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Analitico")
     monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: captured.setdefault("warning", True))
     monkeypatch.setattr(admin_app.st, "info", lambda *args, **kwargs: captured.setdefault("info", True))
     monkeypatch.setattr(admin_app, "_capture_generation_lead", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("should not capture lead")))

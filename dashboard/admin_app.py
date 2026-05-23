@@ -4631,9 +4631,9 @@ def render_generation_page() -> None:
         st.markdown('<div class="lotoia-lead-hint">Campos opcionais no ADM para acelerar operacao interna.</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
-        pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
+        pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
         max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
-        mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
+        mode = st.radio("Modo", ["Analitico", "LotoIA"], horizontal=True)
         if st.button("Gerar jogos", type="primary"):
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
@@ -4645,7 +4645,7 @@ def render_generation_page() -> None:
                 except Exception as exc:
                     st.warning(str(exc))
                     return
-                if mode == "Ranking hibrido":
+                if mode == "Analitico":
                     payload = _cached_generate_best_games(int(count), int(pool_size))
                     games = payload["games"]
                 else:
