@@ -4116,7 +4116,12 @@ def _render_institutional_cockpit() -> None:
     analytical_summary = ai_report.get("analytical_summary", {})
     snapshot_summary = snapshot.get("summary", {}) if isinstance(snapshot, dict) else {}
 
-    with st.expander("Visao institucional avancada", expanded=False):
+    show_institutional_cockpit = st.toggle(
+        "Visao institucional avancada",
+        value=bool(st.session_state.get("_admin_show_institutional_cockpit", False)),
+        key="_admin_show_institutional_cockpit",
+    )
+    if show_institutional_cockpit:
         with st.container(border=True):
             _section_header(
                 "Visao geral",

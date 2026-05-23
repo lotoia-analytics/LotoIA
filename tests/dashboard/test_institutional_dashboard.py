@@ -555,19 +555,7 @@ def test_workflows_page_renders_safely(monkeypatch) -> None:
 def test_institutional_cockpit_is_collapsed_by_default(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: dict[str, object] = {}
-
-    class _DummyExpander:
-        def __init__(self, label: str, expanded: bool) -> None:
-            calls["label"] = label
-            calls["expanded"] = expanded
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(admin_app.st, "expander", lambda label, expanded=False: _DummyExpander(label, expanded))
+    monkeypatch.setattr(admin_app.st, "toggle", lambda label, value=False, key=None: calls.setdefault("toggle", (label, value, key)) and False)
     monkeypatch.setattr(admin_app, "build_analytical_intelligence", lambda: {})
     monkeypatch.setattr(admin_app, "build_executive_analytical_report", lambda: {})
     monkeypatch.setattr(admin_app, "build_institutional_historical_intelligence", lambda: {"summary": {}})
@@ -583,8 +571,8 @@ def test_institutional_cockpit_is_collapsed_by_default(monkeypatch) -> None:
 
     admin_app._render_institutional_cockpit()
 
-    assert calls["label"] == "Visao institucional avancada"
-    assert calls["expanded"] is False
+    assert calls["toggle"][0] == "Visao institucional avancada"
+    assert calls["toggle"][1] is False
 
 
 def test_dashboard_uses_live_generation_events(tmp_path: Path, monkeypatch) -> None:
