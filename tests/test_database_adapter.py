@@ -53,6 +53,7 @@ def test_adapter_rewrites_supabase_direct_url_to_pooler_without_sni_hostname(mon
     assert adapter.uses_pooler is True
     assert adapter.database_host == "aws-1-us-west-1.pooler.supabase.com"
     assert "sslmode=require" in adapter.database_url
+    assert "postgres.wfcnaftaefhnaxovewyb:" in adapter.database_url
     assert "sni_hostname" not in adapter.database_url
 
 

@@ -58,35 +58,42 @@ def _read_pooler_database_url_from_env() -> tuple[str, str]:
     return "", ""
 
 
+def _extract_supabase_project_ref(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    host = (parsed.hostname or "").lower()
+    if host.endswith(".supabase.co") and host != "supabase.co":
+        return host.removesuffix(".supabase.co")
+    username = parsed.username or ""
+    if "." in username:
+        return username.split(".", 1)[1].strip()
+    return ""
+
+
+def _build_supabase_pooler_username(database_url: str) -> str:
+    project_ref = os.getenv("LOTOIA_SUPABASE_PROJECT_REF", "").strip()
+    if not project_ref:
+        project_ref = _extract_supabase_project_ref(database_url)
+    if project_ref:
+        return f"postgres.{project_ref}"
+    return "postgres"
+
+
 def _rewrite_supabase_url_to_pooler(database_url: str) -> str:
     parsed = urlparse(database_url)
     host = (parsed.hostname or "").lower()
-    if "supabase.co" not in host or "pooler" in host:
-        if "pooler" not in host:
-            return database_url
-        query = parse_qsl(parsed.query, keep_blank_values=True)
-        if "sslmode" not in {key for key, _ in query}:
-            query.append(("sslmode", "require"))
-        return urlunparse(
-            (
-                parsed.scheme,
-                parsed.netloc,
-                parsed.path or "",
-                parsed.params,
-                urlencode(query),
-                parsed.fragment,
-            )
-        )
+    if "supabase.co" not in host and "pooler" not in host:
+        return database_url
     pooler_host = os.getenv("LOTOIA_SUPABASE_POOLER_HOST", _DEFAULT_SUPABASE_POOLER_HOST).strip() or _DEFAULT_SUPABASE_POOLER_HOST
     port = parsed.port or 5432
-    username = parsed.username or "postgres"
+    username = _build_supabase_pooler_username(database_url)
     password = parsed.password or ""
     netloc = username
     if password:
         netloc += f":{password}"
     netloc += f"@{pooler_host}:{port}"
     query = parse_qsl(parsed.query, keep_blank_values=True)
-    if "sslmode" not in {key for key, _ in query}:
+    query_keys = {key for key, _ in query}
+    if "sslmode" not in query_keys:
         query.append(("sslmode", "require"))
     return urlunparse((parsed.scheme, netloc, parsed.path or "", parsed.params, urlencode(query), parsed.fragment))
 
