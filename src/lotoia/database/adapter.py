@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -81,6 +82,16 @@ class InstitutionalDatabaseAdapter:
         if env_name:
             return env_name
         return "sqlite_fallback"
+
+    @property
+    def database_host(self) -> str:
+        parsed = urlparse(self.database_url)
+        return parsed.hostname or ""
+
+    @property
+    def uses_pooler(self) -> bool:
+        host = self.database_host.lower()
+        return "pooler.supabase.com" in host or "pooler" in host
 
     def save_lead(self, **kwargs: Any) -> dict[str, Any]:
         repository = LeadRepository(self.sqlite_path)

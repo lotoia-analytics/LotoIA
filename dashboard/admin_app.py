@@ -716,7 +716,11 @@ def _render_shared_backend_status() -> None:
     adapter = resolve_institutional_adapter(DB_PATH)
     if adapter.is_shared_cloud_ready:
         st.sidebar.success("Banco compartilhado ativo")
-        st.sidebar.caption(f"Backend: {adapter.backend} via {adapter.database_source}")
+        connection_kind = "pooler" if adapter.uses_pooler else "conexao direta"
+        st.sidebar.caption(
+            f"Backend: {adapter.backend} via {adapter.database_source} "
+            f"({connection_kind} / {adapter.database_host or 'host indefinido'})"
+        )
     else:
         st.sidebar.warning("Banco compartilhado inativo")
         st.sidebar.caption("Configure DATABASE_URL para ativar a persistência compartilhada.")

@@ -605,7 +605,8 @@ def main() -> None:
     st.sidebar.caption(
         "Banco institucional: "
         f"{'compartilhado' if adapter.is_shared_cloud_ready else 'local'} "
-        f"({adapter.backend})"
+        f"({adapter.backend} / {adapter.database_source} / "
+        f"{'pooler' if adapter.uses_pooler else 'direto'})"
     )
     if adapter.is_shared_cloud_ready:
         bootstrap_institutional_database(USER_DB_PATH)

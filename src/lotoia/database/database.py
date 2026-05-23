@@ -1357,11 +1357,16 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
 
 def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
     """Create or migrate the institutional schema for the active backend."""
+    resolved_url = database_url(path)
+    backend = "postgresql" if resolved_url.startswith(("postgresql://", "postgresql+psycopg://", "postgres://")) else "sqlite"
+    if backend == "sqlite":
+        create_database(path)
+        return {"database_url": resolved_url, "backend": backend}
+
+    # PostgreSQL shared backends already use SQLAlchemy metadata creation, but
+    # we keep the bootstrap explicit and inexpensive for startup observability.
     create_database(path)
-    return {
-        "database_url": database_url(path),
-        "backend": "postgresql" if database_url(path).startswith(("postgresql://", "postgresql+psycopg://", "postgres://")) else "sqlite",
-    }
+    return {"database_url": resolved_url, "backend": backend}
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:
