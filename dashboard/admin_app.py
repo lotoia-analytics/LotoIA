@@ -37,6 +37,7 @@ MODE_PAGES = {
 }
 
 import io
+import importlib
 import json
 import os
 import sqlite3
@@ -63,15 +64,6 @@ from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
 from lotoia.database.adapter import resolve_institutional_adapter
 from lotoia.database.public_repository import save_expansion_event as save_institutional_expansion_event
-from lotoia.database.database import (
-    DEFAULT_DATABASE_PATH,
-    GeneratedGame,
-    ReconciliationGame,
-    ReconciliationRun,
-    bootstrap_institutional_database,
-    get_session,
-)
-from lotoia.experiments.temporal_governance import build_walk_forward_splits
 from lotoia.governance.adaptive_governance_report import (
     ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
     ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL,
@@ -89,99 +81,9 @@ from lotoia.standards import (
     operational_event,
     report_payload,
 )
-from lotoia.reports import generate_backtest_report
-from lotoia.analytics import (
-    build_analytical_intelligence,
-    build_executive_analytical_report,
-    build_institutional_analytical_timeline,
-    build_institutional_historical_intelligence,
-    build_institutional_saas_certification,
-    build_user_lifecycle_analytics,
-    load_adaptive_institutional_insights,
-    load_adaptive_institutional_intelligence,
-    load_adaptive_institutional_timeline,
-    ensure_institutional_analytical_timeline,
-    load_institutional_analytics_snapshot,
-    load_institutional_analytical_timeline,
-    publish_institutional_analytics,
-    publish_adaptive_institutional_intelligence,
-)
-from lotoia.assistance import build_executive_assistance
-from lotoia.assistance import build_contextual_recommendations
-from lotoia.assistance import build_explainable_analytics
-from lotoia.assistance import build_operational_guidance
-from lotoia.assistance import build_executive_summary
-from lotoia.assistance import build_adaptive_assistance_memory
-from lotoia.assistance import build_human_analytical_language
-from lotoia.assistance import build_institutional_support_experience
-from lotoia.assistance import build_assistance_governance
-from lotoia.assistance import build_full_executive_assistance_presence
-from lotoia.workflows import build_workflow_dashboard, WorkflowEngine
-from lotoia.orchestration import (
-    build_intelligent_operational_orchestration,
-    load_intelligent_operational_orchestration,
-    persist_intelligent_operational_orchestration,
-)
-from lotoia.public import OperationalLifecycleEngine
-from lotoia.public.operational_lifecycle import build_retention_policy_preview
-from lotoia.public.reset_service import InstitutionalResetService, ResetScope
-from lotoia.public.reconciliation import ReconciliationEngine
-from lotoia.memory import build_adaptive_evolution_tracking
-from lotoia.observability import (
-    build_institutional_observability_dashboard,
-    build_operational_experience,
-    build_live_institutional_presence,
-    build_live_operational_memory,
-    build_live_telemetry_snapshot,
-    build_operational_health_snapshot,
-    build_real_time_governance,
-    build_runtime_storytelling,
-    build_memory_timeline,
-    build_observational_stabilization_report,
-    load_observational_stabilization_report,
-    persist_observational_stabilization_report,
-)
-from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
-from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
-from dashboard.components import (
-    render_adaptive_institutional_intelligence,
-    render_analytical_cards,
-    render_executive_dashboard,
-    render_generation_context,
-    render_live_analytical_intelligence,
-    render_hero_banner,
-    render_executive_panel,
-    render_executive_summary,
-    render_institutional_timeline,
-    render_operational_orchestration,
-    render_secondary_operational_metrics,
-    render_structural_health,
-)
-from lotoia.statistics.advanced import (
-    FINAL_SCORE_WEIGHTS,
-    calculate_hot_cold_numbers,
-    load_delay_stats,
-    load_duos_stats,
-    load_frequency_stats,
-    load_quadras_stats,
-    load_quinas_stats,
-    load_senas_stats,
-    load_ternos_stats,
-)
-from lotoia.statistics.historical_intelligence import (
-    GENERATION_PROFILE_RATIOS,
-    DrawLike,
-    classify_profile,
-    profile_score,
-)
-from lotoia.statistics.generation_trace import diversity_collapse_report, pressure_heatmap, survival_summary
-from lotoia.statistics.generation_trace import destructive_filters_report, executive_behavioral_report, filter_profile_damage_report, normalization_comparison_report, pipeline_divergence_score, replay_snapshot
-from lotoia.statistics.generation_trace import behavior_recovery_timeline, behavior_drift_report, experiment_baseline_report, experiment_comparison_report, false_recovery_report, golden_baselines, historical_adherence_score, pressure_sensitivity_report, profile_stability_score, recovery_decision_protocol, recovery_plateau_detection, safe_recovery_zone
-from lotoia.statistics.generation_trace import experiment_01_report, marginal_recovery_gain
-from lotoia.statistics.basic import summarize_draws
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = PROJECT_ROOT / DEFAULT_DATABASE_PATH
+DB_PATH = PROJECT_ROOT / "data" / "lotoia.db"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
 LOGO_DIRECTORY = PROJECT_ROOT / "assets" / "logo"
 REPORTS_DIR = PROJECT_ROOT / "reports"
@@ -207,6 +109,188 @@ ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", 
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
+
+
+class _LazyImportedAttr:
+    def __init__(self, module_name: str, attr_name: str) -> None:
+        self._module_name = module_name
+        self._attr_name = attr_name
+
+    def _resolve(self) -> Any:
+        module = importlib.import_module(self._module_name)
+        return getattr(module, self._attr_name)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._resolve()(*args, **kwargs)
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._resolve(), item)
+
+    def __getitem__(self, item: Any) -> Any:
+        return self._resolve()[item]
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self) -> int:
+        return len(self._resolve())
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self._resolve()
+
+    def __bool__(self) -> bool:
+        return bool(self._resolve())
+
+    def __fspath__(self) -> str:
+        return os.fspath(self._resolve())
+
+    def __str__(self) -> str:
+        return str(self._resolve())
+
+    def __repr__(self) -> str:
+        return f"<lazy attr {self._module_name}:{self._attr_name}>"
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self._resolve(), format_spec)
+
+    def __int__(self) -> int:
+        return int(self._resolve())
+
+    def __float__(self) -> float:
+        return float(self._resolve())
+
+    def __eq__(self, other: Any) -> bool:
+        return self._resolve() == other
+
+    def __hash__(self) -> int:
+        return hash(self._resolve())
+
+    def __add__(self, other: Any) -> Any:
+        return self._resolve() + other
+
+    def __radd__(self, other: Any) -> Any:
+        return other + self._resolve()
+
+    def __mul__(self, other: Any) -> Any:
+        return self._resolve() * other
+
+    def __rmul__(self, other: Any) -> Any:
+        return other * self._resolve()
+
+    def __truediv__(self, other: Any) -> Any:
+        return self._resolve() / other
+
+    def __rtruediv__(self, other: Any) -> Any:
+        return other / self._resolve()
+
+
+build_walk_forward_splits = _LazyImportedAttr("lotoia.experiments.temporal_governance", "build_walk_forward_splits")
+generate_backtest_report = _LazyImportedAttr("lotoia.reports", "generate_backtest_report")
+build_adaptive_evolution_tracking = _LazyImportedAttr("lotoia.memory", "build_adaptive_evolution_tracking")
+build_retention_policy_preview = _LazyImportedAttr("lotoia.public.operational_lifecycle", "build_retention_policy_preview")
+build_workflow_dashboard = _LazyImportedAttr("lotoia.workflows", "build_workflow_dashboard")
+WorkflowEngine = _LazyImportedAttr("lotoia.workflows", "WorkflowEngine")
+build_intelligent_operational_orchestration = _LazyImportedAttr(
+    "lotoia.orchestration.intelligent_orchestration",
+    "build_intelligent_operational_orchestration",
+)
+load_intelligent_operational_orchestration = _LazyImportedAttr(
+    "lotoia.orchestration.intelligent_orchestration",
+    "load_intelligent_operational_orchestration",
+)
+persist_intelligent_operational_orchestration = _LazyImportedAttr(
+    "lotoia.orchestration.intelligent_orchestration",
+    "persist_intelligent_operational_orchestration",
+)
+LeadCaptureRequest = _LazyImportedAttr("lotoia.public.services.lead_capture_service", "LeadCaptureRequest")
+LeadCaptureService = _LazyImportedAttr("lotoia.public.services.lead_capture_service", "LeadCaptureService")
+ReconciliationEngine = _LazyImportedAttr("lotoia.public.reconciliation", "ReconciliationEngine")
+InstitutionalResetService = _LazyImportedAttr("lotoia.public.reset_service", "InstitutionalResetService")
+ResetScope = _LazyImportedAttr("lotoia.public.reset_service", "ResetScope")
+build_analytical_intelligence = _LazyImportedAttr("lotoia.analytics", "build_analytical_intelligence")
+build_executive_analytical_report = _LazyImportedAttr("lotoia.analytics", "build_executive_analytical_report")
+build_institutional_analytical_timeline = _LazyImportedAttr("lotoia.analytics", "build_institutional_analytical_timeline")
+build_institutional_historical_intelligence = _LazyImportedAttr("lotoia.analytics", "build_institutional_historical_intelligence")
+build_institutional_saas_certification = _LazyImportedAttr("lotoia.analytics", "build_institutional_saas_certification")
+build_user_lifecycle_analytics = _LazyImportedAttr("lotoia.analytics", "build_user_lifecycle_analytics")
+load_adaptive_institutional_insights = _LazyImportedAttr("lotoia.analytics", "load_adaptive_institutional_insights")
+load_adaptive_institutional_intelligence = _LazyImportedAttr("lotoia.analytics", "load_adaptive_institutional_intelligence")
+load_adaptive_institutional_timeline = _LazyImportedAttr("lotoia.analytics", "load_adaptive_institutional_timeline")
+ensure_institutional_analytical_timeline = _LazyImportedAttr("lotoia.analytics", "ensure_institutional_analytical_timeline")
+load_institutional_analytics_snapshot = _LazyImportedAttr("lotoia.analytics", "load_institutional_analytics_snapshot")
+load_institutional_analytical_timeline = _LazyImportedAttr("lotoia.analytics", "load_institutional_analytical_timeline")
+publish_institutional_analytics = _LazyImportedAttr("lotoia.analytics", "publish_institutional_analytics")
+publish_adaptive_institutional_intelligence = _LazyImportedAttr("lotoia.analytics", "publish_adaptive_institutional_intelligence")
+build_executive_assistance = _LazyImportedAttr("lotoia.assistance", "build_executive_assistance")
+build_contextual_recommendations = _LazyImportedAttr("lotoia.assistance", "build_contextual_recommendations")
+build_explainable_analytics = _LazyImportedAttr("lotoia.assistance", "build_explainable_analytics")
+build_operational_guidance = _LazyImportedAttr("lotoia.assistance", "build_operational_guidance")
+build_executive_summary = _LazyImportedAttr("lotoia.assistance", "build_executive_summary")
+build_adaptive_assistance_memory = _LazyImportedAttr("lotoia.assistance", "build_adaptive_assistance_memory")
+build_human_analytical_language = _LazyImportedAttr("lotoia.assistance", "build_human_analytical_language")
+build_institutional_support_experience = _LazyImportedAttr("lotoia.assistance", "build_institutional_support_experience")
+build_assistance_governance = _LazyImportedAttr("lotoia.assistance", "build_assistance_governance")
+build_full_executive_assistance_presence = _LazyImportedAttr("lotoia.assistance", "build_full_executive_assistance_presence")
+build_institutional_observability_dashboard = _LazyImportedAttr("lotoia.observability", "build_institutional_observability_dashboard")
+build_operational_experience = _LazyImportedAttr("lotoia.observability", "build_operational_experience")
+build_live_institutional_presence = _LazyImportedAttr("lotoia.observability", "build_live_institutional_presence")
+build_live_operational_memory = _LazyImportedAttr("lotoia.observability", "build_live_operational_memory")
+build_live_telemetry_snapshot = _LazyImportedAttr("lotoia.observability", "build_live_telemetry_snapshot")
+build_operational_health_snapshot = _LazyImportedAttr("lotoia.observability", "build_operational_health_snapshot")
+build_real_time_governance = _LazyImportedAttr("lotoia.observability", "build_real_time_governance")
+build_runtime_storytelling = _LazyImportedAttr("lotoia.observability", "build_runtime_storytelling")
+build_memory_timeline = _LazyImportedAttr("lotoia.observability", "build_memory_timeline")
+build_observational_stabilization_report = _LazyImportedAttr("lotoia.observability", "build_observational_stabilization_report")
+load_observational_stabilization_report = _LazyImportedAttr("lotoia.observability", "load_observational_stabilization_report")
+persist_observational_stabilization_report = _LazyImportedAttr("lotoia.observability", "persist_observational_stabilization_report")
+render_adaptive_institutional_intelligence = _LazyImportedAttr("dashboard.components", "render_adaptive_institutional_intelligence")
+render_analytical_cards = _LazyImportedAttr("dashboard.components", "render_analytical_cards")
+render_executive_dashboard = _LazyImportedAttr("dashboard.components", "render_executive_dashboard")
+render_generation_context = _LazyImportedAttr("dashboard.components", "render_generation_context")
+render_live_analytical_intelligence = _LazyImportedAttr("dashboard.components", "render_live_analytical_intelligence")
+render_hero_banner = _LazyImportedAttr("dashboard.components", "render_hero_banner")
+render_executive_panel = _LazyImportedAttr("dashboard.components", "render_executive_panel")
+render_executive_summary = _LazyImportedAttr("dashboard.components", "render_executive_summary")
+render_institutional_timeline = _LazyImportedAttr("dashboard.components", "render_institutional_timeline")
+render_operational_orchestration = _LazyImportedAttr("dashboard.components", "render_operational_orchestration")
+render_secondary_operational_metrics = _LazyImportedAttr("dashboard.components", "render_secondary_operational_metrics")
+render_structural_health = _LazyImportedAttr("dashboard.components", "render_structural_health")
+calculate_hot_cold_numbers = _LazyImportedAttr("lotoia.statistics.advanced", "calculate_hot_cold_numbers")
+load_delay_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_delay_stats")
+load_duos_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_duos_stats")
+load_frequency_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_frequency_stats")
+load_quadras_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_quadras_stats")
+load_quinas_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_quinas_stats")
+load_senas_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_senas_stats")
+load_ternos_stats = _LazyImportedAttr("lotoia.statistics.advanced", "load_ternos_stats")
+GENERATION_PROFILE_RATIOS = _LazyImportedAttr("lotoia.statistics.historical_intelligence", "GENERATION_PROFILE_RATIOS")
+DrawLike = _LazyImportedAttr("lotoia.statistics.historical_intelligence", "DrawLike")
+classify_profile = _LazyImportedAttr("lotoia.statistics.historical_intelligence", "classify_profile")
+profile_score = _LazyImportedAttr("lotoia.statistics.historical_intelligence", "profile_score")
+diversity_collapse_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "diversity_collapse_report")
+pressure_heatmap = _LazyImportedAttr("lotoia.statistics.generation_trace", "pressure_heatmap")
+survival_summary = _LazyImportedAttr("lotoia.statistics.generation_trace", "survival_summary")
+destructive_filters_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "destructive_filters_report")
+executive_behavioral_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "executive_behavioral_report")
+filter_profile_damage_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "filter_profile_damage_report")
+normalization_comparison_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "normalization_comparison_report")
+pipeline_divergence_score = _LazyImportedAttr("lotoia.statistics.generation_trace", "pipeline_divergence_score")
+replay_snapshot = _LazyImportedAttr("lotoia.statistics.generation_trace", "replay_snapshot")
+behavior_recovery_timeline = _LazyImportedAttr("lotoia.statistics.generation_trace", "behavior_recovery_timeline")
+behavior_drift_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "behavior_drift_report")
+experiment_baseline_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "experiment_baseline_report")
+experiment_comparison_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "experiment_comparison_report")
+false_recovery_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "false_recovery_report")
+golden_baselines = _LazyImportedAttr("lotoia.statistics.generation_trace", "golden_baselines")
+historical_adherence_score = _LazyImportedAttr("lotoia.statistics.generation_trace", "historical_adherence_score")
+pressure_sensitivity_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "pressure_sensitivity_report")
+profile_stability_score = _LazyImportedAttr("lotoia.statistics.generation_trace", "profile_stability_score")
+recovery_decision_protocol = _LazyImportedAttr("lotoia.statistics.generation_trace", "recovery_decision_protocol")
+recovery_plateau_detection = _LazyImportedAttr("lotoia.statistics.generation_trace", "recovery_plateau_detection")
+safe_recovery_zone = _LazyImportedAttr("lotoia.statistics.generation_trace", "safe_recovery_zone")
+experiment_01_report = _LazyImportedAttr("lotoia.statistics.generation_trace", "experiment_01_report")
+marginal_recovery_gain = _LazyImportedAttr("lotoia.statistics.generation_trace", "marginal_recovery_gain")
+summarize_draws = _LazyImportedAttr("lotoia.statistics.basic", "summarize_draws")
 ALERT_DASHBOARD_LOAD_MS = 8_000.0
 ALERT_REPEATED_FAILURES = 3
 ALERT_SQLITE_SIZE_BYTES = 256 * 1024 * 1024
@@ -955,6 +1039,8 @@ def _safe_float(value: Any, default: float, minimum: float | None = None, maximu
 
 
 def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
+    from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
+
     scheduler = ResultSyncScheduler()
     summaries = scheduler.run_due_checks()
     if any(summary.synced_contests for summary in summaries):
@@ -2723,7 +2809,10 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        evolution = build_adaptive_evolution_tracking(timeline_execution_id) if timeline_execution_id not in {"", "-"} else {
+        if timeline_execution_id not in {"", "-"}:
+            evolution = build_adaptive_evolution_tracking(timeline_execution_id)
+        else:
+            evolution = {
             "summary": {
                 "snapshot_count": 0,
                 "state_count": 0,
@@ -2734,7 +2823,7 @@ def render_observability_page() -> None:
             },
             "execution_id": timeline_execution_id,
             "steps": [],
-        }
+            }
         st.subheader("Evolucao adaptativa")
         evolution_summary = evolution.get("summary", {})
         evo_col1, evo_col2, evo_col3, evo_col4 = st.columns(4)
@@ -3736,6 +3825,8 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
 
 
 def _persist_lead(first_name: str, whatsapp: str) -> int | None:
+    from lotoia.database.database import get_session
+
     if not first_name.strip() or not whatsapp.strip():
         return None
     connection, current_cursor = _sqlite_ensure_runtime_connection()
@@ -3788,6 +3879,8 @@ def _persist_generation_events(
     strategy: str,
     lead_id: int | None,
 ) -> int | None:
+    from lotoia.database.database import get_session
+
     connection, current_cursor = _sqlite_ensure_runtime_connection()
     if connection is None or current_cursor is None:
         SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "games": len(games), "strategy": strategy})
@@ -4979,6 +5072,8 @@ def _json_numbers(value: Any) -> list[int]:
 
 
 def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    from lotoia.database.database import GeneratedGame, ReconciliationGame, ReconciliationRun, get_session
+
     with get_session(DB_PATH) as session:
         run = (
             session.query(ReconciliationRun)
@@ -5059,6 +5154,8 @@ def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
+    from lotoia.database.database import GeneratedGame, get_session
+
     with get_session(DB_PATH) as session:
         generation_game = (
             session.query(GeneratedGame)
@@ -5752,6 +5849,8 @@ def _run_governed_history_reset(scope: str, triggered_by: str, confirm_token: st
 
 def render_reports_engine_page() -> None:
     with st.container(border=True):
+        from lotoia.public import OperationalLifecycleEngine
+
         _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
@@ -5863,6 +5962,8 @@ def main() -> None:
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     _render_shared_backend_status()
     if BOOTSTRAP_SCHEMA_ON_STARTUP and resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
+        from lotoia.database.database import bootstrap_institutional_database
+
         bootstrap_institutional_database(DB_PATH)
         _runtime_audit("bootstrap", "shared_backend")
     sync_summaries = _maybe_bootstrap_official_results_sync()
