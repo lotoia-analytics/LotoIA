@@ -5,7 +5,11 @@ Some Streamlit Cloud apps may still be configured to execute
 dashboard entrypoint must load the complete institutional admin dashboard.
 """
 
-from dashboard.admin_app import main
+
+def main() -> None:
+    from dashboard.admin_app import main as admin_main
+
+    admin_main()
 
 
 if __name__ == "__main__":

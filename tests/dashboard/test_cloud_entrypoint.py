@@ -20,49 +20,38 @@ import dashboard.public_app as public_cloud_app
 
 def test_streamlit_cloud_entrypoint_delegates_to_institutional_dashboard() -> None:
     assert cloud_app.main is admin_app.main
-    assert public_cloud_app.main is admin_app.main
+    assert public_cloud_app.main is not admin_app.main
+    assert callable(public_cloud_app.main)
 
 
 def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
+    monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
+    def _button(label, **kwargs):
+        captured["label"] = label
+        captured["button_key"] = kwargs.get("key")
+        return label == "Gerar Jogos"
 
     def _radio(label, options, **kwargs):
-        captured["label"] = label
+        captured["radio_label"] = label
         captured["options"] = list(options)
-        return "observability"
+        return "operacional"
 
     monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
+    monkeypatch.setattr(admin_app.st.sidebar, "button", _button)
 
     page = admin_app._sidebar_navigation()
 
-    assert page == "observability"
-    assert captured["label"] == "Navegacao"
-    assert captured["options"] == [
-        "geracao_jogos",
-        "conferir_jogos",
-        "estatisticas_historicas",
-        "historical_intelligence",
-        "analytics_intelligence",
-        "ml_intelligence",
-        "jogo_expandido_experimental",
-        "backtesting",
-        "calibracao_experimental",
-        "benchmark_cientifico",
-        "historico_experimental",
-        "relatorios",
-        "ml_governance",
-        "observability",
-        "workflows",
-        "reports_engine",
-    ]
+    assert page == "geracao_jogos"
+    assert captured["radio_label"] == "Modo"
+    assert captured["options"] == ["operacional", "analitico"]
 
 
 def test_shared_dashboard_registry_contains_expansion_page() -> None:
     assert "jogo_expandido_experimental" in dashboard_labels.PAGES
     assert dashboard_labels.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
     assert "workflows" in dashboard_labels.PAGES
-    assert dashboard_labels.LABELS["workflows"] == "Automacao"
+    assert dashboard_labels.LABELS["workflows"] == "Fluxo Operacional"
     assert admin_app.PAGES is dashboard_labels.PAGES
     assert admin_app.LABELS is dashboard_labels.LABELS
