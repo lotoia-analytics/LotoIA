@@ -44,6 +44,7 @@ import shutil
 import time
 import tempfile
 import textwrap
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +218,7 @@ SQLITE_BOOTSTRAP_STATE = {"fallback_used": False, "requested_path": "", "active_
 AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 DISABLE_INSTITUTIONAL_COCKPIT = os.getenv("LOTOIA_DISABLE_INSTITUTIONAL_COCKPIT", "").strip().lower() in {"1", "true", "yes", "on"}
 RUNTIME_AUDIT_ENABLED = os.getenv("LOTOIA_RUNTIME_AUDIT", "").strip().lower() in {"1", "true", "yes", "on"}
+BOOTSTRAP_SCHEMA_ON_STARTUP = os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
@@ -745,6 +747,17 @@ def _runtime_audit(stage: str, detail: str | None = None, *, elapsed_ms: float |
         _record_operational_log("runtime_audit", "success", elapsed_ms or 0.0, {"stage": stage, "detail": detail or ""})
     except Exception:
         pass
+
+
+@contextmanager
+def _runtime_audit_block(stage: str, detail: str | None = None):
+    start = time.monotonic()
+    _runtime_audit(stage, detail or "start")
+    try:
+        yield
+    finally:
+        elapsed_ms = (time.monotonic() - start) * 1000.0
+        _runtime_audit(f"{stage}.done", detail, elapsed_ms=elapsed_ms)
 
 
 def _render_sidebar_logo() -> None:
@@ -5745,7 +5758,7 @@ def main() -> None:
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     _render_shared_backend_status()
-    if resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
+    if BOOTSTRAP_SCHEMA_ON_STARTUP and resolve_institutional_adapter(DB_PATH).is_shared_cloud_ready:
         bootstrap_institutional_database(DB_PATH)
         _runtime_audit("bootstrap", "shared_backend")
     sync_summaries = _maybe_bootstrap_official_results_sync()
@@ -5757,6 +5770,7 @@ def main() -> None:
         _runtime_audit("official_sync", f"synced={len(contests)}")
     _render_sqlite_bootstrap_diagnostics()
     _runtime_audit("bootstrap_diagnostics")
+    _runtime_audit("mode", "minimum" if DISABLE_INSTITUTIONAL_COCKPIT else "full")
 
     st.markdown(
         """
@@ -5897,15 +5911,22 @@ def main() -> None:
         page = _sidebar_navigation()
         _runtime_audit("sidebar_navigation", f"page={page}")
         dashboard_mode = str(st.session_state.get("_admin_mode", "operacional"))
-        _render_institutional_cockpit()
-        _runtime_audit("institutional_cockpit")
-        _render_kpi_cards()
-        _runtime_audit("kpi_cards")
+        if DISABLE_INSTITUTIONAL_COCKPIT:
+            st.info("Modo minimo ativo: cockpit institucional desativado para auditoria de fluxo.")
+            _runtime_audit("cockpit_skipped")
+        else:
+            _runtime_audit("before_cockpit")
+            _render_institutional_cockpit()
+            _runtime_audit("institutional_cockpit")
+            _render_kpi_cards()
+            _runtime_audit("kpi_cards")
         st.markdown("---")
+        _runtime_audit("before_dispatch", f"page={page}")
         _render_sidebar_dispatch(page, draws)
         _runtime_audit("page_dispatch", f"page={page}")
         st.markdown("---")
-        if dashboard_mode in {"executivo", "auditoria"}:
+        if not DISABLE_INSTITUTIONAL_COCKPIT and dashboard_mode in {"executivo", "auditoria"}:
+            _runtime_audit("before_lead_intelligence")
             _render_lead_intelligence()
             _runtime_audit("lead_intelligence")
         dashboard_duration_ms = (time.monotonic() - dashboard_start_time) * 1000.0
