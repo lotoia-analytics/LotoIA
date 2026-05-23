@@ -5309,22 +5309,22 @@ def render_history_page() -> None:
         st.dataframe(check_df, use_container_width=True, hide_index=True)
         st.markdown("---")
         with st.container(border=True):
-            st.subheader("Zerar HistÃ³rico")
+            st.subheader("Zerar Histórico")
             st.caption("Operação governada para limpar apenas a camada escolhida, sem tocar em benchmark, baseline ou datasets científicos.")
             if st.session_state.get("last_reset_result"):
-                st.success("Ãšltimo reset operacional executado com sucesso.")
+                st.success("Último reset operacional executado com sucesso.")
                 st.json(st.session_state["last_reset_result"])
             scope_labels = {
                 ResetScope.visual.value: "Limpar Painel",
-                ResetScope.operational.value: "Limpar Jogos e HistÃ³rico",
+                ResetScope.operational.value: "Limpar Jogos e Histórico",
                 ResetScope.telemetry.value: "Limpar Telemetria Operacional",
-                ResetScope.full_operational.value: "Resetar OperaÃ§Ã£o Completa",
+                ResetScope.full_operational.value: "Resetar Operação Completa",
             }
             scope_descriptions = {
                 ResetScope.visual.value: "Remove apenas estados visuais e cache da interface.",
-                ResetScope.operational.value: "Remove jogos gerados, conferÃªncias e histÃ³rico operacional.",
-                ResetScope.telemetry.value: "Remove eventos operacionais e mÃ©tricas de uso.",
-                ResetScope.full_operational.value: "Limpa toda a operaÃ§Ã£o institucional sem afetar benchmark, baseline ou ML cientÃ­fico.",
+                ResetScope.operational.value: "Remove jogos gerados, conferências e histórico operacional.",
+                ResetScope.telemetry.value: "Remove eventos operacionais e métricas de uso.",
+                ResetScope.full_operational.value: "Limpa toda a operação institucional sem afetar benchmark, baseline ou ML científico.",
             }
             with st.form("governed_history_reset_form", clear_on_submit=False):
                 scope = st.selectbox(
