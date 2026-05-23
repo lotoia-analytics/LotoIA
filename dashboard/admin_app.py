@@ -4118,11 +4118,17 @@ def _lead_analytics() -> dict[str, Any]:
         history = _lead_history_dataframe(_institutional_db_signature())
     except Exception:
         history = pd.DataFrame()
-    total_leads = max(int(len(history)), _safe_count("leads"))
+    if history.empty:
+        total_leads = _safe_count("leads")
+        volume_generations = _safe_count("generation_events")
+        volume_checks = _safe_count("check_events")
+    else:
+        snapshot = _institutional_runtime_snapshot(_institutional_db_signature())
+        total_leads = max(int(len(history)), int(snapshot.get("leads", 0)))
+        volume_generations = max(int(history["generations"].sum()), int(snapshot.get("generation_events", 0)))
+        volume_checks = max(int(history["checks"].sum()), int(snapshot.get("check_events", 0)))
     recurring_leads = int((history["recurrence_score"] > 1).sum()) if not history.empty else 0
     ml_activations = int(history["ml_activations"].sum()) if not history.empty else 0
-    volume_generations = max(int(history["generations"].sum()) if not history.empty else 0, _safe_count("generation_events"))
-    volume_checks = max(int(history["checks"].sum()) if not history.empty else 0, _safe_count("check_events"))
     return {
         "total_leads": total_leads,
         "recurring_leads": recurring_leads,
@@ -4235,6 +4241,56 @@ def _safe_total_games() -> str:
         return "-"
 
 
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _institutional_runtime_snapshot(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    adapter = resolve_institutional_adapter(DB_PATH)
+    if adapter.backend != "sqlite":
+        try:
+            snapshot = adapter.fetch_latest_usage_snapshot()
+            return {
+                "generation_events": int(snapshot.get("generation_events", 0)),
+                "check_events": int(snapshot.get("check_events", 0)),
+                "ml_usage_events": int(snapshot.get("ml_usage_events", 0)),
+                "expansion_events": int(snapshot.get("expansion_events", 0)),
+                "reconciliation_events": int(snapshot.get("reconciliation_events", 0)),
+                "workflow_events": int(snapshot.get("workflow_events", 0)),
+                "last_contest": str(snapshot.get("last_contest", "-")),
+                "total_games": int(snapshot.get("generated_games", 0)),
+                "leads": int(snapshot.get("leads", 0)),
+                "backend": str(snapshot.get("backend", "unknown")),
+                "database_source": str(snapshot.get("database_source", "sqlite_fallback")),
+            }
+        except Exception as exc:
+            _record_operational_log("runtime_snapshot", "failed", 0.0, {"error": str(exc), "backend": adapter.backend})
+            return {
+                "generation_events": 0,
+                "check_events": 0,
+                "ml_usage_events": 0,
+                "expansion_events": 0,
+                "reconciliation_events": 0,
+                "workflow_events": 0,
+                "last_contest": "-",
+                "total_games": 0,
+                "leads": 0,
+                "backend": adapter.backend,
+                "database_source": adapter.database_source,
+            }
+    return {
+        "generation_events": _safe_count("generation_events"),
+        "check_events": _safe_count("check_events"),
+        "ml_usage_events": _safe_count("ml_usage_events"),
+        "expansion_events": _safe_count("expansion_events"),
+        "reconciliation_events": _safe_count("reconciliation_events"),
+        "workflow_events": _safe_count("workflow_events"),
+        "last_contest": _safe_last_contest(),
+        "total_games": int(total_games_value) if (total_games_value := _safe_total_games()).isdigit() else 0,
+        "leads": _safe_count("leads"),
+        "backend": adapter.backend,
+        "database_source": adapter.database_source,
+    }
+
+
 def _metric_row(result: BacktestResult) -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Concursos", result.contests_analyzed)
@@ -4254,14 +4310,15 @@ def _section_header(title: str, subtitle: str) -> None:
 
 
 def _render_kpi_cards() -> None:
-    gen_count = _safe_count("generation_events")
-    check_count = _safe_count("check_events")
-    ml_count = _safe_count("ml_usage_events")
-    expansion_count = _safe_count("expansion_events")
-    reconciliation_count = _safe_count("reconciliation_events")
-    workflow_count = _safe_count("workflow_events")
-    last_contest = _safe_last_contest()
-    total_games = _safe_total_games()
+    snapshot = _institutional_runtime_snapshot(_institutional_db_signature())
+    gen_count = int(snapshot.get("generation_events", 0))
+    check_count = int(snapshot.get("check_events", 0))
+    ml_count = int(snapshot.get("ml_usage_events", 0))
+    expansion_count = int(snapshot.get("expansion_events", 0))
+    reconciliation_count = int(snapshot.get("reconciliation_events", 0))
+    workflow_count = int(snapshot.get("workflow_events", 0))
+    last_contest = str(snapshot.get("last_contest", "-"))
+    total_games = str(snapshot.get("total_games", 0))
     with st.container(border=True):
         st.caption("Resumo operacional")
         render_secondary_operational_metrics(
