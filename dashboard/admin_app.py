@@ -5960,12 +5960,6 @@ def render_reports_engine_page() -> None:
 def main() -> None:
     dashboard_start_time = time.monotonic()
     _runtime_audit("main.start")
-    try:
-        icon = Path("assets/favicon.ico")
-        st.set_page_config(page_title="LotoIA", page_icon=str(icon) if icon.exists() else "L", layout="wide")
-    except Exception:
-        st.set_page_config(page_title="LotoIA", layout="wide")
-    _runtime_audit("page_config")
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     _render_shared_backend_status()
