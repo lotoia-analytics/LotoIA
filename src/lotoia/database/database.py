@@ -740,6 +740,8 @@ def get_engine(path: Path = DEFAULT_DATABASE_PATH):
 def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
     engine = get_engine(path)
     Base.metadata.create_all(engine)
+    if engine.url.get_backend_name() != "sqlite":
+        return
     with engine.begin() as connection:
         connection.exec_driver_sql(
             """
