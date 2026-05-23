@@ -1384,10 +1384,12 @@ def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict
         create_database(path)
         return {"database_url": resolved_url, "backend": backend}
 
-    # PostgreSQL shared backends already use SQLAlchemy metadata creation, but
-    # we keep the bootstrap explicit and inexpensive for startup observability.
-    create_database(path)
-    return {"database_url": resolved_url, "backend": backend}
+    # Shared PostgreSQL backends must not perform schema DDL during app startup.
+    return {
+        "database_url": resolved_url,
+        "backend": backend,
+        "bootstrap_skipped": True,
+    }
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:

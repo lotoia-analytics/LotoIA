@@ -614,10 +614,10 @@ def main() -> None:
         f"{'pooler' if pooler_mode else 'direto'})"
     )
     st.sidebar.caption(f"build={APP_BUILD}")
-    if adapter.is_shared_cloud_ready:
+    if not adapter.is_shared_cloud_ready and BOOTSTRAP_SCHEMA_ON_STARTUP:
         bootstrap_institutional_database(USER_DB_PATH)
-    elif BOOTSTRAP_SCHEMA_ON_STARTUP:
-        bootstrap_institutional_database(USER_DB_PATH)
+    elif adapter.is_shared_cloud_ready:
+        st.sidebar.caption("bootstrap=skipped_shared_backend")
 
     sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):

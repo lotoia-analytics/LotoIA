@@ -5963,16 +5963,13 @@ def main() -> None:
 
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     adapter = resolve_institutional_adapter(DB_PATH)
-    if adapter.is_shared_cloud_ready:
-        from lotoia.database.database import bootstrap_institutional_database
-
-        bootstrap_institutional_database(DB_PATH)
-        _runtime_audit("bootstrap", "shared_backend")
-    elif BOOTSTRAP_SCHEMA_ON_STARTUP:
+    if not adapter.is_shared_cloud_ready and BOOTSTRAP_SCHEMA_ON_STARTUP:
         from lotoia.database.database import bootstrap_institutional_database
 
         bootstrap_institutional_database(DB_PATH)
         _runtime_audit("bootstrap", "local_backend")
+    elif adapter.is_shared_cloud_ready:
+        _runtime_audit("bootstrap", "shared_backend_skipped")
 
     _render_shared_backend_status()
     sync_summaries = _maybe_bootstrap_official_results_sync()
