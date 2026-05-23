@@ -53,34 +53,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from lotoia.combinatorics import (
-    DEFAULT_STAKE_PRICE,
-    ExpansionConfig,
-    expand_lotofacil_numbers,
-    estimate_expansion,
-)
-from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
-from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
-from lotoia.database import list_runs
-from lotoia.database.adapter import resolve_institutional_adapter
-from lotoia.database.public_repository import save_expansion_event as save_institutional_expansion_event
-from lotoia.governance.adaptive_governance_report import (
-    ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL,
-    ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL,
-    ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL,
-)
-from lotoia.models.draw import Draw
-from lotoia.standards import (
-    ArtifactKind,
-    EventCategory,
-    Severity,
-    artifact_path,
-    institutional_timestamp,
-    metadata_envelope,
-    ml_governance_payload,
-    operational_event,
-    report_payload,
-)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "lotoia.db"
@@ -188,6 +160,39 @@ build_walk_forward_splits = _LazyImportedAttr("lotoia.experiments.temporal_gover
 generate_backtest_report = _LazyImportedAttr("lotoia.reports", "generate_backtest_report")
 build_adaptive_evolution_tracking = _LazyImportedAttr("lotoia.memory", "build_adaptive_evolution_tracking")
 build_retention_policy_preview = _LazyImportedAttr("lotoia.public.operational_lifecycle", "build_retention_policy_preview")
+DEFAULT_STAKE_PRICE = _LazyImportedAttr("lotoia.combinatorics", "DEFAULT_STAKE_PRICE")
+ExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ExpansionConfig")
+expand_lotofacil_numbers = _LazyImportedAttr("lotoia.combinatorics", "expand_lotofacil_numbers")
+estimate_expansion = _LazyImportedAttr("lotoia.combinatorics", "estimate_expansion")
+list_expansion_events = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "list_expansion_events")
+save_expansion_event = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "save_expansion_event")
+DEFAULT_HISTORY_PATH = _LazyImportedAttr("lotoia.data.loader", "DEFAULT_HISTORY_PATH")
+load_draws_csv = _LazyImportedAttr("lotoia.data.loader", "load_draws_csv")
+list_runs = _LazyImportedAttr("lotoia.database", "list_runs")
+resolve_institutional_adapter = _LazyImportedAttr("lotoia.database.adapter", "resolve_institutional_adapter")
+save_institutional_expansion_event = _LazyImportedAttr("lotoia.database.public_repository", "save_expansion_event")
+ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL = _LazyImportedAttr(
+    "lotoia.governance.adaptive_governance_report",
+    "ADAPTIVE_GOVERNANCE_REPORT_CREATED_INDEX_SQL",
+)
+ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL = _LazyImportedAttr(
+    "lotoia.governance.adaptive_governance_report",
+    "ADAPTIVE_GOVERNANCE_REPORT_EXPERIMENT_INDEX_SQL",
+)
+ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL = _LazyImportedAttr(
+    "lotoia.governance.adaptive_governance_report",
+    "ADAPTIVE_GOVERNANCE_REPORT_TABLE_SQL",
+)
+from lotoia.models.draw import Draw
+ArtifactKind = _LazyImportedAttr("lotoia.standards", "ArtifactKind")
+EventCategory = _LazyImportedAttr("lotoia.standards", "EventCategory")
+Severity = _LazyImportedAttr("lotoia.standards", "Severity")
+artifact_path = _LazyImportedAttr("lotoia.standards", "artifact_path")
+institutional_timestamp = _LazyImportedAttr("lotoia.standards", "institutional_timestamp")
+metadata_envelope = _LazyImportedAttr("lotoia.standards", "metadata_envelope")
+ml_governance_payload = _LazyImportedAttr("lotoia.standards", "ml_governance_payload")
+operational_event = _LazyImportedAttr("lotoia.standards", "operational_event")
+report_payload = _LazyImportedAttr("lotoia.standards", "report_payload")
 build_workflow_dashboard = _LazyImportedAttr("lotoia.workflows", "build_workflow_dashboard")
 WorkflowEngine = _LazyImportedAttr("lotoia.workflows", "WorkflowEngine")
 build_intelligent_operational_orchestration = _LazyImportedAttr(
@@ -477,7 +482,7 @@ def _sqlite_classify_error(statement: str, exc: Exception, table_name: str | Non
     return {
         "issue": issue,
         "table": table_name or "",
-        "sql": statement.strip().replace("\n", " "),
+        "sql": str(statement).strip().replace("\n", " "),
         "error": message,
     }
 
@@ -495,7 +500,7 @@ def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) 
         )
         return False
     try:
-        current_cursor.execute(statement)
+        current_cursor.execute(str(statement))
         return True
     except sqlite3.Error as exc:
         if _sqlite_maybe_recover_connection(exc):
