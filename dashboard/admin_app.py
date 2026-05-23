@@ -1908,7 +1908,9 @@ def _observability_tables() -> dict[str, pd.DataFrame]:
     return {"logs": logs, "audit": audit}
 
 
-def _runtime_health() -> dict[str, Any]:
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _runtime_health(db_signature: object) -> dict[str, Any]:
+    del db_signature
     from lotoia.ml import ml_heartbeat
 
     logs = _observability_tables()["logs"]
@@ -2300,7 +2302,9 @@ def _query_scalar(query: str, params: tuple[Any, ...] = (), default: Any = 0) ->
         return default
 
 
-def _operational_metrics() -> dict[str, Any]:
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _operational_metrics(db_signature: object) -> dict[str, Any]:
+    del db_signature
     generation_total = int(_query_scalar("SELECT COUNT(*) FROM generation_events"))
     generation_days = int(_query_scalar("SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events"))
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
@@ -2369,7 +2373,7 @@ def _performance_metrics_table() -> pd.DataFrame:
 
 
 def _alert_contracts() -> pd.DataFrame:
-    health = _runtime_health()
+    health = _runtime_health(_institutional_db_signature())
     health = {
         "avg_generation_ms": 0.0,
         "avg_check_ms": 0.0,
@@ -2379,7 +2383,7 @@ def _alert_contracts() -> pd.DataFrame:
         "runtime_status": "unknown",
         **health,
     }
-    metrics = _operational_metrics()
+    metrics = _operational_metrics(_institutional_db_signature())
     checks = [
         ("tempo excessivo geraÃ§Ã£o", health["avg_generation_ms"] <= ALERT_GENERATION_MS, health["avg_generation_ms"], ALERT_GENERATION_MS),
         ("tempo excessivo conferÃªncia", health["avg_check_ms"] <= ALERT_CHECK_MS, health["avg_check_ms"], ALERT_CHECK_MS),
@@ -2436,6 +2440,42 @@ def _observability_metrics_table() -> pd.DataFrame:
     ).sort_values("count", ascending=False)
 
 
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_institutional_observability_dashboard(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_institutional_observability_dashboard()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_live_telemetry_snapshot(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_live_telemetry_snapshot()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_health_snapshot(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_operational_health_snapshot()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_user_lifecycle_analytics(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_user_lifecycle_analytics()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_institutional_saas_certification(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_institutional_saas_certification()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_runtime_storytelling(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_runtime_storytelling()
+
+
 def render_observability_page() -> None:
     with st.container(border=True):
         _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
@@ -2457,10 +2497,11 @@ def render_observability_page() -> None:
             f" | Jogos={counts.get('generated_games', 0)}"
             f" | Concursos={counts.get('imported_contests', 0)}"
         )
-        observability_dashboard = build_institutional_observability_dashboard()
+        db_signature = _institutional_db_signature()
+        observability_dashboard = _cached_institutional_observability_dashboard(db_signature)
         observability_summary = observability_dashboard.get("summary", {})
         observability_health = observability_dashboard.get("runtime_health", {})
-        live_telemetry = build_live_telemetry_snapshot()
+        live_telemetry = _cached_live_telemetry_snapshot(db_signature)
         st.subheader("Painel executivo de observabilidade")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
         dash_col1.metric("ExecuÃ§Ãµes", observability_summary.get("execution_count", 0))
@@ -2523,7 +2564,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        operational_health = build_operational_health_snapshot()
+        operational_health = _cached_operational_health_snapshot(db_signature)
         st.subheader("Saude operacional")
         health_cols = st.columns(4)
         health_cols[0].metric("Status", operational_health.get("status", "-"))
@@ -2541,7 +2582,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        user_lifecycle = build_user_lifecycle_analytics()
+        user_lifecycle = _cached_user_lifecycle_analytics(db_signature)
         st.subheader("Lifecycle institucional")
         lifecycle_cols = st.columns(4)
         lifecycle_cols[0].metric("Usuarios", user_lifecycle.get("summary", {}).get("active_users", 0))
@@ -2558,7 +2599,7 @@ def render_observability_page() -> None:
             hide_index=True,
             use_container_width=True,
         )
-        saas_certification = build_institutional_saas_certification()
+        saas_certification = _cached_institutional_saas_certification(db_signature)
         st.subheader("Certificacao SaaS institucional")
         cert_cols = st.columns(4)
         cert_cols[0].metric("Status", saas_certification.get("status", "-"))
@@ -2575,7 +2616,7 @@ def render_observability_page() -> None:
             hide_index=True,
             use_container_width=True,
         )
-        runtime_story = build_runtime_storytelling()
+        runtime_story = _cached_runtime_storytelling(db_signature)
         st.subheader("Narrativa operacional viva")
         story_cols = st.columns(3)
         story_cols[0].metric("Headline", runtime_story.get("headline", "-"))
@@ -2863,8 +2904,9 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        health = _runtime_health()
-        operational = _operational_metrics()
+        db_signature = _institutional_db_signature()
+        health = _runtime_health(db_signature)
+        operational = _operational_metrics(db_signature)
         st.subheader("Saude operacional")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo geracao", f"{health['avg_generation_ms']:.2f} ms")
