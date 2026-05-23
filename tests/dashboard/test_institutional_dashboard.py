@@ -761,6 +761,35 @@ def test_generation_page_disables_button_without_lead(monkeypatch) -> None:
     assert captured.get("disabled") in {None, False}
 
 
+def test_generation_page_can_run_without_lead_on_admin(monkeypatch) -> None:
+    _patch_streamlit(monkeypatch)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(admin_app, "build_executive_analytical_report", lambda: {})
+    monkeypatch.setattr(admin_app, "build_institutional_historical_intelligence", lambda: {})
+    monkeypatch.setattr(admin_app, "load_observational_stabilization_report", lambda: {})
+    monkeypatch.setattr(admin_app, "render_generation_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(admin_app.st, "text_input", lambda *args, **kwargs: "")
+    monkeypatch.setattr(admin_app.st, "number_input", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(admin_app.st, "radio", lambda *args, **kwargs: "Ranking hibrido")
+    monkeypatch.setattr(admin_app.st, "warning", lambda *args, **kwargs: captured.setdefault("warning", True))
+    monkeypatch.setattr(admin_app.st, "info", lambda *args, **kwargs: captured.setdefault("info", True))
+    monkeypatch.setattr(admin_app, "_capture_generation_lead", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("should not capture lead")))
+    monkeypatch.setattr(admin_app, "_cached_generate_best_games", lambda *args, **kwargs: {"games": [{"rank": 1, "numbers": list(range(1, 16)), "final_score": {"final_score": 80.0}, "quadra_score": {}}]})
+    monkeypatch.setattr(admin_app, "_persist_generation_events", lambda **kwargs: captured.setdefault("generation", kwargs) or 88)
+    monkeypatch.setattr(admin_app, "_games_dataframe", lambda games: admin_app.pd.DataFrame([{"rank": 1, "final_score": 80.0}]))
+    monkeypatch.setattr(admin_app.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "plotly_chart", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(admin_app.st, "spinner", lambda *args, **kwargs: _dummy_context())
+
+    admin_app.render_generation_page()
+
+    assert captured["generation"]["lead_id"] is None
+    assert captured["generation"]["first_name"] == ""
+    assert captured["generation"]["whatsapp"] == ""
+
+
 def test_homepage_renders_institutional_cockpit_first(monkeypatch) -> None:
     _patch_streamlit(monkeypatch)
     calls: list[str] = []

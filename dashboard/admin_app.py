@@ -4624,22 +4624,24 @@ def render_generation_page() -> None:
         first_name = _safe_text(first_name, max_length=80)
         whatsapp = _safe_text(whatsapp, max_length=40)
         lead_ready = bool(first_name.strip() and whatsapp.strip())
-        if not lead_ready:
-            st.info("Informe primeiro nome e WhatsApp para habilitar a geracao.")
-        st.markdown('<div class="lotoia-lead-hint">Lead institucional obrigatorio para rastreabilidade analitica.</div>', unsafe_allow_html=True)
+        if lead_ready:
+            st.info("Lead institucional detectado. A geracao sera rastreavel no ADM.")
+        else:
+            st.info("Lead opcional no ADM. A geracao pode seguir sem captura comercial.")
+        st.markdown('<div class="lotoia-lead-hint">Campos opcionais no ADM para acelerar operacao interna.</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
         pool_size = col2.number_input("Pool do ranking", min_value=count, max_value=500, value=max(30, count))
         max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
         mode = st.radio("Modo", ["Ranking hibrido", "Multiplos jogos"], horizontal=True)
         if st.button("Gerar jogos", type="primary"):
-            if not lead_ready:
-                st.warning("Informe primeiro nome e WhatsApp para seguir com a geracao.")
-                return
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
                 try:
-                    lead_id, first_name, whatsapp = _capture_generation_lead(first_name, whatsapp)
+                    if lead_ready:
+                        lead_id, first_name, whatsapp = _capture_generation_lead(first_name, whatsapp)
+                    else:
+                        lead_id = None
                 except Exception as exc:
                     st.warning(str(exc))
                     return
@@ -4695,6 +4697,10 @@ def render_check_page() -> None:
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
+        if first_name.strip() and whatsapp.strip():
+            st.info("Lead opcional preenchido. A conferencia sera rastreavel no ADM.")
+        else:
+            st.info("Lead opcional no ADM. A conferencia pode seguir sem captura comercial.")
         col1, col2 = st.columns([1, 3])
         contest_id = col1.number_input("Concurso", min_value=1, step=1, value=max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1))
         numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220)
