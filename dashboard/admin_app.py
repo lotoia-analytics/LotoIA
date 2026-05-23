@@ -5333,9 +5333,10 @@ def render_history_page() -> None:
                 if scope not in scope_labels:
                     scope = ResetScope.operational.value
                 st.markdown("**Resultado visual recomendado**")
-                st.markdown(
-                    f"- **{scope_labels[scope]}**  \n  {scope_descriptions[scope]}"
-                )
+                for key in scope_labels:
+                    st.markdown(
+                        f"- **{scope_labels[key]}**  \n  {scope_descriptions[key]}"
+                    )
                 ack = st.checkbox("Entendo que a operação afeta apenas a camada operacional selecionada.")
                 submitted = st.form_submit_button("Executar limpeza", type="primary")
             if submitted:
