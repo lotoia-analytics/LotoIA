@@ -19,7 +19,7 @@ from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_scheduler import ResultSyncScheduler
 from lotoia.ingestion.result_sync_service import ResultSyncService
-from lotoia.database.public_repository import save_check_event, save_generation_event, save_report_event
+from lotoia.database import public_repository as _public_repository
 from lotoia.public.reconciliation import reconcile_smoke_validation
 from lotoia.public.services import LeadCaptureRequest, LeadCaptureService
 
@@ -247,6 +247,23 @@ def _build_lead_service() -> LeadCaptureService:
         return LeadCaptureService(db_path=USER_DB_PATH)
     except TypeError:
         return LeadCaptureService()
+
+
+def _save_generation_event(**kwargs: Any) -> dict[str, Any]:
+    return _public_repository.save_generation_event(**kwargs)
+
+
+def _save_check_event(**kwargs: Any) -> dict[str, Any]:
+    return _public_repository.save_check_event(**kwargs)
+
+
+def _save_report_event(**kwargs: Any) -> dict[str, Any]:
+    return _public_repository.save_report_event(**kwargs)
+
+
+save_generation_event = _save_generation_event
+save_check_event = _save_check_event
+save_report_event = _save_report_event
 
 
 def render_generate_page(events: list[dict[str, Any]]) -> None:
