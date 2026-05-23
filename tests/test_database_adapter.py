@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.database.adapter import InstitutionalDatabaseAdapter, SQLiteInstitutionalAdapter
 from lotoia.database.database import database_url
 
 
@@ -31,3 +31,16 @@ def test_database_url_follows_institutional_adapter(monkeypatch, tmp_path: Path)
 
     assert resolved.startswith("sqlite:///")
     assert "lotoia.db" in resolved
+
+
+def test_sqlite_adapter_exposes_institutional_contract(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    adapter = SQLiteInstitutionalAdapter(tmp_path / "lotoia.db")
+
+    assert hasattr(adapter, "save_generation_event")
+    assert hasattr(adapter, "save_check_event")
+    assert hasattr(adapter, "save_ml_usage_event")
+    assert hasattr(adapter, "save_report_event")
+    assert hasattr(adapter, "save_expansion_event")
+    assert hasattr(adapter, "fetch_generation_events")
+    assert hasattr(adapter, "fetch_usage_metrics")
