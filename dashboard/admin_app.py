@@ -4762,10 +4762,18 @@ def render_ml_governance_page() -> None:
 def render_generation_page() -> None:
     with st.container(border=True):
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
-        executive_report = build_executive_analytical_report()
-        historical_report = build_institutional_historical_intelligence()
-        observability_report = load_observational_stabilization_report()
-        render_generation_context(executive_report, historical_report, observability_report)
+        show_generation_context = st.toggle(
+            "Exibir contexto institucional",
+            value=bool(st.session_state.get("_admin_show_generation_context", False)),
+            key="_admin_show_generation_context",
+        )
+        if show_generation_context:
+            executive_report = build_executive_analytical_report()
+            historical_report = build_institutional_historical_intelligence()
+            observability_report = load_observational_stabilization_report()
+            render_generation_context(executive_report, historical_report, observability_report)
+        else:
+            st.info("Contexto institucional recolhido para acelerar o primeiro paint.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = lead_col1.text_input("Primeiro nome do lead", key="admin_first_name")
         whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
@@ -4842,6 +4850,18 @@ def render_generation_page() -> None:
 def render_check_page() -> None:
     with st.container(border=True):
         _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
+        show_check_context = st.toggle(
+            "Exibir contexto institucional",
+            value=bool(st.session_state.get("_admin_show_check_context", False)),
+            key="_admin_show_check_context",
+        )
+        if show_check_context:
+            executive_report = build_executive_analytical_report()
+            historical_report = build_institutional_historical_intelligence()
+            observability_report = load_observational_stabilization_report()
+            render_generation_context(executive_report, historical_report, observability_report)
+        else:
+            st.info("Contexto institucional recolhido para manter a conferencia leve.")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
