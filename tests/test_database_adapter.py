@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lotoia.database.adapter import InstitutionalDatabaseAdapter, SQLiteInstitutionalAdapter
+from lotoia.database.adapter import (
+    InstitutionalDatabaseAdapter,
+    PostgresInstitutionalAdapter,
+    SQLiteInstitutionalAdapter,
+    resolve_institutional_adapter,
+)
 from lotoia.database.database import database_url
 
 
@@ -44,3 +49,14 @@ def test_sqlite_adapter_exposes_institutional_contract(monkeypatch, tmp_path: Pa
     assert hasattr(adapter, "save_expansion_event")
     assert hasattr(adapter, "fetch_generation_events")
     assert hasattr(adapter, "fetch_usage_metrics")
+
+
+def test_resolve_institutional_adapter_switches_by_backend(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    sqlite_adapter = resolve_institutional_adapter(tmp_path / "lotoia.db")
+    assert isinstance(sqlite_adapter, SQLiteInstitutionalAdapter)
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/lotoia")
+    postgres_adapter = resolve_institutional_adapter(tmp_path / "lotoia.db")
+    assert isinstance(postgres_adapter, PostgresInstitutionalAdapter)
+    assert postgres_adapter.is_shared_cloud_ready is True

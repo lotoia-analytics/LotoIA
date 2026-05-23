@@ -124,3 +124,18 @@ class SQLiteInstitutionalAdapter(InstitutionalDatabaseAdapter):
     """SQLite-backed institutional adapter kept for local/runtime compatibility."""
 
     pass
+
+
+class PostgresInstitutionalAdapter(InstitutionalDatabaseAdapter):
+    """PostgreSQL-ready adapter placeholder for shared institutional persistence."""
+
+    @property
+    def is_shared_cloud_ready(self) -> bool:
+        return True
+
+
+def resolve_institutional_adapter(path: Path = DEFAULT_DATABASE_PATH) -> InstitutionalDatabaseAdapter:
+    adapter = InstitutionalDatabaseAdapter(path)
+    if adapter.backend == "postgresql":
+        return PostgresInstitutionalAdapter(path)
+    return SQLiteInstitutionalAdapter(path)
