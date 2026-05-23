@@ -7,6 +7,7 @@ from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.database.database import (
+    AccessEvent,
     AuthEvent,
     AuthSession,
     InstitutionalUser,
@@ -125,6 +126,45 @@ class InstitutionalDatabaseAdapter:
             session.commit()
             return {column.name: getattr(event, column.name) for column in event.__table__.columns}
 
+    def save_role_change_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            user = session.get(InstitutionalUser, int(kwargs["user_id"]))
+            if user is None:
+                raise ValueError("institutional user not found")
+            previous_role = str(user.role)
+            new_role = str(kwargs["role"])
+            user.role = new_role
+            event = AuthEvent(
+                user_id=int(kwargs["user_id"]),
+                session_id=str(kwargs.get("session_id", "")),
+                event_type="role_change",
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                payload={
+                    "previous_role": previous_role,
+                    "new_role": new_role,
+                    "reason": str(kwargs.get("reason", "")),
+                    "payload": dict(kwargs.get("payload") or {}),
+                },
+            )
+            session.add(event)
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
+    def save_access_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            event = AccessEvent(
+                user_id=int(kwargs["user_id"]),
+                session_id=str(kwargs["session_id"]),
+                feature_name=str(kwargs["feature_name"]),
+                role=str(kwargs.get("role", "user")),
+                allowed=int(bool(kwargs.get("allowed", False))),
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                payload=dict(kwargs.get("payload") or {}),
+            )
+            session.add(event)
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
     def save_generation_event(self, **kwargs: Any) -> dict[str, Any]:
         repository = GenerationEventRepository(self.sqlite_path)
         return repository.insert(**kwargs)
@@ -167,6 +207,7 @@ class InstitutionalDatabaseAdapter:
                 "institutional_users": int(session.query(InstitutionalUser).count()),
                 "auth_events": int(session.query(AuthEvent).count()),
                 "auth_sessions": int(session.query(AuthSession).count()),
+                "access_events": int(session.query(AccessEvent).count()),
                 "generation_events": int(session.query(GenerationEvent).count()),
                 "ml_usage_events": int(session.query(MlUsageEvent).count()),
                 "check_events": int(session.query(CheckEvent).count()),
@@ -195,6 +236,7 @@ class InstitutionalDatabaseAdapter:
             "institutional_users": metrics["institutional_users"],
             "auth_events": metrics["auth_events"],
             "auth_sessions": metrics["auth_sessions"],
+            "access_events": metrics["access_events"],
         }
 
 

@@ -174,6 +174,30 @@ class AuthEvent(Base):
     )
 
 
+class AccessEvent(Base):
+    __tablename__ = "access_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("institutional_users.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    feature_name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, default="user", nullable=False)
+    allowed: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    runtime_origin: Mapped[str] = mapped_column(String, default="unknown", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_access_events_user_id", "user_id"),
+        Index("ix_access_events_session_id", "session_id"),
+        Index("ix_access_events_feature_name", "feature_name"),
+        Index("ix_access_events_allowed", "allowed"),
+    )
+
+
 class GenerationEvent(Base):
     __tablename__ = "generation_events"
 
@@ -704,6 +728,36 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 user_id INTEGER NOT NULL,
                 session_id TEXT NOT NULL,
                 event_type TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                runtime_origin TEXT NOT NULL DEFAULT 'unknown',
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS access_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                allowed INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                runtime_origin TEXT NOT NULL DEFAULT 'unknown',
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS access_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                allowed INTEGER NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 runtime_origin TEXT NOT NULL DEFAULT 'unknown',
                 payload JSON NOT NULL DEFAULT '{}'

@@ -32,3 +32,12 @@ class AuthenticationResult:
     session_id: str
     created: bool
     backend_snapshot: dict[str, object]
+
+
+@dataclass(frozen=True)
+class AccessDecision:
+    allowed: bool
+    feature_name: str
+    role: str
+    session_id: str
+    snapshot: dict[str, object]
