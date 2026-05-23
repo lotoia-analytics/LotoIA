@@ -222,6 +222,7 @@ BOOTSTRAP_SCHEMA_ON_STARTUP = os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP", ""
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
+_SQLITE_RUNTIME_INITIALIZED = False
 
 
 def _sqlite_open_connection(path: Path = DB_PATH) -> sqlite3.Connection:
@@ -278,7 +279,24 @@ def _sqlite_bind_connection(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
 
 
+def _ensure_sqlite_runtime_initialized() -> None:
+    global _SQLITE_RUNTIME_INITIALIZED
+    if _SQLITE_RUNTIME_INITIALIZED:
+        return
+    _SQLITE_RUNTIME_INITIALIZED = True
+    try:
+        _sqlite_bind_connection(_sqlite_open_connection())
+        _sqlite_ensure_admin_schema()
+        if conn is not None:
+            conn.commit()
+    except Exception as exc:
+        _SQLITE_RUNTIME_INITIALIZED = False
+        SQLITE_MEMORY_LOGS.append({"event_type": "sqlite_runtime_init", "status": "failed", "error": str(exc)})
+
+
 def _sqlite_ensure_runtime_connection() -> tuple[sqlite3.Connection | None, sqlite3.Cursor | None]:
+    if conn is None or cursor is None:
+        _ensure_sqlite_runtime_initialized()
     if conn is None or cursor is None:
         try:
             _sqlite_bind_connection(_sqlite_open_connection())
@@ -775,11 +793,6 @@ def _render_sidebar_logo() -> None:
             continue
     st.sidebar.markdown('<div class="lotoia-sidebar-fallback">LotoIA</div>', unsafe_allow_html=True)
 
-
-_sqlite_bind_connection(_sqlite_open_connection())
-_sqlite_ensure_admin_schema()
-if conn is not None:
-    conn.commit()
 
 def _format_numbers(numbers: list[int]) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
