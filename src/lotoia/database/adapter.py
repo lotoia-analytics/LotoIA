@@ -10,6 +10,8 @@ from lotoia.database.database import (
     AccessEvent,
     AuthEvent,
     AuthSession,
+    FeatureFlag,
+    FeatureUsageEvent,
     InstitutionalUser,
     CheckEvent,
     ExpansionEvent,
@@ -165,6 +167,51 @@ class InstitutionalDatabaseAdapter:
             session.commit()
             return {column.name: getattr(event, column.name) for column in event.__table__.columns}
 
+    def save_feature_flag(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            feature_name = str(kwargs["feature_name"]).strip().lower()
+            existing = session.query(FeatureFlag).filter(FeatureFlag.feature_name == feature_name).first()
+            if existing is None:
+                flag = FeatureFlag(
+                    feature_name=feature_name,
+                    enabled=int(bool(kwargs.get("enabled", False))),
+                    role_scope=str(kwargs.get("role_scope", "user")).strip().lower(),
+                    max_uses_per_session=kwargs.get("max_uses_per_session"),
+                    payload=dict(kwargs.get("payload") or {}),
+                )
+                session.add(flag)
+                session.commit()
+                return {column.name: getattr(flag, column.name) for column in flag.__table__.columns}
+
+            existing.enabled = int(bool(kwargs.get("enabled", existing.enabled)))
+            existing.role_scope = str(kwargs.get("role_scope", existing.role_scope)).strip().lower()
+            existing.max_uses_per_session = kwargs.get("max_uses_per_session", existing.max_uses_per_session)
+            existing.payload = dict(kwargs.get("payload") or existing.payload or {})
+            session.commit()
+            return {column.name: getattr(existing, column.name) for column in existing.__table__.columns}
+
+    def get_feature_flag(self, feature_name: str) -> dict[str, Any] | None:
+        with get_session(self.sqlite_path) as session:
+            row = session.query(FeatureFlag).filter(FeatureFlag.feature_name == feature_name.strip().lower()).first()
+            if row is None:
+                return None
+            return {column.name: getattr(row, column.name) for column in row.__table__.columns}
+
+    def save_feature_usage_event(self, **kwargs: Any) -> dict[str, Any]:
+        with get_session(self.sqlite_path) as session:
+            event = FeatureUsageEvent(
+                user_id=int(kwargs["user_id"]),
+                session_id=str(kwargs["session_id"]),
+                feature_name=str(kwargs["feature_name"]),
+                role=str(kwargs.get("role", "user")),
+                allowed=int(bool(kwargs.get("allowed", False))),
+                runtime_origin=str(kwargs.get("runtime_origin", "unknown")),
+                payload=dict(kwargs.get("payload") or {}),
+            )
+            session.add(event)
+            session.commit()
+            return {column.name: getattr(event, column.name) for column in event.__table__.columns}
+
     def save_generation_event(self, **kwargs: Any) -> dict[str, Any]:
         repository = GenerationEventRepository(self.sqlite_path)
         return repository.insert(**kwargs)
@@ -208,6 +255,8 @@ class InstitutionalDatabaseAdapter:
                 "auth_events": int(session.query(AuthEvent).count()),
                 "auth_sessions": int(session.query(AuthSession).count()),
                 "access_events": int(session.query(AccessEvent).count()),
+                "feature_flags": int(session.query(FeatureFlag).count()),
+                "feature_usage_events": int(session.query(FeatureUsageEvent).count()),
                 "generation_events": int(session.query(GenerationEvent).count()),
                 "ml_usage_events": int(session.query(MlUsageEvent).count()),
                 "check_events": int(session.query(CheckEvent).count()),
@@ -237,6 +286,8 @@ class InstitutionalDatabaseAdapter:
             "auth_events": metrics["auth_events"],
             "auth_sessions": metrics["auth_sessions"],
             "access_events": metrics["access_events"],
+            "feature_flags": metrics["feature_flags"],
+            "feature_usage_events": metrics["feature_usage_events"],
         }
 
 

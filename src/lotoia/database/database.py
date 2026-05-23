@@ -198,6 +198,57 @@ class AccessEvent(Base):
     )
 
 
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    feature_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    role_scope: Mapped[str] = mapped_column(String, default="user", nullable=False)
+    max_uses_per_session: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_feature_flags_feature_name", "feature_name"),
+        Index("ix_feature_flags_enabled", "enabled"),
+        Index("ix_feature_flags_role_scope", "role_scope"),
+    )
+
+
+class FeatureUsageEvent(Base):
+    __tablename__ = "feature_usage_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("institutional_users.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    feature_name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, default="user", nullable=False)
+    allowed: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    runtime_origin: Mapped[str] = mapped_column(String, default="unknown", nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    __table_args__ = (
+        Index("ix_feature_usage_events_user_id", "user_id"),
+        Index("ix_feature_usage_events_session_id", "session_id"),
+        Index("ix_feature_usage_events_feature_name", "feature_name"),
+        Index("ix_feature_usage_events_allowed", "allowed"),
+    )
+
+
 class GenerationEvent(Base):
     __tablename__ = "generation_events"
 
@@ -752,6 +803,35 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         connection.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS access_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                allowed INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                runtime_origin TEXT NOT NULL DEFAULT 'unknown',
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS feature_flags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feature_name TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                role_scope TEXT NOT NULL DEFAULT 'user',
+                max_uses_per_session INTEGER,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                payload JSON NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS feature_usage_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 session_id TEXT NOT NULL,

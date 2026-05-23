@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter, resolve_institutional_adapter
-from lotoia.database.database import DEFAULT_DATABASE_PATH, get_session, InstitutionalUser
-from lotoia.authentication.models import AccessDecision, AuthenticationResult, InstitutionalUserIdentity, LoginRequest
+from lotoia.database.database import DEFAULT_DATABASE_PATH, AccessEvent, FeatureUsageEvent, get_session, InstitutionalUser
+from lotoia.authentication.models import AccessDecision, AuthenticationResult, FeaturePolicyDecision, InstitutionalUserIdentity, LoginRequest
 
 ROLE_FEATURE_ACCESS: dict[str, set[str]] = {
     "admin": {"ml", "expansion", "reports", "reconciliation", "workflow", "governance", "observability", "analytics"},
@@ -16,6 +16,14 @@ ROLE_FEATURE_ACCESS: dict[str, set[str]] = {
     "premium": {"generation", "check", "ml", "reports", "expansion", "reconciliation", "analytics"},
     "basic": {"generation", "check", "reports", "analytics"},
     "user": {"generation", "check", "reports", "analytics"},
+}
+
+ROLE_FEATURE_LIMITS: dict[str, dict[str, int | None]] = {
+    "admin": {"ml": None, "expansion": None, "reports": None, "reconciliation": None, "workflow": None, "governance": None, "observability": None, "analytics": None},
+    "operator": {"generation": None, "check": None, "reports": None, "reconciliation": None, "workflow": None, "analytics": None},
+    "premium": {"generation": None, "check": None, "ml": 20, "reports": None, "expansion": 5, "reconciliation": None, "analytics": None},
+    "basic": {"generation": 5, "check": 5, "reports": 3, "analytics": None},
+    "user": {"generation": 3, "check": 3, "reports": 2, "analytics": None},
 }
 
 
@@ -192,6 +200,73 @@ class AuthenticationService:
             snapshot=self.adapter.fetch_latest_auth_snapshot(),
         )
 
+    def configure_feature_policy(
+        self,
+        *,
+        feature_name: str,
+        enabled: bool,
+        role_scope: str = "user",
+        max_uses_per_session: int | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_feature = self._normalize_feature(feature_name)
+        normalized_role_scope = self._normalize_role(role_scope)
+        return self.adapter.save_feature_flag(
+            feature_name=normalized_feature,
+            enabled=enabled,
+            role_scope=normalized_role_scope,
+            max_uses_per_session=max_uses_per_session,
+            payload=payload or {},
+        )
+
+    def authorize_feature_policy(
+        self,
+        *,
+        user_id: int,
+        session_id: str,
+        feature_name: str,
+        runtime_origin: str = "streamlit_cloud",
+        payload: dict[str, Any] | None = None,
+    ) -> FeaturePolicyDecision:
+        user = self._find_user_by_id(user_id)
+        if user is None:
+            raise ValueError("institutional user not found")
+        role = str(user["role"]).lower()
+        normalized_feature = self._normalize_feature(feature_name)
+        policy = self.adapter.get_feature_flag(normalized_feature) or {
+            "feature_name": normalized_feature,
+            "enabled": int(normalized_feature in ROLE_FEATURE_ACCESS.get(role, set())),
+            "role_scope": role,
+            "max_uses_per_session": ROLE_FEATURE_LIMITS.get(role, {}).get(normalized_feature),
+            "payload": {},
+        }
+        base_allowed = normalized_feature in ROLE_FEATURE_ACCESS.get(role, set())
+        flag_enabled = bool(policy.get("enabled", 0))
+        allowed = base_allowed and flag_enabled and role in {str(policy.get("role_scope", role)).lower(), "admin"}
+        usage_count = self._count_feature_usage(session_id=session_id, feature_name=normalized_feature)
+        max_uses = policy.get("max_uses_per_session")
+        limit = int(max_uses) if max_uses not in (None, "") else None
+        if limit is not None and usage_count >= limit:
+            allowed = False
+        self.adapter.save_feature_usage_event(
+            user_id=user_id,
+            session_id=session_id,
+            feature_name=normalized_feature,
+            role=role,
+            allowed=allowed,
+            runtime_origin=runtime_origin,
+            payload=payload or {"policy": policy, "usage_count": usage_count},
+        )
+        return FeaturePolicyDecision(
+            allowed=allowed,
+            feature_name=normalized_feature,
+            role=role,
+            limit=limit,
+            usage_count=usage_count,
+            session_id=session_id,
+            snapshot=self.adapter.fetch_latest_auth_snapshot(),
+        )
+
     def _find_user(self, email: str) -> dict[str, Any] | None:
         with get_session(self.db_path) as session:
             row = session.query(InstitutionalUser).filter(InstitutionalUser.email == email).first()
@@ -205,6 +280,18 @@ class AuthenticationService:
             if row is None:
                 return None
             return {column.name: getattr(row, column.name) for column in row.__table__.columns}
+
+    def _count_feature_usage(self, *, session_id: str, feature_name: str) -> int:
+        with get_session(self.db_path) as session:
+            return int(
+                session.query(FeatureUsageEvent)
+                .filter(
+                    FeatureUsageEvent.session_id == session_id,
+                    FeatureUsageEvent.feature_name == feature_name,
+                    FeatureUsageEvent.allowed == 1,
+                )
+                .count()
+            )
 
     @staticmethod
     def _normalize_role(role: str) -> str:

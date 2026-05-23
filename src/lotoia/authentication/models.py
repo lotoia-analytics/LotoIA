@@ -41,3 +41,14 @@ class AccessDecision:
     role: str
     session_id: str
     snapshot: dict[str, object]
+
+
+@dataclass(frozen=True)
+class FeaturePolicyDecision:
+    allowed: bool
+    feature_name: str
+    role: str
+    limit: int | None
+    usage_count: int
+    session_id: str
+    snapshot: dict[str, object]
