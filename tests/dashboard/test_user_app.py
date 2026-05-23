@@ -14,6 +14,7 @@ from dashboard.user_app import (
     _recent_history_dataframe,
     _render_sidebar,
     _user_indicator,
+    render_painel_page,
     render_generate_page,
     render_check_page,
     render_reports_page,
@@ -112,7 +113,7 @@ def test_user_sidebar_does_not_expose_expansion(monkeypatch) -> None:
 
     monkeypatch.setattr("dashboard.user_app.st.sidebar", _Sidebar())
 
-    assert _render_sidebar() == "Gerar Jogos"
+    assert _render_sidebar() == "Painel"
     assert "Jogo Expandido" not in captured_options
     assert image_calls
 
@@ -206,6 +207,36 @@ def test_user_generation_persists_institutional_event(monkeypatch) -> None:
     assert captured["generation"]["lead_id"] == 21
     assert len(captured["generation"]["generated_games"]) == 1
     assert "raw_games" not in captured["generation"]
+
+
+def test_user_painel_page_renders_summary(monkeypatch) -> None:
+    monkeypatch.setattr("dashboard.user_app.st.header", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.info", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.subheader", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr("dashboard.user_app.st.button", lambda *args, **kwargs: False)
+    monkeypatch.setattr("dashboard.user_app.st.columns", lambda count: [type("Col", (), {"metric": lambda self, *a, **k: None, "__enter__": lambda self: self, "__exit__": lambda self, exc_type, exc, tb: False, "button": lambda self, *a, **k: False})() for _ in range(count)])
+    monkeypatch.setattr("dashboard.user_app.st.session_state", {
+        "user_last_generation": {
+            "lead": {"id": 21, "first_name": "Ana", "whatsapp": "5511999999999"},
+            "lead_normalized_whatsapp": "5511999999999",
+            "generation_event_id": 77,
+            "count": 2,
+            "games": [{"final_score": 80.0}, {"final_score": 70.0}],
+            "metadata": {"strategy": "ranking_hibrido"},
+        },
+        "user_last_check": {
+            "lead": {"id": 21, "first_name": "Ana", "whatsapp": "5511999999999"},
+            "lead_normalized_whatsapp": "5511999999999",
+            "hits": 10,
+            "contest": 3692,
+        },
+        "user_events": [{"timestamp": "t", "type": "geracao", "details": "2 jogos"}],
+    })
+
+    render_painel_page([{"timestamp": "t", "type": "geracao", "details": "2 jogos"}])
 
 
 def test_user_generation_with_ml_enabled_sets_institutional_flag(monkeypatch) -> None:

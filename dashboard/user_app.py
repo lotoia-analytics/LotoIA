@@ -136,6 +136,21 @@ def _recent_history_dataframe(events: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _current_user_context() -> dict[str, Any]:
+    lead: dict[str, Any] = {}
+    generation = st.session_state.get("user_last_generation")
+    check = st.session_state.get("user_last_check")
+    if isinstance(generation, dict) and isinstance(generation.get("lead"), dict):
+        lead = dict(generation["lead"])
+    elif isinstance(check, dict) and isinstance(check.get("lead"), dict):
+        lead = dict(check["lead"])
+    return {
+        "lead": lead,
+        "generation": generation if isinstance(generation, dict) else {},
+        "check": check if isinstance(check, dict) else {},
+    }
+
+
 def _bootstrap_official_results_sync() -> list[dict[str, Any]]:
     contest_repository = ContestRepository(USER_DB_PATH)
     scheduler = ResultSyncScheduler(
@@ -223,6 +238,7 @@ def _render_sidebar() -> str:
     return st.sidebar.radio(
         "Navegacao",
         [
+            "Painel",
             "Gerar Jogos",
             "Conferir Concurso",
             "Historico",
@@ -342,12 +358,17 @@ def render_generate_page(events: list[dict[str, Any]]) -> None:
             "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
             "generation_event_id": int(generation_event["id"]),
         }
+        st.session_state["user_current_lead"] = {
+            "lead": lead_capture.lead,
+            "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
+        }
         _refresh_institutional_usage_views()
 
 
 def render_check_page(events: list[dict[str, Any]]) -> None:
     st.header("Conferir Concurso")
     smoke_mode = st.checkbox("Simulacao operacional", value=True)
+    current_context = _current_user_context()
 
     if smoke_mode:
         baseline_text = st.text_input(
@@ -410,6 +431,11 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
             numbers = _parse_numbers(numbers_text)
             result = _check_user_contest(int(contest_id), numbers)
             lead_service = _build_lead_service()
+            current_lead = current_context.get("lead", {})
+            first_name = str(current_lead.get("first_name", "")).strip()
+            whatsapp = str(current_context.get("lead_normalized_whatsapp", "") or current_lead.get("whatsapp", "")).strip()
+            if not first_name or not whatsapp:
+                raise ValueError("Cadastre um lead antes de conferir.")
             lead_payload = LeadCaptureRequest(first_name=first_name, whatsapp=whatsapp, source="user_panel")
             lead_capture = lead_service.capture(lead_payload, ip_address="", user_agent="user_panel")
             save_check_event(
@@ -444,6 +470,47 @@ def render_check_page(events: list[dict[str, Any]]) -> None:
             "lead_normalized_whatsapp": lead_capture.normalized_whatsapp,
         }
         _refresh_institutional_usage_views()
+
+
+def render_painel_page(events: list[dict[str, Any]]) -> None:
+    st.header("Painel")
+    st.caption("Visao pessoal com lead, ultima geracao, ultima conferencia e trilha operacional recente.")
+    current_context = _current_user_context()
+    lead = current_context["lead"]
+    generation = current_context["generation"]
+    check = current_context["check"]
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Lead", lead.get("first_name", "-") or "-")
+    col2.metric("Geracoes", generation.get("count", 0) if generation else 0)
+    col3.metric("Conferencias", check.get("hits", 0) if check else 0)
+
+    summary_rows = [
+        {
+            "tipo": "lead",
+            "valor": f"{lead.get('first_name', '-') or '-'} | {lead.get('whatsapp', current_context.get('lead_normalized_whatsapp', '-')) or '-'}",
+        },
+        {
+            "tipo": "geracao",
+            "valor": f"{generation.get('count', 0) if generation else 0} jogos",
+        },
+        {
+            "tipo": "conferencia",
+            "valor": f"{check.get('hits', 0) if check else 0} acertos",
+        },
+    ]
+    st.dataframe(pd.DataFrame(summary_rows), hide_index=True, use_container_width=True)
+    st.subheader("Atalhos")
+    shortcut_cols = st.columns(4)
+    labels = ["Gerar Jogos", "Conferir Concurso", "Historico", "Relatorios"]
+    for col, label in zip(shortcut_cols, labels, strict=False):
+        with col:
+            st.button(label, disabled=True, use_container_width=True)
+    if events:
+        st.subheader("Ultimos eventos")
+        st.dataframe(_recent_history_dataframe(events), hide_index=True, use_container_width=True)
+    else:
+        st.info("Nenhum evento registrado ainda.")
 
 
 def render_history_page(events: list[dict[str, Any]]) -> None:
@@ -536,7 +603,9 @@ def main() -> None:
     events = st.session_state.setdefault("user_events", [])
     page = _render_sidebar()
 
-    if page == "Gerar Jogos":
+    if page == "Painel":
+        render_painel_page(events)
+    elif page == "Gerar Jogos":
         render_generate_page(events)
     elif page == "Conferir Concurso":
         render_check_page(events)
