@@ -59,6 +59,7 @@ from lotoia.combinatorics import (
 from lotoia.combinatorics.expansion_store import list_expansion_events, save_expansion_event
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
 from lotoia.database import list_runs
+from lotoia.database.adapter import resolve_institutional_adapter
 from lotoia.database.public_repository import save_expansion_event as save_institutional_expansion_event
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
@@ -3616,10 +3617,20 @@ def _load_admin_events(table_name: str) -> pd.DataFrame:
     if table_name not in ALLOWED_ADMIN_EVENT_TABLES:
         return pd.DataFrame()
     query = f"SELECT * FROM {table_name} ORDER BY created_at DESC, id DESC LIMIT {ADMIN_EVENT_LIMIT}"
-    connection, _ = _sqlite_ensure_runtime_connection()
-    if connection is None:
+    adapter = resolve_institutional_adapter(DB_PATH)
+    if adapter.backend != "sqlite":
+        try:
+            with get_session(DB_PATH) as session:
+                return pd.read_sql_query(query, session.connection())
+        except Exception:
+            pass
+    try:
+        connection, _ = _sqlite_ensure_runtime_connection()
+        if connection is None:
+            return pd.DataFrame()
+        return pd.read_sql_query(query, connection)
+    except Exception:
         return pd.DataFrame()
-    return pd.read_sql_query(query, connection)
 
 
 def _lead_identifier(first_name: str, whatsapp: str) -> str:
@@ -3627,15 +3638,28 @@ def _lead_identifier(first_name: str, whatsapp: str) -> str:
 
 
 def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...] = ()) -> pd.DataFrame:
+    adapter = resolve_institutional_adapter(DB_PATH)
+    error_message: str | None = None
+    if adapter.backend != "sqlite":
+        try:
+            with get_session(DB_PATH) as session:
+                return pd.read_sql_query(query, session.connection(), params=params)
+        except Exception as exc:
+            error_message = str(exc)
     try:
         connection, _ = _sqlite_ensure_runtime_connection()
-        if connection is None:
-            return pd.DataFrame(columns=columns)
-        try:
-            connection.rollback()
-        except Exception:
-            pass
-        return pd.read_sql_query(query, connection, params=params)
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            try:
+                return pd.read_sql_query(query, connection, params=params)
+            except Exception as fallback_exc:
+                _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(fallback_exc)})
+        if error_message is not None:
+            _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": error_message})
+        return pd.DataFrame(columns=columns)
     except Exception as exc:
         _record_operational_log("sqlite", "failed", 0.0, {"query": query[:80], "error": str(exc)})
         return pd.DataFrame(columns=columns)
@@ -3870,9 +3894,17 @@ def _file_signature(path: Path) -> tuple[int, int]:
 
 
 def _institutional_db_signature() -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
-    wal_path = DB_PATH.with_name(f"{DB_PATH.name}-wal")
-    shm_path = DB_PATH.with_name(f"{DB_PATH.name}-shm")
-    return _file_signature(DB_PATH), _file_signature(wal_path), _file_signature(shm_path)
+    adapter = resolve_institutional_adapter(DB_PATH)
+    if adapter.backend == "sqlite":
+        wal_path = DB_PATH.with_name(f"{DB_PATH.name}-wal")
+        shm_path = DB_PATH.with_name(f"{DB_PATH.name}-shm")
+        return _file_signature(DB_PATH), _file_signature(wal_path), _file_signature(shm_path)
+    snapshot = adapter.fetch_latest_usage_snapshot()
+    return (
+        (hash(snapshot.get("database_url", "")), int(snapshot.get("generation_events", 0))),
+        (int(snapshot.get("leads", 0)), int(snapshot.get("check_events", 0))),
+        (int(snapshot.get("ml_usage_events", 0)), int(snapshot.get("report_events", 0))),
+    )
 
 
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
