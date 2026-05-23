@@ -5266,7 +5266,7 @@ def render_expansion_experimental_page() -> None:
             f"Perfil {selected_role} habilita: {_format_allowed_expansion_sizes(allowed_sizes)} dezenas."
         )
 
-        if st.button("Gerar preview experimental", type="primary"):
+        if st.button("Gerar Jogos", type="primary"):
             try:
                 with st.spinner("Gerando preview com guardrails operacionais..."):
                     st.session_state["admin_last_expansion_experimental"] = _run_admin_expansion(
