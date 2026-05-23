@@ -58,39 +58,15 @@ def _read_pooler_database_url_from_env() -> tuple[str, str]:
     return "", ""
 
 
-def _extract_supabase_project_ref(database_url: str) -> str:
-    parsed = urlparse(database_url)
-    host = (parsed.hostname or "").lower()
-    if host.endswith(".supabase.co") and host != "supabase.co":
-        return host.removesuffix(".supabase.co")
-    username = parsed.username or ""
-    if "." in username:
-        return username.split(".", 1)[1].strip()
-    return ""
-
-
-def _normalize_supabase_pooler_query(database_url: str, query: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    parsed = urlparse(database_url)
-    params = list(query)
-    query_keys = {key for key, _ in params}
-    if "sslmode" not in query_keys:
-        params.append(("sslmode", "require"))
-    if "sni_hostname" not in query_keys and "external_id" not in query_keys:
-        project_ref = os.getenv("LOTOIA_SUPABASE_PROJECT_REF", "").strip()
-        if not project_ref:
-            project_ref = _extract_supabase_project_ref(database_url)
-        if project_ref and not project_ref.endswith(".supabase.co"):
-            params.append(("sni_hostname", f"{project_ref}.supabase.co"))
-    return params
-
-
 def _rewrite_supabase_url_to_pooler(database_url: str) -> str:
     parsed = urlparse(database_url)
     host = (parsed.hostname or "").lower()
     if "supabase.co" not in host or "pooler" in host:
         if "pooler" not in host:
             return database_url
-        query = _normalize_supabase_pooler_query(database_url, parse_qsl(parsed.query, keep_blank_values=True))
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        if "sslmode" not in {key for key, _ in query}:
+            query.append(("sslmode", "require"))
         return urlunparse(
             (
                 parsed.scheme,
@@ -109,7 +85,9 @@ def _rewrite_supabase_url_to_pooler(database_url: str) -> str:
     if password:
         netloc += f":{password}"
     netloc += f"@{pooler_host}:{port}"
-    query = _normalize_supabase_pooler_query(database_url, parse_qsl(parsed.query, keep_blank_values=True))
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    if "sslmode" not in {key for key, _ in query}:
+        query.append(("sslmode", "require"))
     return urlunparse((parsed.scheme, netloc, parsed.path or "", parsed.params, urlencode(query), parsed.fragment))
 
 

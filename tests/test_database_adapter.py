@@ -41,7 +41,7 @@ def test_adapter_supports_named_cloud_database_env(monkeypatch) -> None:
     assert adapter.is_shared_cloud_ready is True
 
 
-def test_adapter_adds_supabase_pooler_sni_hostname(monkeypatch) -> None:
+def test_adapter_rewrites_supabase_direct_url_to_pooler_without_sni_hostname(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_POOLER_URL", raising=False)
     monkeypatch.setenv(
@@ -52,8 +52,8 @@ def test_adapter_adds_supabase_pooler_sni_hostname(monkeypatch) -> None:
 
     assert adapter.uses_pooler is True
     assert adapter.database_host == "aws-1-us-west-1.pooler.supabase.com"
-    assert "sni_hostname=wfcnaftaefhnaxovewyb.supabase.co" in adapter.database_url
     assert "sslmode=require" in adapter.database_url
+    assert "sni_hostname" not in adapter.database_url
 
 
 def test_database_url_follows_institutional_adapter(monkeypatch, tmp_path: Path) -> None:
