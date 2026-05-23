@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import dashboard.admin_app as admin_app
+import dashboard.user_app as user_app
 from lotoia.database.adapter import resolve_institutional_adapter
 from lotoia.database.database import create_database
 from lotoia.database.public_repository import (
@@ -109,3 +111,23 @@ def test_shared_institutional_backend_round_trip(tmp_path: Path, monkeypatch) ->
     assert report["lead_id"] == lead["id"]
     assert expansion["lead_id"] == lead["id"]
     assert reconciliation["lead_id"] == lead["id"]
+
+
+def test_user_and_admin_share_the_same_institutional_database_contract(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    shared_db_path = Path("data/shared_backend_validation.db")
+    monkeypatch.setattr(user_app, "USER_DB_PATH", shared_db_path, raising=False)
+    monkeypatch.setattr(admin_app, "DB_PATH", shared_db_path, raising=False)
+    create_database(shared_db_path)
+
+    assert user_app.USER_DB_PATH == admin_app.DB_PATH
+
+    user_adapter = resolve_institutional_adapter(user_app.USER_DB_PATH)
+    admin_adapter = resolve_institutional_adapter(admin_app.DB_PATH)
+
+    assert user_adapter.backend == "sqlite"
+    assert admin_adapter.backend == "sqlite"
+    assert user_adapter.sqlite_path == shared_db_path.resolve()
+    assert admin_adapter.sqlite_path == shared_db_path.resolve()
+    assert user_adapter.fetch_usage_metrics() == admin_adapter.fetch_usage_metrics()
