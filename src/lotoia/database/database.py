@@ -1158,6 +1158,22 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         ):
             if column_name not in reconciliation_event_columns:
                 connection.exec_driver_sql(column_sql)
+        expansion_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(expansion_events)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE expansion_events ADD COLUMN lead_id INTEGER", "lead_id"),
+            ("ALTER TABLE expansion_events ADD COLUMN generation_event_id INTEGER", "generation_event_id"),
+            ("ALTER TABLE expansion_events ADD COLUMN origin TEXT NOT NULL DEFAULT 'expanded'", "origin"),
+            ("ALTER TABLE expansion_events ADD COLUMN expansion_type TEXT NOT NULL DEFAULT 'expanded'", "expansion_type"),
+            ("ALTER TABLE expansion_events ADD COLUMN expansion_size INTEGER NOT NULL DEFAULT 0", "expansion_size"),
+            ("ALTER TABLE expansion_events ADD COLUMN runtime_origin TEXT NOT NULL DEFAULT ''", "runtime_origin"),
+            ("ALTER TABLE expansion_events ADD COLUMN strategy_profile TEXT NOT NULL DEFAULT ''", "strategy_profile"),
+            ("ALTER TABLE expansion_events ADD COLUMN payload JSON NOT NULL DEFAULT '{}'", "payload"),
+        ):
+            if column_name not in expansion_event_columns:
+                connection.exec_driver_sql(column_sql)
         workflow_run_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(workflow_runs)").fetchall()
