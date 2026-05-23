@@ -90,6 +90,7 @@ from lotoia.analytics import (
     build_executive_analytical_report,
     build_institutional_analytical_timeline,
     build_institutional_historical_intelligence,
+    build_institutional_saas_certification,
     build_user_lifecycle_analytics,
     load_adaptive_institutional_insights,
     load_adaptive_institutional_intelligence,
@@ -2344,6 +2345,23 @@ def render_observability_page() -> None:
         )
         st.dataframe(
             _presentational_dataframe(pd.DataFrame([user_lifecycle.get("lifecycle", {})])),
+            hide_index=True,
+            use_container_width=True,
+        )
+        saas_certification = build_institutional_saas_certification()
+        st.subheader("Certificacao SaaS institucional")
+        cert_cols = st.columns(4)
+        cert_cols[0].metric("Status", saas_certification.get("status", "-"))
+        cert_cols[1].metric("Pilares", sum(1 for value in saas_certification.get("audits", {}).values() if value))
+        cert_cols[2].metric("Isolamento", saas_certification.get("readiness", {}).get("scientific_isolation", "-"))
+        cert_cols[3].metric("Eventos", saas_certification.get("summary", {}).get("event_volume", 0))
+        st.caption(
+            f"Shared persistence: {saas_certification.get('readiness', {}).get('shared_persistence', '-')}"
+            f" | Runtime: {saas_certification.get('readiness', {}).get('runtime_integrity', '-')}"
+            f" | Telemetria: {saas_certification.get('readiness', {}).get('distributed_telemetry', '-')}"
+        )
+        st.dataframe(
+            _presentational_dataframe(pd.DataFrame([saas_certification.get("summary", {})])),
             hide_index=True,
             use_container_width=True,
         )
