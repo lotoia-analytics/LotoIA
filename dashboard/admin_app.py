@@ -4916,6 +4916,7 @@ def render_ml_governance_page() -> None:
 
 
 def render_generation_page() -> None:
+    page_start = time.monotonic()
     with st.container(border=True):
         _runtime_audit("generate.page.start")
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
@@ -5010,7 +5011,11 @@ def render_generation_page() -> None:
             _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games), "generation_event_id": generation_event_id})
             _invalidate_runtime_cache()
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("generate_page_ms", page_duration_ms, {"page": "generation"})
+    _runtime_audit("generate.page.done", elapsed_ms=page_duration_ms)
 def render_check_page() -> None:
+    page_start = time.monotonic()
     with st.container(border=True):
         _runtime_audit("check.page.start")
         _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
@@ -5106,6 +5111,9 @@ def render_check_page() -> None:
                 duration_ms = (time.monotonic() - start_time) * 1000.0
                 _record_operational_log("check", "failed", duration_ms, {"contest_id": int(contest_id), "error": str(exc)})
                 st.warning(str(exc))
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("check_page_ms", page_duration_ms, {"page": "check"})
+    _runtime_audit("check.page.done", elapsed_ms=page_duration_ms)
 
 
 def _json_numbers(value: Any) -> list[int]:
@@ -5429,6 +5437,7 @@ def render_backtesting_page() -> BacktestResult | None:
 
 
 def render_workflows_page() -> None:
+    page_start = time.monotonic()
     with st.container(border=True):
         _section_header("Fluxos Operacionais", "OrquestraÃ§Ã£o governada de sincronizaÃ§Ã£o, reconciliaÃ§Ã£o, telemetria e fechamento diÃ¡rio.")
         workflow_dashboard = build_workflow_dashboard()
@@ -5471,6 +5480,9 @@ def render_workflows_page() -> None:
             )
         else:
             st.info("Nenhum workflow ativo no momento.")
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("workflows_page_ms", page_duration_ms, {"page": "workflows"})
+    _runtime_audit("workflows.page.done", elapsed_ms=page_duration_ms)
 
 
 def render_calibration_page() -> None:
@@ -5801,6 +5813,7 @@ def render_history_page() -> None:
 
 
 def render_reports_page() -> None:
+    page_start = time.monotonic()
     with st.container(border=True):
         _section_header("Analiticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
         _ensure_reports_dirs()
@@ -5855,6 +5868,9 @@ def render_reports_page() -> None:
         if json_files:
             selected_json = st.selectbox("JSON", json_files, format_func=lambda path: path.name)
             st.json(json.loads(selected_json.read_text(encoding="utf-8")))
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("reports_page_ms", page_duration_ms, {"page": "reports"})
+    _runtime_audit("reports.page.done", elapsed_ms=page_duration_ms)
 
 
 def _latest_generation_games() -> list[dict[str, Any]]:
@@ -5898,6 +5914,7 @@ def _run_governed_history_reset(scope: str, triggered_by: str, confirm_token: st
 
 
 def render_reports_engine_page() -> None:
+    page_start = time.monotonic()
     with st.container(border=True):
         from lotoia.public import OperationalLifecycleEngine
 
@@ -5997,6 +6014,9 @@ def render_reports_engine_page() -> None:
             )
             if lifecycle_analytics.notes:
                 st.write(" | ".join(lifecycle_analytics.notes))
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("reports_engine_page_ms", page_duration_ms, {"page": "reports_engine"})
+    _runtime_audit("reports_engine.page.done", elapsed_ms=page_duration_ms)
 
 
 def main() -> None:
