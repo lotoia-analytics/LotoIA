@@ -602,11 +602,14 @@ def render_reports_page(events: list[dict[str, Any]]) -> None:
 def main() -> None:
     st.set_page_config(page_title="LotoIA User", page_icon="L", layout="wide")
     adapter = resolve_institutional_adapter(USER_DB_PATH)
+    pooler_mode = bool(getattr(adapter, "uses_pooler", False))
+    database_source = str(getattr(adapter, "database_source", "sqlite_fallback"))
+    database_backend = str(getattr(adapter, "backend", "unknown"))
     st.sidebar.caption(
         "Banco institucional: "
         f"{'compartilhado' if adapter.is_shared_cloud_ready else 'local'} "
-        f"({adapter.backend} / {adapter.database_source} / "
-        f"{'pooler' if adapter.uses_pooler else 'direto'})"
+        f"({database_backend} / {database_source} / "
+        f"{'pooler' if pooler_mode else 'direto'})"
     )
     if adapter.is_shared_cloud_ready:
         bootstrap_institutional_database(USER_DB_PATH)

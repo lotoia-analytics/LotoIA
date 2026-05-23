@@ -716,10 +716,11 @@ def _render_shared_backend_status() -> None:
     adapter = resolve_institutional_adapter(DB_PATH)
     if adapter.is_shared_cloud_ready:
         st.sidebar.success("Banco compartilhado ativo")
-        connection_kind = "pooler" if adapter.uses_pooler else "conexao direta"
+        pooler_mode = bool(getattr(adapter, "uses_pooler", False))
+        connection_kind = "pooler" if pooler_mode else "conexao direta"
         st.sidebar.caption(
-            f"Backend: {adapter.backend} via {adapter.database_source} "
-            f"({connection_kind} / {adapter.database_host or 'host indefinido'})"
+            f"Backend: {getattr(adapter, 'backend', 'unknown')} via {getattr(adapter, 'database_source', 'sqlite_fallback')} "
+            f"({connection_kind} / {getattr(adapter, 'database_host', '') or 'host indefinido'})"
         )
     else:
         st.sidebar.warning("Banco compartilhado inativo")
