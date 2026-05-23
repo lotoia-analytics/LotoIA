@@ -3780,15 +3780,22 @@ def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, 
 
 
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _institutional_db_signature() -> int:
+def _file_signature(path: Path) -> tuple[int, int]:
     try:
-        return int(DB_PATH.stat().st_mtime_ns)
+        stat = path.stat()
+        return int(stat.st_mtime_ns), int(stat.st_size)
     except Exception:
-        return 0
+        return 0, 0
+
+
+def _institutional_db_signature() -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    wal_path = DB_PATH.with_name(f"{DB_PATH.name}-wal")
+    shm_path = DB_PATH.with_name(f"{DB_PATH.name}-shm")
+    return _file_signature(DB_PATH), _file_signature(wal_path), _file_signature(shm_path)
 
 
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _lead_history_dataframe(db_signature: int) -> pd.DataFrame:
+def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
     del db_signature
     try:
         leads_df = _read_sql_query_safe(
@@ -4690,7 +4697,7 @@ def _json_numbers(value: Any) -> list[int]:
 
 
 def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    with get_session(DEFAULT_DATABASE_PATH) as session:
+    with get_session(DB_PATH) as session:
         run = (
             session.query(ReconciliationRun)
             .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
@@ -4770,7 +4777,7 @@ def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
-    with get_session(DEFAULT_DATABASE_PATH) as session:
+    with get_session(DB_PATH) as session:
         generation_game = (
             session.query(GeneratedGame)
             .order_by(GeneratedGame.generation_event_id.desc(), GeneratedGame.game_index.desc())
@@ -4857,7 +4864,7 @@ def render_operational_reconciliation_page() -> None:
                 if summary is None:
                     latest_generation = _load_latest_generated_games()
                     if latest_generation is not None:
-                        engine = ReconciliationEngine(DEFAULT_DATABASE_PATH)
+                        engine = ReconciliationEngine(DB_PATH)
                         engine.reconcile_generation(
                             generation_event_id=latest_generation["generation_event_id"],
                             contest_id=int(latest_generation["target_contest"] or 0),
@@ -5353,7 +5360,7 @@ def render_reports_engine_page() -> None:
         _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
-        lifecycle_engine = OperationalLifecycleEngine(DEFAULT_DATABASE_PATH)
+        lifecycle_engine = OperationalLifecycleEngine(DB_PATH)
         lifecycle_dashboard = lifecycle_engine.build_dashboard()
         lifecycle_telemetry = lifecycle_engine.build_telemetry()
         lifecycle_analytics = lifecycle_engine.build_post_draw_analytics()

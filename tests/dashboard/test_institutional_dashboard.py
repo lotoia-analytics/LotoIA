@@ -168,6 +168,24 @@ def test_leitura_de_uso_is_available_in_analytic_mode() -> None:
     assert "leitura_uso" in admin_app.MODE_PAGES["analitico"]
 
 
+def test_institutional_db_signature_tracks_wal_sidecar(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "lotoia.db"
+    db_path.write_text("db", encoding="utf-8")
+    monkeypatch.setattr(admin_app, "DB_PATH", db_path)
+    seen_paths: list[str] = []
+
+    def _fake_file_signature(path: Path) -> tuple[int, int]:
+        seen_paths.append(path.name)
+        return (1, 1)
+
+    monkeypatch.setattr(admin_app, "_file_signature", _fake_file_signature)
+
+    signature = admin_app._institutional_db_signature()
+
+    assert len(signature) == 3
+    assert seen_paths == ["lotoia.db", "lotoia.db-wal", "lotoia.db-shm"]
+
+
 def test_operational_metrics_reads_ml_usage_events(monkeypatch) -> None:
     values = {
         "SELECT COUNT(*) FROM generation_events": 10,
