@@ -45,6 +45,7 @@ import shutil
 import time
 import tempfile
 import textwrap
+import contextvars
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -81,6 +82,8 @@ ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", 
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
+
+_PAGE_SQL_PROFILE: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("PAGE_SQL_PROFILE", default=None)
 
 
 class _LazyImportedAttr:
@@ -154,6 +157,41 @@ class _LazyImportedAttr:
 
     def __rtruediv__(self, other: Any) -> Any:
         return other / self._resolve()
+
+
+@contextmanager
+def _page_sql_profile_scope(page_name: str):
+    token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": page_name,
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
+    try:
+        yield
+    finally:
+        _PAGE_SQL_PROFILE.reset(token)
+
+
+def _page_sql_profile_mark(kind: str, duration_ms: float) -> None:
+    profile = _PAGE_SQL_PROFILE.get()
+    if profile is None:
+        return
+    profile["sql_count"] = int(profile.get("sql_count", 0)) + 1
+    profile["sql_total_ms"] = float(profile.get("sql_total_ms", 0.0)) + float(duration_ms)
+    key = f"{kind}_count"
+    profile[key] = int(profile.get(key, 0)) + 1
+
+
+def _page_sql_profile_snapshot() -> dict[str, Any] | None:
+    profile = _PAGE_SQL_PROFILE.get()
+    if profile is None:
+        return None
+    return dict(profile)
 
 
 build_walk_forward_splits = _LazyImportedAttr("lotoia.experiments.temporal_governance", "build_walk_forward_splits")
@@ -2301,6 +2339,7 @@ def _query_scalar(query: str, params: tuple[Any, ...] = (), default: Any = 0) ->
         row = _sqlite_execute_safe(query, params)
         value = row.fetchone()[0] if row else default
         duration_ms = (time.monotonic() - start_time) * 1000.0
+        _page_sql_profile_mark("sql_scalar", duration_ms)
         if duration_ms >= 50.0:
             _record_performance_metric("sql_scalar_ms", duration_ms, {"query": query[:80]})
         return default if value is None else value
@@ -2483,6 +2522,17 @@ def _cached_runtime_storytelling(db_signature: object) -> dict[str, Any]:
 
 
 def render_observability_page() -> None:
+    page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "observability",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
         stabilization = load_observational_stabilization_report()
@@ -3132,6 +3182,16 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(tables["logs"].head(50)), hide_index=True, use_container_width=True)
         st.subheader("Auditoria institucional")
         st.dataframe(_presentational_dataframe(tables["audit"].head(50)), hide_index=True, use_container_width=True)
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("observability_page_ms", page_duration_ms, {"page": "observability"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "observability"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "observability"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "observability"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "observability"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "observability"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
 
 
 def _report_timestamp() -> str:
@@ -3300,6 +3360,7 @@ def _sqlite_execute_safe(query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cu
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
         cursor = current_cursor.execute(query, params)
         duration_ms = (time.monotonic() - start_time) * 1000.0
+        _page_sql_profile_mark("sqlite_exec", duration_ms)
         if duration_ms >= 50.0:
             _record_performance_metric("sqlite_exec_ms", duration_ms, {"query": query[:80]})
         return cursor
@@ -3313,6 +3374,7 @@ def _sqlite_execute_safe(query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cu
                     connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
                     cursor = current_cursor.execute(query, params)
                     duration_ms = (time.monotonic() - start_time) * 1000.0
+                    _page_sql_profile_mark("sqlite_exec", duration_ms)
                     if duration_ms >= 50.0:
                         _record_performance_metric("sqlite_exec_ms", duration_ms, {"query": query[:80], "recovered": True})
                     return cursor
@@ -3871,6 +3933,7 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
             with get_session(DB_PATH) as session:
                 dataframe = pd.read_sql_query(query, session.connection(), params=params)
             duration_ms = (time.monotonic() - start_time) * 1000.0
+            _page_sql_profile_mark("sql_read", duration_ms)
             if duration_ms >= 50.0:
                 _record_performance_metric("sql_read_ms", duration_ms, {"backend": adapter.backend, "query": query[:80]})
             return dataframe
@@ -3887,6 +3950,7 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
             try:
                 dataframe = pd.read_sql_query(query, connection, params=params)
                 duration_ms = (time.monotonic() - start_time) * 1000.0
+                _page_sql_profile_mark("sql_read", duration_ms)
                 if duration_ms >= 50.0:
                     _record_performance_metric("sql_read_ms", duration_ms, {"backend": "sqlite", "query": query[:80]})
                 return dataframe
@@ -4560,6 +4624,17 @@ def _render_institutional_cockpit() -> None:
 
 
 def _render_lead_intelligence() -> None:
+    page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "lead_intelligence",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     try:
         db_signature = _institutional_db_signature()
         analytics = _lead_analytics(db_signature)
@@ -4613,6 +4688,16 @@ def _render_lead_intelligence() -> None:
             .reset_index(drop=True)
         )
         st.dataframe(_presentational_dataframe(ranking), hide_index=True, use_container_width=True)
+    page_duration_ms = (time.monotonic() - page_start) * 1000.0
+    _record_performance_metric("lead_intelligence_page_ms", page_duration_ms, {"page": "lead_intelligence"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "lead_intelligence"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "lead_intelligence"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "lead_intelligence"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "lead_intelligence"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "lead_intelligence"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
 
 
 def _sidebar_navigation() -> str:
@@ -4946,6 +5031,16 @@ def render_ml_governance_page() -> None:
 
 def render_generation_page() -> None:
     page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "generation",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         _runtime_audit("generate.page.start")
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
@@ -5042,9 +5137,27 @@ def render_generation_page() -> None:
             _invalidate_runtime_cache()
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("generate_page_ms", page_duration_ms, {"page": "generation"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "generation"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "generation"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "generation"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "generation"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "generation"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
     _runtime_audit("generate.page.done", elapsed_ms=page_duration_ms)
 def render_check_page() -> None:
     page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "check",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         _runtime_audit("check.page.start")
         _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
@@ -5142,6 +5255,14 @@ def render_check_page() -> None:
                 st.warning(str(exc))
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("check_page_ms", page_duration_ms, {"page": "check"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "check"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "check"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "check"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "check"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "check"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
     _runtime_audit("check.page.done", elapsed_ms=page_duration_ms)
 
 
@@ -5467,6 +5588,16 @@ def render_backtesting_page() -> BacktestResult | None:
 
 def render_workflows_page() -> None:
     page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "workflows",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         _section_header("Fluxos Operacionais", "OrquestraÃ§Ã£o governada de sincronizaÃ§Ã£o, reconciliaÃ§Ã£o, telemetria e fechamento diÃ¡rio.")
         workflow_dashboard = build_workflow_dashboard()
@@ -5511,6 +5642,14 @@ def render_workflows_page() -> None:
             st.info("Nenhum workflow ativo no momento.")
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("workflows_page_ms", page_duration_ms, {"page": "workflows"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "workflows"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "workflows"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "workflows"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "workflows"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "workflows"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
     _runtime_audit("workflows.page.done", elapsed_ms=page_duration_ms)
 
 
@@ -5843,6 +5982,16 @@ def render_history_page() -> None:
 
 def render_reports_page() -> None:
     page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "reports",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         _section_header("Analiticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
         _ensure_reports_dirs()
@@ -5899,6 +6048,14 @@ def render_reports_page() -> None:
             st.json(json.loads(selected_json.read_text(encoding="utf-8")))
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("reports_page_ms", page_duration_ms, {"page": "reports"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "reports"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "reports"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "reports"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "reports"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "reports"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
     _runtime_audit("reports.page.done", elapsed_ms=page_duration_ms)
 
 
@@ -5944,6 +6101,16 @@ def _run_governed_history_reset(scope: str, triggered_by: str, confirm_token: st
 
 def render_reports_engine_page() -> None:
     page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "reports_engine",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
     with st.container(border=True):
         from lotoia.public import OperationalLifecycleEngine
 
@@ -6045,6 +6212,14 @@ def render_reports_engine_page() -> None:
                 st.write(" | ".join(lifecycle_analytics.notes))
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("reports_engine_page_ms", page_duration_ms, {"page": "reports_engine"})
+    profile = _page_sql_profile_snapshot()
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "reports_engine"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "reports_engine"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "reports_engine"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "reports_engine"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "reports_engine"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
     _runtime_audit("reports_engine.page.done", elapsed_ms=page_duration_ms)
 
 
