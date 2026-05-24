@@ -6613,10 +6613,10 @@ def render_reports_page() -> None:
                 _record_operational_log("report", "success", duration_ms, {"output_dir": str(report.output_dir)})
                 _record_performance_metric("report_ms", duration_ms, {"output_dir": str(report.output_dir)})
                 _record_audit_trail("report_export", artifact_path=str(report.json_path), context={"output_dir": str(report.output_dir)})
-            st.success(f"RelatÃ³rio gerado em {report.output_dir}")
+            st.success(f"Relatório gerado em {report.output_dir}")
         files = sorted(path for path in REPORTS_DIR.glob("*") if path.is_file())
         if not files:
-            st.info("Nenhum relatÃ³rio gerado ainda.")
+            st.info("Nenhum relatório gerado ainda.")
             return
         st.subheader("Arquivos disponíveis")
         for path in files:
