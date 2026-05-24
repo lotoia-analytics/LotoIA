@@ -10,6 +10,7 @@ except ImportError:
 
 LABELS = getattr(_labels_module, "LABELS", {})
 PAGES = getattr(_labels_module, "PAGES", [])
+PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
 
 MODE_PAGES = {
     "operacional": [
@@ -1416,9 +1417,9 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "live_analytical_intelligence": "Inteligencia viva",
             "operational_orchestration": "Orquestracao operacional",
             "adaptive_intelligence": "Inteligencia adaptativa",
-            "historical_intelligence": "Historico analitico",
-            "analytics_intelligence": "Analise inteligente",
-            "observability": "Monitoramento",
+            "historical_intelligence": "Memoria analitica",
+            "analytics_intelligence": "Analise estrutural",
+            "observability": "Observabilidade cientifica",
         },
         "flow_name": {
             "generation": "Geracao",
@@ -1427,7 +1428,7 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "backtest": "Backtest",
             "calibration": "Calibracao",
             "report": "Relatorio",
-            "observability": "Monitoramento",
+            "observability": "Observabilidade cientifica",
         },
         "entity_type": {
             "generation_event": "Evento de geracao",
@@ -1462,9 +1463,9 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "replay::chronological": "Replay cronologico",
         },
         "source": {
-            "observability": "Monitoramento",
+            "observability": "Observabilidade cientifica",
             "adaptive_intelligence": "Inteligencia adaptativa",
-            "historical_intelligence": "Historico analitico",
+            "historical_intelligence": "Memoria analitica",
             "executive_dashboard": "Visao geral",
             "operational_monitoring": "Monitoramento operacional",
             "operational_orchestration": "Orquestracao operacional",
@@ -1500,7 +1501,7 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "runtime": "Runtime",
             "generation": "Geracao",
             "check": "Conferencia",
-            "observability": "Monitoramento",
+            "observability": "Observabilidade cientifica",
         },
         "name": {
             "runtime_latency_ms": "Latencia runtime ms",
@@ -2362,9 +2363,13 @@ def _query_scalar(query: str, params: tuple[Any, ...] = (), default: Any = 0) ->
         return default
 
 
+def _operational_metrics_cache_token() -> tuple[int, int]:
+    return (id(_query_scalar), id(_snapshot_count))
+
+
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _operational_metrics(db_signature: object) -> dict[str, Any]:
-    del db_signature
+def _operational_metrics_cached(db_signature: object, cache_token: tuple[int, int]) -> dict[str, Any]:
+    del cache_token
     generation_total = int(_query_scalar("SELECT COUNT(*) FROM generation_events"))
     generation_days = int(_query_scalar("SELECT COUNT(DISTINCT DATE(created_at)) FROM generation_events"))
     check_total = int(_query_scalar("SELECT COUNT(*) FROM check_events"))
@@ -2392,16 +2397,21 @@ def _operational_metrics(db_signature: object) -> dict[str, Any]:
     }
 
 
+def _operational_metrics(db_signature: object | None = None) -> dict[str, Any]:
+    resolved_db_signature = _institutional_db_signature() if db_signature is None else db_signature
+    return _operational_metrics_cached(resolved_db_signature, _operational_metrics_cache_token())
+
+
 def _source_of_truth_map() -> pd.DataFrame:
     rows = [
         {"component": "Dashboard.generation_count", "source": "generation_events", "notes": "live COUNT(*)"},
         {"component": "Dashboard.check_count", "source": "check_events", "notes": "live COUNT(*)"},
         {"component": "Dashboard.total_games", "source": "generated_games", "notes": "live COUNT(*) generated_games rows"},
         {"component": "Dashboard.last_contest", "source": "check_events -> imported_contests -> historical CSV", "notes": "MAX(contest_id) with imported contest fallback"},
-        {"component": "Historico analitico", "source": "generation_events + check_events + historical draws", "notes": "no stale snapshot dependency"},
-        {"component": "Analise inteligente", "source": "generation_events + generated_games + imported_contests", "notes": "live tables and draw history"},
-        {"component": "Auditoria tecnica", "source": "ml_runtime_state + operational_logs", "notes": "latest runtime state"},
-        {"component": "Monitoramento", "source": "operational_logs + audit_trail", "notes": "live runtime signals"},
+        {"component": "Memoria analitica", "source": "generation_events + check_events + historical draws", "notes": "no stale snapshot dependency"},
+        {"component": "Analise estrutural", "source": "generation_events + generated_games + imported_contests", "notes": "live tables and draw history"},
+        {"component": "Governanca cientifica", "source": "ml_runtime_state + operational_logs", "notes": "latest runtime state"},
+        {"component": "Observabilidade cientifica", "source": "operational_logs + audit_trail", "notes": "live runtime signals"},
         {"component": "PerformanceTracking", "source": "operational_logs", "notes": "durations per event"},
         {"component": "CloudMonitoring", "source": "operational_logs + sqlite file", "notes": "runtime health and size"},
     ]
@@ -2737,7 +2747,7 @@ def render_observability_page() -> None:
     # Define once and treat it as the page's backend fingerprint for the whole render.
     PAGE_DB_SIGNATURE = _institutional_db_signature()
     with st.container(border=True):
-        _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
+        _section_header("Observabilidade Científica", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
         stabilization = _cached_observational_stabilization_report(PAGE_DB_SIGNATURE)
         if not stabilization:
             stabilization = persist_observational_stabilization_report()
@@ -3221,7 +3231,7 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_alert_contracts()), hide_index=True, use_container_width=True)
         st.subheader("Fonte de verdade")
         st.dataframe(_presentational_dataframe(_source_of_truth_map()), hide_index=True, use_container_width=True)
-        st.subheader("Monitoramento cloud")
+        st.subheader("Observabilidade cloud")
         st.dataframe(_presentational_dataframe(_cloud_failure_table()), hide_index=True, use_container_width=True)
         st.subheader("Rastro de geracao")
         trace_table = _generation_pipeline_trace_table()
@@ -3327,7 +3337,7 @@ def render_observability_page() -> None:
                 "adaptive_insights": adaptive_insights_report.get("report", adaptive_report.get("adaptive_insights", {})),
             }
         )
-        st.subheader("Historico analitico")
+        st.subheader("Memória Analítica")
         st.dataframe(_institutional_historical_table(), hide_index=True, use_container_width=True)
         st.subheader("Snapshot analitico")
         st.dataframe(_institutional_analytics_snapshot_table(), hide_index=True, use_container_width=True)
@@ -3355,7 +3365,7 @@ def render_observability_page() -> None:
             )
         st.subheader("Insights")
         st.dataframe(_presentational_dataframe(_analytical_intelligence_insights()), hide_index=True, use_container_width=True)
-        st.subheader("Comparativos analiticos")
+        st.subheader("Comparativos científicos")
         st.dataframe(_presentational_dataframe(_analytical_intelligence_comparisons()), hide_index=True, use_container_width=True)
         st.subheader("Linha do tempo")
         st.dataframe(_presentational_dataframe(_analytical_intelligence_timeline()), hide_index=True, use_container_width=True)
@@ -4566,11 +4576,15 @@ def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
     return dataframe
 
 
+def _lead_analytics_cache_token() -> tuple[int, int]:
+    return (id(_lead_history_dataframe), id(_safe_count))
+
+
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
-def _lead_analytics(db_signature: object) -> dict[str, Any]:
-    del db_signature
+def _lead_analytics_cached(db_signature: object, cache_token: tuple[int, int]) -> dict[str, Any]:
+    del cache_token
     try:
-        history = _lead_history_dataframe(_institutional_db_signature())
+        history = _lead_history_dataframe(db_signature)
     except Exception:
         history = pd.DataFrame()
     if history.empty:
@@ -4591,6 +4605,11 @@ def _lead_analytics(db_signature: object) -> dict[str, Any]:
         "volume_generations": volume_generations,
         "volume_checks": volume_checks,
     }
+
+
+def _lead_analytics(db_signature: object | None = None) -> dict[str, Any]:
+    resolved_db_signature = _institutional_db_signature() if db_signature is None else db_signature
+    return _lead_analytics_cached(resolved_db_signature, _lead_analytics_cache_token())
 
 
 def _empty_backtest_result(
@@ -4848,7 +4867,7 @@ def _render_lead_intelligence() -> None:
         analytics = _lead_analytics(db_signature)
         history = _lead_history_dataframe(db_signature)
     except Exception as exc:
-        st.warning("Leitura de uso indisponivel no momento. O runtime permaneceu ativo.")
+        st.warning("Leitura Institucional indisponivel no momento. O runtime permaneceu ativo.")
         st.caption(f"Contexto tÃ©cnico: {exc}")
         analytics = {
             "total_leads": 0,
@@ -4875,7 +4894,7 @@ def _render_lead_intelligence() -> None:
             ]
         )
     st.markdown("---")
-    _section_header("Leitura de uso", "Uso institucional por usuario, recorrencia e padrao de uso.")
+    _section_header("Leitura Institucional", "Uso institucional por usuario, recorrencia e padrao de uso.")
     a, b, c, d, e = st.columns(5)
     a.metric("Total leads", analytics["total_leads"])
     b.metric("Leads recorrentes", analytics["recurring_leads"])
@@ -4975,11 +4994,25 @@ def _sidebar_navigation() -> str:
     section_titles = {"operacional": "Opera\u00e7\u00f5es", "analitico": "Anal\u00edticos"}
     st.sidebar.markdown(f"**{section_titles[selected_mode]}**")
 
-    for page in available_pages:
-        label = LABELS.get(page, page)
-        button_type = "primary" if page == current_page else "secondary"
-        if st.sidebar.button(label, key=f"_admin_sidebar_btn_{selected_mode}_{page}", use_container_width=True, type=button_type):
-            _activate(page)
+    sections = PAGE_GROUPS.get(selected_mode, ())
+    if sections:
+        for section in sections:
+            st.sidebar.markdown(f"### {section['title']}")
+            if section.get("description"):
+                st.sidebar.caption(section["description"])
+            for page in section.get("pages", ()):
+                if page not in available_pages:
+                    continue
+                label = LABELS.get(page, page)
+                button_type = "primary" if page == current_page else "secondary"
+                if st.sidebar.button(label, key=f"_admin_sidebar_btn_{selected_mode}_{page}", use_container_width=True, type=button_type):
+                    _activate(page)
+    else:
+        for page in available_pages:
+            label = LABELS.get(page, page)
+            button_type = "primary" if page == current_page else "secondary"
+            if st.sidebar.button(label, key=f"_admin_sidebar_btn_{selected_mode}_{page}", use_container_width=True, type=button_type):
+                _activate(page)
 
     return st.session_state.get("_admin_sidebar_page", current_page)
 
@@ -5023,7 +5056,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
 
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Historico Analitico", "Leitura historica para combinacoes, recorrencia e proximidade estatistica.")
+        _section_header("Memória Analítica", "Leitura historica para combinacoes, recorrencia e proximidade estatistica.")
         if st.session_state.get("last_generation_games"):
             games = st.session_state["last_generation_games"]
         else:
@@ -5096,7 +5129,7 @@ def render_historical_intelligence_page(draws) -> None:
 def render_analytics_intelligence_page() -> None:
     with st.container(border=True):
         start_time = time.monotonic()
-        _section_header("Analise Inteligente", "Leitura analitica com graficos, heatmaps e padroes historicos.")
+        _section_header("Análise Estrutural", "Leitura analitica com graficos, heatmaps e padroes historicos.")
         c1, c2, c3, c4 = st.columns(4)
         analytics_history = _analytics_base_tables()["history"]
         c1.metric("Concursos", len(analytics_history))
@@ -5125,7 +5158,7 @@ def render_analytics_intelligence_page() -> None:
 
 def render_ml_intelligence_page() -> None:
     with st.container(border=True):
-        _section_header("Aprendizado Estatistico", "Score ML com validacao temporal e reranking interpretavel.")
+        _section_header("Ranking ML", "Score ML com validacao temporal e reranking interpretavel.")
         training = _ml_training_result()
         model = training["model"]
         validation = training["validation_metrics"]
@@ -5184,7 +5217,7 @@ def render_ml_intelligence_page() -> None:
 
 def render_ml_governance_page() -> None:
     with st.container(border=True):
-        _section_header("Auditoria Tecnica", "Governanca de modelos, experimentos, versoes e snapshots.")
+        _section_header("Governança Científica", "Governanca de modelos, experimentos, versoes e snapshots.")
         training = _ml_training_result()
         payload = training["payload"]
         feature_rows = training["feature_rows"]
@@ -5901,7 +5934,7 @@ def render_calibration_page() -> None:
 
 def render_benchmark_page() -> None:
     with st.container(border=True):
-        _section_header("Comparativos Operacionais", "Benchmark cientifico para leitura comparativa entre estrategias.")
+        _section_header("Comparativos", "Benchmark cientifico para leitura comparativa entre estrategias.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5, key="bench_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="bench_games")
@@ -5934,7 +5967,7 @@ def render_benchmark_page() -> None:
 def render_expansion_experimental_page() -> None:
     with st.container(border=True):
         _section_header(
-            "Jogo Expandido",
+            "Expansivo",
             "Validacao operacional interna do motor combinatorio, governada por perfil de acesso.",
         )
         st.warning("Modos avançados aumentam significativamente o processamento operacional.")
@@ -6081,7 +6114,7 @@ def render_expansion_experimental_page() -> None:
         )
         pdf_path = _save_pdf_report(
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "pdf"),
-            "LotoIA - Jogo Expandido",
+            "LotoIA - Expansivo",
             [
                 f"Dezenas selecionadas: {_format_numbers(result['selected_numbers'])}",
                 f"Apostas internas: {result['total_combinations']}",
@@ -6104,7 +6137,7 @@ def render_expansion_experimental_page() -> None:
 
 def render_history_page() -> None:
     with st.container(border=True):
-        _section_header("Testes Operacionais", "Historico operacional, eventos persistidos e analises atuais.")
+        _section_header("Jogos Passados", "Historico operacional, eventos persistidos e analises atuais.")
         runs = _cached_runs()
         benchmark_runs = runs["benchmark"]
         backtest_runs = runs["backtest"]
@@ -6203,7 +6236,7 @@ def render_reports_page() -> None:
         }
     )
     with st.container(border=True):
-        _section_header("Analiticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
+        _section_header("Analíticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
         _ensure_reports_dirs()
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="rep_contests")
@@ -6322,7 +6355,7 @@ def render_reports_engine_page() -> None:
         }
     )
     with st.container(border=True):
-        _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
+        _section_header("Relatórios Científicos", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
         db_signature = _institutional_db_signature()

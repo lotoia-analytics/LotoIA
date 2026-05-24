@@ -50,8 +50,10 @@ def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
 
 def test_shared_dashboard_registry_contains_expansion_page() -> None:
     assert "jogo_expandido_experimental" in dashboard_labels.PAGES
-    assert dashboard_labels.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
+    assert dashboard_labels.LABELS["jogo_expandido_experimental"] == "Expansivo"
     assert "workflows" in dashboard_labels.PAGES
-    assert dashboard_labels.LABELS["workflows"] == "Fluxo Operacional"
+    assert dashboard_labels.LABELS["workflows"] == "Fluxos Institucionais"
     assert admin_app.PAGES is dashboard_labels.PAGES
     assert admin_app.LABELS is dashboard_labels.LABELS
+    assert admin_app.PAGE_GROUPS is dashboard_labels.PAGE_GROUPS
+    assert dashboard_labels.PAGE_GROUPS["analitico"][0]["title"] == "Validação temporal"

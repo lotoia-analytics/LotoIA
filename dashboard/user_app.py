@@ -513,7 +513,7 @@ def render_painel_page(events: list[dict[str, Any]]) -> None:
     st.dataframe(pd.DataFrame(summary_rows), hide_index=True, use_container_width=True)
     st.subheader("Atalhos")
     shortcut_cols = st.columns(4)
-    labels = ["Gerar Jogos", "Conferir Concurso", "Historico", "Relatorios"]
+    labels = ["Gerar Jogos", "Conferir Jogos", "Jogos Passados", "Analíticas Persistidas"]
     for col, label in zip(shortcut_cols, labels, strict=False):
         with col:
             st.button(label, disabled=True, use_container_width=True)

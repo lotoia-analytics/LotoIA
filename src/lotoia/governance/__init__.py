@@ -106,6 +106,18 @@ from .scientific_governance import (
     validate_scientific_runtime_contract,
     validate_scientific_score_ml_contract,
 )
+from .scientific_nuclei_registry import (
+    CORE_NUCLEI,
+    SCIENTIFIC_MODE_SECTIONS,
+    SCIENTIFIC_NUCLEI_REGISTRY_STATUS,
+    SCIENTIFIC_NUCLEI_REGISTRY_VERSION,
+    ScientificNucleiRegistry,
+    ScientificNucleiValidationReport,
+    ScientificNucleus,
+    ScientificNucleusSection,
+    build_scientific_nuclei_registry,
+    validate_scientific_nuclei_registry,
+)
 
 __all__ = [
     "AdaptiveChangeControl",
@@ -162,6 +174,14 @@ __all__ = [
     "ScientificObservabilitySnapshot",
     "ScientificRuntimeContract",
     "ScientificScoreMLContract",
+    "CORE_NUCLEI",
+    "SCIENTIFIC_MODE_SECTIONS",
+    "SCIENTIFIC_NUCLEI_REGISTRY_STATUS",
+    "SCIENTIFIC_NUCLEI_REGISTRY_VERSION",
+    "ScientificNucleiRegistry",
+    "ScientificNucleiValidationReport",
+    "ScientificNucleus",
+    "ScientificNucleusSection",
     "build_anti_leakage_policy",
     "build_scientific_benchmark_registry",
     "build_scientific_dataset_registry",
@@ -181,6 +201,8 @@ __all__ = [
     "validate_scientific_observability_snapshot",
     "validate_scientific_runtime_contract",
     "validate_scientific_score_ml_contract",
+    "build_scientific_nuclei_registry",
+    "validate_scientific_nuclei_registry",
     "SignalApprovalDecision",
     "SignalApprovalWorkflow",
     "build_canonical_temporal_history_registry",

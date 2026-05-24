@@ -34,6 +34,7 @@ def render_executive_dashboard(
         render_analytical_cards(analytical_summary)
         render_structural_health(analytical_summary, historical_summary)
 
-    with st.expander("Detalhes", expanded=False):
+    with st.container(border=True):
+        st.markdown("#### Detalhes")
         render_executive_summary(executive_report, historical_summary, snapshot_summary)
         render_institutional_timeline(timeline)

@@ -1,62 +1,14 @@
-PAGES = [
-    "geracao_jogos",
-    "conferir_jogos",
-    "reconciliacao_operacional",
-    "estatisticas_historicas",
-    "historical_intelligence",
-    "analytics_intelligence",
-    "ml_intelligence",
-    "jogo_expandido_experimental",
-    "backtesting",
-    "calibracao_experimental",
-    "benchmark_cientifico",
-    "historico_experimental",
-    "relatorios",
-    "ml_governance",
-    "observability",
-    "leitura_uso",
-    "workflows",
-    "reports_engine",
-]
+from __future__ import annotations
 
-PAGE_AUDIT_MATRIX = {
-    "geracao_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
-    "conferir_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
-    "reconciliacao_operacional": {"category": "operacional", "usage": "alto", "action": "permanecer"},
-    "jogo_expandido_experimental": {"category": "operacional", "usage": "medio", "action": "recolher"},
-    "estatisticas_historicas": {"category": "analitica", "usage": "medio", "action": "recolher"},
-    "historical_intelligence": {"category": "analitica", "usage": "medio", "action": "recolher"},
-    "analytics_intelligence": {"category": "analitica", "usage": "medio", "action": "recolher"},
-    "ml_intelligence": {"category": "analitica", "usage": "baixo", "action": "recolher"},
-    "backtesting": {"category": "analitica", "usage": "baixo", "action": "ocultar"},
-    "calibracao_experimental": {"category": "analitica", "usage": "baixo", "action": "ocultar"},
-    "benchmark_cientifico": {"category": "governanca", "usage": "baixo", "action": "ocultar"},
-    "historico_experimental": {"category": "operacional", "usage": "baixo", "action": "ocultar"},
-    "relatorios": {"category": "analitica", "usage": "medio", "action": "recolher"},
-    "ml_governance": {"category": "governanca", "usage": "medio", "action": "recolher"},
-    "observability": {"category": "governanca", "usage": "medio", "action": "recolher"},
-    "leitura_uso": {"category": "governanca", "usage": "medio", "action": "recolher"},
-    "workflows": {"category": "operacional", "usage": "alto", "action": "permanecer"},
-    "reports_engine": {"category": "governanca", "usage": "baixo", "action": "ocultar"},
+from lotoia.governance import build_scientific_nuclei_registry
+
+_REGISTRY = build_scientific_nuclei_registry()
+
+PAGES = list(_REGISTRY.page_ids)
+LABELS = dict(_REGISTRY.page_labels)
+PAGE_AUDIT_MATRIX = dict(_REGISTRY.page_audit_matrix)
+PAGE_GROUPS = {
+    mode: [section.as_dict() for section in sections]
+    for mode, sections in _REGISTRY.mode_sections.items()
 }
 
-LABELS = {
-    "geracao_jogos": "Gerar Jogos",
-    "conferir_jogos": "Conferir Jogos",
-    "reconciliacao_operacional": "Simular Resultado",
-    "estatisticas_historicas": "Jogos Passados",
-    "historical_intelligence": "Historico",
-    "analytics_intelligence": "Análise Inteligente",
-    "ml_intelligence": "Aprendizado Estatístico",
-    "jogo_expandido_experimental": "Jogo Expandido",
-    "backtesting": "Testar Estratégias",
-    "calibracao_experimental": "Estratégia Operacional",
-    "benchmark_cientifico": "Comparativos Operacionais",
-    "historico_experimental": "Historico Operacional",
-    "relatorios": "Analiticas Persistidas",
-    "ml_governance": "Auditoria Técnica",
-    "observability": "Monitoramento",
-    "leitura_uso": "Leitura de Uso",
-    "workflows": "Fluxo Operacional",
-    "reports_engine": "Relatorios Tecnicos",
-}

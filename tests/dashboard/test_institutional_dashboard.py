@@ -21,6 +21,7 @@ if "matplotlib" not in sys.modules:
     sys.modules["matplotlib.pyplot"] = pyplot
 
 import dashboard.admin_app as admin_app
+import dashboard.public_app as public_app
 from lotoia.models.draw import Draw
 
 
@@ -92,7 +93,7 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda label, **kwargs: label == "Jogo Expandido")
+    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda label, **kwargs: label == "Expansivo")
 
     def _radio(label, options, **kwargs):
         if label == "Modo":
@@ -106,7 +107,7 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
     page = admin_app._sidebar_navigation()
 
     assert page == "jogo_expandido_experimental"
-    assert admin_app.LABELS["jogo_expandido_experimental"] == "Jogo Expandido"
+    assert admin_app.LABELS["jogo_expandido_experimental"] == "Expansivo"
 
 
 def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
@@ -127,15 +128,15 @@ def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
 
 
 def test_sidebar_labels_are_more_explicit_for_operational_inventory() -> None:
-    assert admin_app.LABELS["analytics_intelligence"] == "Análise Inteligente"
-    assert admin_app.LABELS["ml_intelligence"] == "Aprendizado Estatístico"
-    assert admin_app.LABELS["backtesting"] == "Testar Estratégias"
+    assert admin_app.LABELS["analytics_intelligence"] == "Análise Estrutural"
+    assert admin_app.LABELS["ml_intelligence"] == "Ranking ML"
+    assert admin_app.LABELS["backtesting"] == "Testar Estratégia"
     assert admin_app.LABELS["calibracao_experimental"] == "Estratégia Operacional"
-    assert admin_app.LABELS["benchmark_cientifico"] == "Comparativos Operacionais"
-    assert admin_app.LABELS["historico_experimental"] == "Historico Operacional"
-    assert admin_app.LABELS["ml_governance"] == "Auditoria Técnica"
-    assert admin_app.LABELS["workflows"] == "Fluxo Operacional"
-    assert admin_app.LABELS["reports_engine"] == "Relatorios Tecnicos"
+    assert admin_app.LABELS["benchmark_cientifico"] == "Comparativos"
+    assert admin_app.LABELS["historico_experimental"] == "Histórico Operacional"
+    assert admin_app.LABELS["ml_governance"] == "Governança Científica"
+    assert admin_app.LABELS["workflows"] == "Fluxos Institucionais"
+    assert admin_app.LABELS["reports_engine"] == "Relatórios Científicos"
 
 
 def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
@@ -161,7 +162,7 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
 def test_sidebar_labels_separate_past_games_from_check_games() -> None:
     assert admin_app.LABELS["estatisticas_historicas"] == "Jogos Passados"
     assert admin_app.LABELS["conferir_jogos"] == "Conferir Jogos"
-    assert admin_app.LABELS["leitura_uso"] == "Leitura de Uso"
+    assert admin_app.LABELS["leitura_uso"] == "Leitura Institucional"
 
 
 def test_leitura_de_uso_is_available_in_analytic_mode() -> None:
@@ -817,20 +818,9 @@ def test_dashboard_uses_wide_layout(monkeypatch) -> None:
     def _set_page_config(*args, **kwargs):
         calls.append(kwargs)
 
-    _patch_streamlit(monkeypatch)
-    monkeypatch.setattr(admin_app.st, "set_page_config", _set_page_config)
-    monkeypatch.setattr(admin_app, "_load_draws", lambda: [])
-    monkeypatch.setattr(admin_app, "_sqlite_health_check", lambda: True)
-    monkeypatch.setattr(admin_app, "_sidebar_navigation", lambda: "geracao_jogos")
-    monkeypatch.setattr(admin_app, "_render_kpi_cards", lambda: None)
-    monkeypatch.setattr(admin_app, "_render_lead_intelligence", lambda: None)
-    monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app, "_record_performance_metric", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app, "_render_institutional_cockpit", lambda: None)
-    monkeypatch.setattr(admin_app.st, "expander", lambda *args, **kwargs: _dummy_context())
-    monkeypatch.setattr(admin_app, "render_generation_page", lambda: None)
+    monkeypatch.setattr(public_app.st, "set_page_config", _set_page_config)
 
-    admin_app.main()
+    public_app._configure_public_page()
 
     assert any(call.get("layout") == "wide" for call in calls)
 

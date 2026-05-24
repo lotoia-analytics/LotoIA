@@ -29,7 +29,8 @@ def render_operational_orchestration(orchestration_report: Mapping[str, Any]) ->
         col3.metric("Memória", summary.get("memory_depth", 0))
         col4.metric("Linha do tempo", summary.get("timeline_depth", 0))
 
-        with st.expander("Detalhes", expanded=False):
+        with st.container(border=True):
+            st.markdown("#### Detalhes")
             st.info(
                 f"{decision_context.get('headline', '-')}"
                 f" | {decision_context.get('recommendation', '-')}"
