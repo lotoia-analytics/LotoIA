@@ -2857,7 +2857,7 @@ def render_observability_page() -> None:
     # Define once and treat it as the page's backend fingerprint for the whole render.
     PAGE_DB_SIGNATURE = _institutional_db_signature()
     with st.container(border=True):
-        _section_header("Observabilidade Científica", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
+        _section_header("Observabilidade Científica", "Logs institucionais, saúde cloud, auditoria e eventos operacionais recentes.")
         stabilization = _cached_observational_stabilization_report(PAGE_DB_SIGNATURE)
         if not stabilization:
             stabilization = persist_observational_stabilization_report()
@@ -4082,7 +4082,7 @@ def _hits_by_contest_chart(result: BacktestResult) -> go.Figure:
     contests = [item["contest"] for item in result.contest_results]
     figure = go.Figure()
     figure.add_trace(go.Scatter(x=contests, y=[item["best_hits"] for item in result.contest_results], mode="lines+markers", name="Melhor jogo"))
-    figure.add_trace(go.Scatter(x=contests, y=[item["average_hits"] for item in result.contest_results], mode="lines+markers", name="MÃ©dia"))
+    figure.add_trace(go.Scatter(x=contests, y=[item["average_hits"] for item in result.contest_results], mode="lines+markers", name="Média"))
     figure.update_layout(title="Acertos por concurso", xaxis_title="Concurso", yaxis_title="Acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
@@ -4090,7 +4090,7 @@ def _hits_by_contest_chart(result: BacktestResult) -> go.Figure:
 def _configuration_chart(calibration_result: dict[str, Any]) -> go.Figure:
     evaluations = calibration_result.get("evaluations", [])
     figure = go.Figure(data=[go.Bar(x=[evaluation["configuration"] for evaluation in evaluations], y=[evaluation["average_hits"] for evaluation in evaluations], marker_color="#1f5f8b")])
-    figure.update_layout(title="MÃ©dia de acertos por configuraÃ§Ã£o", xaxis_title="ConfiguraÃ§Ã£o", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Média de acertos por configuração", xaxis_title="Configuração", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -4098,13 +4098,13 @@ def _benchmark_summary_dataframe(result: BenchmarkResult) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "estrategia": strategy,
-                "media_acertos": metrics["average_hits"],
-                "desvio_padrao": metrics["standard_deviation"],
-                "correlacao": metrics["final_score_hit_correlation"],
-                "total_jogos": metrics["total_games"],
-                "melhor": metrics["stability"]["max_hits"],
-                "pior": metrics["stability"]["min_hits"],
+                "Estratégia": strategy,
+                "Média de acertos": metrics["average_hits"],
+                "Desvio padrão": metrics["standard_deviation"],
+                "Correlação": metrics["final_score_hit_correlation"],
+                "Total de jogos": metrics["total_games"],
+                "Melhor": metrics["stability"]["max_hits"],
+                "Pior": metrics["stability"]["min_hits"],
             }
             for strategy, metrics in result.strategies.items()
         ]
@@ -4115,11 +4115,11 @@ def _benchmark_comparison_dataframe(result: BenchmarkResult) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "comparacao": name,
-                "diferenca_media": metrics["average_hit_difference"],
-                "taxa_superioridade": metrics["superiority_rate"],
-                "ranking_medio_lotoia": metrics["lotoia_average_rank"],
-                "ranking_medio_competidor": metrics["competitor_average_rank"],
+                "Comparação": name,
+                "Diferença média": metrics["average_hit_difference"],
+                "Taxa de superioridade": metrics["superiority_rate"],
+                "Ranking médio LotoIA": metrics["lotoia_average_rank"],
+                "Ranking médio competidor": metrics["competitor_average_rank"],
             }
             for name, metrics in result.comparisons.items()
         ]
@@ -4128,8 +4128,8 @@ def _benchmark_comparison_dataframe(result: BenchmarkResult) -> pd.DataFrame:
 
 def _benchmark_average_chart(result: BenchmarkResult) -> go.Figure:
     dataframe = _benchmark_summary_dataframe(result)
-    figure = go.Figure(data=[go.Bar(x=dataframe["estrategia"], y=dataframe["media_acertos"], marker_color=["#173b63", "#1f5f8b", "#9bbad1"])])
-    figure.update_layout(title="MÃ©dia de acertos por estratÃ©gia", xaxis_title="EstratÃ©gia", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure = go.Figure(data=[go.Bar(x=dataframe["Estratégia"], y=dataframe["Média de acertos"], marker_color=["#173b63", "#1f5f8b", "#9bbad1"])])
+    figure.update_layout(title="Média de acertos por estratégia", xaxis_title="Estratégia", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -4145,7 +4145,7 @@ def _benchmark_evolution_chart(result: BenchmarkResult) -> go.Figure:
                 name=strategy,
             )
         )
-    figure.update_layout(title="EvoluÃ§Ã£o histÃ³rica do benchmark", xaxis_title="Concurso", yaxis_title="MÃ©dia de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
+    figure.update_layout(title="Evolução histórica do benchmark", xaxis_title="Concurso", yaxis_title="Média de acertos", margin={"l": 20, "r": 20, "t": 50, "b": 20})
     return figure
 
 
@@ -4962,8 +4962,8 @@ def _metric_row(result: BacktestResult) -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Concursos", result.contests_analyzed)
     col2.metric("Jogos avaliados", result.total_games)
-    col3.metric("MÃ©dia de acertos", f"{result.average_hits:.2f}")
-    col4.metric("CorrelaÃ§Ã£o", f"{result.final_score_hit_correlation:.3f}")
+    col3.metric("Média de acertos", f"{result.average_hits:.2f}")
+    col4.metric("Correlação", f"{result.final_score_hit_correlation:.3f}")
 
 
 def _section_header(title: str, subtitle: str) -> None:
@@ -5408,7 +5408,7 @@ def render_analytics_intelligence_page() -> None:
         analytics_history = _analytics_base_tables()["history"]
         c1.metric("Concursos", len(analytics_history))
         c2.metric("PadrÃµes", len(_recurrence_table()))
-        c3.metric("MÃ©dia soma", f"{analytics_history['soma'].mean():.2f}" if not analytics_history.empty else "0.00")
+        c3.metric("Média soma", f"{analytics_history['soma'].mean():.2f}" if not analytics_history.empty else "0.00")
         c4.metric("RecorrÃªncia mÃ©dia", f"{analytics_history['repeticao'].mean():.2f}" if not analytics_history.empty else "0.00")
 
         st.plotly_chart(_frequency_chart(), use_container_width=True)
@@ -6305,7 +6305,7 @@ def render_benchmark_page() -> None:
             st.dataframe(summary, hide_index=True, use_container_width=True)
             st.subheader("Comparações estatísticas")
             st.dataframe(comparisons, hide_index=True, use_container_width=True)
-            st.info(f"Relatorios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
+            st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
 
 
 def render_expansion_experimental_page() -> None:
