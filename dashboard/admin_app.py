@@ -5984,7 +5984,7 @@ def render_operational_reconciliation_page() -> None:
     with st.container(border=True):
         _section_header(
             "Simular Resultado",
-            "Painel executivo de reconciliaÃ§Ã£o operacional com baseline manual, jogos gerados e jogos expandidos.",
+            "Painel executivo de reconciliação operacional com baseline manual, jogos gerados e jogos expandidos.",
         )
         loaded_notice = st.session_state.pop("admin_latest_official_result_notice", None)
         if loaded_notice:
@@ -6045,7 +6045,7 @@ def render_operational_reconciliation_page() -> None:
                         )
                         summary, rows = _load_operational_reconciliation_rows(baseline_numbers)
                 if summary is None:
-                    st.warning("Nenhuma reconciliaÃ§Ã£o operacional encontrada ainda.")
+                    st.warning("Nenhuma reconciliação operacional encontrada ainda.")
                     return
                 _record_operational_log(
                     "operational_reconciliation",
