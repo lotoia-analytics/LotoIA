@@ -123,6 +123,12 @@ def test_create_database_schema(tmp_path: Path) -> None:
     assert {"ix_check_events_created_at", "ix_check_events_lead_id"} <= check_indexes
 
 
+def test_get_engine_reuses_engine_for_same_database_url(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+
+    assert get_engine(db_path) is get_engine(db_path)
+
+
 def test_create_database_migrates_lead_runtime_columns(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy_lotoia.db"
     with sqlite3.connect(db_path) as connection:
