@@ -5271,6 +5271,12 @@ def render_historical_intelligence_page(draws) -> None:
         _section_header("Memória Analítica", "Leitura histórica para combinações, recorrência e proximidade estatística.")
         transparency = _analytical_memory_transparency_context()
         st.caption("Fluxo institucional: " + transparency["flow"])
+        badge_titles = {
+            "preview": "Prévia",
+            "persisted": "Persistência",
+            "published": "Publicação",
+            "consolidated": "Consolidação",
+        }
         badge_cols = st.columns(4)
         for column, key, tone in zip(
             badge_cols,
@@ -5280,12 +5286,7 @@ def render_historical_intelligence_page(draws) -> None:
         ):
             with column:
                 _render_transparency_badge(
-                    {
-                        "preview": "Prévia",
-                        "persisted": "Persistência",
-                        "published": "Publicação",
-                        "consolidated": "Consolidação",
-                    }.get(key, key.replace("_", " ").title()),
+                    badge_titles.get(key, key.replace("_", " ").title()),
                     transparency[key]["state"],
                     f"{transparency[key]['detail']} | fonte={transparency[key]['source']} | snapshot={transparency[key]['snapshot']}",
                     tone,
