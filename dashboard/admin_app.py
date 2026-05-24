@@ -4947,6 +4947,25 @@ def _section_header(title: str, subtitle: str) -> None:
     )
 
 
+def _operational_context_warning(message: str) -> None:
+    st.markdown(
+        f"""
+        <div style="
+            background:#fef2f2;
+            border:1px solid #fecaca;
+            color:#b91c1c;
+            border-radius:8px;
+            padding:0.75rem 1rem;
+            margin:0.25rem 0 0.75rem 0;
+            font-weight:600;
+        ">
+            {message}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_kpi_cards() -> None:
     snapshot = _institutional_runtime_snapshot(_institutional_db_signature())
     gen_count = int(snapshot.get("generation_events", 0))
@@ -5646,7 +5665,7 @@ def render_check_page() -> None:
             render_generation_context(executive_report, historical_report, observability_report)
             _runtime_audit("check.context.end")
         else:
-            st.error("Contexto institucional recolhido para manter a conferencia leve.")
+            _operational_context_warning("Contexto institucional recolhido para manter a conferencia leve.")
         _runtime_audit("check.form.ready")
         load_result_col1, load_result_col2 = st.columns([1, 3])
         if load_result_col1.button("Buscar Último Resultado", use_container_width=True):
@@ -5960,7 +5979,7 @@ def render_operational_reconciliation_page() -> None:
             )
             action_preview_col.code(latest_official_result["numbers_text"], language="text")
         else:
-            st.error("Contexto institucional recolhido para manter a reconciliação leve.")
+            _operational_context_warning("Contexto institucional recolhido para manter a reconciliação leve.")
         if "admin_operational_reconciliation_baseline_text" not in st.session_state:
             st.session_state["admin_operational_reconciliation_baseline_text"] = (
                 latest_official_result["numbers_text"] if latest_official_result else "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15"
