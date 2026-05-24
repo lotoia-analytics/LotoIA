@@ -2149,7 +2149,7 @@ def _marginal_recovery_gain_table() -> pd.DataFrame:
 
 
 def _analytical_intelligence_summary() -> pd.DataFrame:
-    report = build_analytical_intelligence()
+    report = _cached_analytical_intelligence(_institutional_db_signature())
     summary = report.get("analytical_summary", {})
     rows = [
         {"metric": "structural_health", "value": summary.get("structural_health", 0.0), "interpretation": summary.get("interpretation", ""), "confidence": summary.get("confidence", "")},
@@ -2163,19 +2163,19 @@ def _analytical_intelligence_summary() -> pd.DataFrame:
 
 
 def _analytical_intelligence_insights() -> pd.DataFrame:
-    report = build_analytical_intelligence()
+    report = _cached_analytical_intelligence(_institutional_db_signature())
     rows = report.get("insights", [])
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["metric", "value", "interpretation", "confidence"])
 
 
 def _analytical_intelligence_comparisons() -> pd.DataFrame:
-    report = build_analytical_intelligence()
+    report = _cached_analytical_intelligence(_institutional_db_signature())
     rows = report.get("comparisons", [])
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["label", "baseline", "compared", "delta", "interpretation"])
 
 
 def _analytical_intelligence_timeline() -> pd.DataFrame:
-    report = build_analytical_intelligence()
+    report = _cached_analytical_intelligence(_institutional_db_signature())
     rows = report.get("comparisons", [])
     summary = report.get("analytical_summary", {})
     if not rows:
@@ -2207,7 +2207,7 @@ def _analytical_intelligence_timeline() -> pd.DataFrame:
 
 
 def _institutional_analytical_timeline() -> pd.DataFrame:
-    report = load_institutional_analytical_timeline()
+    report = _cached_institutional_analytical_timeline(_institutional_db_signature())
     if not report:
         report = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
     rows = report.get("timeline", [])
@@ -2249,7 +2249,7 @@ def _institutional_analytical_timeline() -> pd.DataFrame:
 
 
 def _executive_analytical_summary() -> pd.DataFrame:
-    report = build_executive_analytical_report()
+    report = _cached_executive_analytical_report(_institutional_db_signature())
     rows = [
         {"field": "status", "value": report.get("status", "")},
         {"field": "headline", "value": report.get("headline", "")},
@@ -2264,7 +2264,7 @@ def _executive_analytical_summary() -> pd.DataFrame:
 
 
 def _analytical_insight_cards() -> dict[str, Any]:
-    report = build_executive_analytical_report()
+    report = _cached_executive_analytical_report(_institutional_db_signature())
     return {
         "status": report.get("status", ""),
         "headline": report.get("headline", ""),
@@ -2289,7 +2289,7 @@ def _executive_header_block() -> None:
 
 
 def _institutional_historical_table() -> pd.DataFrame:
-    report = build_institutional_historical_intelligence()
+    report = _cached_institutional_historical_intelligence(_institutional_db_signature())
     summary = report.get("summary", {})
     timeline = report.get("timeline", [])
     rows = [
@@ -2312,8 +2312,9 @@ def _institutional_analytics_snapshot_table() -> pd.DataFrame:
     payload = load_institutional_analytics_snapshot(snapshot_path)
     if not payload:
         payload = publish_institutional_analytics(report_dir=REPORTS_DIR / "analytics")
-    executive = payload.get("executive_report", build_executive_analytical_report())
-    historical = payload.get("historical_report", build_institutional_historical_intelligence())
+    db_signature = _institutional_db_signature()
+    executive = payload.get("executive_report", _cached_executive_analytical_report(db_signature))
+    historical = payload.get("historical_report", _cached_institutional_historical_intelligence(db_signature))
     rows = [
         {"metric": "executive_status", "value": executive.get("status", "")},
         {"metric": "executive_headline", "value": executive.get("headline", "")},
@@ -2521,6 +2522,129 @@ def _cached_runtime_storytelling(db_signature: object) -> dict[str, Any]:
     return build_runtime_storytelling()
 
 
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_analytical_intelligence(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_analytical_intelligence()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_executive_analytical_report(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_executive_analytical_report()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_institutional_historical_intelligence(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_institutional_historical_intelligence()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_institutional_analytics_snapshot(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return load_institutional_analytics_snapshot()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_observational_stabilization_report(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return load_observational_stabilization_report()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_institutional_analytical_timeline(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return load_institutional_analytical_timeline()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_intelligent_operational_orchestration(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return load_intelligent_operational_orchestration()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_live_operational_memory(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_live_operational_memory()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_real_time_governance(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_real_time_governance()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_experience(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_operational_experience()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_live_institutional_presence(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_live_institutional_presence()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_executive_assistance(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_executive_assistance()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_contextual_recommendations(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_contextual_recommendations()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_explainable_analytics(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_explainable_analytics()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_guidance(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_operational_guidance()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_executive_summary(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    return build_executive_summary()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_lifecycle_dashboard(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    from lotoia.public import OperationalLifecycleEngine
+
+    return OperationalLifecycleEngine(DB_PATH).build_dashboard()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_lifecycle_telemetry(db_signature: object) -> dict[str, Any]:
+    del db_signature
+    from lotoia.public import OperationalLifecycleEngine
+
+    return OperationalLifecycleEngine(DB_PATH).build_telemetry()
+
+
+@st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_operational_lifecycle_post_draw_analytics(
+    db_signature: object,
+    contest_id: int | None,
+) -> dict[str, Any] | None:
+    del db_signature
+    from lotoia.public import OperationalLifecycleEngine
+
+    return OperationalLifecycleEngine(DB_PATH).build_post_draw_analytics(contest_id=contest_id)
+
+
 def render_observability_page() -> None:
     page_start = time.monotonic()
     page_profile_token = _PAGE_SQL_PROFILE.set(
@@ -2535,7 +2659,7 @@ def render_observability_page() -> None:
     )
     with st.container(border=True):
         _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
-        stabilization = load_observational_stabilization_report()
+        stabilization = _cached_observational_stabilization_report(_institutional_db_signature())
         if not stabilization:
             stabilization = persist_observational_stabilization_report()
         stabilization_report = stabilization.get("report", {})
@@ -2689,7 +2813,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        live_memory = build_live_operational_memory()
+        live_memory = _cached_live_operational_memory(db_signature)
         st.subheader("Memoria operacional viva")
         memory_cols = st.columns(4)
         memory_cols[0].metric("Estado", live_memory.get("summary", {}).get("memory_status", "-"))
@@ -2703,7 +2827,7 @@ def render_observability_page() -> None:
         memory_story = live_memory.get("story", {})
         if memory_story.get("narrative"):
             st.write(" | ".join(memory_story.get("narrative", [])))
-        governance = build_real_time_governance()
+        governance = _cached_real_time_governance(db_signature)
         st.subheader("Governanca em tempo real")
         gov_cols = st.columns(4)
         gov_cols[0].metric("Status", governance.get("status", "-"))
@@ -2720,7 +2844,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        operational_experience = build_operational_experience()
+        operational_experience = _cached_operational_experience(db_signature)
         st.subheader("Experiencia operacional")
         exp_cols = st.columns(4)
         exp_cols[0].metric("Estado", operational_experience.get("state", "-"))
@@ -2728,7 +2852,7 @@ def render_observability_page() -> None:
         exp_cols[2].metric("Governanca", operational_experience.get("summary", {}).get("health_status", "-"))
         exp_cols[3].metric("Telemetria", operational_experience.get("summary", {}).get("telemetry_status", "-"))
         st.caption(" | ".join(operational_experience.get("narrative", [])))
-        live_presence = build_live_institutional_presence()
+        live_presence = _cached_live_institutional_presence(db_signature)
         st.subheader("Presenca institucional viva")
         presence_cols = st.columns(4)
         presence_cols[0].metric("Presenca", live_presence.get("presence", "-"))
@@ -2736,7 +2860,7 @@ def render_observability_page() -> None:
         presence_cols[2].metric("Memoria", live_presence.get("summary", {}).get("memory_status", "-"))
         presence_cols[3].metric("Governanca", live_presence.get("summary", {}).get("health_status", "-"))
         st.caption(" | ".join(live_presence.get("narrative", [])))
-        assistance = build_executive_assistance()
+        assistance = _cached_executive_assistance(db_signature)
         st.subheader("Assistencia executiva")
         assist_cols = st.columns(4)
         assist_cols[0].metric("Estado", assistance.get("state", "-"))
@@ -2752,7 +2876,7 @@ def render_observability_page() -> None:
             )
         if assistance.get("guidance"):
             st.write(" | ".join(assistance.get("guidance", [])))
-        recommendations = build_contextual_recommendations()
+        recommendations = _cached_contextual_recommendations(db_signature)
         st.subheader("Recomendacoes contextuais")
         rec_cols = st.columns(4)
         rec_cols[0].metric("Estado", recommendations.get("state", "-"))
@@ -2766,7 +2890,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        explainable = build_explainable_analytics()
+        explainable = _cached_explainable_analytics(db_signature)
         st.subheader("Analitica explicavel")
         explain_cols = st.columns(4)
         explain_cols[0].metric("Estado", explainable.get("state", "-"))
@@ -2780,7 +2904,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        guidance = build_operational_guidance()
+        guidance = _cached_operational_guidance(db_signature)
         st.subheader("Orientacao operacional")
         guidance_cols = st.columns(4)
         guidance_cols[0].metric("Estado", guidance.get("state", "-"))
@@ -2794,7 +2918,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        executive_summary = build_executive_summary()
+        executive_summary = _cached_executive_summary(db_signature)
         st.subheader("Resumo executivo")
         summary_cols = st.columns(4)
         summary_cols[0].metric("Estado", executive_summary.get("state", "-"))
@@ -3077,11 +3201,12 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_experiment_01_table()), hide_index=True, use_container_width=True)
         st.subheader("Ganho marginal")
         st.dataframe(_presentational_dataframe(_marginal_recovery_gain_table()), hide_index=True, use_container_width=True)
-        ai_report = build_analytical_intelligence()
+        db_signature = _institutional_db_signature()
+        ai_report = _cached_analytical_intelligence(db_signature)
         ai_summary = ai_report.get("analytical_summary", {})
         ai_insights = ai_report.get("insights", [])
         ai_comparisons = ai_report.get("comparisons", [])
-        executive_report = build_executive_analytical_report()
+        executive_report = _cached_executive_analytical_report(db_signature)
         ai_top_insights = {item.get("metric"): item for item in ai_insights if isinstance(item, dict)}
         col_ai_1, col_ai_2, col_ai_3, col_ai_4 = st.columns(4)
         col_ai_1.metric("SaÃºde estrutural", f"{float(ai_summary.get('structural_health', 0.0)):.2f}")
@@ -3101,10 +3226,10 @@ def render_observability_page() -> None:
         render_live_analytical_intelligence(
             ai_report,
             executive_report,
-            build_institutional_historical_intelligence(),
-            load_institutional_analytics_snapshot(),
-            _institutional_analytical_timeline(),
-            load_observational_stabilization_report(),
+            _cached_institutional_historical_intelligence(db_signature),
+            _cached_institutional_analytics_snapshot(db_signature),
+            _cached_institutional_analytical_timeline(db_signature),
+            _cached_observational_stabilization_report(db_signature),
         )
         adaptive_report = load_adaptive_institutional_intelligence()
         if not adaptive_report:
@@ -4591,15 +4716,16 @@ def _render_institutional_cockpit() -> None:
         key="_admin_show_institutional_cockpit",
     )
     if show_institutional_cockpit:
-        ai_report = build_analytical_intelligence()
-        executive_report = build_executive_analytical_report()
-        historical_report = build_institutional_historical_intelligence()
-        snapshot = load_institutional_analytics_snapshot()
-        observability_report = load_observational_stabilization_report()
-        timeline = load_institutional_analytical_timeline()
+        db_signature = _institutional_db_signature()
+        ai_report = _cached_analytical_intelligence(db_signature)
+        executive_report = _cached_executive_analytical_report(db_signature)
+        historical_report = _cached_institutional_historical_intelligence(db_signature)
+        snapshot = _cached_institutional_analytics_snapshot(db_signature)
+        observability_report = _cached_observational_stabilization_report(db_signature)
+        timeline = _cached_institutional_analytical_timeline(db_signature)
         if not timeline:
             timeline = ensure_institutional_analytical_timeline(report_dir=REPORTS_DIR / "analytics")
-        orchestration_report = load_intelligent_operational_orchestration()
+        orchestration_report = _cached_intelligent_operational_orchestration(db_signature)
         if not orchestration_report:
             orchestration_report = persist_intelligent_operational_orchestration(report_dir=REPORTS_DIR / "orchestration")
 
@@ -4850,7 +4976,7 @@ def render_historical_intelligence_page(draws) -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-            historical_report = build_institutional_historical_intelligence()
+            historical_report = _cached_institutional_historical_intelligence(_institutional_db_signature())
             historical_summary = historical_report.get("summary", {}) if isinstance(historical_report, dict) else {}
             st.caption(
                 f"Jogos expandidos no relatÃ³rio histÃ³rico: {historical_summary.get('expanded_event_count', 0)}"
@@ -5052,9 +5178,10 @@ def render_generation_page() -> None:
         )
         if show_generation_context:
             _runtime_audit("generate.context.start")
-            executive_report = build_executive_analytical_report()
-            historical_report = build_institutional_historical_intelligence()
-            observability_report = load_observational_stabilization_report()
+            db_signature = _institutional_db_signature()
+            executive_report = _cached_executive_analytical_report(db_signature)
+            historical_report = _cached_institutional_historical_intelligence(db_signature)
+            observability_report = _cached_observational_stabilization_report(db_signature)
             render_generation_context(executive_report, historical_report, observability_report)
             _runtime_audit("generate.context.end")
         else:
@@ -5169,9 +5296,10 @@ def render_check_page() -> None:
         )
         if show_check_context:
             _runtime_audit("check.context.start")
-            executive_report = build_executive_analytical_report()
-            historical_report = build_institutional_historical_intelligence()
-            observability_report = load_observational_stabilization_report()
+            db_signature = _institutional_db_signature()
+            executive_report = _cached_executive_analytical_report(db_signature)
+            historical_report = _cached_institutional_historical_intelligence(db_signature)
+            observability_report = _cached_observational_stabilization_report(db_signature)
             render_generation_context(executive_report, historical_report, observability_report)
             _runtime_audit("check.context.end")
         else:
@@ -6112,15 +6240,17 @@ def render_reports_engine_page() -> None:
         }
     )
     with st.container(border=True):
-        from lotoia.public import OperationalLifecycleEngine
-
         _section_header("Relatorios Gerais", "Exportacoes institucionais, relatorios recentes e snapshots operacionais.")
         latest_games = _latest_generation_games()
         latest_check = _latest_check_context()
-        lifecycle_engine = OperationalLifecycleEngine(DB_PATH)
-        lifecycle_dashboard = lifecycle_engine.build_dashboard()
-        lifecycle_telemetry = lifecycle_engine.build_telemetry()
-        lifecycle_analytics = lifecycle_engine.build_post_draw_analytics()
+        db_signature = _institutional_db_signature()
+        lifecycle_dashboard = _cached_operational_lifecycle_dashboard(db_signature)
+        lifecycle_telemetry = _cached_operational_lifecycle_telemetry(db_signature)
+        contest_id = latest_check.get("contest_id")
+        lifecycle_analytics = _cached_operational_lifecycle_post_draw_analytics(
+            db_signature,
+            int(contest_id) if isinstance(contest_id, int) else None,
+        )
         col1, col2, col3 = st.columns(3)
         col1.metric("Snapshots", len(list(REPORTS_SNAPSHOTS_DIR.glob("*.json"))))
         col2.metric("Ãšltima geraÃ§Ã£o", "sim" if latest_games else "nÃ£o")
