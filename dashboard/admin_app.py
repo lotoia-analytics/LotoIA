@@ -533,7 +533,7 @@ def _sqlite_execute_bootstrap(statement: str, *, table_name: str | None = None) 
     if connection is None or current_cursor is None:
         SQLITE_BOOTSTRAP_DIAGNOSTICS.append(
             {
-                "issue": "runtime indisponÃ­vel",
+                "issue": "runtime indisponível",
                 "table": table_name or "",
                 "sql": statement.strip().replace("\n", " "),
                 "error": "No SQLite connection available",
@@ -3351,7 +3351,7 @@ def render_observability_page() -> None:
             st.dataframe(_presentational_dataframe(trace_table), hide_index=True, use_container_width=True)
             latest_trace = trace_table.iloc[0].to_dict()
             st.caption(
-                "Ãšltimo estÃ¡gio: "
+                "Último estágio: "
                 f"{latest_trace.get('stage', '-')}"
                 f" | rarity_std={latest_trace.get('rarity_std', 0.0)}"
                 f" | recurrence_density={latest_trace.get('recurrence_density', 0.0)}"
@@ -6767,30 +6767,30 @@ def render_reports_engine_page() -> None:
                 if snapshot_bytes is not None:
                     st.download_button("Baixar snapshot", data=snapshot_bytes, file_name=path.name, key=f"snap_{path.name}")
         else:
-            st.info("Nenhum snapshot institucional disponÃ­vel ainda.")
+            st.info("Nenhum snapshot institucional disponível ainda.")
 
-        st.subheader("Dashboard operacional pÃ³s-sorteio")
+        st.subheader("Dashboard operacional pós-sorteio")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
         dash_col1.metric("Execuções", lifecycle_dashboard.total_runs)
         dash_col2.metric("Jogos reconciliados", lifecycle_dashboard.total_games)
         dash_col3.metric("Premiados", lifecycle_dashboard.prize_count)
         dash_col4.metric("Melhor acerto", lifecycle_dashboard.best_hits)
         st.caption(
-            f"Ãšltimo concurso reconciliado: {lifecycle_dashboard.latest_contest or '-'} | "
+            f"Último concurso reconciliado: {lifecycle_dashboard.latest_contest or '-'} | "
             f"Status: {lifecycle_dashboard.status}"
         )
         st.caption(
-            f"Telemetria: sync={lifecycle_telemetry['sync_runs']} | geraÃ§Ãµes={lifecycle_telemetry['generated_games']} | "
-            f"reconciliaÃ§Ãµes={lifecycle_telemetry['reconciliation_runs']} | fechamento={lifecycle_telemetry['operational_status']}"
+            f"Telemetria: sync={lifecycle_telemetry['sync_runs']} | gerações={lifecycle_telemetry['generated_games']} | "
+            f"reconciliações={lifecycle_telemetry['reconciliation_runs']} | fechamento={lifecycle_telemetry['operational_status']}"
         )
         if lifecycle_dashboard.post_draw_notes:
             st.write(" | ".join(lifecycle_dashboard.post_draw_notes))
         if lifecycle_analytics is not None:
-            st.subheader("Analiticas pos-sorteio")
+            st.subheader("Analíticas pós-sorteio")
             analytics_col1, analytics_col2, analytics_col3, analytics_col4 = st.columns(4)
-            analytics_col1.metric("Acertos medios", f"{lifecycle_analytics.average_hits:.2f}")
-            analytics_col2.metric("Retencao", f"{lifecycle_analytics.retention_rate:.0%}")
-            analytics_col3.metric("PrÃªmios", lifecycle_analytics.prize_count)
+            analytics_col1.metric("Acertos médios", f"{lifecycle_analytics.average_hits:.2f}")
+            analytics_col2.metric("Retenção", f"{lifecycle_analytics.retention_rate:.0%}")
+            analytics_col3.metric("Prêmios", lifecycle_analytics.prize_count)
             analytics_col4.metric("Melhor acerto", max((int(key) for key in lifecycle_analytics.hit_distribution.keys()), default=0))
             st.caption(
                 f"Concursos: {lifecycle_analytics.contest_id} | "
