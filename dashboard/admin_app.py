@@ -1333,6 +1333,10 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "lead": "Lead",
             "event_type": "Evento",
             "count": "Quantidade",
+            "number": "Número",
+            "frequency": "Frequência",
+            "delta": "Delta",
+            "relative_strength": "Força relativa",
             "avg_duration_ms": "Tempo medio ms",
             "failures": "Falhas",
             "metric": "Metrica",
@@ -4015,6 +4019,31 @@ def _stats_table(stats: dict[str, dict[str, Any]], key_name: str, limit: int = 2
     return pd.DataFrame(rows)
 
 
+def _presentational_stats_table(dataframe: pd.DataFrame, *, key_name: str) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+    column_map = {
+        "number": "Número",
+        "frequency": "Frequência",
+        "count": "Quantidade",
+        "delta": "Delta",
+        "relative_strength": "Força relativa",
+    }
+    if key_name == "duo":
+        column_map.update({"duo": "Dupla", "rank": "Ranking"})
+    elif key_name == "terno":
+        column_map.update({"terno": "Terno", "rank": "Ranking"})
+    elif key_name == "quadra":
+        column_map.update({"quadra": "Quadra", "rank": "Ranking"})
+    elif key_name == "quina":
+        column_map.update({"quina": "Quina", "rank": "Ranking"})
+    elif key_name == "sena":
+        column_map.update({"sena": "Sena", "rank": "Ranking"})
+    elif key_name == "dezena":
+        column_map.update({"dezena": "Dezena", "rank": "Ranking"})
+    return dataframe.rename(columns=column_map)
+
+
 def _all_backtest_games(result: BacktestResult) -> list[dict[str, Any]]:
     return [game for contest_result in result.contest_results for game in contest_result["games"]]
 
@@ -6078,7 +6107,7 @@ def render_operational_reconciliation_page() -> None:
 
 def render_statistics_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Resultados Passados", "Base histÃ³rica, frequÃªncias, atrasos e leituras estruturais do acervo.")
+        _section_header("Resultados Passados", "Base histórica, frequências, atrasos e leituras estruturais do acervo.")
         official_last_contest = _safe_last_contest()
         summary = summarize_draws(draws)
         hot_cold = calculate_hot_cold_numbers(draws, window=20)
@@ -6090,20 +6119,24 @@ def render_statistics_page(draws) -> None:
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Dezenas quentes")
-            st.dataframe(pd.DataFrame(hot_cold["hot"]), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(pd.DataFrame(hot_cold["hot"])), hide_index=True, use_container_width=True)
         with col2:
             st.subheader("Dezenas frias")
-            st.dataframe(pd.DataFrame(hot_cold["cold"]), hide_index=True, use_container_width=True)
+            st.dataframe(_presentational_dataframe(pd.DataFrame(hot_cold["cold"])), hide_index=True, use_container_width=True)
         frequency = sorted(summary["frequencies"].items(), key=lambda item: item[1], reverse=True)
-        st.plotly_chart(go.Figure(data=[go.Bar(x=[number for number, _ in frequency], y=[count for _, count in frequency], marker_color="#1f5f8b")]).update_layout(title="FrequÃªncia histÃ³rica", xaxis_title="Dezena", yaxis_title="Quantidade"), use_container_width=True)
-        tabs = st.tabs(["FrequÃªncia", "Atrasos", "Duos", "Ternos", "Quadras", "Quinas", "Senas"])
+        st.plotly_chart(go.Figure(data=[go.Bar(x=[number for number, _ in frequency], y=[count for _, count in frequency], marker_color="#1f5f8b")]).update_layout(title="Frequência histórica", xaxis_title="Dezena", yaxis_title="Quantidade"), use_container_width=True)
+        tabs = st.tabs(["Frequência", "Atrasos", "Duos", "Ternos", "Quadras", "Quinas", "Senas"])
         tables = [("dezena", stats["frequency"]), ("dezena", stats["delay"]), ("duo", stats["duos"]), ("terno", stats["ternos"]), ("quadra", stats["quadras"]), ("quina", stats["quinas"]), ("sena", stats["senas"])]
         for tab, (key_name, table_stats) in zip(tabs, tables, strict=True):
             with tab:
                 if table_stats:
-                    st.dataframe(_stats_table(table_stats, key_name), hide_index=True, use_container_width=True)
+                    st.dataframe(
+                        _presentational_stats_table(_stats_table(table_stats, key_name), key_name=key_name),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
                 else:
-                    st.info("Arquivo estatÃ­stico ainda nÃ£o encontrado.")
+                    st.info("Arquivo estatístico ainda não encontrado.")
 
 
 def render_backtesting_page() -> BacktestResult | None:

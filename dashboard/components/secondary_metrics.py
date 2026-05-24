@@ -17,25 +17,25 @@ def render_secondary_operational_metrics(
 ) -> None:
     render_institutional_design_system()
     with st.container(border=True):
-        st.markdown("#### Operacao secundaria")
+        st.markdown("#### Operação secundária")
         st.markdown(
             """
             <div class="lotoia-secondary-shell lotoia-flow-panel" style="margin-bottom: 0.45rem;">
-                <div class="lotoia-executive-kicker">Operacao secundaria</div>
-                <div class="lotoia-executive-copy">Contadores operacionais mantidos em area compacta, sem competir com a visao geral.</div>
+                <div class="lotoia-executive-kicker">Operação secundária</div>
+                <div class="lotoia-executive-copy">Contadores operacionais mantidos em área compacta, sem competir com a visão geral.</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
         cards = [
-            (col1, "Geracoes", gen_count, "Eventos persistidos em generation_events"),
-            (col2, "Conferencias", check_count, "Eventos persistidos em check_events"),
-            (col3, "ML", ml_count, "Geracoes com ML habilitado"),
-            (col4, "Ultimo concurso", last_contest, "Maior concurso conferido"),
+            (col1, "Gerações", gen_count, "Eventos persistidos em generation_events"),
+            (col2, "Conferências", check_count, "Eventos persistidos em check_events"),
+            (col3, "ML", ml_count, "Gerações com ML habilitado"),
+            (col4, "Último concurso", last_contest, "Maior concurso conferido"),
             (col5, "Jogos totais", total_games, "Total operacional registrado"),
-            (col6, "Expansoes", expansion_count, "Eventos persistidos em expansion_events"),
-            (col7, "ReconciliaÃ§Ãµes", reconciliation_count, "Eventos persistidos em reconciliation_events"),
+            (col6, "Expansões", expansion_count, "Eventos persistidos em expansion_events"),
+            (col7, "Reconciliações", reconciliation_count, "Eventos persistidos em reconciliation_events"),
             (col8, "Workflows", workflow_count, "Eventos persistidos em workflow_events"),
         ]
         markers = ["◦", "◦", "◦", "◦", "◦", "◦", "◦", "◦"]
