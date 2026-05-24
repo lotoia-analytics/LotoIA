@@ -14,6 +14,21 @@ from .operational_policy_guard import (
     PolicySeverity,
     PolicyViolation,
 )
+from .temporal_history_registry import (
+    CANONICAL_TEMPORAL_HISTORY_CATEGORIES,
+    TEMPORAL_HISTORY_AUDIT,
+    TEMPORAL_HISTORY_BENCHMARK,
+    TEMPORAL_HISTORY_CONFERENCE,
+    TEMPORAL_HISTORY_EXPANSION,
+    TEMPORAL_HISTORY_ML,
+    TEMPORAL_HISTORY_OPERATIONS,
+    TEMPORAL_HISTORY_SNAPSHOT,
+    TEMPORAL_HISTORY_VALIDATION,
+    TemporalHistoryArtifact,
+    TemporalHistoryRegistry,
+    TemporalHistoryValidationReport,
+    build_canonical_temporal_history_registry,
+)
 from .signal_approval_workflow import ApprovalStatus, SignalApprovalDecision, SignalApprovalWorkflow
 
 __all__ = [
@@ -30,6 +45,15 @@ __all__ = [
     "ArchitectureAuditRecord",
     "AuditRegistry",
     "ChangeControlAction",
+    "CANONICAL_TEMPORAL_HISTORY_CATEGORIES",
+    "TEMPORAL_HISTORY_AUDIT",
+    "TEMPORAL_HISTORY_BENCHMARK",
+    "TEMPORAL_HISTORY_CONFERENCE",
+    "TEMPORAL_HISTORY_EXPANSION",
+    "TEMPORAL_HISTORY_ML",
+    "TEMPORAL_HISTORY_OPERATIONS",
+    "TEMPORAL_HISTORY_SNAPSHOT",
+    "TEMPORAL_HISTORY_VALIDATION",
     "GovernanceRiskAnalysis",
     "GovernanceRiskResult",
     "OperationalPolicyConfig",
@@ -37,6 +61,10 @@ __all__ = [
     "PolicyGuardResult",
     "PolicySeverity",
     "PolicyViolation",
+    "TemporalHistoryArtifact",
+    "TemporalHistoryRegistry",
+    "TemporalHistoryValidationReport",
     "SignalApprovalDecision",
     "SignalApprovalWorkflow",
+    "build_canonical_temporal_history_registry",
 ]
