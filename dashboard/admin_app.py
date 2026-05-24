@@ -5432,7 +5432,7 @@ def render_analytics_intelligence_page() -> None:
 
 def render_ml_intelligence_page() -> None:
     with st.container(border=True):
-        _section_header("Ranking ML", "Score ML com validacao temporal e reranking interpretavel.")
+        _section_header("Ranking ML", "Score ML com validação temporal e reranking interpretável.")
         training = _ml_training_result()
         model = training["model"]
         validation = training["validation_metrics"]
@@ -5442,7 +5442,7 @@ def render_ml_intelligence_page() -> None:
         col1.metric("Model version", model.model_version)
         col2.metric("Score schema", model.feature_schema_version)
         col3.metric("Walk-forward", validation["splits"])
-        col4.metric("Rows vÃ¡lidas", validation["rows"])
+        col4.metric("Rows válidas", validation["rows"])
 
         st.subheader("Metricas do modelo")
         st.dataframe(_presentational_dataframe(_ml_features_table(model)), hide_index=True, use_container_width=True)
@@ -5482,16 +5482,16 @@ def render_ml_intelligence_page() -> None:
         st.plotly_chart(score_fig, use_container_width=True)
 
         val_df = pd.DataFrame(training["splits"])
-        st.subheader("ValidaÃ§Ã£o walk-forward")
+        st.subheader("Validação walk-forward")
         st.dataframe(_presentational_dataframe(val_df), hide_index=True, use_container_width=True)
         st.info(
-            f"GovernanÃ§a: temporal={validation['temporal_valid']} | linhas={validation['rows']} | modelo={validation['model_version']}"
+            f"Governança: temporal={validation['temporal_valid']} | linhas={validation['rows']} | modelo={validation['model_version']}"
         )
 
 
 def render_ml_governance_page() -> None:
     with st.container(border=True):
-        _section_header("Governança Científica", "Governanca de modelos, experimentos, versoes e snapshots.")
+        _section_header("Governança Científica", "Governança de modelos, experimentos, versões e snapshots.")
         training = _ml_training_result()
         payload = training["payload"]
         feature_rows = training["feature_rows"]
@@ -5505,7 +5505,7 @@ def render_ml_governance_page() -> None:
         col3.metric("Snapshots", len(list(ML_SNAPSHOTS_DIR.glob("*.json"))))
         col4.metric("Arquivos ML", len(list(ML_REPORTS_DIR.glob("*"))))
 
-        st.subheader("HistÃ³rico de calibraÃ§Ã£o")
+        st.subheader("Histórico de calibração")
         history_df = pd.DataFrame(
             [
                 {
@@ -5520,7 +5520,7 @@ def render_ml_governance_page() -> None:
         )
         st.dataframe(_presentational_dataframe(history_df), hide_index=True, use_container_width=True)
 
-        st.subheader("GovernanÃ§a de features")
+        st.subheader("Governança de features")
         st.dataframe(_presentational_dataframe(pd.DataFrame(feature_rows)), hide_index=True, use_container_width=True)
 
         st.subheader("Artefatos institucionais")
@@ -6026,7 +6026,7 @@ def render_operational_reconciliation_page() -> None:
         )
         action_col1, action_col2 = st.columns(2)
         simulate_clicked = action_col1.button("Simular Resultado", type="primary", use_container_width=True)
-        reconcile_clicked = action_col2.button("Executar ReconciliaÃ§Ã£o", use_container_width=True)
+        reconcile_clicked = action_col2.button("Executar Reconciliação", use_container_width=True)
         if simulate_clicked or reconcile_clicked:
             try:
                 baseline_numbers = _parse_check_numbers(baseline_text)
@@ -6103,8 +6103,8 @@ def render_operational_reconciliation_page() -> None:
                     ],
                     baseline_numbers,
                 )
-                st.subheader("PolÃ­tica de retenÃ§Ã£o")
-                st.caption("Sem premiaÃ§Ã£o: removido | Premiado: persistido | Destaque institucional: persistido | Snapshot: persistido")
+                st.subheader("Política de retenção")
+                st.caption("Sem premiação: removido | Premiado: persistido | Destaque institucional: persistido | Snapshot: persistido")
                 st.dataframe(pd.DataFrame(retention_preview["rows"]), hide_index=True, use_container_width=True)
             except Exception as exc:
                 st.error(f"Falha controlada na simulacao operacional: {exc}")
@@ -6147,22 +6147,22 @@ def render_statistics_page(draws) -> None:
 
 def render_backtesting_page() -> BacktestResult | None:
     with st.container(border=True):
-        _section_header("Testar EstratÃ©gia", "Backtesting temporal e avaliaÃ§Ã£o histÃ³rica com leitura analÃ­tica.")
+        _section_header("Testar Estratégia", "Backtesting temporal e avaliação histórica com leitura analítica.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5)
         pool_size = col2.number_input("Pool", min_value=1, max_value=500, value=30)
         games_count = col3.number_input("Jogos", min_value=1, max_value=100, value=10)
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=200)
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=200)
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42)
         if games_count > pool_size:
-            st.warning("O pool precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool precisa ser maior ou igual à quantidade de jogos.")
             return None
         if st.button("Executar backtest", type="primary"):
-            with st.spinner("Executando backtest histÃ³rico..."):
+            with st.spinner("Executando backtest histórico..."):
                 result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
             _metric_row(result)
             if result.total_games == 0:
-                st.warning("Backtest em modo degradado: nÃ£o foi possÃ­vel gerar candidatos suficientes nesta configuraÃ§Ã£o.")
+                st.warning("Backtest em modo degradado: não foi possível gerar candidatos suficientes nesta configuração.")
                 return result
             st.plotly_chart(_distribution_chart(result.hit_distribution), use_container_width=True)
             st.plotly_chart(_score_correlation_chart(result), use_container_width=True)
@@ -6186,7 +6186,7 @@ def render_workflows_page() -> None:
         }
     )
     with st.container(border=True):
-        _section_header("Fluxos Operacionais", "OrquestraÃ§Ã£o governada de sincronizaÃ§Ã£o, reconciliaÃ§Ã£o, telemetria e fechamento diÃ¡rio.")
+        _section_header("Fluxos Operacionais", "Orquestração governada de sincronização, reconciliação, telemetria e fechamento diário.")
         workflow_dashboard = build_workflow_dashboard()
         workflow_summary = workflow_dashboard.get("summary", {})
         workflow_health = workflow_dashboard.get("health", {})
@@ -6197,7 +6197,7 @@ def render_workflows_page() -> None:
         dash_col4.metric("Retries", workflow_summary.get("retry_count", 0))
         st.caption(
             f"Status: {workflow_summary.get('workflow_status', '-')}"
-            f" | SaÃºde: {workflow_health.get('status', '-')}"
+            f" | Saúde: {workflow_health.get('status', '-')}"
             f" | Estabilidade runtime: {workflow_health.get('stability_score', 0.0):.2f}"
         )
         if workflow_dashboard.get("alerts"):
@@ -6242,12 +6242,12 @@ def render_workflows_page() -> None:
 
 def render_calibration_page() -> None:
     with st.container(border=True):
-        _section_header("Estrategias Operacionais", "Calibracao experimental com pesos temporarios e avaliacao restauravel.")
+        _section_header("Estratégias Operacionais", "Calibração experimental com pesos temporários e avaliação restaurável.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="cal_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="cal_games")
         pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="cal_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=150, key="cal_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=150, key="cal_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="cal_seed")
         weight_cols = st.columns(4)
         weights = {
@@ -6256,54 +6256,54 @@ def render_calibration_page() -> None:
             "quadra": weight_cols[2].number_input("Quadra", min_value=0.0, value=25.0),
             "quina": weight_cols[3].number_input("Quina", min_value=0.0, value=20.0),
             "delay": weight_cols[0].number_input("Delay", min_value=0.0, value=10.0),
-            "frequency": weight_cols[1].number_input("FrequÃªncia", min_value=0.0, value=5.0),
+            "frequency": weight_cols[1].number_input("Frequência", min_value=0.0, value=5.0),
             "sum": weight_cols[2].number_input("Soma", min_value=0.0, value=3.0),
-            "sequence": weight_cols[3].number_input("SequÃªncia", min_value=0.0, value=2.0),
+            "sequence": weight_cols[3].number_input("Sequência", min_value=0.0, value=2.0),
         }
         st.metric("Soma dos pesos", sum(weights.values()))
         if games_count > pool_size:
-            st.warning("O pool precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool precisa ser maior ou igual à quantidade de jogos.")
             return
-        if st.button("Comparar configuraÃ§Ãµes", type="primary"):
-            with st.spinner("Executando calibraÃ§Ã£o experimental..."):
+        if st.button("Comparar configurações", type="primary"):
+            with st.spinner("Executando calibração experimental..."):
                 result = _cached_calibration(weights, int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
             if not result.get("evaluations"):
-                st.warning("CalibraÃ§Ã£o sem avaliaÃ§Ãµes disponÃ­veis nesta configuraÃ§Ã£o.")
+                st.warning("Calibração sem avaliações disponíveis nesta configuração.")
                 return
             evaluations = result["evaluations"]
             st.plotly_chart(_configuration_chart(result), use_container_width=True)
             st.dataframe(pd.DataFrame([{"configuracao": evaluation["configuration"], "media_acertos": evaluation["average_hits"], "correlacao": evaluation["final_score_hit_correlation"], "desvio_padrao": evaluation["hit_standard_deviation"], "peso_total": evaluation["total_weight"]} for evaluation in evaluations]), hide_index=True, use_container_width=True)
-            st.info(f"Melhor configuraÃ§Ã£o nesta amostra: {result['best_configuration']}")
+            st.info(f"Melhor configuração nesta amostra: {result['best_configuration']}")
 
 
 def render_benchmark_page() -> None:
     with st.container(border=True):
-        _section_header("Comparativos", "Benchmark cientifico para leitura comparativa entre estrategias.")
+        _section_header("Comparativos", "Benchmark científico para leitura comparativa entre estratégias.")
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=100, value=5, key="bench_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="bench_games")
         pool_size = col3.number_input("Pool LotoIA", min_value=1, max_value=500, value=20, key="bench_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=200, key="bench_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=200, key="bench_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="bench_seed")
         if games_count > pool_size:
-            st.warning("O pool do LotoIA precisa ser maior ou igual Ã  quantidade de jogos.")
+            st.warning("O pool do LotoIA precisa ser maior ou igual à quantidade de jogos.")
             return
         if st.button("Executar benchmark", type="primary"):
-            with st.spinner("Executando comparaÃ§Ã£o controlada..."):
+            with st.spinner("Executando comparação controlada..."):
                 result = _cached_benchmark(int(contests), int(games_count), int(pool_size), int(history_window), int(seed))
             summary = _benchmark_summary_dataframe(result)
             comparisons = _benchmark_comparison_dataframe(result)
             lotoia = result.strategies["lotoia_engine"]
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Concursos", result.contests_analyzed)
-            col2.metric("Jogos por estratÃ©gia", result.games_per_contest)
-            col3.metric("MÃ©dia LotoIA", f"{lotoia['average_hits']:.2f}")
+            col2.metric("Jogos por estratégia", result.games_per_contest)
+            col3.metric("Média LotoIA", f"{lotoia['average_hits']:.2f}")
             col4.metric("Desvio LotoIA", f"{lotoia['standard_deviation']:.2f}")
             st.plotly_chart(_benchmark_average_chart(result), use_container_width=True)
             st.plotly_chart(_benchmark_evolution_chart(result), use_container_width=True)
-            st.subheader("Ranking das estratÃ©gias")
+            st.subheader("Ranking das estratégias")
             st.dataframe(summary, hide_index=True, use_container_width=True)
-            st.subheader("ComparaÃ§Ãµes estatÃ­sticas")
+            st.subheader("Comparações estatísticas")
             st.dataframe(comparisons, hide_index=True, use_container_width=True)
             st.info(f"Relatorios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
 
@@ -6546,25 +6546,25 @@ def render_history_page() -> None:
                         st.success("Limpeza operacional executada com governança e auditoria.")
                         st.json(result)
                         st.rerun()
-        tabs = st.tabs(["Benchmarks", "Backtests", "CalibraÃ§Ãµes"])
+        tabs = st.tabs(["Benchmarks", "Backtests", "Calibrações"])
         with tabs[0]:
             if benchmark_runs:
-                st.plotly_chart(_historical_metric_chart(benchmark_runs, "lotoia_average_hits", "MÃ©dia LotoIA por benchmark"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(benchmark_runs, "lotoia_average_hits", "Média LotoIA por benchmark"), use_container_width=True)
                 st.dataframe(_runs_dataframe(benchmark_runs, ["id", "created_at", "contests", "games_per_contest", "lotoia_average_hits", "filtered_average_hits", "random_average_hits", "superiority_rate", "average_advantage", "report_path"]), hide_index=True, use_container_width=True)
             else:
                 st.info("Nenhum benchmark persistido ainda.")
         with tabs[1]:
             if backtest_runs:
-                st.plotly_chart(_historical_metric_chart(backtest_runs, "average_hits", "MÃ©dia por backtest"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(backtest_runs, "average_hits", "Média por backtest"), use_container_width=True)
                 st.dataframe(_runs_dataframe(backtest_runs, ["id", "created_at", "contests", "games_per_contest", "average_hits", "correlation", "report_path"]), hide_index=True, use_container_width=True)
             else:
                 st.info("Nenhum backtest persistido ainda.")
         with tabs[2]:
             if calibration_runs:
-                st.plotly_chart(_historical_metric_chart(calibration_runs, "average_hits", "MÃ©dia por calibraÃ§Ã£o"), use_container_width=True)
+                st.plotly_chart(_historical_metric_chart(calibration_runs, "average_hits", "Média por calibração"), use_container_width=True)
                 st.dataframe(_runs_dataframe(calibration_runs, ["id", "created_at", "average_hits", "correlation", "report_path"]), hide_index=True, use_container_width=True)
             else:
-                st.info("Nenhuma calibraÃ§Ã£o persistida ainda.")
+                st.info("Nenhuma calibração persistida ainda.")
 
 
 def render_reports_page() -> None:
@@ -6580,20 +6580,20 @@ def render_reports_page() -> None:
         }
     )
     with st.container(border=True):
-        _section_header("Analíticas Persistidas", "Saidas analiticas persistidas e artefatos gerados pela operacao.")
+        _section_header("Analíticas Persistidas", "Saídas analíticas persistidas e artefatos gerados pela operação.")
         _ensure_reports_dirs()
         col1, col2, col3, col4, col5 = st.columns(5)
         contests = col1.number_input("Concursos", min_value=1, max_value=50, value=3, key="rep_contests")
         games_count = col2.number_input("Jogos", min_value=1, max_value=50, value=5, key="rep_games")
         pool_size = col3.number_input("Pool", min_value=1, max_value=200, value=15, key="rep_pool")
-        history_window = col4.number_input("HistÃ³rico", min_value=1, max_value=1000, value=150, key="rep_hist")
+        history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=150, key="rep_hist")
         seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="rep_seed")
-        if st.button("Gerar relatÃ³rio", type="primary"):
+        if st.button("Gerar relatório", type="primary"):
             start_time = time.monotonic()
-            with st.spinner("Gerando relatÃ³rio analÃ­tico..."):
+            with st.spinner("Gerando relatório analítico..."):
                 result = _safe_backtest(contests=int(contests), games_count=int(games_count), pool_size=int(pool_size), history_window=int(history_window), seed=int(seed))
                 if result.total_games == 0:
-                    st.warning("RelatÃ³rio em modo degradado: backtest sem candidatos suficientes.")
+                    st.warning("Relatório em modo degradado: backtest sem candidatos suficientes.")
                     return
                 report = generate_backtest_report(result=result, output_dir=REPORTS_DIR)
                 snapshot = _write_snapshot(
@@ -6618,7 +6618,7 @@ def render_reports_page() -> None:
         if not files:
             st.info("Nenhum relatÃ³rio gerado ainda.")
             return
-        st.subheader("Arquivos disponÃ­veis")
+        st.subheader("Arquivos disponíveis")
         for path in files:
             col1, col2 = st.columns([3, 1])
             col1.write(str(path))
@@ -6627,7 +6627,7 @@ def render_reports_page() -> None:
                 col2.download_button("Baixar", data=download_bytes, file_name=path.name, key=f"download_{path.name}")
         html_files = [path for path in files if path.suffix.lower() == ".html"]
         if html_files:
-            selected = st.selectbox("GrÃ¡fico HTML", html_files, format_func=lambda path: path.name)
+            selected = st.selectbox("Gráfico HTML", html_files, format_func=lambda path: path.name)
             st.components.v1.html(selected.read_text(encoding="utf-8"), height=520, scrolling=True)
         json_files = [path for path in files if path.suffix.lower() == ".json"]
         if json_files:
