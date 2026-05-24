@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from lotoia.analytics.intelligence_layer import build_executive_analytical_report
 from lotoia.combinatorics.expansion_store import list_expansion_events
+from lotoia.database.database import DEFAULT_DATABASE_PATH, ExpansionEvent, get_session
 
 DEFAULT_ANALYTICS_DIR = Path("reports") / "analytics"
 DEFAULT_INSTITUTIONAL_HISTORICAL_REPORT = Path("reports") / "analytics" / "institutional_historical_intelligence.json"
@@ -48,6 +49,46 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _load_institutional_expansion_events(
+    report_db_path: Path = DEFAULT_DATABASE_PATH,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    try:
+        with get_session(report_db_path) as session:
+            rows = (
+                session.query(ExpansionEvent)
+                .order_by(ExpansionEvent.created_at.desc(), ExpansionEvent.id.desc())
+                .limit(limit)
+                .all()
+            )
+    except Exception:
+        return []
+    events: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(row.payload or {})
+        selected_numbers = payload.get("selected_numbers") or payload.get("numbers") or []
+        if isinstance(selected_numbers, str):
+            selected_numbers = [token for token in selected_numbers.replace(",", " ").split() if token.strip()]
+        events.append(
+            {
+                "id": row.id,
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+                "origin": row.origin or "expanded",
+                "source": "expansion_events",
+                "selected_numbers": selected_numbers,
+                "total_combinations": int(payload.get("total_combinations", 0) or 0),
+                "generated_count": int(payload.get("generated_count", 0) or 0),
+                "estimated_cost": float(payload.get("estimated_cost", 0.0) or 0.0),
+                "runtime_ms": float(payload.get("runtime_ms", 0.0) or 0.0),
+                "complete": bool(payload.get("complete", False)),
+                "stopped_reason": str(payload.get("stopped_reason", "")),
+                "analysis": dict(payload.get("analysis", {})) if isinstance(payload.get("analysis", {}), Mapping) else {},
+            }
+        )
+    return events
 
 
 def load_institutional_analytics_snapshot(
@@ -124,7 +165,11 @@ def _load_executive_reports(report_dir: Path = DEFAULT_ANALYTICS_DIR) -> list[di
 
 def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALYTICS_DIR) -> dict[str, Any]:
     snapshots = _load_executive_reports(report_dir)
-    expansion_events = list_expansion_events(limit=50)
+    institutional_expansion_events = _load_institutional_expansion_events(limit=50)
+    experimental_expansion_events = list_expansion_events(limit=50)
+    expansion_events = institutional_expansion_events + [
+        {**event, "source": "user_expansion_events"} for event in experimental_expansion_events
+    ]
     if not snapshots:
         return {
             "source": str(report_dir),
@@ -135,6 +180,10 @@ def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALY
                 "drift_trend": 0.0,
                 "confidence_trend": 0.0,
                 "expanded_event_count": len(expansion_events),
+                "expanded_event_sources": {
+                    "expansion_events": len(institutional_expansion_events),
+                    "user_expansion_events": len(experimental_expansion_events),
+                },
             },
         }
 
@@ -186,12 +235,17 @@ def build_institutional_historical_intelligence(report_dir: Path = DEFAULT_ANALY
             "latest_headline": last["headline"],
             "latest_recommendation": last["recommendation"],
             "expanded_event_count": len(expansion_events),
+            "expanded_event_sources": {
+                "expansion_events": len(institutional_expansion_events),
+                "user_expansion_events": len(experimental_expansion_events),
+            },
         },
         "expanded_events": [
             {
                 "id": event.get("id"),
                 "created_at": event.get("created_at", ""),
                 "origin": event.get("origin", "expanded"),
+                "source": event.get("source", "user_expansion_events"),
                 "selected_numbers": event.get("selected_numbers", []),
                 "total_combinations": event.get("total_combinations", 0),
                 "generated_count": event.get("generated_count", 0),

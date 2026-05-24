@@ -2353,6 +2353,24 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
     live_summary = live_memory.get("summary", {}) if isinstance(live_memory, dict) else {}
     snapshot_path = REPORTS_DIR / "analytics" / "institutional_analytics_snapshot.json"
     analytics_snapshot = load_institutional_analytics_snapshot(snapshot_path)
+    snapshot_historical_summary = {}
+    if isinstance(analytics_snapshot, dict):
+        snapshot_historical = analytics_snapshot.get("historical_report", {})
+        if isinstance(snapshot_historical, dict):
+            snapshot_historical_summary = snapshot_historical.get("summary", {}) if isinstance(snapshot_historical.get("summary", {}), dict) else {}
+    current_expanded_count = int(historical_summary.get("expanded_event_count", 0))
+    snapshot_expanded_count = int(snapshot_historical_summary.get("expanded_event_count", -1))
+    snapshot_verdict_count = int(snapshot_historical_summary.get("verdict_count", -1))
+    if current_expanded_count > 0 and (
+        not analytics_snapshot
+        or snapshot_expanded_count != current_expanded_count
+        or snapshot_verdict_count != int(historical_summary.get("verdict_count", 0))
+    ):
+        try:
+            publish_institutional_analytics(report_dir=REPORTS_DIR / "analytics")
+        except Exception:
+            pass
+        analytics_snapshot = load_institutional_analytics_snapshot(snapshot_path)
     expansion_events_count = _safe_count("expansion_events")
     persisted = bool(institutional_expansion_event) or expansion_events_count > 0
     published = bool(analytics_snapshot)
