@@ -2720,9 +2720,11 @@ def render_observability_page() -> None:
             "sql_total_ms": 0.0,
         }
     )
+    # Define once and unconditionally so downstream blocks never reference an unbound name.
+    db_signature = _institutional_db_signature()
     with st.container(border=True):
         _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
-        stabilization = _cached_observational_stabilization_report(_institutional_db_signature())
+        stabilization = _cached_observational_stabilization_report(db_signature)
         if not stabilization:
             stabilization = persist_observational_stabilization_report()
         stabilization_report = stabilization.get("report", {})
@@ -3147,7 +3149,6 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        db_signature = _institutional_db_signature()
         health = _runtime_health(db_signature)
         operational = _operational_metrics(db_signature)
         st.subheader("Saude operacional")
@@ -3270,7 +3271,6 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_experiment_01_table()), hide_index=True, use_container_width=True)
         st.subheader("Ganho marginal")
         st.dataframe(_presentational_dataframe(_marginal_recovery_gain_table()), hide_index=True, use_container_width=True)
-        db_signature = _institutional_db_signature()
         ai_report = _cached_analytical_intelligence(db_signature)
         ai_summary = ai_report.get("analytical_summary", {})
         ai_insights = ai_report.get("insights", [])
