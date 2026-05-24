@@ -16,6 +16,16 @@ GENERATION_PROFILE_RATIOS = {
     PROFILE_CHAOTIC: 0.20,
 }
 
+CHAOS_SEQUENCE_MIN = 7
+CHAOS_BLOCK_MAX = 7
+CHAOS_ODD_LOW_MAX = 3
+CHAOS_ODD_HIGH_MIN = 12
+CHAOS_SUM_MIN = 150
+CHAOS_SUM_MAX = 245
+
+RECURRENT_REPEAT_MIN = 9
+RECURRENT_SEQUENCE_MIN = 5
+
 _BLOCKS = (
     range(1, 6),
     range(6, 11),
@@ -179,9 +189,16 @@ def classify_profile(numbers: list[int], history: list[DrawLike]) -> str:
     distribution = block_distribution(numbers)
     odd = sum(1 for number in numbers if number % 2)
     total = sum(numbers)
-    if sequence >= 6 or max(distribution) >= 6 or odd <= 4 or odd >= 11 or total < 160 or total > 240:
+    if (
+        sequence >= CHAOS_SEQUENCE_MIN
+        or max(distribution) >= CHAOS_BLOCK_MAX
+        or odd <= CHAOS_ODD_LOW_MAX
+        or odd >= CHAOS_ODD_HIGH_MIN
+        or total < CHAOS_SUM_MIN
+        or total > CHAOS_SUM_MAX
+    ):
         return PROFILE_CHAOTIC
-    if repeated_last >= 8 or sequence >= 4:
+    if repeated_last >= RECURRENT_REPEAT_MIN or sequence >= RECURRENT_SEQUENCE_MIN:
         return PROFILE_RECURRENT
     return PROFILE_HYBRID
 
