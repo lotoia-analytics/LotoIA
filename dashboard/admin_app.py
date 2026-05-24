@@ -2418,6 +2418,69 @@ def _performance_metrics_table() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _parse_context_json(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def _performance_profile_map_table() -> pd.DataFrame:
+    logs = _observability_tables(_institutional_db_signature())["logs"]
+    if logs.empty:
+        return pd.DataFrame(columns=["metric", "page", "count", "avg_ms", "max_ms", "total_ms"])
+    perf = logs[logs["event_type"] == "performance"].copy()
+    if perf.empty:
+        return pd.DataFrame(columns=["metric", "page", "count", "avg_ms", "max_ms", "total_ms"])
+
+    rows: list[dict[str, Any]] = []
+    for _, row in perf.iterrows():
+        ctx = _parse_context_json(row.get("context_json"))
+        metric = str(ctx.get("metric") or "-")
+        page = str(
+            ctx.get("page")
+            or ctx.get("source")
+            or ctx.get("backend")
+            or ctx.get("query")
+            or ctx.get("event_type")
+            or "-"
+        )
+        duration_ms = float(row.get("duration_ms") or 0.0)
+        rows.append(
+            {
+                "metric": metric,
+                "page": page,
+                "duration_ms": duration_ms,
+            }
+        )
+
+    dataframe = pd.DataFrame(rows)
+    if dataframe.empty:
+        return pd.DataFrame(columns=["metric", "page", "count", "avg_ms", "max_ms", "total_ms"])
+
+    grouped = (
+        dataframe.groupby(["metric", "page"], dropna=False)
+        .agg(
+            count=("duration_ms", "size"),
+            avg_ms=("duration_ms", "mean"),
+            max_ms=("duration_ms", "max"),
+            total_ms=("duration_ms", "sum"),
+        )
+        .reset_index()
+        .sort_values(["total_ms", "avg_ms"], ascending=[False, False])
+    )
+    grouped["avg_ms"] = grouped["avg_ms"].round(2)
+    grouped["max_ms"] = grouped["max_ms"].round(2)
+    grouped["total_ms"] = grouped["total_ms"].round(2)
+    return grouped
+
+
 def _alert_contracts() -> pd.DataFrame:
     health = _runtime_health(_institutional_db_signature())
     health = {
@@ -3114,6 +3177,12 @@ def render_observability_page() -> None:
         with col1:
             st.subheader("Desempenho")
             st.dataframe(_presentational_dataframe(_performance_metrics_table()), hide_index=True, use_container_width=True)
+            st.subheader("Mapa de perfilacao")
+            st.dataframe(
+                _presentational_dataframe(_performance_profile_map_table()),
+                hide_index=True,
+                use_container_width=True,
+            )
         with col2:
             st.subheader("Metricas operacionais")
             st.dataframe(
