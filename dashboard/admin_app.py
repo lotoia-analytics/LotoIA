@@ -2386,7 +2386,7 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
     return {
         "preview": {
             "active": bool(preview_payload),
-            "state": "Preview Operacional" if preview_payload else "Preview ausente",
+            "state": "Prévia operacional" if preview_payload else "Prévia ausente",
             "source": "session_state.admin_last_expansion_experimental",
             "snapshot": st.session_state.get("admin_last_expansion_experimental_snapshot", "-"),
             "detail": f"preview_count={len(preview_payload.get('combinations', [])) if isinstance(preview_payload, dict) else 0}",
@@ -2401,7 +2401,7 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
         },
         "published": {
             "active": published,
-            "state": "Publicado" if published else "Nao publicado",
+            "state": "Publicado" if published else "Não publicado",
             "source": str(historical_report.get("source", REPORTS_DIR / "analytics")),
             "table": str(snapshot_path),
             "snapshot": snapshot_path.name,
@@ -2409,7 +2409,7 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
         },
         "consolidated": {
             "active": consolidated,
-            "state": "Consolidado Analitico" if consolidated else "Consolidacao parcial",
+            "state": "Consolidado analítico" if consolidated else "Consolidação parcial",
             "source": str(live_memory.get("source", DB_PATH)),
             "table": "institutional_memory_snapshots / institutional_memory_states / institutional_memory_lineage / runtime_snapshots",
             "snapshot": str(live_memory.get("execution_id", "-")),
@@ -2422,7 +2422,7 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
             "registry_state_count": int(live_summary.get("state_count", 0)),
             "analytics_snapshot_exists": published,
         },
-        "flow": "Expansivo \u2192 Persistencia \u2192 Registry \u2192 Memoria Analitica",
+        "flow": "Expansivo \u2192 Persistência \u2192 Registro \u2192 Memória Analítica",
     }
 
 
@@ -5268,7 +5268,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
 
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
-        _section_header("Memória Analítica", "Leitura historica para combinacoes, recorrencia e proximidade estatistica.")
+        _section_header("Memória Analítica", "Leitura histórica para combinações, recorrência e proximidade estatística.")
         transparency = _analytical_memory_transparency_context()
         st.caption("Fluxo institucional: " + transparency["flow"])
         badge_cols = st.columns(4)
@@ -5280,50 +5280,55 @@ def render_historical_intelligence_page(draws) -> None:
         ):
             with column:
                 _render_transparency_badge(
-                    key.replace("_", " ").title(),
+                    {
+                        "preview": "Prévia",
+                        "persisted": "Persistência",
+                        "published": "Publicação",
+                        "consolidated": "Consolidação",
+                    }.get(key, key.replace("_", " ").title()),
                     transparency[key]["state"],
                     f"{transparency[key]['detail']} | fonte={transparency[key]['source']} | snapshot={transparency[key]['snapshot']}",
                     tone,
                 )
         source_rows = [
             {
-                "etapa": "Preview Operacional",
-                "estado": transparency["preview"]["state"],
-                "fonte_da_leitura": transparency["preview"]["source"],
-                "tabela_registry": "session_state",
-                "snapshot_atual": transparency["preview"]["snapshot"],
+                "Etapa": "Prévia operacional",
+                "Estado": transparency["preview"]["state"],
+                "Fonte da leitura": transparency["preview"]["source"],
+                "Tabela/registro": "session_state",
+                "Snapshot atual": transparency["preview"]["snapshot"],
             },
             {
-                "etapa": "Persistido",
-                "estado": transparency["persisted"]["state"],
-                "fonte_da_leitura": transparency["persisted"]["source"],
-                "tabela_registry": transparency["persisted"]["table"],
-                "snapshot_atual": transparency["persisted"]["snapshot"],
+                "Etapa": "Persistido",
+                "Estado": transparency["persisted"]["state"],
+                "Fonte da leitura": transparency["persisted"]["source"],
+                "Tabela/registro": transparency["persisted"]["table"],
+                "Snapshot atual": transparency["persisted"]["snapshot"],
             },
             {
-                "etapa": "Publicado",
-                "estado": transparency["published"]["state"],
-                "fonte_da_leitura": transparency["published"]["source"],
-                "tabela_registry": transparency["published"]["table"],
-                "snapshot_atual": transparency["published"]["snapshot"],
+                "Etapa": "Publicação",
+                "Estado": transparency["published"]["state"],
+                "Fonte da leitura": transparency["published"]["source"],
+                "Tabela/registro": transparency["published"]["table"],
+                "Snapshot atual": transparency["published"]["snapshot"],
             },
             {
-                "etapa": "Consolidado Analitico",
-                "estado": transparency["consolidated"]["state"],
-                "fonte_da_leitura": transparency["consolidated"]["source"],
-                "tabela_registry": transparency["consolidated"]["table"],
-                "snapshot_atual": transparency["consolidated"]["snapshot"],
+                "Etapa": "Consolidação analítica",
+                "Estado": transparency["consolidated"]["state"],
+                "Fonte da leitura": transparency["consolidated"]["source"],
+                "Tabela/registro": transparency["consolidated"]["table"],
+                "Snapshot atual": transparency["consolidated"]["snapshot"],
             },
         ]
-        st.subheader("Transparencia operacional")
+        st.subheader("Transparência operacional")
         st.dataframe(_presentational_dataframe(pd.DataFrame(source_rows)), hide_index=True, use_container_width=True)
         st.caption(
-            "Sincronizacao: "
+            "Sincronização: "
             f"expansion_events={transparency['sync']['expansion_events']} | "
             f"historical_expanded_events={transparency['sync']['historical_expanded_events']} | "
             f"registry_snapshot_count={transparency['sync']['registry_snapshot_count']} | "
             f"registry_state_count={transparency['sync']['registry_state_count']} | "
-            f"analytics_snapshot_exists={'sim' if transparency['sync']['analytics_snapshot_exists'] else 'nao'}"
+            f"analytics_snapshot_exists={'sim' if transparency['sync']['analytics_snapshot_exists'] else 'não'}"
         )
         if st.session_state.get("last_generation_games"):
             games = st.session_state["last_generation_games"]
@@ -5353,7 +5358,7 @@ def render_historical_intelligence_page(draws) -> None:
 
         institutional_history = _analytics_base_tables()["history"]
         if not institutional_history.empty:
-            st.subheader("Historico institucional consolidado")
+            st.subheader("Histórico institucional consolidado")
             st.dataframe(
                 _presentational_dataframe(institutional_history[["concurso", "origin", "dezenas", "soma", "pares", "impares", "repeticao"]]),
                 hide_index=True,
@@ -5362,10 +5367,10 @@ def render_historical_intelligence_page(draws) -> None:
             historical_report = _cached_institutional_historical_intelligence(_institutional_db_signature())
             historical_summary = historical_report.get("summary", {}) if isinstance(historical_report, dict) else {}
             st.caption(
-                f"Jogos expandidos no relatÃ³rio histÃ³rico: {historical_summary.get('expanded_event_count', 0)}"
+                f"Jogos expandidos no relatório histórico: {historical_summary.get('expanded_event_count', 0)}"
             )
 
-        tabs = st.tabs(["Recorrentes", "Hibridos", "Caoticos"])
+        tabs = st.tabs(["Recorrentes", "Híbridos", "Caóticos"])
         for tab, profile in zip(tabs, GENERATION_PROFILE_RATIOS, strict=True):
             with tab:
                 st.dataframe(
@@ -6204,7 +6209,7 @@ def render_workflows_page() -> None:
         action_cols = st.columns(3)
         if action_cols[0].button("Sincronizar agora", use_container_width=True):
             sync_snapshot = action_engine.run_sync_workflow(trigger="dashboard")
-            st.success(f"Sincronizacao concluida: {sync_snapshot.state}")
+            st.success(f"Sincronização concluída: {sync_snapshot.state}")
             st.json(sync_snapshot.to_dict())
         if action_cols[1].button("Executar ciclo agendado", use_container_width=True):
             cycle_snapshot = action_engine.run_schedule_cycle()
