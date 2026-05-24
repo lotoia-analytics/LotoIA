@@ -1297,6 +1297,17 @@ def _presentational_historical_intelligence_dataframe(games: list[dict[str, Any]
 def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe.empty:
         return dataframe
+
+    def _stringify_presentational_value(value: Any) -> str:
+        if value is None:
+            return ""
+        try:
+            if pd.isna(value):
+                return ""
+        except Exception:
+            pass
+        return str(value)
+
     presentational = dataframe.rename(
         columns={
             "historical_score": "Forca Historica",
@@ -1516,6 +1527,9 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     for column, replacements in value_maps.items():
         if column in presentational.columns:
             presentational[column] = presentational[column].replace(replacements)
+    for column in presentational.columns:
+        if presentational[column].dtype == object:
+            presentational[column] = presentational[column].map(_stringify_presentational_value)
     return presentational
 
 
