@@ -4794,6 +4794,64 @@ def _safe_last_contest() -> str:
         return "-"
 
 
+def _extract_contest_numbers(raw_numbers: Any) -> list[int]:
+    if raw_numbers is None:
+        return []
+    if isinstance(raw_numbers, (list, tuple)):
+        numbers = []
+        for value in raw_numbers:
+            try:
+                numbers.append(int(value))
+            except Exception:
+                continue
+        return sorted(numbers)
+    text = str(raw_numbers).strip()
+    if not text:
+        return []
+    normalized = text.replace(";", ",").replace("|", ",").replace("\n", ",").replace(" ", ",")
+    numbers = []
+    for token in normalized.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            numbers.append(int(token))
+        except Exception:
+            continue
+    return sorted(numbers)
+
+
+def _get_latest_contest_result() -> dict[str, Any] | None:
+    row = _sqlite_execute_safe(
+        """
+        SELECT contest_number, data, dezenas, metadata_json
+        FROM imported_contests
+        ORDER BY contest_number DESC
+        LIMIT 1
+        """
+    )
+    latest = row.fetchone() if row is not None else None
+    if not latest:
+        return None
+    numbers = _extract_contest_numbers(latest[2])
+    if not numbers:
+        return None
+    metadata: dict[str, Any] = {}
+    try:
+        metadata = json.loads(str(latest[3] or "{}"))
+        if not isinstance(metadata, dict):
+            metadata = {}
+    except Exception:
+        metadata = {}
+    return {
+        "contest_number": int(latest[0]),
+        "date": str(latest[1] or ""),
+        "numbers": numbers,
+        "numbers_text": _format_numbers(numbers),
+        "metadata": metadata,
+    }
+
+
 def _safe_total_games() -> str:
     try:
         gen_row = _sqlite_execute_safe("SELECT COUNT(*) FROM generated_games")
@@ -5548,6 +5606,14 @@ def render_check_page() -> None:
         _runtime_audit("check.page.start")
         _section_header("Jogos Passados", "Conferencia operacional contra concursos historicos carregados.")
         st.caption("Formulario operacional priorizado; contexto institucional permanece opcional.")
+        loaded_notice = st.session_state.pop("admin_latest_official_result_notice", None)
+        if loaded_notice:
+            st.success(loaded_notice)
+        latest_official_result = st.session_state.get("admin_latest_official_contest_result")
+        if latest_official_result is None:
+            latest_official_result = _get_latest_contest_result()
+            if latest_official_result is not None:
+                st.session_state["admin_latest_official_contest_result"] = latest_official_result
         show_check_context = st.toggle(
             "Exibir contexto institucional",
             value=bool(st.session_state.get("_admin_show_check_context", False)),
@@ -5564,6 +5630,26 @@ def render_check_page() -> None:
         else:
             st.info("Contexto institucional recolhido para manter a conferencia leve.")
         _runtime_audit("check.form.ready")
+        load_result_col1, load_result_col2 = st.columns([1, 3])
+        if load_result_col1.button("Buscar Último Resultado", use_container_width=True):
+            latest_official_result = _get_latest_contest_result()
+            if latest_official_result is None:
+                st.warning("Nenhum concurso oficial importado foi encontrado em imported_contests.")
+            else:
+                st.session_state["admin_latest_official_contest_result"] = latest_official_result
+                st.session_state["admin_check_contest_id"] = int(latest_official_result["contest_number"])
+                st.session_state["admin_check_numbers_text"] = latest_official_result["numbers_text"]
+                st.session_state["admin_latest_official_result_notice"] = (
+                    f"Concurso oficial carregado: {latest_official_result['contest_number']} | "
+                    f"{latest_official_result['numbers_text']}"
+                )
+                st.rerun()
+        if latest_official_result:
+            load_result_col2.caption(
+                f"Último concurso oficial: {latest_official_result['contest_number']} | "
+                f"{latest_official_result['date'] or '-'}"
+            )
+            load_result_col2.code(latest_official_result["numbers_text"], language="text")
         lead_col1, lead_col2 = st.columns(2)
         first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
         whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
@@ -5572,8 +5658,13 @@ def render_check_page() -> None:
         else:
             st.info("Lead opcional no ADM. A conferencia pode seguir sem captura comercial.")
         col1, col2 = st.columns([1, 3])
-        contest_id = col1.number_input("Concurso", min_value=1, step=1, value=max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1))
-        numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220)
+        if "admin_check_contest_id" not in st.session_state:
+            default_contest = int(latest_official_result["contest_number"]) if latest_official_result else max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1)
+            st.session_state["admin_check_contest_id"] = default_contest
+        if "admin_check_numbers_text" not in st.session_state:
+            st.session_state["admin_check_numbers_text"] = latest_official_result["numbers_text"] if latest_official_result else "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15"
+        contest_id = col1.number_input("Concurso", min_value=1, step=1, key="admin_check_contest_id")
+        numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220, key="admin_check_numbers_text")
         _runtime_audit("check.form.inputs")
         if st.button("Conferir jogo", type="primary"):
             _runtime_audit("check.submit")
@@ -5823,9 +5914,40 @@ def render_operational_reconciliation_page() -> None:
             "Simular Resultado",
             "Painel executivo de reconciliaÃ§Ã£o operacional com baseline manual, jogos gerados e jogos expandidos.",
         )
+        loaded_notice = st.session_state.pop("admin_latest_official_result_notice", None)
+        if loaded_notice:
+            st.success(loaded_notice)
+        latest_official_result = st.session_state.get("admin_latest_official_contest_result")
+        if latest_official_result is None:
+            latest_official_result = _get_latest_contest_result()
+            if latest_official_result is not None:
+                st.session_state["admin_latest_official_contest_result"] = latest_official_result
+        action_loader_col, action_preview_col = st.columns([1, 3])
+        if action_loader_col.button("Buscar Último Resultado", use_container_width=True):
+            latest_official_result = _get_latest_contest_result()
+            if latest_official_result is None:
+                st.warning("Nenhum concurso oficial importado foi encontrado em imported_contests.")
+            else:
+                st.session_state["admin_latest_official_contest_result"] = latest_official_result
+                st.session_state["admin_operational_reconciliation_baseline_text"] = latest_official_result["numbers_text"]
+                st.session_state["admin_latest_official_result_notice"] = (
+                    f"Concurso oficial carregado: {latest_official_result['contest_number']} | "
+                    f"{latest_official_result['numbers_text']}"
+                )
+                st.rerun()
+        if latest_official_result:
+            action_preview_col.caption(
+                f"Último concurso oficial: {latest_official_result['contest_number']} | "
+                f"{latest_official_result['date'] or '-'}"
+            )
+            action_preview_col.code(latest_official_result["numbers_text"], language="text")
+        if "admin_operational_reconciliation_baseline_text" not in st.session_state:
+            st.session_state["admin_operational_reconciliation_baseline_text"] = (
+                latest_official_result["numbers_text"] if latest_official_result else "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15"
+            )
         baseline_text = st.text_area(
             "Resultado informado",
-            value="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+            key="admin_operational_reconciliation_baseline_text",
             height=100,
         )
         action_col1, action_col2 = st.columns(2)
