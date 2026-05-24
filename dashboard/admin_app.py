@@ -1325,11 +1325,11 @@ def _presentational_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
             "whatsapp": "WhatsApp",
             "created_at": "Criado em",
             "origin": "Origem",
-            "generations": "Geracoes",
-            "checks": "Conferencias",
+            "generations": "Gerações",
+            "checks": "Conferências",
             "ml_activations": "ML",
-            "last_generation_at": "Ultima geracao",
-            "last_check_at": "Ultima conferencia",
+            "last_generation_at": "Última geração",
+            "last_check_at": "Última conferência",
             "lead": "Lead",
             "event_type": "Evento",
             "count": "Quantidade",
@@ -2871,8 +2871,8 @@ def render_observability_page() -> None:
         col3.metric("Snapshot", "ok" if summary.get("institutional_snapshot_ready") else "pending")
         col4.metric("Linha do tempo", "ok" if summary.get("institutional_timeline_ready") else "pending")
         st.caption(
-            f"GeraÃ§Ãµes={counts.get('generation_events', 0)}"
-            f" | ConferÃªncias={counts.get('check_events', 0)}"
+            f"Gerações={counts.get('generation_events', 0)}"
+            f" | Conferências={counts.get('check_events', 0)}"
             f" | Jogos={counts.get('generated_games', 0)}"
             f" | Concursos={counts.get('imported_contests', 0)}"
         )
@@ -2882,7 +2882,7 @@ def render_observability_page() -> None:
         live_telemetry = _cached_live_telemetry_snapshot(PAGE_DB_SIGNATURE)
         st.subheader("Painel executivo de observabilidade")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
-        dash_col1.metric("ExecuÃ§Ãµes", observability_summary.get("execution_count", 0))
+        dash_col1.metric("Execuções", observability_summary.get("execution_count", 0))
         dash_col2.metric("Spans", observability_summary.get("span_count", 0))
         dash_col3.metric("Metricas", observability_summary.get("metric_count", 0))
         dash_col4.metric("Snapshots", observability_summary.get("snapshot_count", 0))
@@ -3064,7 +3064,7 @@ def render_observability_page() -> None:
         assist_cols[0].metric("Estado", assistance.get("state", "-"))
         assist_cols[1].metric("Presenca", assistance.get("summary", {}).get("presence", "-"))
         assist_cols[2].metric("Saude", assistance.get("summary", {}).get("health_status", "-"))
-        assist_cols[3].metric("Historico", assistance.get("summary", {}).get("historical_trend", "-"))
+        assist_cols[3].metric("Histórico", assistance.get("summary", {}).get("historical_trend", "-"))
         st.caption(" | ".join(assistance.get("explanation", [])))
         if assistance.get("recommendations"):
             st.dataframe(
@@ -3079,7 +3079,7 @@ def render_observability_page() -> None:
         rec_cols = st.columns(4)
         rec_cols[0].metric("Estado", recommendations.get("state", "-"))
         rec_cols[1].metric("Presenca", recommendations.get("summary", {}).get("presence", "-"))
-        rec_cols[2].metric("Historico", recommendations.get("summary", {}).get("historical_trend", "-"))
+        rec_cols[2].metric("Histórico", recommendations.get("summary", {}).get("historical_trend", "-"))
         rec_cols[3].metric("Saude", recommendations.get("summary", {}).get("health_status", "-"))
         st.caption(" | ".join(recommendations.get("explanation", [])))
         if recommendations.get("recommendations"):
@@ -3122,7 +3122,7 @@ def render_observability_page() -> None:
         summary_cols[0].metric("Estado", executive_summary.get("state", "-"))
         summary_cols[1].metric("Presenca", executive_summary.get("summary", {}).get("presence", "-"))
         summary_cols[2].metric("Saude", executive_summary.get("summary", {}).get("health_status", "-"))
-        summary_cols[3].metric("Historico", executive_summary.get("summary", {}).get("historical_trend", "-"))
+        summary_cols[3].metric("Histórico", executive_summary.get("summary", {}).get("historical_trend", "-"))
         st.caption(" | ".join(executive_summary.get("bullets", [])))
         if executive_summary.get("highlights"):
             st.dataframe(
@@ -3481,7 +3481,7 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_analytical_intelligence_timeline()), hide_index=True, use_container_width=True)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo mÃ©dio", f"{health['response_time_ms']:.2f} ms")
-        col2.metric("ExecuÃ§Ãµes", health["total_runs"])
+        col2.metric("Execuções", health["total_runs"])
         col3.metric("Falhas", health["failures"])
         col4.metric("Snapshots", health["snapshot_events"])
 
@@ -5079,8 +5079,8 @@ def _render_lead_intelligence() -> None:
         analytics = _lead_analytics(db_signature)
         history = _lead_history_dataframe(db_signature)
     except Exception as exc:
-        st.warning("Leitura Institucional indisponivel no momento. O runtime permaneceu ativo.")
-        st.caption(f"Contexto tÃ©cnico: {exc}")
+        st.warning("Leitura Institucional indisponível no momento. O runtime permaneceu ativo.")
+        st.caption(f"Contexto técnico: {exc}")
         analytics = {
             "total_leads": 0,
             "recurring_leads": 0,
@@ -5106,14 +5106,14 @@ def _render_lead_intelligence() -> None:
             ]
         )
     st.markdown("---")
-    _section_header("Leitura Institucional", "Uso institucional por usuario, recorrencia e padrao de uso.")
+    _section_header("Leitura Institucional", "Uso institucional por usuário, recorrência e padrão de uso.")
     a, b, c, d, e = st.columns(5)
     a.metric("Total leads", analytics["total_leads"])
     b.metric("Leads recorrentes", analytics["recurring_leads"])
-    c.metric("AtivaÃ§Ãµes ML", analytics["ml_activations"])
-    d.metric("GeraÃ§Ãµes", analytics["volume_generations"])
-    e.metric("ConferÃªncias", analytics["volume_checks"])
-    st.subheader("Historico")
+    c.metric("Ativações ML", analytics["ml_activations"])
+    d.metric("Gerações", analytics["volume_generations"])
+    e.metric("Conferências", analytics["volume_checks"])
+    st.subheader("Histórico")
     st.dataframe(
         _presentational_dataframe(history),
         hide_index=True,
@@ -6475,13 +6475,13 @@ def render_expansion_experimental_page() -> None:
             st.download_button("Exportar CSV", data=csv_bytes, file_name=csv_path.name, mime="text/csv")
         if pdf_bytes is not None:
             st.download_button("Exportar PDF", data=pdf_bytes, file_name=pdf_path.name, mime="application/pdf")
-        st.subheader("Historico institucional de expansao")
+        st.subheader("Histórico institucional de expansão")
         st.dataframe(_expansion_events_dataframe(), hide_index=True, use_container_width=True)
 
 
 def render_history_page() -> None:
     with st.container(border=True):
-        _section_header("Jogos Passados", "Historico operacional, eventos persistidos e analises atuais.")
+        _section_header("Jogos Passados", "Histórico operacional, eventos persistidos e análises atuais.")
         runs = _cached_runs()
         benchmark_runs = runs["benchmark"]
         backtest_runs = runs["backtest"]
@@ -6771,7 +6771,7 @@ def render_reports_engine_page() -> None:
 
         st.subheader("Dashboard operacional pÃ³s-sorteio")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
-        dash_col1.metric("ExecuÃ§Ãµes", lifecycle_dashboard.total_runs)
+        dash_col1.metric("Execuções", lifecycle_dashboard.total_runs)
         dash_col2.metric("Jogos reconciliados", lifecycle_dashboard.total_games)
         dash_col3.metric("Premiados", lifecycle_dashboard.prize_count)
         dash_col4.metric("Melhor acerto", lifecycle_dashboard.best_hits)
@@ -6794,8 +6794,8 @@ def render_reports_engine_page() -> None:
             analytics_col4.metric("Melhor acerto", max((int(key) for key in lifecycle_analytics.hit_distribution.keys()), default=0))
             st.caption(
                 f"Concursos: {lifecycle_analytics.contest_id} | "
-                f"Historico medio de acertos: {lifecycle_analytics.historical_average_hits:.2f} | "
-                f"Historico medio de premios: {lifecycle_analytics.historical_average_prizes:.2f}"
+                f"Histórico médio de acertos: {lifecycle_analytics.historical_average_hits:.2f} | "
+                f"Histórico médio de prêmios: {lifecycle_analytics.historical_average_prizes:.2f}"
             )
             if lifecycle_analytics.notes:
                 st.write(" | ".join(lifecycle_analytics.notes))
