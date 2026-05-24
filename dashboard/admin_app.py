@@ -39,6 +39,7 @@ MODE_PAGES = {
 
 import io
 import importlib
+import html
 import json
 import os
 import sqlite3
@@ -2340,6 +2341,93 @@ def _institutional_analytics_snapshot_table() -> pd.DataFrame:
         {"metric": "latest_recommendation", "value": historical.get("summary", {}).get("latest_recommendation", "")},
     ]
     return pd.DataFrame(rows)
+
+
+def _analytical_memory_transparency_context() -> dict[str, Any]:
+    db_signature = _institutional_db_signature()
+    preview_payload = st.session_state.get("admin_last_expansion_experimental") or {}
+    institutional_expansion_event = st.session_state.get("admin_last_institutional_expansion_event")
+    historical_report = _cached_institutional_historical_intelligence(db_signature)
+    historical_summary = historical_report.get("summary", {}) if isinstance(historical_report, dict) else {}
+    live_memory = _cached_live_operational_memory(db_signature)
+    live_summary = live_memory.get("summary", {}) if isinstance(live_memory, dict) else {}
+    snapshot_path = REPORTS_DIR / "analytics" / "institutional_analytics_snapshot.json"
+    analytics_snapshot = load_institutional_analytics_snapshot(snapshot_path)
+    expansion_events_count = _safe_count("expansion_events")
+    persisted = bool(institutional_expansion_event) or expansion_events_count > 0
+    published = bool(analytics_snapshot)
+    consolidated = bool(
+        published
+        and int(live_summary.get("snapshot_count", 0)) > 0
+        and int(historical_summary.get("verdict_count", 0)) > 0
+    )
+    return {
+        "preview": {
+            "active": bool(preview_payload),
+            "state": "Preview Operacional" if preview_payload else "Preview ausente",
+            "source": "session_state.admin_last_expansion_experimental",
+            "snapshot": st.session_state.get("admin_last_expansion_experimental_snapshot", "-"),
+            "detail": f"preview_count={len(preview_payload.get('combinations', [])) if isinstance(preview_payload, dict) else 0}",
+        },
+        "persisted": {
+            "active": persisted,
+            "state": "Persistido" if persisted else "Pendente",
+            "source": "expansion_events / user_expansion_events",
+            "table": "expansion_events",
+            "snapshot": str(institutional_expansion_event.get("id", "-")) if isinstance(institutional_expansion_event, dict) else "-",
+            "detail": f"expansion_events={expansion_events_count}",
+        },
+        "published": {
+            "active": published,
+            "state": "Publicado" if published else "Nao publicado",
+            "source": str(historical_report.get("source", REPORTS_DIR / "analytics")),
+            "table": str(snapshot_path),
+            "snapshot": snapshot_path.name,
+            "detail": f"expanded_event_count={int(historical_summary.get('expanded_event_count', 0))}",
+        },
+        "consolidated": {
+            "active": consolidated,
+            "state": "Consolidado Analitico" if consolidated else "Consolidacao parcial",
+            "source": str(live_memory.get("source", DB_PATH)),
+            "table": "institutional_memory_snapshots / institutional_memory_states / institutional_memory_lineage / runtime_snapshots",
+            "snapshot": str(live_memory.get("execution_id", "-")),
+            "detail": f"registry_snapshot_count={int(live_summary.get('snapshot_count', 0))}",
+        },
+        "sync": {
+            "expansion_events": expansion_events_count,
+            "historical_expanded_events": int(historical_summary.get("expanded_event_count", 0)),
+            "registry_snapshot_count": int(live_summary.get("snapshot_count", 0)),
+            "registry_state_count": int(live_summary.get("state_count", 0)),
+            "analytics_snapshot_exists": published,
+        },
+        "flow": "Expansivo \u2192 Persistencia \u2192 Registry \u2192 Memoria Analitica",
+    }
+
+
+def _render_transparency_badge(title: str, state: str, detail: str, tone: str) -> None:
+    palette = {
+        "preview": ("#f59e0b", "#fffbeb", "#92400e"),
+        "persisted": ("#2563eb", "#eff6ff", "#1d4ed8"),
+        "published": ("#16a34a", "#f0fdf4", "#166534"),
+        "consolidated": ("#7c3aed", "#f5f3ff", "#6d28d9"),
+    }
+    border, background, text = palette.get(tone, ("#94a3b8", "#f8fafc", "#0f172a"))
+    st.markdown(
+        f"""
+        <div style="border:1px solid {html.escape(border)}; background:{html.escape(background)}; border-radius:12px; padding:12px 14px; min-height:118px;">
+            <div style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{html.escape(border)};">
+                {html.escape(title)}
+            </div>
+            <div style="margin-top:6px; font-size:1.02rem; font-weight:700; color:{html.escape(text)};">
+                {html.escape(state)}
+            </div>
+            <div style="margin-top:8px; font-size:0.8rem; line-height:1.35; color:#475569;">
+                {html.escape(detail)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _sqlite_size_bytes() -> int:
@@ -5057,6 +5145,62 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
 def render_historical_intelligence_page(draws) -> None:
     with st.container(border=True):
         _section_header("Memória Analítica", "Leitura historica para combinacoes, recorrencia e proximidade estatistica.")
+        transparency = _analytical_memory_transparency_context()
+        st.caption("Fluxo institucional: " + transparency["flow"])
+        badge_cols = st.columns(4)
+        for column, key, tone in zip(
+            badge_cols,
+            ("preview", "persisted", "published", "consolidated"),
+            ("preview", "persisted", "published", "consolidated"),
+            strict=True,
+        ):
+            with column:
+                _render_transparency_badge(
+                    key.replace("_", " ").title(),
+                    transparency[key]["state"],
+                    f"{transparency[key]['detail']} | fonte={transparency[key]['source']} | snapshot={transparency[key]['snapshot']}",
+                    tone,
+                )
+        source_rows = [
+            {
+                "etapa": "Preview Operacional",
+                "estado": transparency["preview"]["state"],
+                "fonte_da_leitura": transparency["preview"]["source"],
+                "tabela_registry": "session_state",
+                "snapshot_atual": transparency["preview"]["snapshot"],
+            },
+            {
+                "etapa": "Persistido",
+                "estado": transparency["persisted"]["state"],
+                "fonte_da_leitura": transparency["persisted"]["source"],
+                "tabela_registry": transparency["persisted"]["table"],
+                "snapshot_atual": transparency["persisted"]["snapshot"],
+            },
+            {
+                "etapa": "Publicado",
+                "estado": transparency["published"]["state"],
+                "fonte_da_leitura": transparency["published"]["source"],
+                "tabela_registry": transparency["published"]["table"],
+                "snapshot_atual": transparency["published"]["snapshot"],
+            },
+            {
+                "etapa": "Consolidado Analitico",
+                "estado": transparency["consolidated"]["state"],
+                "fonte_da_leitura": transparency["consolidated"]["source"],
+                "tabela_registry": transparency["consolidated"]["table"],
+                "snapshot_atual": transparency["consolidated"]["snapshot"],
+            },
+        ]
+        st.subheader("Transparencia operacional")
+        st.dataframe(_presentational_dataframe(pd.DataFrame(source_rows)), hide_index=True, use_container_width=True)
+        st.caption(
+            "Sincronizacao: "
+            f"expansion_events={transparency['sync']['expansion_events']} | "
+            f"historical_expanded_events={transparency['sync']['historical_expanded_events']} | "
+            f"registry_snapshot_count={transparency['sync']['registry_snapshot_count']} | "
+            f"registry_state_count={transparency['sync']['registry_state_count']} | "
+            f"analytics_snapshot_exists={'sim' if transparency['sync']['analytics_snapshot_exists'] else 'nao'}"
+        )
         if st.session_state.get("last_generation_games"):
             games = st.session_state["last_generation_games"]
         else:
