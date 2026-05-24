@@ -2742,7 +2742,6 @@ def render_observability_page() -> None:
             f" | Jogos={counts.get('generated_games', 0)}"
             f" | Concursos={counts.get('imported_contests', 0)}"
         )
-        db_signature = _institutional_db_signature()
         observability_dashboard = _cached_institutional_observability_dashboard(db_signature)
         observability_summary = observability_dashboard.get("summary", {})
         observability_health = observability_dashboard.get("runtime_health", {})
