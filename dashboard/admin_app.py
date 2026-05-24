@@ -5646,7 +5646,7 @@ def render_check_page() -> None:
             render_generation_context(executive_report, historical_report, observability_report)
             _runtime_audit("check.context.end")
         else:
-            st.info("Contexto institucional recolhido para manter a conferencia leve.")
+            st.error("Contexto institucional recolhido para manter a conferencia leve.")
         _runtime_audit("check.form.ready")
         load_result_col1, load_result_col2 = st.columns([1, 3])
         if load_result_col1.button("Buscar Último Resultado", use_container_width=True):
@@ -5959,6 +5959,8 @@ def render_operational_reconciliation_page() -> None:
                 f"{latest_official_result['date'] or '-'}"
             )
             action_preview_col.code(latest_official_result["numbers_text"], language="text")
+        else:
+            st.error("Contexto institucional recolhido para manter a reconciliação leve.")
         if "admin_operational_reconciliation_baseline_text" not in st.session_state:
             st.session_state["admin_operational_reconciliation_baseline_text"] = (
                 latest_official_result["numbers_text"] if latest_official_result else "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15"
