@@ -2720,11 +2720,11 @@ def render_observability_page() -> None:
             "sql_total_ms": 0.0,
         }
     )
-    # Define once and unconditionally so downstream blocks never reference an unbound name.
-    db_signature = _institutional_db_signature()
+    # Define once and treat it as the page's backend fingerprint for the whole render.
+    PAGE_DB_SIGNATURE = _institutional_db_signature()
     with st.container(border=True):
         _section_header("Monitoramento", "Logs institucionais, saÃºde cloud, auditoria e eventos operacionais recentes.")
-        stabilization = _cached_observational_stabilization_report(db_signature)
+        stabilization = _cached_observational_stabilization_report(PAGE_DB_SIGNATURE)
         if not stabilization:
             stabilization = persist_observational_stabilization_report()
         stabilization_report = stabilization.get("report", {})
@@ -2742,10 +2742,10 @@ def render_observability_page() -> None:
             f" | Jogos={counts.get('generated_games', 0)}"
             f" | Concursos={counts.get('imported_contests', 0)}"
         )
-        observability_dashboard = _cached_institutional_observability_dashboard(db_signature)
+        observability_dashboard = _cached_institutional_observability_dashboard(PAGE_DB_SIGNATURE)
         observability_summary = observability_dashboard.get("summary", {})
         observability_health = observability_dashboard.get("runtime_health", {})
-        live_telemetry = _cached_live_telemetry_snapshot(db_signature)
+        live_telemetry = _cached_live_telemetry_snapshot(PAGE_DB_SIGNATURE)
         st.subheader("Painel executivo de observabilidade")
         dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(4)
         dash_col1.metric("ExecuÃ§Ãµes", observability_summary.get("execution_count", 0))
@@ -2808,7 +2808,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        operational_health = _cached_operational_health_snapshot(db_signature)
+        operational_health = _cached_operational_health_snapshot(PAGE_DB_SIGNATURE)
         st.subheader("Saude operacional")
         health_cols = st.columns(4)
         health_cols[0].metric("Status", operational_health.get("status", "-"))
@@ -2826,7 +2826,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        user_lifecycle = _cached_user_lifecycle_analytics(db_signature)
+        user_lifecycle = _cached_user_lifecycle_analytics(PAGE_DB_SIGNATURE)
         st.subheader("Lifecycle institucional")
         lifecycle_cols = st.columns(4)
         lifecycle_cols[0].metric("Usuarios", user_lifecycle.get("summary", {}).get("active_users", 0))
@@ -2843,7 +2843,7 @@ def render_observability_page() -> None:
             hide_index=True,
             use_container_width=True,
         )
-        saas_certification = _cached_institutional_saas_certification(db_signature)
+        saas_certification = _cached_institutional_saas_certification(PAGE_DB_SIGNATURE)
         st.subheader("Certificacao SaaS institucional")
         cert_cols = st.columns(4)
         cert_cols[0].metric("Status", saas_certification.get("status", "-"))
@@ -2860,7 +2860,7 @@ def render_observability_page() -> None:
             hide_index=True,
             use_container_width=True,
         )
-        runtime_story = _cached_runtime_storytelling(db_signature)
+        runtime_story = _cached_runtime_storytelling(PAGE_DB_SIGNATURE)
         st.subheader("Narrativa operacional viva")
         story_cols = st.columns(3)
         story_cols[0].metric("Headline", runtime_story.get("headline", "-"))
@@ -2877,7 +2877,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        live_memory = _cached_live_operational_memory(db_signature)
+        live_memory = _cached_live_operational_memory(PAGE_DB_SIGNATURE)
         st.subheader("Memoria operacional viva")
         memory_cols = st.columns(4)
         memory_cols[0].metric("Estado", live_memory.get("summary", {}).get("memory_status", "-"))
@@ -2891,7 +2891,7 @@ def render_observability_page() -> None:
         memory_story = live_memory.get("story", {})
         if memory_story.get("narrative"):
             st.write(" | ".join(memory_story.get("narrative", [])))
-        governance = _cached_real_time_governance(db_signature)
+        governance = _cached_real_time_governance(PAGE_DB_SIGNATURE)
         st.subheader("Governanca em tempo real")
         gov_cols = st.columns(4)
         gov_cols[0].metric("Status", governance.get("status", "-"))
@@ -2908,7 +2908,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        operational_experience = _cached_operational_experience(db_signature)
+        operational_experience = _cached_operational_experience(PAGE_DB_SIGNATURE)
         st.subheader("Experiencia operacional")
         exp_cols = st.columns(4)
         exp_cols[0].metric("Estado", operational_experience.get("state", "-"))
@@ -2916,7 +2916,7 @@ def render_observability_page() -> None:
         exp_cols[2].metric("Governanca", operational_experience.get("summary", {}).get("health_status", "-"))
         exp_cols[3].metric("Telemetria", operational_experience.get("summary", {}).get("telemetry_status", "-"))
         st.caption(" | ".join(operational_experience.get("narrative", [])))
-        live_presence = _cached_live_institutional_presence(db_signature)
+        live_presence = _cached_live_institutional_presence(PAGE_DB_SIGNATURE)
         st.subheader("Presenca institucional viva")
         presence_cols = st.columns(4)
         presence_cols[0].metric("Presenca", live_presence.get("presence", "-"))
@@ -2924,7 +2924,7 @@ def render_observability_page() -> None:
         presence_cols[2].metric("Memoria", live_presence.get("summary", {}).get("memory_status", "-"))
         presence_cols[3].metric("Governanca", live_presence.get("summary", {}).get("health_status", "-"))
         st.caption(" | ".join(live_presence.get("narrative", [])))
-        assistance = _cached_executive_assistance(db_signature)
+        assistance = _cached_executive_assistance(PAGE_DB_SIGNATURE)
         st.subheader("Assistencia executiva")
         assist_cols = st.columns(4)
         assist_cols[0].metric("Estado", assistance.get("state", "-"))
@@ -2940,7 +2940,7 @@ def render_observability_page() -> None:
             )
         if assistance.get("guidance"):
             st.write(" | ".join(assistance.get("guidance", [])))
-        recommendations = _cached_contextual_recommendations(db_signature)
+        recommendations = _cached_contextual_recommendations(PAGE_DB_SIGNATURE)
         st.subheader("Recomendacoes contextuais")
         rec_cols = st.columns(4)
         rec_cols[0].metric("Estado", recommendations.get("state", "-"))
@@ -2954,7 +2954,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        explainable = _cached_explainable_analytics(db_signature)
+        explainable = _cached_explainable_analytics(PAGE_DB_SIGNATURE)
         st.subheader("Analitica explicavel")
         explain_cols = st.columns(4)
         explain_cols[0].metric("Estado", explainable.get("state", "-"))
@@ -2968,7 +2968,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        guidance = _cached_operational_guidance(db_signature)
+        guidance = _cached_operational_guidance(PAGE_DB_SIGNATURE)
         st.subheader("Orientacao operacional")
         guidance_cols = st.columns(4)
         guidance_cols[0].metric("Estado", guidance.get("state", "-"))
@@ -2982,7 +2982,7 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        executive_summary = _cached_executive_summary(db_signature)
+        executive_summary = _cached_executive_summary(PAGE_DB_SIGNATURE)
         st.subheader("Resumo executivo")
         summary_cols = st.columns(4)
         summary_cols[0].metric("Estado", executive_summary.get("state", "-"))
@@ -3148,8 +3148,8 @@ def render_observability_page() -> None:
                 hide_index=True,
                 use_container_width=True,
             )
-        health = _runtime_health(db_signature)
-        operational = _operational_metrics(db_signature)
+        health = _runtime_health(PAGE_DB_SIGNATURE)
+        operational = _operational_metrics(PAGE_DB_SIGNATURE)
         st.subheader("Saude operacional")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Tempo geracao", f"{health['avg_generation_ms']:.2f} ms")
@@ -3270,11 +3270,11 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_experiment_01_table()), hide_index=True, use_container_width=True)
         st.subheader("Ganho marginal")
         st.dataframe(_presentational_dataframe(_marginal_recovery_gain_table()), hide_index=True, use_container_width=True)
-        ai_report = _cached_analytical_intelligence(db_signature)
+        ai_report = _cached_analytical_intelligence(PAGE_DB_SIGNATURE)
         ai_summary = ai_report.get("analytical_summary", {})
         ai_insights = ai_report.get("insights", [])
         ai_comparisons = ai_report.get("comparisons", [])
-        executive_report = _cached_executive_analytical_report(db_signature)
+        executive_report = _cached_executive_analytical_report(PAGE_DB_SIGNATURE)
         ai_top_insights = {item.get("metric"): item for item in ai_insights if isinstance(item, dict)}
         col_ai_1, col_ai_2, col_ai_3, col_ai_4 = st.columns(4)
         col_ai_1.metric("SaÃºde estrutural", f"{float(ai_summary.get('structural_health', 0.0)):.2f}")
@@ -3294,10 +3294,10 @@ def render_observability_page() -> None:
         render_live_analytical_intelligence(
             ai_report,
             executive_report,
-            _cached_institutional_historical_intelligence(db_signature),
-            _cached_institutional_analytics_snapshot(db_signature),
-            _cached_institutional_analytical_timeline(db_signature),
-            _cached_observational_stabilization_report(db_signature),
+            _cached_institutional_historical_intelligence(PAGE_DB_SIGNATURE),
+            _cached_institutional_analytics_snapshot(PAGE_DB_SIGNATURE),
+            _cached_institutional_analytical_timeline(PAGE_DB_SIGNATURE),
+            _cached_observational_stabilization_report(PAGE_DB_SIGNATURE),
         )
         adaptive_report = load_adaptive_institutional_intelligence()
         if not adaptive_report:
@@ -3370,7 +3370,7 @@ def render_observability_page() -> None:
                 use_container_width=True,
             )
 
-        tables = _observability_tables(_institutional_db_signature())
+        tables = _observability_tables(PAGE_DB_SIGNATURE)
         st.subheader("Logs recentes")
         st.dataframe(_presentational_dataframe(tables["logs"].head(50)), hide_index=True, use_container_width=True)
         st.subheader("Auditoria institucional")
