@@ -1114,7 +1114,36 @@ def _default_admin_expansion_numbers(selected_count: int, allowed_sizes: tuple[i
     return _format_numbers(sorted(spread[:size]))
 
 
-def _build_premium_generation_package(package_size: int) -> dict[str, Any]:
+def _prepare_operational_premium_game(
+    row: dict[str, Any],
+    *,
+    label: str,
+    package_size: int,
+    base_numbers: list[int],
+    history: list[Any],
+    package_summary: dict[str, Any],
+) -> dict[str, Any]:
+    numbers = [int(number) for number in row.get("numbers", [])]
+    scientific_scores = score_candidate_from_history(numbers, history)
+    enriched = dict(row)
+    enriched.update(scientific_scores)
+    enriched["sum"] = sum(numbers)
+    enriched["even"] = sum(1 for number in numbers if number % 2 == 0)
+    enriched["odd"] = sum(1 for number in numbers if number % 2 != 0)
+    enriched["profile_type"] = label
+    enriched["operational_mode"] = label
+    enriched["package_size"] = package_size
+    enriched["package_base_numbers"] = base_numbers
+    enriched["package_entropy"] = package_summary.get("package_entropy", 0.0)
+    enriched["generated_internal_bets"] = package_summary.get("theoretical_internal_bets", 0)
+    enriched["premium_score"] = round(
+        float(enriched.get("scientific_score", 0.0)) * 0.7 + float(enriched.get("profile_score", 0.0)) * 0.3,
+        2,
+    )
+    return enriched
+
+
+def _build_premium_generation_package(package_size: int, generation_mode: str) -> dict[str, Any]:
     if package_size not in (16, 17, 18):
         raise ValueError("Pacote premium deve conter 16, 17 ou 18 dezenas.")
 
@@ -1135,30 +1164,45 @@ def _build_premium_generation_package(package_size: int) -> dict[str, Any]:
     )
     scientific_payload = scientific_result.as_dict()
     runtime_metrics = dict(scientific_payload.get("metrics", {}))
-    premium_games: list[dict[str, Any]] = []
-    for row in scientific_payload.get("premium_games", []):
-        numbers = [int(number) for number in row.get("numbers", [])]
-        enriched = dict(row)
-        scientific_scores = score_candidate_from_history(numbers, history)
-        enriched.update(scientific_scores)
-        enriched["sum"] = sum(numbers)
-        enriched["even"] = sum(1 for number in numbers if number % 2 == 0)
-        enriched["odd"] = sum(1 for number in numbers if number % 2 != 0)
-        enriched["generated_internal_bets"] = total_combinations
-        enriched["package_size"] = package_size
-        enriched["package_base_numbers"] = base_numbers
-        enriched["package_entropy"] = runtime_metrics.get("entropy_score", 0.0)
-        enriched["premium_score"] = round(
-            float(enriched.get("scientific_score", 0.0)) * 0.7
-            + float(enriched.get("profile_score", 0.0)) * 0.3,
-            2,
+    premium_candidates = list(scientific_payload.get("premium_games", []))
+    if premium_candidates:
+        hb_source = premium_candidates[0]
+        ia_source = max(
+            premium_candidates[: min(10, len(premium_candidates))],
+            key=lambda row: (
+                float(row.get("diversity_score", 0.0)),
+                float(row.get("entropy_score", 0.0)),
+                float(row.get("coverage_score", 0.0)),
+                -float(row.get("recurrence_score", 0.0)),
+                -float(row.get("historical_similarity", 0.0)),
+            ),
         )
-        premium_games.append(enriched)
+        selected_sources: list[tuple[str, dict[str, Any]]] = [("HB", hb_source)]
+        if generation_mode in {"IA", "HBIA"}:
+            if ia_source.get("numbers") != hb_source.get("numbers") or generation_mode == "HBIA":
+                selected_sources.append(("IA", ia_source))
+        if generation_mode == "IA":
+            selected_sources = [("IA", ia_source)]
+    else:
+        selected_sources = []
 
-    if premium_games:
-        premium_score = round(sum(float(game.get("premium_score", 0.0)) for game in premium_games) / len(premium_games), 2)
-        diversity_score = round(sum(float(game.get("diversity_score", 0.0)) for game in premium_games) / len(premium_games), 4)
-        coverage_score = round(sum(float(game.get("coverage_score", 0.0)) for game in premium_games) / len(premium_games), 4)
+    selected_games: list[dict[str, Any]] = []
+    for label, row in selected_sources:
+        selected_games.append(
+            _prepare_operational_premium_game(
+                row,
+                label=label,
+                package_size=package_size,
+                base_numbers=base_numbers,
+                history=history,
+                package_summary=runtime_metrics,
+            )
+        )
+
+    if selected_games:
+        premium_score = round(sum(float(game.get("premium_score", 0.0)) for game in selected_games) / len(selected_games), 2)
+        diversity_score = round(sum(float(game.get("diversity_score", 0.0)) for game in selected_games) / len(selected_games), 4)
+        coverage_score = round(sum(float(game.get("coverage_score", 0.0)) for game in selected_games) / len(selected_games), 4)
         overlap_mean = float(runtime_metrics.get("overlap_mean", 0.0))
         unique_ratio = float(runtime_metrics.get("unique_ratio", 0.0))
         rerank_entropy = float(runtime_metrics.get("rerank_entropy", 0.0))
@@ -1180,7 +1224,9 @@ def _build_premium_generation_package(package_size: int) -> dict[str, Any]:
         "package_size": package_size,
         "package_base_numbers": base_numbers,
         "theoretical_internal_bets": total_combinations,
-        "generated_internal_bets": len(premium_games),
+        "generated_internal_bets": len(selected_games),
+        "operational_mode": generation_mode,
+        "operational_bets": len(selected_games),
         "premium_score": premium_score,
         "diversity_score": diversity_score,
         "coverage_score": coverage_score,
@@ -1197,7 +1243,8 @@ def _build_premium_generation_package(package_size: int) -> dict[str, Any]:
     }
     return {
         "base_numbers": base_numbers,
-        "premium_games": premium_games,
+        "premium_games": selected_games,
+        "scientific_games": premium_candidates,
         "summary": summary,
         "scientific_payload": scientific_payload,
     }
@@ -4471,6 +4518,20 @@ def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _merge_unique_games(primary: list[dict[str, Any]], secondary: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[int, ...]] = set()
+    for game in primary + secondary:
+        numbers = tuple(int(number) for number in game.get("numbers", []))
+        if not numbers or numbers in seen:
+            continue
+        merged.append(game)
+        seen.add(numbers)
+        if len(merged) >= limit:
+            break
+    return merged[:limit]
+
+
 def _stats_table(stats: dict[str, dict[str, Any]], key_name: str, limit: int = 25) -> pd.DataFrame:
     rows = []
     for key, values in list(stats.items())[:limit]:
@@ -6020,14 +6081,14 @@ def render_generation_page() -> None:
         package_summary: dict[str, Any] = {}
         premium_generation_package: dict[str, Any] | None = None
         _runtime_audit("generate.form.inputs")
-        generation_mode_options = ["Analitico", "LotoIA"]
-        generation_mode = st.session_state.get("admin_generation_mode", "Analitico")
+        generation_mode_options = ["HB", "IA", "HBIA"]
+        generation_mode = st.session_state.get("admin_generation_mode", "HB")
         if generation_mode not in generation_mode_options:
             generation_mode = generation_mode_options[0]
         mode_col, button_col = st.columns([3, 1])
         with mode_col:
             generation_mode = st.radio(
-                "Modo",
+                "Modo operacional",
                 generation_mode_options,
                 horizontal=True,
                 index=generation_mode_options.index(generation_mode),
@@ -6079,7 +6140,7 @@ def render_generation_page() -> None:
                     st.warning(str(exc))
                     return
                 if premium_mode:
-                    premium_generation_package = _build_premium_generation_package(selected_size)
+                    premium_generation_package = _build_premium_generation_package(selected_size, generation_mode)
                     games = premium_generation_package["premium_games"]
                     payload = {
                         "games": games,
@@ -6089,16 +6150,32 @@ def render_generation_page() -> None:
                     }
                     strategy = f"Premium {selected_size}"
                 else:
-                    if generation_mode == "Analitico":
+                    if generation_mode == "HB":
                         payload = _cached_generate_best_games(int(count), int(pool_size))
                         games = payload["games"]
-                    else:
+                    elif generation_mode == "IA":
                         games = _cached_generate_multiple_games(int(count), int(max_repeated))
                         payload = {
                             "games": games,
                             "profile_counts": {
                                 profile: sum(1 for game in games if game.get("profile_type") == profile)
                                 for profile in GENERATION_PROFILE_RATIOS
+                            },
+                        }
+                    else:
+                        hb_payload = _cached_generate_best_games(int(count), int(pool_size))
+                        ia_games = _cached_generate_multiple_games(int(count), int(max_repeated))
+                        games = _merge_unique_games(hb_payload["games"], ia_games, int(count))
+                        payload = {
+                            "games": games,
+                            "profile_counts": {
+                                profile: sum(1 for game in games if game.get("profile_type") == profile)
+                                for profile in GENERATION_PROFILE_RATIOS
+                            },
+                            "composition": {
+                                "hb_games": len(hb_payload["games"]),
+                                "ia_games": len(ia_games),
+                                "merged_games": len(games),
                             },
                         }
                     strategy = generation_mode
@@ -6132,7 +6209,8 @@ def render_generation_page() -> None:
                     "strategy": strategy,
                     "lead_id": lead_id,
                     "package_size": selected_size,
-                    "generated_internal_bets": int(premium_generation_package["summary"].get("generated_internal_bets", len(games))) if premium_generation_package else len(games),
+                    "generated_internal_bets": int(premium_generation_package["summary"].get("theoretical_internal_bets", len(games))) if premium_generation_package else len(games),
+                    "operational_bets": int(premium_generation_package["summary"].get("operational_bets", len(games))) if premium_generation_package else len(games),
                 },
                 "AFTER_PERSIST": {
                     "generation_event_id": generation_event_id,
@@ -6164,7 +6242,8 @@ def render_generation_page() -> None:
                 detail_cols[2].metric("Rerank entropy", f"{package_summary['rerank_entropy']:.4f}")
                 detail_cols[3].metric("Foco premium", str(package_summary["dominant_profile"]))
                 st.caption(
-                    f"{selected_size} dezenas premium | {package_summary['generated_internal_bets']} apostas derivadas automaticamente | "
+                    f"{selected_size} dezenas premium | {package_summary['theoretical_internal_bets']} apostas derivadas automaticamente | "
+                    f"{package_summary['operational_bets']} apostas operacionais | "
                     f"score estrutural {package_summary['structural_diversity_score']:.4f}"
                 )
             st.session_state["last_generation_games"] = games
@@ -6181,7 +6260,7 @@ def render_generation_page() -> None:
                     "context": st.session_state["last_generation_context"],
                     "games": games,
                     "historical": _historical_analytics(games),
-                    "engine_version": "historical_recalibrated_v2" if not premium_mode else "scientific_expansive_v1",
+                    "engine_version": "historical_recalibrated_v2" if not premium_mode else "operational_premium_v1",
                     "fallback_used": False,
                     "profile_distribution": payload.get("profile_counts", {}),
                     "package_summary": dict(premium_generation_package["summary"]) if premium_generation_package is not None else {},
