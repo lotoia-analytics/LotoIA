@@ -881,6 +881,105 @@ def _render_shared_backend_status() -> None:
         st.sidebar.caption("Configure DATABASE_URL para ativar a persistência compartilhada.")
 
 
+def _sqlite_runtime_audit_snapshot() -> dict[str, Any]:
+    adapter = resolve_institutional_adapter(DB_PATH)
+    requested_path = str(DB_PATH)
+    active_path = str(SQLITE_BOOTSTRAP_STATE.get("active_path") or DB_PATH)
+    fallback_used = bool(SQLITE_BOOTSTRAP_STATE.get("fallback_used", False))
+    tables = (
+        "generation_events",
+        "generated_games",
+        "reconciliation_runs",
+        "reconciliation_games",
+        "reconciliation_events",
+        "imported_contests",
+        "expansion_events",
+        "operational_logs",
+    )
+    counts = {table: int(_query_scalar(f"SELECT COUNT(*) FROM {table}", default=0)) for table in tables}
+    latest_by_table = {
+        table: str(_query_scalar(f"SELECT MAX(created_at) FROM {table}", default="") or "")
+        for table in tables
+    }
+    latest_persistence_at = max((value for value in latest_by_table.values() if value), default="")
+    try:
+        engine_url = str(get_engine(DB_PATH).url)
+    except Exception:
+        engine_url = str(adapter.database_url)
+    return {
+        "requested_path": requested_path,
+        "active_path": active_path,
+        "engine_url": engine_url,
+        "backend": str(getattr(adapter, "backend", "unknown")),
+        "database_source": str(getattr(adapter, "database_source", "sqlite_fallback")),
+        "fallback_used": fallback_used,
+        "file_size_bytes": _sqlite_size_bytes(),
+        "counts": counts,
+        "latest_by_table": latest_by_table,
+        "latest_persistence_at": latest_persistence_at,
+    }
+
+
+def _render_sqlite_runtime_audit() -> None:
+    audit = _sqlite_runtime_audit_snapshot()
+    counts = audit["counts"]
+    latest_by_table = audit["latest_by_table"]
+    fallback_used = bool(audit["fallback_used"])
+    active_path = str(audit["active_path"])
+    requested_path = str(audit["requested_path"])
+    mismatch = requested_path != active_path
+    header_tone = "⚠️" if fallback_used or mismatch else "✅"
+
+    st.subheader(f"{header_tone} Auditoria do runtime SQLite")
+    if fallback_used or mismatch:
+        st.error(
+            "Runtime com divergência de caminho detectada."
+            f" ativo={active_path} | solicitado={requested_path} | fallback={'sim' if fallback_used else 'não'}"
+        )
+    else:
+        st.success("Runtime SQLite unificado no caminho esperado.")
+
+    col1, col2 = st.columns(2)
+    col1.metric("DB_PATH solicitado", requested_path)
+    col2.metric("DB_PATH ativo", active_path)
+
+    col3, col4 = st.columns(2)
+    col3.metric("engine.url", audit["engine_url"])
+    col4.metric("backend / source", f"{audit['backend']} / {audit['database_source']}")
+
+    col5, col6 = st.columns(2)
+    col5.metric("fallback transitório", "sim" if fallback_used else "não")
+    col6.metric("arquivo SQLite", f"{int(audit['file_size_bytes'])} bytes")
+
+    count_rows = [
+        {
+            "tabela": table,
+            "contagem": int(counts.get(table, 0)),
+            "ultima_persistencia": str(latest_by_table.get(table, "") or "-"),
+        }
+        for table in (
+            "generation_events",
+            "generated_games",
+            "reconciliation_runs",
+            "reconciliation_games",
+            "reconciliation_events",
+            "imported_contests",
+            "expansion_events",
+            "operational_logs",
+        )
+    ]
+    st.dataframe(
+        pd.DataFrame(count_rows),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.caption(
+        f"Última persistência observada: {audit['latest_persistence_at'] or '-'} | "
+        f"Registros totais observados: {sum(int(v) for v in counts.values())}"
+    )
+
+
 def _runtime_audit(stage: str, detail: str | None = None, *, elapsed_ms: float | None = None) -> None:
     if not RUNTIME_AUDIT_ENABLED:
         return
@@ -6964,6 +7063,7 @@ def main() -> None:
         _runtime_audit("bootstrap", "local_backend_available")
 
     _render_shared_backend_status()
+    _render_sqlite_runtime_audit()
     sync_summaries = _maybe_bootstrap_official_results_sync()
     if sync_summaries and any(summary.get("synced_contests") for summary in sync_summaries):
         latest_synced = sync_summaries[-1]
