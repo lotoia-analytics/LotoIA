@@ -73,12 +73,12 @@ STREAMLIT_CACHE_MAX_ENTRIES = 16
 USAGE_CACHE_TTL_SECONDS = 15
 ADMIN_EXPANSION_ROLE_SIZES = {
     "basic": (16,),
-    "premium": (16, 17),
+    "premium": (16, 17, 18),
     "operator": (16, 17, 18),
     "admin": (16, 17, 18, 19, 20),
 }
 ADMIN_EXPANSION_DEFAULT_ROLE = "admin"
-ADMIN_EXPANSION_PREVIEW_LIMIT = 136
+ADMIN_EXPANSION_PREVIEW_LIMIT = 816
 ADMIN_EXPANSION_PAGE_SIZE = 50
 ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "workflow_events", "operational_logs", "audit_trail", "leads"})
 ALERT_GENERATION_MS = 5_000.0
@@ -989,6 +989,10 @@ def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
             for index, game in enumerate(combinations)
         ]
     )
+
+
+def _payload_size_bytes(payload: dict[str, Any]) -> int:
+    return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 def _expansion_events_dataframe(limit: int = 20) -> pd.DataFrame:
@@ -6309,6 +6313,21 @@ def render_benchmark_page() -> None:
 
 
 def render_expansion_experimental_page() -> None:
+    page_start = time.monotonic()
+    page_profile_token = _PAGE_SQL_PROFILE.set(
+        {
+            "page": "expansion",
+            "sql_count": 0,
+            "sql_scalar_count": 0,
+            "sql_read_count": 0,
+            "sqlite_exec_count": 0,
+            "sql_total_ms": 0.0,
+        }
+    )
+    page_status = "idle"
+    generation_ms = 0.0
+    persistence_ms = 0.0
+    payload_size_bytes = 0
     with st.container(border=True):
         _section_header(
             "Expansivo",
@@ -6365,6 +6384,18 @@ def render_expansion_experimental_page() -> None:
                     "allowed_sizes": list(allowed_sizes),
                 },
             )
+            profile = _page_sql_profile_snapshot()
+            page_status = "blocked"
+            render_ms = (time.monotonic() - page_start) * 1000.0
+            _record_performance_metric("expansion_page_ms", render_ms, {"page": "expansion", "status": page_status})
+            if profile is not None:
+                _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "expansion"})
+            _PAGE_SQL_PROFILE.reset(page_profile_token)
+            _runtime_audit("expansion.page.done", elapsed_ms=render_ms)
             return
 
         col1, col2, col3 = st.columns(3)
@@ -6378,14 +6409,18 @@ def render_expansion_experimental_page() -> None:
         if st.button("Gerar Jogos", type="primary"):
             try:
                 with st.spinner("Gerando preview com guardrails operacionais..."):
+                    generation_started = time.monotonic()
                     st.session_state["admin_last_expansion_experimental"] = _run_admin_expansion(
                         numbers,
                         preview_limit=int(preview_limit),
                         allowed_sizes=allowed_sizes,
                     )
+                    generation_ms = (time.monotonic() - generation_started) * 1000.0
                     expansion_payload = st.session_state["admin_last_expansion_experimental"]
                     if isinstance(expansion_payload, dict):
+                        payload_size_bytes = _payload_size_bytes(expansion_payload)
                         institutional_analysis = _historical_match_engine(expansion_payload.get("selected_numbers", numbers))
+                        persistence_started = time.monotonic()
                         save_expansion_event(
                             {
                                 **expansion_payload,
@@ -6421,6 +6456,7 @@ def render_expansion_experimental_page() -> None:
                             },
                         )
                         st.session_state["admin_last_institutional_expansion_event"] = institutional_expansion_event
+                        persistence_ms = (time.monotonic() - persistence_started) * 1000.0
                         st.session_state["admin_last_expansion_experimental_snapshot"] = _write_snapshot(
                             "admin_expansion_experimental",
                             {
@@ -6429,14 +6465,77 @@ def render_expansion_experimental_page() -> None:
                                 "payload": expansion_payload,
                             },
                         )
+                        st.session_state["admin_last_expansion_operational_report"] = {
+                            "selected_role": selected_role,
+                            "selected_count": len(numbers),
+                            "allowed_sizes": list(allowed_sizes),
+                            "bets_count": int(expansion_payload.get("generated_count", 0)),
+                            "total_combinations": int(expansion_payload.get("total_combinations", 0)),
+                            "generation_ms": round(generation_ms, 3),
+                            "persistence_ms": round(persistence_ms, 3),
+                            "payload_size_bytes": int(payload_size_bytes),
+                            "preview_limit": int(preview_limit),
+                            "runtime_ms": float(expansion_payload.get("runtime_ms", 0.0)),
+                            "complete": bool(expansion_payload.get("complete", False)),
+                            "stopped_reason": expansion_payload.get("stopped_reason", ""),
+                            "safe_capacity": max(allowed_sizes) if allowed_sizes else len(numbers),
+                        }
+                        st.session_state["admin_last_expansion_operational_snapshot"] = _write_snapshot(
+                            "admin_expansion_operational_report",
+                            {
+                                "timestamp": _report_timestamp(),
+                                "source": "admin_expansion_operational",
+                                "observability": st.session_state["admin_last_expansion_operational_report"],
+                                "payload": expansion_payload,
+                            },
+                        )
+                        _record_operational_log(
+                            "admin_expansion_operational",
+                            "success",
+                            persistence_ms,
+                            {
+                                "selected_count": len(numbers),
+                                "generated_count": int(expansion_payload.get("generated_count", 0)),
+                                "total_combinations": int(expansion_payload.get("total_combinations", 0)),
+                                "generation_ms": round(generation_ms, 3),
+                                "persistence_ms": round(persistence_ms, 3),
+                                "payload_size_bytes": int(payload_size_bytes),
+                                "stopped_reason": expansion_payload.get("stopped_reason", ""),
+                            },
+                        )
+                        page_status = "success"
             except Exception as exc:
                 st.error("Falha controlada no motor combinatorio experimental.")
                 st.caption(str(exc))
                 _record_operational_log("admin_expansion_experimental", "failed", 0.0, {"error": str(exc)})
+                page_status = "failed"
+                profile = _page_sql_profile_snapshot()
+                render_ms = (time.monotonic() - page_start) * 1000.0
+                _record_performance_metric("expansion_page_ms", render_ms, {"page": "expansion", "status": page_status})
+                if profile is not None:
+                    _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "expansion"})
+                    _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "expansion"})
+                    _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "expansion"})
+                    _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "expansion"})
+                    _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "expansion"})
+                _PAGE_SQL_PROFILE.reset(page_profile_token)
+                _runtime_audit("expansion.page.done", elapsed_ms=render_ms)
                 return
 
         result = st.session_state.get("admin_last_expansion_experimental")
         if not result:
+            profile = _page_sql_profile_snapshot()
+            page_status = "idle"
+            render_ms = (time.monotonic() - page_start) * 1000.0
+            _record_performance_metric("expansion_page_ms", render_ms, {"page": "expansion", "status": page_status})
+            if profile is not None:
+                _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "expansion"})
+                _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "expansion"})
+            _PAGE_SQL_PROFILE.reset(page_profile_token)
+            _runtime_audit("expansion.page.done", elapsed_ms=render_ms)
             return
 
         st.success(f"Preview disponivel: {result['generated_count']} de {result['total_combinations']} apostas.")
@@ -6465,7 +6564,7 @@ def render_expansion_experimental_page() -> None:
                 f"Custo estimado: R$ {float(result['estimated_cost']):.2f}",
                 f"Preview gerado: {result['generated_count']}",
                 f"Runtime ms: {result['runtime_ms']}",
-                "Restricao ADMIN: apenas 16 e 17 dezenas.",
+                f"Restricao governada: apenas {_format_allowed_expansion_sizes(allowed_sizes)} dezenas.",
             ],
             export_dataframe,
         )
@@ -6475,8 +6574,49 @@ def render_expansion_experimental_page() -> None:
             st.download_button("Exportar CSV", data=csv_bytes, file_name=csv_path.name, mime="text/csv")
         if pdf_bytes is not None:
             st.download_button("Exportar PDF", data=pdf_bytes, file_name=pdf_path.name, mime="application/pdf")
+        if page_status == "idle":
+            page_status = "preview_ready"
+        render_ms = (time.monotonic() - page_start) * 1000.0
+        observability = st.session_state.get("admin_last_expansion_operational_report") or {
+            "selected_role": selected_role,
+            "selected_count": len(numbers),
+            "allowed_sizes": list(allowed_sizes),
+            "bets_count": int(result.get("generated_count", 0)),
+            "total_combinations": int(result.get("total_combinations", 0)),
+            "generation_ms": round(generation_ms, 3),
+            "persistence_ms": round(persistence_ms, 3),
+            "payload_size_bytes": int(payload_size_bytes),
+            "preview_limit": int(preview_limit),
+            "runtime_ms": float(result.get("runtime_ms", 0.0)),
+            "complete": bool(result.get("complete", False)),
+            "stopped_reason": result.get("stopped_reason", ""),
+            "safe_capacity": max(allowed_sizes) if allowed_sizes else len(numbers),
+        }
+        st.subheader("Observabilidade operacional")
+        obs_cols = st.columns(6)
+        obs_cols[0].metric("Apostas", observability["bets_count"])
+        obs_cols[1].metric("Geração ms", f"{observability['generation_ms']:.2f}")
+        obs_cols[2].metric("Persistência ms", f"{observability['persistence_ms']:.2f}")
+        obs_cols[3].metric("Render ms", f"{render_ms:.2f}")
+        obs_cols[4].metric("Payload KB", f"{observability['payload_size_bytes'] / 1024:.2f}")
+        obs_cols[5].metric("Capacidade segura", observability["safe_capacity"])
+        st.caption(
+            f"Preview={observability['preview_limit']} | Runtime={observability['runtime_ms']:.2f} ms | "
+            f"Estado={'completo' if observability['complete'] else 'parcial'} | "
+            f"Motivo={observability['stopped_reason'] or 'nenhum'}"
+        )
         st.subheader("Histórico institucional de expansão")
         st.dataframe(_expansion_events_dataframe(), hide_index=True, use_container_width=True)
+    profile = _page_sql_profile_snapshot()
+    _record_performance_metric("expansion_page_ms", render_ms, {"page": "expansion", "status": page_status})
+    if profile is not None:
+        _record_performance_metric("page_sql_count", float(profile.get("sql_count", 0)), {"page": "expansion"})
+        _record_performance_metric("page_sql_ms", float(profile.get("sql_total_ms", 0.0)), {"page": "expansion"})
+        _record_performance_metric("page_sql_scalar_count", float(profile.get("sql_scalar_count", 0)), {"page": "expansion"})
+        _record_performance_metric("page_sql_read_count", float(profile.get("sql_read_count", 0)), {"page": "expansion"})
+        _record_performance_metric("page_sql_exec_count", float(profile.get("sqlite_exec_count", 0)), {"page": "expansion"})
+    _PAGE_SQL_PROFILE.reset(page_profile_token)
+    _runtime_audit("expansion.page.done", elapsed_ms=render_ms)
 
 
 def render_history_page() -> None:

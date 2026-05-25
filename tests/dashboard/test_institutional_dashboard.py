@@ -286,7 +286,7 @@ def test_admin_expansion_experimental_allows_governed_sizes_by_role(monkeypatch)
     monkeypatch.setattr(admin_app, "_record_operational_log", lambda *args, **kwargs: None)
 
     assert admin_app._admin_expansion_allowed_sizes("basic") == (16,)
-    assert admin_app._admin_expansion_allowed_sizes("premium") == (16, 17)
+    assert admin_app._admin_expansion_allowed_sizes("premium") == (16, 17, 18)
     assert admin_app._admin_expansion_allowed_sizes("operator") == (16, 17, 18)
     assert admin_app._admin_expansion_allowed_sizes("admin") == (16, 17, 18, 19, 20)
 
@@ -313,7 +313,7 @@ def test_admin_expansion_experimental_allows_governed_sizes_by_role(monkeypatch)
         try:
             admin_app._parse_admin_expansion_numbers(value, allowed_sizes=admin_app._admin_expansion_allowed_sizes("premium"))
         except ValueError as exc:
-            assert "16 ou 17" in str(exc)
+            assert "16, 17 e 18" in str(exc)
         else:
             raise AssertionError("ADMIN experimental expansion must reject this size")
 
