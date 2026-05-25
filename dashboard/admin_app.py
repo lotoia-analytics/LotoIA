@@ -218,6 +218,7 @@ expand_lotofacil_numbers = _LazyImportedAttr("lotoia.combinatorics", "expand_lot
 estimate_expansion = _LazyImportedAttr("lotoia.combinatorics", "estimate_expansion")
 select_premium_expansive_games = _LazyImportedAttr("lotoia.combinatorics", "select_premium_expansive_games")
 ScientificExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ScientificExpansionConfig")
+score_candidate_from_history = _LazyImportedAttr("lotoia.statistics.scoring", "score_candidate_from_history")
 list_expansion_events = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "list_expansion_events")
 save_expansion_event = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "save_expansion_event")
 evaluate_expansion_lifecycle = _LazyImportedAttr("lotoia.public.expansion_lifecycle", "evaluate_expansion_lifecycle")
@@ -1111,6 +1112,95 @@ def _default_admin_expansion_numbers(selected_count: int, allowed_sizes: tuple[i
             if len(spread) >= size:
                 break
     return _format_numbers(sorted(spread[:size]))
+
+
+def _build_premium_generation_package(package_size: int) -> dict[str, Any]:
+    if package_size not in (16, 17, 18):
+        raise ValueError("Pacote premium deve conter 16, 17 ou 18 dezenas.")
+
+    base_numbers_text = _default_admin_expansion_numbers(package_size, allowed_sizes=(package_size,))
+    base_numbers = _parse_admin_expansion_numbers(base_numbers_text, allowed_sizes=(package_size,))
+    history = _historical_dataset().get("draws", [])
+    total_combinations = int(math.comb(package_size, 15))
+    premium_limit = total_combinations if package_size in (16, 17) else _scientific_expansion_limit(package_size)
+    scientific_config = ScientificExpansionConfig(
+        max_runtime_seconds=1.5,
+        max_candidates=max(40, premium_limit),
+        premium_limit=premium_limit,
+    )
+    scientific_result = select_premium_expansive_games(
+        base_numbers,
+        history=history,
+        config=scientific_config,
+    )
+    scientific_payload = scientific_result.as_dict()
+    runtime_metrics = dict(scientific_payload.get("metrics", {}))
+    premium_games: list[dict[str, Any]] = []
+    for row in scientific_payload.get("premium_games", []):
+        numbers = [int(number) for number in row.get("numbers", [])]
+        enriched = dict(row)
+        scientific_scores = score_candidate_from_history(numbers, history)
+        enriched.update(scientific_scores)
+        enriched["sum"] = sum(numbers)
+        enriched["even"] = sum(1 for number in numbers if number % 2 == 0)
+        enriched["odd"] = sum(1 for number in numbers if number % 2 != 0)
+        enriched["generated_internal_bets"] = total_combinations
+        enriched["package_size"] = package_size
+        enriched["package_base_numbers"] = base_numbers
+        enriched["package_entropy"] = runtime_metrics.get("entropy_score", 0.0)
+        enriched["premium_score"] = round(
+            float(enriched.get("scientific_score", 0.0)) * 0.7
+            + float(enriched.get("profile_score", 0.0)) * 0.3,
+            2,
+        )
+        premium_games.append(enriched)
+
+    if premium_games:
+        premium_score = round(sum(float(game.get("premium_score", 0.0)) for game in premium_games) / len(premium_games), 2)
+        diversity_score = round(sum(float(game.get("diversity_score", 0.0)) for game in premium_games) / len(premium_games), 4)
+        coverage_score = round(sum(float(game.get("coverage_score", 0.0)) for game in premium_games) / len(premium_games), 4)
+        overlap_mean = float(runtime_metrics.get("overlap_mean", 0.0))
+        unique_ratio = float(runtime_metrics.get("unique_ratio", 0.0))
+        rerank_entropy = float(runtime_metrics.get("rerank_entropy", 0.0))
+        structural_diversity_score = float(runtime_metrics.get("structural_diversity_score", 0.0))
+        profile_distribution = dict(runtime_metrics.get("profile_distribution", {}))
+        dominant_profile = max(profile_distribution.items(), key=lambda item: (item[1], item[0]))[0] if profile_distribution else "indefinido"
+    else:
+        premium_score = 0.0
+        diversity_score = 0.0
+        coverage_score = 0.0
+        overlap_mean = 0.0
+        unique_ratio = 0.0
+        rerank_entropy = 0.0
+        structural_diversity_score = 0.0
+        profile_distribution = {}
+        dominant_profile = "indefinido"
+
+    summary = {
+        "package_size": package_size,
+        "package_base_numbers": base_numbers,
+        "theoretical_internal_bets": total_combinations,
+        "generated_internal_bets": len(premium_games),
+        "premium_score": premium_score,
+        "diversity_score": diversity_score,
+        "coverage_score": coverage_score,
+        "package_entropy": float(runtime_metrics.get("entropy_score", 0.0)),
+        "overlap_mean": overlap_mean,
+        "unique_ratio": unique_ratio,
+        "rerank_entropy": rerank_entropy,
+        "structural_diversity_score": structural_diversity_score,
+        "profile_distribution": profile_distribution,
+        "dominant_profile": dominant_profile,
+        "runtime_metrics": runtime_metrics,
+        "scientific_limit": premium_limit,
+        "engine": "scientific_expansive_v1",
+    }
+    return {
+        "base_numbers": base_numbers,
+        "premium_games": premium_games,
+        "summary": summary,
+        "scientific_payload": scientific_payload,
+    }
 
 
 def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
@@ -4741,6 +4831,7 @@ def _persist_generation_events(
     duration_ms: float,
     strategy: str,
     lead_id: int | None,
+    context: dict[str, Any] | None = None,
 ) -> int | None:
     from lotoia.database.public_repository import save_generation_event
 
@@ -4774,6 +4865,17 @@ def _persist_generation_events(
         },
     )
     try:
+        persisted_context = {
+            "first_name": first_name.strip(),
+            "whatsapp": whatsapp.strip(),
+            "duration_ms": round(duration_ms, 2),
+            "strategy": strategy,
+            "lead_id": lead_id,
+            "target_contest": target_contest,
+            "db_path": str(DB_PATH),
+        }
+        if context:
+            persisted_context.update(context)
         persisted_event = save_generation_event(
             first_name=first_name.strip(),
             whatsapp=whatsapp.strip(),
@@ -4787,15 +4889,7 @@ def _persist_generation_events(
             target_contest=target_contest,
             origin="dashboard_admin",
             generation_mode=strategy,
-            context={
-                "first_name": first_name.strip(),
-                "whatsapp": whatsapp.strip(),
-                "duration_ms": round(duration_ms, 2),
-                "strategy": strategy,
-                "lead_id": lead_id,
-                "target_contest": target_contest,
-                "db_path": str(DB_PATH),
-            },
+            context=persisted_context,
             db_path=DB_PATH,
         )
     except Exception as exc:
@@ -5914,12 +6008,49 @@ def render_generation_page() -> None:
         else:
             st.info("Lead opcional no ADM. A geracao pode seguir sem captura comercial.")
         st.markdown('<div class="lotoia-lead-hint">Campos opcionais no ADM para acelerar operacao interna.</div>', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        count = col1.number_input("Quantidade", min_value=1, max_value=50, value=10)
-        pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
-        max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
-        mode = st.radio("Modo", ["Analitico", "LotoIA"], horizontal=True)
+        selected_size = int(
+            st.selectbox(
+                "Quantidade de dezenas",
+                options=[15, 16, 17, 18],
+                index=0,
+                key="admin_generation_selected_size",
+            )
+        )
+        premium_mode = selected_size in (16, 17, 18)
+        package_summary: dict[str, Any] = {}
+        premium_generation_package: dict[str, Any] | None = None
         _runtime_audit("generate.form.inputs")
+        if premium_mode:
+            st.info(
+                "Pacote premium científico ativo. O Expansivo permanece institucional e isolado desta trilha."
+            )
+            package_summary = {
+                "package_size": selected_size,
+                "generated_internal_bets": int(math.comb(selected_size, 15)),
+                "theoretical_internal_bets": int(math.comb(selected_size, 15)),
+                "premium_score": 0.0,
+                "diversity_score": 0.0,
+                "coverage_score": 0.0,
+                "package_entropy": 0.0,
+                "overlap_mean": 0.0,
+                "unique_ratio": 0.0,
+                "rerank_entropy": 0.0,
+                "structural_diversity_score": 0.0,
+                "profile_distribution": {},
+                "dominant_profile": "indefinido",
+            }
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Dezenas-base", selected_size)
+            col2.metric("Capacidade teórica", f"{package_summary['generated_internal_bets']:,}".replace(",", "."))
+            col3.metric("Preview", f"top {min(ADMIN_EXPANSION_PAGE_SIZE, package_summary['generated_internal_bets'])}")
+            st.caption("A base premium sera curada pelo nucleo cientifico e o preview mostrara apenas as apostas priorizadas.")
+        else:
+            col1, col2, col3, col4 = st.columns(4)
+            count = col1.number_input("Quantidade de jogos", min_value=1, max_value=50, value=10)
+            pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
+            max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
+            mode = col4.radio("Modo", ["Analitico", "LotoIA"], horizontal=True)
+            st.caption("Modo 15 dezenas preserva o comportamento atual do gerador principal.")
         if st.button("Gerar jogos", type="primary"):
             _runtime_audit("generate.submit")
             start_time = time.monotonic()
@@ -5932,65 +6063,118 @@ def render_generation_page() -> None:
                 except Exception as exc:
                     st.warning(str(exc))
                     return
-                if mode == "Analitico":
-                    payload = _cached_generate_best_games(int(count), int(pool_size))
-                    games = payload["games"]
-                else:
-                    games = _cached_generate_multiple_games(int(count), int(max_repeated))
+                if premium_mode:
+                    premium_generation_package = _build_premium_generation_package(selected_size)
+                    games = premium_generation_package["premium_games"]
                     payload = {
                         "games": games,
-                        "profile_counts": {
-                            profile: sum(1 for game in games if game.get("profile_type") == profile)
-                            for profile in GENERATION_PROFILE_RATIOS
-                        },
+                        "profile_counts": dict(premium_generation_package["summary"].get("profile_distribution", {})),
+                        "package_summary": dict(premium_generation_package["summary"]),
+                        "package_base_numbers": list(premium_generation_package["base_numbers"]),
                     }
+                    strategy = f"Premium {selected_size}"
+                else:
+                    if mode == "Analitico":
+                        payload = _cached_generate_best_games(int(count), int(pool_size))
+                        games = payload["games"]
+                    else:
+                        games = _cached_generate_multiple_games(int(count), int(max_repeated))
+                        payload = {
+                            "games": games,
+                            "profile_counts": {
+                                profile: sum(1 for game in games if game.get("profile_type") == profile)
+                                for profile in GENERATION_PROFILE_RATIOS
+                            },
+                        }
+                    strategy = mode
                 st.session_state["last_generation_games"] = games
             duration_ms = (time.monotonic() - start_time) * 1000.0
+            persistence_context: dict[str, Any] = {
+                "first_name": first_name.strip(),
+                "whatsapp": whatsapp.strip(),
+                "timestamp": _report_timestamp(),
+            }
+            if premium_generation_package is not None:
+                persistence_context.update(
+                    {
+                        "package_summary": dict(premium_generation_package["summary"]),
+                        "package_base_numbers": list(premium_generation_package["base_numbers"]),
+                        "generated_internal_bets": int(premium_generation_package["summary"].get("generated_internal_bets", len(games))),
+                    }
+                )
             generation_event_id = _persist_generation_events(
                 first_name=first_name,
                 whatsapp=whatsapp,
                 games=games,
                 duration_ms=duration_ms,
-                strategy=mode,
+                strategy=strategy,
                 lead_id=lead_id,
+                context=persistence_context,
             )
             persist_trace = {
                 "BEFORE_PERSIST": {
                     "generated_games_count": len(games),
-                    "strategy": mode,
+                    "strategy": strategy,
                     "lead_id": lead_id,
+                    "package_size": selected_size,
+                    "generated_internal_bets": int(premium_generation_package["summary"].get("generated_internal_bets", len(games))) if premium_generation_package else len(games),
                 },
                 "AFTER_PERSIST": {
                     "generation_event_id": generation_event_id,
                     "generated_games_count": len(games),
-                    "strategy": mode,
+                    "strategy": strategy,
                     "commit_state": "ok" if generation_event_id else "failed",
                 },
             }
+            if premium_generation_package is not None:
+                persist_trace["PACKAGE_SUMMARY"] = dict(premium_generation_package["summary"])
             st.session_state["admin_generation_persist_trace"] = persist_trace
             dataframe = _games_dataframe(games)
-            st.dataframe(dataframe, hide_index=True, use_container_width=True)
-            st.plotly_chart(go.Figure(data=[go.Bar(x=dataframe["rank"], y=dataframe["final_score"], marker_color="#173b63")]).update_layout(title="Ranking por final_score", xaxis_title="Rank", yaxis_title="final_score"), use_container_width=True)
+            preview_limit = min(ADMIN_EXPANSION_PAGE_SIZE, len(games)) if premium_mode else len(dataframe)
+            preview_dataframe = dataframe.head(preview_limit)
+            st.dataframe(preview_dataframe, hide_index=True, use_container_width=True)
+            if "final_score" in preview_dataframe.columns and not preview_dataframe.empty:
+                st.plotly_chart(go.Figure(data=[go.Bar(x=preview_dataframe["rank"], y=preview_dataframe["final_score"], marker_color="#173b63")]).update_layout(title="Ranking por final_score", xaxis_title="Rank", yaxis_title="final_score"), use_container_width=True)
+            if premium_generation_package is not None:
+                package_summary = dict(premium_generation_package["summary"])
+                st.subheader("Resumo do pacote premium")
+                summary_cols = st.columns(4)
+                summary_cols[0].metric("Score premium", f"{package_summary['premium_score']:.2f}")
+                summary_cols[1].metric("Diversidade", f"{package_summary['diversity_score']:.2f}")
+                summary_cols[2].metric("Cobertura", f"{package_summary['coverage_score']:.2f}")
+                summary_cols[3].metric("Entropia", f"{package_summary['package_entropy']:.4f}")
+                detail_cols = st.columns(4)
+                detail_cols[0].metric("Overlap médio", f"{package_summary['overlap_mean']:.4f}")
+                detail_cols[1].metric("Unique ratio", f"{package_summary['unique_ratio']:.4f}")
+                detail_cols[2].metric("Rerank entropy", f"{package_summary['rerank_entropy']:.4f}")
+                detail_cols[3].metric("Foco premium", str(package_summary["dominant_profile"]))
+                st.caption(
+                    f"{selected_size} dezenas premium | {package_summary['generated_internal_bets']} apostas derivadas automaticamente | "
+                    f"score estrutural {package_summary['structural_diversity_score']:.4f}"
+                )
             st.session_state["last_generation_games"] = games
-            st.session_state["last_generation_context"] = {
-                "first_name": first_name.strip(),
-                "whatsapp": whatsapp.strip(),
-                "timestamp": _report_timestamp(),
-            }
+            st.session_state["last_generation_context"] = persistence_context
+            if premium_generation_package is not None:
+                st.session_state["admin_last_premium_package"] = {
+                    "package_size": selected_size,
+                    **dict(premium_generation_package["summary"]),
+                    "games_preview": games[:preview_limit],
+                }
             generation_snapshot = _write_snapshot(
                 "generation_snapshot",
                 {
                     "context": st.session_state["last_generation_context"],
                     "games": games,
                     "historical": _historical_analytics(games),
-                    "engine_version": "historical_recalibrated_v2",
+                    "engine_version": "historical_recalibrated_v2" if not premium_mode else "scientific_expansive_v1",
                     "fallback_used": False,
                     "profile_distribution": payload.get("profile_counts", {}),
+                    "package_summary": dict(premium_generation_package["summary"]) if premium_generation_package is not None else {},
                 },
             )
-            _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False, "generation_event_id": generation_event_id})
-            _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
-            _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games), "generation_event_id": generation_event_id})
+            _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False, "generation_event_id": generation_event_id, "package_size": selected_size})
+            _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False, "package_size": selected_size})
+            _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games), "generation_event_id": generation_event_id, "package_size": selected_size})
             st.subheader("Trace de persistência")
             st.json(persist_trace)
             _invalidate_runtime_cache()
