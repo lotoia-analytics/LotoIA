@@ -53,6 +53,7 @@ import shutil
 import time
 import tempfile
 import textwrap
+import traceback
 import contextvars
 from contextlib import contextmanager
 from pathlib import Path
@@ -4798,7 +4799,17 @@ def _persist_generation_events(
             db_path=DB_PATH,
         )
     except Exception as exc:
-        SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "error": str(exc), "games": len(games), "strategy": strategy})
+        error_trace = traceback.format_exc()
+        SQLITE_MEMORY_LOGS.append(
+            {
+                "event_type": "generation",
+                "status": "failed",
+                "error": repr(exc),
+                "traceback": error_trace,
+                "games": len(games),
+                "strategy": strategy,
+            }
+        )
         _record_operational_log(
             "generation_persist",
             "failed",
@@ -4806,13 +4817,15 @@ def _persist_generation_events(
             {
                 "stage": "commit_failed",
                 "commit_ok": False,
-                "error": str(exc),
+                "error": repr(exc),
+                "traceback": error_trace,
                 "rows_to_insert": len(games),
                 "generated_games_count": len(games),
                 "strategy": strategy,
                 "lead_id": lead_id,
                 "target_contest": target_contest,
                 "db_path": str(DB_PATH),
+                "engine_url": str(getattr(resolve_institutional_adapter(DB_PATH), "database_url", "")),
             },
         )
         return None
