@@ -85,6 +85,11 @@ ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", 
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
+SCIENTIFIC_EXPANSION_LIMITS = {
+    16: 80,
+    17: 150,
+    18: 250,
+}
 
 _PAGE_SQL_PROFILE: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("PAGE_SQL_PROFILE", default=None)
 
@@ -205,6 +210,8 @@ DEFAULT_STAKE_PRICE = _LazyImportedAttr("lotoia.combinatorics", "DEFAULT_STAKE_P
 ExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ExpansionConfig")
 expand_lotofacil_numbers = _LazyImportedAttr("lotoia.combinatorics", "expand_lotofacil_numbers")
 estimate_expansion = _LazyImportedAttr("lotoia.combinatorics", "estimate_expansion")
+select_premium_expansive_games = _LazyImportedAttr("lotoia.combinatorics", "select_premium_expansive_games")
+ScientificExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ScientificExpansionConfig")
 list_expansion_events = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "list_expansion_events")
 save_expansion_event = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "save_expansion_event")
 DEFAULT_HISTORY_PATH = _LazyImportedAttr("lotoia.data.loader", "DEFAULT_HISTORY_PATH")
@@ -1093,6 +1100,10 @@ def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
 
 def _payload_size_bytes(payload: dict[str, Any]) -> int:
     return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _scientific_expansion_limit(size: int) -> int:
+    return SCIENTIFIC_EXPANSION_LIMITS.get(size, min(250, max(40, size * 10)))
 
 
 def _expansion_structural_metrics(numbers: list[int]) -> dict[str, float]:
@@ -6843,11 +6854,29 @@ def render_expansion_experimental_page() -> None:
             try:
                 with st.spinner("Gerando preview com guardrails operacionais..."):
                     generation_started = time.monotonic()
-                    st.session_state["admin_last_expansion_experimental"] = _run_admin_expansion(
-                        numbers,
-                        preview_limit=int(preview_limit),
-                        allowed_sizes=allowed_sizes,
+                    scientific_limit = _scientific_expansion_limit(len(numbers))
+                    scientific_config = ScientificExpansionConfig(
+                        max_runtime_seconds=1.5,
+                        max_candidates=max(40, scientific_limit),
+                        premium_limit=scientific_limit,
                     )
+                    scientific_result = select_premium_expansive_games(
+                        numbers,
+                        history=_historical_dataset().get("draws", []),
+                        config=scientific_config,
+                    )
+                    scientific_payload = scientific_result.as_dict()
+                    scientific_payload["metrics"] = {
+                        **dict(scientific_payload.get("metrics", {})),
+                        "engine": "scientific_expansive_v1",
+                        "scientific_limit": scientific_limit,
+                        "preview_limit_requested": int(preview_limit),
+                        "safe_capacity": max(allowed_sizes) if allowed_sizes else len(numbers),
+                    }
+                    scientific_payload["combinations"] = [row.get("numbers", []) for row in scientific_payload.get("premium_games", [])]
+                    scientific_payload["generated_count"] = len(scientific_payload.get("ranked_candidates", []))
+                    scientific_payload["premium_count"] = len(scientific_payload.get("premium_games", []))
+                    st.session_state["admin_last_expansion_experimental"] = scientific_payload
                     generation_ms = (time.monotonic() - generation_started) * 1000.0
                     expansion_payload = st.session_state["admin_last_expansion_experimental"]
                     if isinstance(expansion_payload, dict):
@@ -6891,11 +6920,13 @@ def render_expansion_experimental_page() -> None:
                         st.session_state["admin_last_institutional_expansion_event"] = institutional_expansion_event
                         persistence_ms = (time.monotonic() - persistence_started) * 1000.0
                         st.session_state["admin_last_expansion_experimental_snapshot"] = _write_snapshot(
-                            "admin_expansion_experimental",
+                            "expansive_scientific_snapshot",
                             {
                                 "timestamp": _report_timestamp(),
-                                "source": "admin_expansion_experimental",
+                                "source": "scientific_expansive_v1",
                                 "payload": expansion_payload,
+                                "top_games": expansion_payload.get("premium_games", [])[:25],
+                                "metrics": expansion_payload.get("metrics", {}),
                             },
                         )
                         st.session_state["admin_last_expansion_operational_report"] = {
@@ -6934,6 +6965,8 @@ def render_expansion_experimental_page() -> None:
                                 "persistence_ms": round(persistence_ms, 3),
                                 "payload_size_bytes": int(payload_size_bytes),
                                 "stopped_reason": expansion_payload.get("stopped_reason", ""),
+                                "scientific_limit": scientific_limit,
+                                "premium_count": int(expansion_payload.get("premium_count", 0)),
                             },
                         )
                         page_status = "success"
@@ -6975,10 +7008,8 @@ def render_expansion_experimental_page() -> None:
         if result.get("stopped_reason"):
             st.info("Preview limitado de forma controlada para preservar runtime e memoria.")
 
-        combinations = result["combinations"]
-        ranked_candidates = _rank_expansion_candidates([list(game) for game in combinations])
-        premium_limit = min(30, len(ranked_candidates))
-        premium_candidates = ranked_candidates[:premium_limit]
+        ranked_candidates = list(result.get("ranked_candidates", []))
+        premium_candidates = list(result.get("premium_games", []))
         if ranked_candidates:
             premium_scores = [float(row["scientific_score"]) for row in ranked_candidates]
             diversity_scores = [float(row["diversity_score"]) for row in ranked_candidates]
