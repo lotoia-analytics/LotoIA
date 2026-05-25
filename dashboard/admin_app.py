@@ -357,7 +357,7 @@ ALERT_DASHBOARD_LOAD_MS = 8_000.0
 ALERT_REPEATED_FAILURES = 3
 ALERT_SQLITE_SIZE_BYTES = 256 * 1024 * 1024
 ALERT_LOG_GROWTH_EVENTS = 1_000
-APP_BUILD = "abad92f"
+APP_BUILD = "3b84378"
 SQLITE_BOOTSTRAP_DIAGNOSTICS: list[dict[str, Any]] = []
 SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
@@ -7408,6 +7408,7 @@ def main() -> None:
     dashboard_start_time = time.monotonic()
     _runtime_audit("main.start")
 
+    st.error(f"ADMIN BUILD {APP_BUILD} ACTIVE")
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
     adapter = resolve_institutional_adapter(DB_PATH)
     if adapter.is_shared_cloud_ready:
