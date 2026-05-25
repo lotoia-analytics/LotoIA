@@ -6020,6 +6020,21 @@ def render_generation_page() -> None:
         package_summary: dict[str, Any] = {}
         premium_generation_package: dict[str, Any] | None = None
         _runtime_audit("generate.form.inputs")
+        generation_mode_options = ["Analitico", "LotoIA"]
+        generation_mode = st.session_state.get("admin_generation_mode", "Analitico")
+        if generation_mode not in generation_mode_options:
+            generation_mode = generation_mode_options[0]
+        mode_col, button_col = st.columns([3, 1])
+        with mode_col:
+            generation_mode = st.radio(
+                "Modo",
+                generation_mode_options,
+                horizontal=True,
+                index=generation_mode_options.index(generation_mode),
+                key="admin_generation_mode",
+            )
+        with button_col:
+            generate_clicked = st.button("Gerar jogos", type="primary", use_container_width=True)
         if premium_mode:
             st.info(
                 "Pacote premium científico ativo. O Expansivo permanece institucional e isolado desta trilha."
@@ -6049,9 +6064,9 @@ def render_generation_page() -> None:
             count = col1.number_input("Quantidade de jogos", min_value=1, max_value=50, value=10)
             pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
             max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
-            mode = col4.radio("Modo", ["Analitico", "LotoIA"], horizontal=True)
+            st.caption("O seletor de modo permanece ao lado do botao para manter o fluxo visivel em qualquer tamanho.")
             st.caption("Modo 15 dezenas preserva o comportamento atual do gerador principal.")
-        if st.button("Gerar jogos", type="primary"):
+        if generate_clicked:
             _runtime_audit("generate.submit")
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
@@ -6074,7 +6089,7 @@ def render_generation_page() -> None:
                     }
                     strategy = f"Premium {selected_size}"
                 else:
-                    if mode == "Analitico":
+                    if generation_mode == "Analitico":
                         payload = _cached_generate_best_games(int(count), int(pool_size))
                         games = payload["games"]
                     else:
@@ -6086,7 +6101,7 @@ def render_generation_page() -> None:
                                 for profile in GENERATION_PROFILE_RATIOS
                             },
                         }
-                    strategy = mode
+                    strategy = generation_mode
                 st.session_state["last_generation_games"] = games
             duration_ms = (time.monotonic() - start_time) * 1000.0
             persistence_context: dict[str, Any] = {
