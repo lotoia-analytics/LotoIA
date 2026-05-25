@@ -4741,128 +4741,63 @@ def _persist_generation_events(
     strategy: str,
     lead_id: int | None,
 ) -> int | None:
-    from lotoia.database.database import get_session
+    from lotoia.database.public_repository import save_generation_event
 
-    connection, current_cursor = _sqlite_ensure_runtime_connection()
-    if connection is None or current_cursor is None:
-        SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "games": len(games), "strategy": strategy})
-        _record_operational_log(
-            "generation_persist",
-            "failed",
-            0.0,
-            {
-                "stage": "before_persist",
-                "reason": "no_runtime_connection",
-                "rows_to_insert": len(games),
-                "generated_games_count": len(games),
-                "strategy": strategy,
-                "lead_id": lead_id,
-            },
-        )
-        return None
-
-    average_rank = 0.0
     target_contest = None
     try:
         target_contest = int(_safe_last_contest()) if _safe_last_contest().isdigit() else None
     except Exception:
         target_contest = None
+
+    average_rank = 0.0
     if games:
-        scores = [float(game.get("final_score", {}).get("final_score", 0.0)) for game in games if isinstance(game.get("final_score"), dict)]
+        scores = [
+            float(game.get("final_score", {}).get("final_score", 0.0))
+            for game in games
+            if isinstance(game.get("final_score"), dict)
+        ]
         average_rank = round(sum(scores) / len(scores), 4) if scores else 0.0
 
+    _record_operational_log(
+        "generation_persist",
+        "started",
+        0.0,
+        {
+            "stage": "before_persist",
+            "rows_to_insert": len(games),
+            "generated_games_count": len(games),
+            "strategy": strategy,
+            "lead_id": lead_id,
+            "target_contest": target_contest,
+            "db_path": str(DB_PATH),
+        },
+    )
     try:
-        _record_operational_log(
-            "generation_persist",
-            "started",
-            0.0,
-            {
-                "stage": "before_persist",
-                "rows_to_insert": len(games),
-                "generated_games_count": len(games),
+        persisted_event = save_generation_event(
+            first_name=first_name.strip(),
+            whatsapp=whatsapp.strip(),
+            generated_games=games,
+            ml_enabled=False,
+            seed=0,
+            strategy=strategy,
+            ranking_score=average_rank,
+            execution_time_ms=duration_ms,
+            lead_id=lead_id,
+            target_contest=target_contest,
+            origin="dashboard_admin",
+            generation_mode=strategy,
+            context={
+                "first_name": first_name.strip(),
+                "whatsapp": whatsapp.strip(),
+                "duration_ms": round(duration_ms, 2),
                 "strategy": strategy,
                 "lead_id": lead_id,
                 "target_contest": target_contest,
+                "db_path": str(DB_PATH),
             },
+            db_path=DB_PATH,
         )
-        current_cursor.execute(
-            """
-            INSERT INTO generation_events (
-                first_name,
-                whatsapp,
-                seed,
-                strategy,
-                ranking_score,
-                execution_time_ms,
-                ml_enabled
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (first_name.strip(), whatsapp.strip(), None, strategy, average_rank, duration_ms, 0),
-        )
-        generation_event_id = int(current_cursor.lastrowid or 0) or None
-        for index, game in enumerate(games, start=1):
-            current_cursor.execute(
-                """
-                INSERT INTO generated_games (
-                    generation_event_id,
-                    lead_id,
-                    target_contest,
-                    origin,
-                    generation_mode,
-                    game_index,
-                    numbers,
-                    profile_type,
-                    final_score,
-                    quadra_score,
-                    context_json
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    generation_event_id,
-                    lead_id,
-                    target_contest,
-                    "dashboard_admin",
-                    strategy,
-                    index,
-                    json.dumps(game.get("numbers", []), ensure_ascii=False),
-                    str(game.get("profile_type", "")),
-                    json.dumps(game.get("final_score", {}), ensure_ascii=False),
-                    json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
-                    json.dumps(
-                        {
-                            "first_name": first_name.strip(),
-                            "whatsapp": whatsapp.strip(),
-                            "duration_ms": round(duration_ms, 2),
-                            "strategy": strategy,
-                            "lead_id": lead_id,
-                            "target_contest": target_contest,
-                        },
-                        ensure_ascii=False,
-                        sort_keys=True,
-                    ),
-                ),
-            )
-        connection.commit()
-        _record_operational_log(
-            "generation_persist",
-            "success",
-            0.0,
-            {
-                "stage": "after_persist",
-                "commit_ok": True,
-                "generation_event_id": generation_event_id,
-                "rows_to_insert": len(games),
-                "generated_games_count": len(games),
-                "strategy": strategy,
-                "lead_id": lead_id,
-                "target_contest": target_contest,
-            },
-        )
-        _invalidate_runtime_cache()
-        return generation_event_id
-    except sqlite3.Error as exc:
+    except Exception as exc:
         SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "error": str(exc), "games": len(games), "strategy": strategy})
         _record_operational_log(
             "generation_persist",
@@ -4877,122 +4812,30 @@ def _persist_generation_events(
                 "strategy": strategy,
                 "lead_id": lead_id,
                 "target_contest": target_contest,
+                "db_path": str(DB_PATH),
             },
         )
-        if _sqlite_maybe_recover_connection(exc):
-            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
-            if recovered_conn is not None and recovered_cursor is not None:
-                try:
-                    _record_operational_log(
-                        "generation_persist",
-                        "started",
-                        0.0,
-                        {
-                            "stage": "before_recover_persist",
-                            "rows_to_insert": len(games),
-                            "generated_games_count": len(games),
-                            "strategy": strategy,
-                            "lead_id": lead_id,
-                            "target_contest": target_contest,
-                        },
-                    )
-                    recovered_cursor.execute(
-                        """
-                        INSERT INTO generation_events (
-                            first_name,
-                            whatsapp,
-                            seed,
-                            strategy,
-                            ranking_score,
-                            execution_time_ms,
-                            ml_enabled
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (first_name.strip(), whatsapp.strip(), None, strategy, average_rank, duration_ms, 0),
-                    )
-                    generation_event_id = int(recovered_cursor.lastrowid or 0) or None
-                    for index, game in enumerate(games, start=1):
-                        recovered_cursor.execute(
-                            """
-                        INSERT INTO generated_games (
-                            generation_event_id,
-                            lead_id,
-                            target_contest,
-                            origin,
-                            generation_mode,
-                            game_index,
-                            numbers,
-                            profile_type,
-                            final_score,
-                            quadra_score,
-                            context_json
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            generation_event_id,
-                            lead_id,
-                            target_contest,
-                            "dashboard_admin",
-                            strategy,
-                            index,
-                            json.dumps(game.get("numbers", []), ensure_ascii=False),
-                            str(game.get("profile_type", "")),
-                            json.dumps(game.get("final_score", {}), ensure_ascii=False),
-                            json.dumps(game.get("quadra_score", {}), ensure_ascii=False),
-                            json.dumps(
-                                {
-                                    "first_name": first_name.strip(),
-                                    "whatsapp": whatsapp.strip(),
-                                    "duration_ms": round(duration_ms, 2),
-                                    "strategy": strategy,
-                                    "lead_id": lead_id,
-                                    "target_contest": target_contest,
-                                },
-                                ensure_ascii=False,
-                                sort_keys=True,
-                            ),
-                        ),
-                    )
-                    recovered_conn.commit()
-                    _record_operational_log(
-                        "generation_persist",
-                        "success",
-                        0.0,
-                        {
-                            "stage": "after_recover_persist",
-                            "commit_ok": True,
-                            "recovered": True,
-                            "generation_event_id": generation_event_id,
-                            "rows_to_insert": len(games),
-                            "generated_games_count": len(games),
-                            "strategy": strategy,
-                            "lead_id": lead_id,
-                            "target_contest": target_contest,
-                        },
-                    )
-                    _invalidate_runtime_cache()
-                    return generation_event_id
-                except sqlite3.Error as recovery_exc:
-                    SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "recovery_failed", "error": str(recovery_exc), "games": len(games), "strategy": strategy})
-                    _record_operational_log(
-                        "generation_persist",
-                        "failed",
-                        0.0,
-                        {
-                            "stage": "recover_commit_failed",
-                            "commit_ok": False,
-                            "recovered": True,
-                            "error": str(recovery_exc),
-                            "rows_to_insert": len(games),
-                            "generated_games_count": len(games),
-                            "strategy": strategy,
-                            "lead_id": lead_id,
-                            "target_contest": target_contest,
-                        },
-                    )
         return None
+
+    generation_event_id = int(persisted_event.get("id") or 0) or None
+    _record_operational_log(
+        "generation_persist",
+        "success",
+        0.0,
+        {
+            "stage": "after_persist",
+            "commit_ok": True,
+            "generation_event_id": generation_event_id,
+            "rows_to_insert": len(games),
+            "generated_games_count": len(games),
+            "strategy": strategy,
+            "lead_id": lead_id,
+            "target_contest": target_contest,
+            "db_path": str(DB_PATH),
+        },
+    )
+    _invalidate_runtime_cache()
+    return generation_event_id
 
 
 def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, str]:
