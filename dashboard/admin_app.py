@@ -4642,6 +4642,19 @@ def _persist_generation_events(
     connection, current_cursor = _sqlite_ensure_runtime_connection()
     if connection is None or current_cursor is None:
         SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "games": len(games), "strategy": strategy})
+        _record_operational_log(
+            "generation_persist",
+            "failed",
+            0.0,
+            {
+                "stage": "before_persist",
+                "reason": "no_runtime_connection",
+                "rows_to_insert": len(games),
+                "generated_games_count": len(games),
+                "strategy": strategy,
+                "lead_id": lead_id,
+            },
+        )
         return None
 
     average_rank = 0.0
@@ -4655,6 +4668,19 @@ def _persist_generation_events(
         average_rank = round(sum(scores) / len(scores), 4) if scores else 0.0
 
     try:
+        _record_operational_log(
+            "generation_persist",
+            "started",
+            0.0,
+            {
+                "stage": "before_persist",
+                "rows_to_insert": len(games),
+                "generated_games_count": len(games),
+                "strategy": strategy,
+                "lead_id": lead_id,
+                "target_contest": target_contest,
+            },
+        )
         current_cursor.execute(
             """
             INSERT INTO generation_events (
@@ -4715,14 +4741,57 @@ def _persist_generation_events(
                 ),
             )
         connection.commit()
+        _record_operational_log(
+            "generation_persist",
+            "success",
+            0.0,
+            {
+                "stage": "after_persist",
+                "commit_ok": True,
+                "generation_event_id": generation_event_id,
+                "rows_to_insert": len(games),
+                "generated_games_count": len(games),
+                "strategy": strategy,
+                "lead_id": lead_id,
+                "target_contest": target_contest,
+            },
+        )
         _invalidate_runtime_cache()
         return generation_event_id
     except sqlite3.Error as exc:
         SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "failed", "error": str(exc), "games": len(games), "strategy": strategy})
+        _record_operational_log(
+            "generation_persist",
+            "failed",
+            0.0,
+            {
+                "stage": "commit_failed",
+                "commit_ok": False,
+                "error": str(exc),
+                "rows_to_insert": len(games),
+                "generated_games_count": len(games),
+                "strategy": strategy,
+                "lead_id": lead_id,
+                "target_contest": target_contest,
+            },
+        )
         if _sqlite_maybe_recover_connection(exc):
             recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
             if recovered_conn is not None and recovered_cursor is not None:
                 try:
+                    _record_operational_log(
+                        "generation_persist",
+                        "started",
+                        0.0,
+                        {
+                            "stage": "before_recover_persist",
+                            "rows_to_insert": len(games),
+                            "generated_games_count": len(games),
+                            "strategy": strategy,
+                            "lead_id": lead_id,
+                            "target_contest": target_contest,
+                        },
+                    )
                     recovered_cursor.execute(
                         """
                         INSERT INTO generation_events (
@@ -4783,10 +4852,42 @@ def _persist_generation_events(
                         ),
                     )
                     recovered_conn.commit()
+                    _record_operational_log(
+                        "generation_persist",
+                        "success",
+                        0.0,
+                        {
+                            "stage": "after_recover_persist",
+                            "commit_ok": True,
+                            "recovered": True,
+                            "generation_event_id": generation_event_id,
+                            "rows_to_insert": len(games),
+                            "generated_games_count": len(games),
+                            "strategy": strategy,
+                            "lead_id": lead_id,
+                            "target_contest": target_contest,
+                        },
+                    )
                     _invalidate_runtime_cache()
                     return generation_event_id
-                except sqlite3.Error:
-                    pass
+                except sqlite3.Error as recovery_exc:
+                    SQLITE_MEMORY_LOGS.append({"event_type": "generation", "status": "recovery_failed", "error": str(recovery_exc), "games": len(games), "strategy": strategy})
+                    _record_operational_log(
+                        "generation_persist",
+                        "failed",
+                        0.0,
+                        {
+                            "stage": "recover_commit_failed",
+                            "commit_ok": False,
+                            "recovered": True,
+                            "error": str(recovery_exc),
+                            "rows_to_insert": len(games),
+                            "generated_games_count": len(games),
+                            "strategy": strategy,
+                            "lead_id": lead_id,
+                            "target_contest": target_contest,
+                        },
+                    )
         return None
 
 
@@ -5893,6 +5994,20 @@ def render_generation_page() -> None:
                 strategy=mode,
                 lead_id=lead_id,
             )
+            persist_trace = {
+                "BEFORE_PERSIST": {
+                    "generated_games_count": len(games),
+                    "strategy": mode,
+                    "lead_id": lead_id,
+                },
+                "AFTER_PERSIST": {
+                    "generation_event_id": generation_event_id,
+                    "generated_games_count": len(games),
+                    "strategy": mode,
+                    "commit_state": "ok" if generation_event_id else "failed",
+                },
+            }
+            st.session_state["admin_generation_persist_trace"] = persist_trace
             dataframe = _games_dataframe(games)
             st.dataframe(dataframe, hide_index=True, use_container_width=True)
             st.plotly_chart(go.Figure(data=[go.Bar(x=dataframe["rank"], y=dataframe["final_score"], marker_color="#173b63")]).update_layout(title="Ranking por final_score", xaxis_title="Rank", yaxis_title="final_score"), use_container_width=True)
@@ -5916,6 +6031,8 @@ def render_generation_page() -> None:
             _record_operational_log("generation", "success", duration_ms, {"games": len(games), "ml_enabled": False, "generation_event_id": generation_event_id})
             _record_performance_metric("generation_ms", duration_ms, {"games": len(games), "ml_enabled": False})
             _record_audit_trail("generation_snapshot", artifact_path=str(generation_snapshot), context={"games": len(games), "generation_event_id": generation_event_id})
+            st.subheader("Trace de persistência")
+            st.json(persist_trace)
             _invalidate_runtime_cache()
     page_duration_ms = (time.monotonic() - page_start) * 1000.0
     _record_performance_metric("generate_page_ms", page_duration_ms, {"page": "generation"})
