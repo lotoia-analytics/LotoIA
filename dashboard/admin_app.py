@@ -8,6 +8,11 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
     from dashboard import labels as _labels_module
 
+try:
+    from lotoia.database.database import bootstrap_institutional_database
+except ImportError:
+    from src.lotoia.database.database import bootstrap_institutional_database  # type: ignore[no-redef]
+
 LABELS = getattr(_labels_module, "LABELS", {})
 PAGES = getattr(_labels_module, "PAGES", [])
 PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
@@ -7523,8 +7528,14 @@ def main() -> None:
     adapter = resolve_institutional_adapter(DB_PATH)
     if adapter.is_shared_cloud_ready:
         _runtime_audit("bootstrap", "shared_backend_skipped")
-    elif BOOTSTRAP_SCHEMA_ON_STARTUP:
-        _runtime_audit("bootstrap", "local_backend_available")
+    else:
+        bootstrap_state = bootstrap_institutional_database(DB_PATH)
+        st.caption(
+            "SQLite bootstrap ativo: "
+            f"{bootstrap_state.get('backend', '-')}"
+            f" | {bootstrap_state.get('database_url', '-')}"
+        )
+        _runtime_audit("bootstrap", f"local_backend_bootstrapped:{bootstrap_state.get('backend', '-')}")
 
     _render_shared_backend_status()
     _render_sqlite_runtime_audit()
