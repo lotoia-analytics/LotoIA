@@ -1091,7 +1091,25 @@ def _parse_admin_expansion_numbers(text: str, allowed_sizes: tuple[int, ...] | N
 def _default_admin_expansion_numbers(selected_count: int, allowed_sizes: tuple[int, ...] | None = None) -> str:
     valid_sizes = allowed_sizes or ADMIN_EXPANSION_ROLE_SIZES[ADMIN_EXPANSION_DEFAULT_ROLE]
     size = selected_count if selected_count in valid_sizes else valid_sizes[0]
-    return _format_numbers(list(range(1, size + 1)))
+    if size <= 1:
+        return _format_numbers([1])
+    spread = []
+    for index in range(size):
+        raw_value = round(1 + (24 * index / max(1, size - 1)))
+        value = max(1, min(25, raw_value))
+        while value in spread and value < 25:
+            value += 1
+        while value in spread and value > 1:
+            value -= 1
+        if value not in spread:
+            spread.append(value)
+    if len(spread) < size:
+        for value in range(1, 26):
+            if value not in spread:
+                spread.append(value)
+            if len(spread) >= size:
+                break
+    return _format_numbers(sorted(spread[:size]))
 
 
 def _admin_expansion_dataframe(combinations: list[list[int]]) -> pd.DataFrame:
