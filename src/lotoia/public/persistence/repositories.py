@@ -87,6 +87,7 @@ class GenerationEventRepository:
         whatsapp: str = "",
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
+            resolved_lead_id = int(lead_id) if lead_id is not None else 0
             event = GenerationEvent(
                 lead_id=lead_id,
                 first_name=first_name,
@@ -104,7 +105,7 @@ class GenerationEventRepository:
                 session.add(
                     GeneratedGame(
                         generation_event_id=event.id,
-                        lead_id=lead_id,
+                        lead_id=resolved_lead_id,
                         target_contest=target_contest,
                         origin=origin,
                         generation_mode=generation_mode,
