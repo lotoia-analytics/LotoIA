@@ -7138,6 +7138,11 @@ def render_expansion_experimental_page() -> None:
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "csv"),
             export_dataframe,
         )
+        pdf_table = pd.DataFrame(
+            {
+                "Dezenas": [row.get("dezenas", "") for row in premium_candidates[:25]],
+            }
+        )
         pdf_path = _save_pdf_report(
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "pdf"),
             "LotoIA - Expansivo",
@@ -7150,7 +7155,7 @@ def render_expansion_experimental_page() -> None:
                 f"Restricao governada: apenas {_format_allowed_expansion_sizes(allowed_sizes)} dezenas.",
                 f"Score maximo: {max((float(row['scientific_score']) for row in ranked_candidates), default=0.0):.2f}",
             ],
-            export_dataframe,
+            pdf_table,
         )
         csv_bytes = _safe_download_bytes(csv_path)
         pdf_bytes = _safe_download_bytes(pdf_path)
