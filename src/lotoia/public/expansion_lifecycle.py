@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
-from lotoia.database.public_repository import cleanup_expansion_history, save_validated_expansion
+from lotoia.database.public_repository import (
+    cleanup_expansion_history,
+    save_institutional_memory_refresh,
+    save_validated_expansion,
+)
 
 EXPANSION_STATUS_PENDING = "PENDING"
 EXPANSION_STATUS_VALIDATED = "VALIDATED"
@@ -192,5 +196,40 @@ def promote_validated_expansions(
                 db_path=db_path,
             )
         )
-    return {"lifecycle": lifecycle, "promoted": promoted, "summary": {"promoted_count": len(promoted)}}
-
+    memory_refresh: dict[str, Any] | None = None
+    if promoted:
+        execution_id = f"institutional-expansion-{contest_id or 'pending'}-{len(promoted)}"
+        memory_id = f"institutional-expansion-memory-{contest_id or 'pending'}"
+        memory_refresh = save_institutional_memory_refresh(
+            execution_id=execution_id,
+            snapshot_type="institutional_validated_expansions",
+            state_type="validated_expansion_memory",
+            memory_id=memory_id,
+            state={
+                "contest_id": contest_id,
+                "promoted_count": len(promoted),
+                "status_counts": lifecycle["counts"],
+                "summary": lifecycle["summary"],
+            },
+            metadata={
+                "source": "expansion_lifecycle.promote_validated_expansions",
+                "official_present": lifecycle["official_present"],
+            },
+            lineage_events=[
+                {
+                    "event_type": "expansion_promoted",
+                    "entity_type": "institutional_validated_expansion",
+                    "entity_id": str(item.get("id", "")),
+                    "status": item.get("status", ""),
+                    "ranking": item.get("premium_rank", 0),
+                }
+                for item in promoted
+            ],
+            db_path=db_path,
+        )
+    return {
+        "lifecycle": lifecycle,
+        "promoted": promoted,
+        "summary": {"promoted_count": len(promoted)},
+        "memory_refresh": memory_refresh,
+    }

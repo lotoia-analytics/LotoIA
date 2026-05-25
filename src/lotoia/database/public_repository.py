@@ -4,7 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
-from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    InstitutionalMemoryLineage,
+    InstitutionalMemorySnapshot,
+    InstitutionalMemoryState,
+    get_session,
+)
 
 
 def _adapter(db_path: Path = DEFAULT_DATABASE_PATH) -> InstitutionalDatabaseAdapter:
@@ -205,6 +211,68 @@ def cleanup_expansion_history(
     from lotoia.public.persistence.repositories import InstitutionalValidatedExpansionRepository
 
     return InstitutionalValidatedExpansionRepository(db_path).cleanup(keep_limit=keep_limit, keep_statuses=keep_statuses)
+
+
+def save_institutional_memory_refresh(
+    *,
+    execution_id: str,
+    snapshot_type: str,
+    state_type: str,
+    memory_id: str,
+    state: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+    lineage_events: list[dict[str, Any]] | None = None,
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    with get_session(db_path) as session:
+        snapshot = InstitutionalMemorySnapshot(
+            memory_id=memory_id,
+            execution_id=execution_id,
+            snapshot_type=snapshot_type,
+            state_json=state,
+            metadata_json=metadata or {},
+            lineage_json={"events": lineage_events or []},
+        )
+        session.add(snapshot)
+        session.commit()
+
+        state_row = InstitutionalMemoryState(
+            memory_id=memory_id,
+            execution_id=execution_id,
+            state_type=state_type,
+            state_json=state,
+            metadata_json=metadata or {},
+        )
+        session.add(state_row)
+        session.commit()
+
+        lineage_rows: list[dict[str, Any]] = []
+        for event in lineage_events or []:
+            row = InstitutionalMemoryLineage(
+                execution_id=execution_id,
+                memory_id=memory_id,
+                event_type=str(event.get("event_type", "promoted")),
+                entity_type=str(event.get("entity_type", "expansion")),
+                entity_id=str(event.get("entity_id", memory_id)),
+                payload_json=dict(event),
+            )
+            session.add(row)
+            session.commit()
+            lineage_rows.append({"id": row.id, "event_type": row.event_type, "entity_id": row.entity_id})
+
+        return {
+            "snapshot": {
+                "memory_id": snapshot.memory_id,
+                "execution_id": snapshot.execution_id,
+                "snapshot_type": snapshot.snapshot_type,
+            },
+            "state": {
+                "memory_id": state_row.memory_id,
+                "execution_id": state_row.execution_id,
+                "state_type": state_row.state_type,
+            },
+            "lineage": lineage_rows,
+        }
 
 
 def save_reconciliation_event(
