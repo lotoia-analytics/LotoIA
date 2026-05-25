@@ -1094,6 +1094,169 @@ def _payload_size_bytes(payload: dict[str, Any]) -> int:
     return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
+def _expansion_structural_metrics(numbers: list[int]) -> dict[str, float]:
+    normalized = _normalize_numbers(numbers)
+    if not normalized:
+        return {
+            "spread": 0.0,
+            "parity_balance": 0.0,
+            "low_high_balance": 0.0,
+            "gap_balance": 0.0,
+            "cluster_penalty": 0.0,
+            "diversity_score": 0.0,
+        }
+    gaps = [b - a for a, b in zip(normalized, normalized[1:], strict=False)]
+    spread = (normalized[-1] - normalized[0]) / 24.0 if len(normalized) > 1 else 0.0
+    parity = sum(1 for number in normalized if number % 2 == 0)
+    parity_balance = 1.0 - abs((parity / len(normalized)) - 0.5) * 2.0
+    low_high_balance = 1.0 - abs((sum(1 for number in normalized if number <= 12) / len(normalized)) - 0.5) * 2.0
+    gap_balance = 1.0
+    if gaps:
+        avg_gap = sum(gaps) / len(gaps)
+        gap_balance = max(0.0, 1.0 - abs(avg_gap - 1.0) / max(1.0, len(normalized) / 3.0))
+    cluster_penalty = min(1.0, max(0, sum(1 for gap in gaps if gap <= 1) / max(1, len(gaps))))
+    diversity_score = round(
+        max(
+            0.0,
+            min(
+                1.0,
+                (spread * 0.3)
+                + (parity_balance * 0.25)
+                + (low_high_balance * 0.2)
+                + (gap_balance * 0.15)
+                + ((1.0 - cluster_penalty) * 0.1),
+            ),
+        ),
+        4,
+    )
+    return {
+        "spread": round(spread, 4),
+        "parity_balance": round(parity_balance, 4),
+        "low_high_balance": round(low_high_balance, 4),
+        "gap_balance": round(gap_balance, 4),
+        "cluster_penalty": round(cluster_penalty, 4),
+        "diversity_score": diversity_score,
+    }
+
+
+def _expansion_scientific_score(numbers: list[int]) -> dict[str, Any]:
+    match = _historical_match_engine(numbers)
+    structural = _expansion_structural_metrics(numbers)
+    historical_score = float(match.get("historical_score", 0.0))
+    rarity = float(match.get("rarity", 0.0))
+    proximity = float(match.get("proximity", 0.0))
+    recurrence = float(match.get("recurrence_score", 0.0))
+    balance = float(match.get("entropy_score", 0.0)) / 100.0 if float(match.get("entropy_score", 0.0)) > 1 else float(match.get("entropy_score", 0.0))
+    diversity = float(structural["diversity_score"])
+    redundancy = 1.0 - float(structural["cluster_penalty"])
+    scientific_score = round(
+        max(
+            0.0,
+            min(
+                100.0,
+                (historical_score * 0.34)
+                + (rarity * 100.0 * 0.16)
+                + ((1.0 - proximity) * 100.0 * 0.14)
+                + ((1.0 - recurrence / 100.0) * 100.0 * 0.12)
+                + (balance * 100.0 * 0.10)
+                + (diversity * 100.0 * 0.14)
+                + (redundancy * 100.0 * 0.10),
+            ),
+        ),
+        2,
+    )
+    strategy = "premium" if scientific_score >= 72 else "balanced" if scientific_score >= 58 else "conservative"
+    return {
+        "numbers": _normalize_numbers(numbers),
+        "scientific_score": scientific_score,
+        "strategy_classification": strategy,
+        "historical_score": historical_score,
+        "historical_profile": match.get("profile_type", ""),
+        "rarity": round(rarity, 4),
+        "proximity": round(proximity, 4),
+        "recurrence_score": round(recurrence, 4),
+        "balance_score": round(balance, 4),
+        "diversity_score": diversity,
+        "redundancy_score": round(redundancy, 4),
+        "structural_metrics": structural,
+        "historical_intelligence": match,
+    }
+
+
+def _rank_expansion_candidates(combinations: list[list[int]]) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for numbers in combinations:
+        score = _expansion_scientific_score(numbers)
+        ranked.append(
+            {
+                "dezenas": _format_numbers(list(score["numbers"])),
+                "numbers": list(score["numbers"]),
+                "scientific_score": score["scientific_score"],
+                "strategy_classification": score["strategy_classification"],
+                "historical_profile": score["historical_profile"],
+                "historical_score": score["historical_score"],
+                "rarity": score["rarity"],
+                "proximity": score["proximity"],
+                "recurrence_score": score["recurrence_score"],
+                "balance_score": score["balance_score"],
+                "diversity_score": score["diversity_score"],
+                "redundancy_score": score["redundancy_score"],
+                "spread": score["structural_metrics"]["spread"],
+                "parity_balance": score["structural_metrics"]["parity_balance"],
+                "low_high_balance": score["structural_metrics"]["low_high_balance"],
+                "gap_balance": score["structural_metrics"]["gap_balance"],
+                "cluster_penalty": score["structural_metrics"]["cluster_penalty"],
+                "ranking_reason": score["historical_intelligence"].get("ranking_reason", ""),
+            }
+        )
+    ranked.sort(
+        key=lambda row: (
+            -float(row["scientific_score"]),
+            -float(row["diversity_score"]),
+            -float(row["historical_score"]),
+            float(row["proximity"]),
+            row["dezenas"],
+        )
+    )
+    return ranked
+
+
+def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "ranking",
+                "dezenas",
+                "scientific_score",
+                "strategy_classification",
+                "historical_profile",
+                "historical_score",
+                "rarity",
+                "proximity",
+                "recurrence_score",
+                "diversity_score",
+                "redundancy_score",
+            ]
+        )
+    dataframe = pd.DataFrame(rows)
+    dataframe.insert(0, "ranking", range(1, len(dataframe) + 1))
+    return dataframe.rename(
+        columns={
+            "ranking": "Ranking",
+            "dezenas": "Dezenas",
+            "scientific_score": "Score científico",
+            "strategy_classification": "Classe estratégica",
+            "historical_profile": "Perfil histórico",
+            "historical_score": "Força histórica",
+            "rarity": "Raridade",
+            "proximity": "Proximidade",
+            "recurrence_score": "Recorrência",
+            "diversity_score": "Diversidade",
+            "redundancy_score": "Redundância",
+        }
+    )
+
+
 def _expansion_events_dataframe(limit: int = 20) -> pd.DataFrame:
     rows = list_expansion_events(limit=limit)
     if not rows:
@@ -6642,14 +6805,34 @@ def render_expansion_experimental_page() -> None:
             st.info("Preview limitado de forma controlada para preservar runtime e memoria.")
 
         combinations = result["combinations"]
-        page_count = max(1, (len(combinations) + ADMIN_EXPANSION_PAGE_SIZE - 1) // ADMIN_EXPANSION_PAGE_SIZE)
+        ranked_candidates = _rank_expansion_candidates([list(game) for game in combinations])
+        premium_limit = min(30, len(ranked_candidates))
+        premium_candidates = ranked_candidates[:premium_limit]
+        if ranked_candidates:
+            premium_scores = [float(row["scientific_score"]) for row in ranked_candidates]
+            diversity_scores = [float(row["diversity_score"]) for row in ranked_candidates]
+            st.subheader("Pipeline científico do expansivo")
+            pipeline_cols = st.columns(4)
+            pipeline_cols[0].metric("Candidatos", len(ranked_candidates))
+            pipeline_cols[1].metric("Score médio", f"{(sum(premium_scores) / len(premium_scores)):.2f}")
+            pipeline_cols[2].metric("Score máximo", f"{max(premium_scores):.2f}")
+            pipeline_cols[3].metric("Diversidade média", f"{(sum(diversity_scores) / len(diversity_scores)):.2f}")
+            st.caption(
+                "Fluxo: geração combinatória → filtros estruturais → score estatístico → análise histórica → classificação estratégica → rerank híbrido → seleção premium final."
+            )
+
+        page_count = max(1, (len(ranked_candidates) + ADMIN_EXPANSION_PAGE_SIZE - 1) // ADMIN_EXPANSION_PAGE_SIZE)
         page = st.number_input("Pagina", min_value=1, max_value=page_count, value=1, key="admin_expansion_page")
         start = (int(page) - 1) * ADMIN_EXPANSION_PAGE_SIZE
         end = start + ADMIN_EXPANSION_PAGE_SIZE
-        dataframe = _admin_expansion_dataframe(combinations[start:end])
-        st.dataframe(dataframe, hide_index=True, use_container_width=True)
+        ranking_dataframe = _presentational_expansion_rankings_dataframe(ranked_candidates[start:end])
+        st.dataframe(ranking_dataframe, hide_index=True, use_container_width=True)
 
-        export_dataframe = _admin_expansion_dataframe(combinations)
+        st.subheader("Seleção premium final")
+        premium_dataframe = _presentational_expansion_rankings_dataframe(premium_candidates)
+        st.dataframe(premium_dataframe, hide_index=True, use_container_width=True)
+
+        export_dataframe = _presentational_expansion_rankings_dataframe(ranked_candidates)
         csv_path = _export_csv(
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "csv"),
             export_dataframe,
@@ -6664,6 +6847,7 @@ def render_expansion_experimental_page() -> None:
                 f"Preview gerado: {result['generated_count']}",
                 f"Runtime ms: {result['runtime_ms']}",
                 f"Restricao governada: apenas {_format_allowed_expansion_sizes(allowed_sizes)} dezenas.",
+                f"Score maximo: {max((float(row['scientific_score']) for row in ranked_candidates), default=0.0):.2f}",
             ],
             export_dataframe,
         )
