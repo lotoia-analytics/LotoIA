@@ -490,7 +490,7 @@ class GeneratedGame(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     generation_event_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_contest: Mapped[int | None] = mapped_column(Integer, nullable=True)
     origin: Mapped[str] = mapped_column(String, default="dashboard", nullable=False)
     generation_mode: Mapped[str] = mapped_column(String, default="", nullable=False)
@@ -801,6 +801,12 @@ def get_engine(path: Path = DEFAULT_DATABASE_PATH):
 def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
     engine = get_engine(path)
     Base.metadata.create_all(engine)
+    if engine.url.get_backend_name() != "sqlite":
+        with engine.begin() as connection:
+            try:
+                connection.exec_driver_sql("ALTER TABLE generated_games ALTER COLUMN lead_id DROP NOT NULL")
+            except Exception:
+                pass
     if engine.url.get_backend_name() != "sqlite":
         return
     with engine.begin() as connection:
