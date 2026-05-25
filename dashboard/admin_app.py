@@ -40,6 +40,7 @@ MODE_PAGES = {
 import io
 import importlib
 import html
+import math
 import json
 import os
 import sqlite3
@@ -1255,6 +1256,59 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
             "redundancy_score": "Redundância",
         }
     )
+
+
+def _expansion_rerank_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if not rows:
+        return {
+            "overlap_mean": 0.0,
+            "unique_ratio": 0.0,
+            "profile_distribution": {},
+            "rerank_entropy": 0.0,
+            "structural_diversity_score": 0.0,
+            "premium_concentration_index": 0.0,
+        }
+
+    combos = [tuple(int(number) for number in row.get("numbers", [])) for row in rows if row.get("numbers")]
+    unique_count = len({combo for combo in combos})
+    unique_ratio = round(unique_count / len(combos), 4) if combos else 0.0
+
+    overlaps: list[float] = []
+    for index, first in enumerate(combos):
+        first_set = set(first)
+        for second in combos[index + 1 :]:
+            overlaps.append(len(first_set.intersection(second)) / 15.0)
+    overlap_mean = round(sum(overlaps) / len(overlaps), 4) if overlaps else 0.0
+
+    profile_distribution: dict[str, int] = {}
+    score_distribution: list[float] = []
+    for row in rows:
+        profile = str(row.get("historical_profile") or row.get("strategy_classification") or "indefinido")
+        profile_distribution[profile] = profile_distribution.get(profile, 0) + 1
+        score_distribution.append(float(row.get("scientific_score", 0.0)))
+
+    total = len(rows)
+    entropy = 0.0
+    for count in profile_distribution.values():
+        share = count / total if total else 0.0
+        if share > 0:
+            entropy -= share * math.log2(share)
+    max_entropy = math.log2(len(profile_distribution)) if len(profile_distribution) > 1 else 1.0
+    rerank_entropy = round((entropy / max_entropy) if max_entropy else 0.0, 4)
+    structural_diversity_score = round(
+        max(0.0, min(1.0, (1.0 - overlap_mean) * 0.5 + unique_ratio * 0.3 + rerank_entropy * 0.2)),
+        4,
+    )
+    score_sum = sum(score_distribution) or 1.0
+    premium_concentration_index = round(sum(score_distribution[: min(5, len(score_distribution))]) / score_sum, 4)
+    return {
+        "overlap_mean": overlap_mean,
+        "unique_ratio": unique_ratio,
+        "profile_distribution": profile_distribution,
+        "rerank_entropy": rerank_entropy,
+        "structural_diversity_score": structural_diversity_score,
+        "premium_concentration_index": premium_concentration_index,
+    }
 
 
 def _expansion_events_dataframe(limit: int = 20) -> pd.DataFrame:
@@ -6928,14 +6982,28 @@ def render_expansion_experimental_page() -> None:
         if ranked_candidates:
             premium_scores = [float(row["scientific_score"]) for row in ranked_candidates]
             diversity_scores = [float(row["diversity_score"]) for row in ranked_candidates]
+            rerank_metrics = _expansion_rerank_metrics(premium_candidates)
             st.subheader("Pipeline científico do expansivo")
-            pipeline_cols = st.columns(4)
+            pipeline_cols = st.columns(6)
             pipeline_cols[0].metric("Candidatos", len(ranked_candidates))
             pipeline_cols[1].metric("Score médio", f"{(sum(premium_scores) / len(premium_scores)):.2f}")
             pipeline_cols[2].metric("Score máximo", f"{max(premium_scores):.2f}")
             pipeline_cols[3].metric("Diversidade média", f"{(sum(diversity_scores) / len(diversity_scores)):.2f}")
+            pipeline_cols[4].metric("Overlap médio", f"{rerank_metrics['overlap_mean']:.4f}")
+            pipeline_cols[5].metric("Unique ratio", f"{rerank_metrics['unique_ratio']:.4f}")
             st.caption(
                 "Fluxo: geração combinatória → filtros estruturais → score estatístico → análise histórica → classificação estratégica → rerank híbrido → seleção premium final."
+            )
+            st.subheader("Métricas de rerank premium")
+            rerank_cols = st.columns(3)
+            rerank_cols[0].metric("Rerank entropy", f"{rerank_metrics['rerank_entropy']:.4f}")
+            rerank_cols[1].metric("Structural diversity", f"{rerank_metrics['structural_diversity_score']:.4f}")
+            rerank_cols[2].metric("Premium concentration", f"{rerank_metrics['premium_concentration_index']:.4f}")
+            st.caption(
+                "Distribuição por perfil estratégico: "
+                + ", ".join(
+                    f"{profile}={count}" for profile, count in sorted(rerank_metrics["profile_distribution"].items())
+                )
             )
 
         page_count = max(1, (len(ranked_candidates) + ADMIN_EXPANSION_PAGE_SIZE - 1) // ADMIN_EXPANSION_PAGE_SIZE)
