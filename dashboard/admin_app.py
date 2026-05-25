@@ -1261,9 +1261,14 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
                 "efficiency_score",
                 "retention_reason",
             ]
-        )
+    )
     dataframe = pd.DataFrame(rows)
-    dataframe.insert(0, "ranking", range(1, len(dataframe) + 1))
+    if "ranking" in dataframe.columns:
+        dataframe["ranking"] = dataframe["ranking"].fillna(0).astype(int)
+    else:
+        dataframe.insert(0, "ranking", range(1, len(dataframe) + 1))
+    ordered_columns = ["ranking"] + [column for column in dataframe.columns if column != "ranking"]
+    dataframe = dataframe[ordered_columns]
     return dataframe.rename(
         columns={
             "ranking": "Ranking",
