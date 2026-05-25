@@ -369,6 +369,40 @@ class ExpansionEvent(Base):
     )
 
 
+class InstitutionalValidatedExpansion(Base):
+    __tablename__ = "institutional_validated_expansions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    expansion_event_id: Mapped[int | None] = mapped_column(ForeignKey("expansion_events.id"), nullable=True)
+    generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
+    contest_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String, default="PENDING", nullable=False)
+    profile_type: Mapped[str] = mapped_column(String, default="", nullable=False)
+    scientific_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    diversity_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    overlap_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    recurrence_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    proximity_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    efficiency_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    premium_rank: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("ix_validated_expansions_created_at", "created_at"),
+        Index("ix_validated_expansions_status", "status"),
+        Index("ix_validated_expansions_contest_id", "contest_id"),
+        Index("ix_validated_expansions_generation_event_id", "generation_event_id"),
+        Index("ix_validated_expansions_profile_type", "profile_type"),
+    )
+
+
 class ReconciliationEvent(Base):
     __tablename__ = "reconciliation_events"
 

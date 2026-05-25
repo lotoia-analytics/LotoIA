@@ -6,6 +6,7 @@ from typing import Any
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
     ExpansionEvent,
+    InstitutionalValidatedExpansion,
     GeneratedGame,
     CheckEvent,
     GenerationEvent,
@@ -243,6 +244,85 @@ class ExpansionEventRepository:
     def count(self) -> int:
         with get_session(self.db_path) as session:
             return int(session.query(ExpansionEvent).count())
+
+
+class InstitutionalValidatedExpansionRepository:
+    def __init__(self, db_path: Path = DEFAULT_DATABASE_PATH) -> None:
+        self.db_path = db_path
+
+    def insert(
+        self,
+        *,
+        expansion_event_id: int | None,
+        generation_event_id: int | None,
+        contest_id: int | None,
+        status: str,
+        profile_type: str,
+        scientific_score: float,
+        diversity_score: float,
+        overlap_score: float,
+        hits: int,
+        recurrence_score: float,
+        proximity_score: float,
+        efficiency_score: float,
+        premium_rank: int,
+        payload: dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with get_session(self.db_path) as session:
+            event = InstitutionalValidatedExpansion(
+                expansion_event_id=expansion_event_id,
+                generation_event_id=generation_event_id,
+                contest_id=contest_id,
+                status=status,
+                profile_type=profile_type,
+                scientific_score=scientific_score,
+                diversity_score=diversity_score,
+                overlap_score=overlap_score,
+                hits=hits,
+                recurrence_score=recurrence_score,
+                proximity_score=proximity_score,
+                efficiency_score=efficiency_score,
+                premium_rank=premium_rank,
+                payload=payload or {},
+                metrics=metrics or {},
+            )
+            session.add(event)
+            session.commit()
+            return _model_to_dict(event)
+
+    def list(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(InstitutionalValidatedExpansion)
+                .order_by(InstitutionalValidatedExpansion.created_at.desc(), InstitutionalValidatedExpansion.id.desc())
+                .limit(limit)
+                .all()
+            )
+            return [_model_to_dict(row) for row in rows]
+
+    def cleanup(self, *, keep_limit: int = 50, keep_statuses: tuple[str, ...] = ("PREMIUM", "VALIDATED", "ARCHIVED")) -> int:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(InstitutionalValidatedExpansion)
+                .order_by(InstitutionalValidatedExpansion.scientific_score.desc(), InstitutionalValidatedExpansion.created_at.desc())
+                .all()
+            )
+            keep_ids: set[int] = set()
+            for row in rows:
+                if str(row.status or "") in keep_statuses and len(keep_ids) < keep_limit:
+                    keep_ids.add(int(row.id))
+            removed = 0
+            for row in rows:
+                if int(row.id) not in keep_ids:
+                    session.delete(row)
+                    removed += 1
+            session.commit()
+            return removed
+
+    def count(self) -> int:
+        with get_session(self.db_path) as session:
+            return int(session.query(InstitutionalValidatedExpansion).count())
 
 
 class ReconciliationEventRepository:

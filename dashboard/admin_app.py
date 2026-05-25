@@ -214,6 +214,9 @@ select_premium_expansive_games = _LazyImportedAttr("lotoia.combinatorics", "sele
 ScientificExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ScientificExpansionConfig")
 list_expansion_events = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "list_expansion_events")
 save_expansion_event = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "save_expansion_event")
+evaluate_expansion_lifecycle = _LazyImportedAttr("lotoia.public.expansion_lifecycle", "evaluate_expansion_lifecycle")
+promote_validated_expansions = _LazyImportedAttr("lotoia.public.expansion_lifecycle", "promote_validated_expansions")
+cleanup_expansion_history = _LazyImportedAttr("lotoia.database.public_repository", "cleanup_expansion_history")
 DEFAULT_HISTORY_PATH = _LazyImportedAttr("lotoia.data.loader", "DEFAULT_HISTORY_PATH")
 load_draws_csv = _LazyImportedAttr("lotoia.data.loader", "load_draws_csv")
 list_runs = _LazyImportedAttr("lotoia.database", "list_runs")
@@ -1239,6 +1242,7 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
             columns=[
                 "ranking",
                 "dezenas",
+                "status",
                 "scientific_score",
                 "strategy_classification",
                 "historical_profile",
@@ -1248,6 +1252,9 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
                 "recurrence_score",
                 "diversity_score",
                 "redundancy_score",
+                "hits",
+                "efficiency_score",
+                "retention_reason",
             ]
         )
     dataframe = pd.DataFrame(rows)
@@ -1256,6 +1263,7 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
         columns={
             "ranking": "Ranking",
             "dezenas": "Dezenas",
+            "status": "Status",
             "scientific_score": "Score científico",
             "strategy_classification": "Classe estratégica",
             "historical_profile": "Perfil histórico",
@@ -1265,6 +1273,9 @@ def _presentational_expansion_rankings_dataframe(rows: list[dict[str, Any]]) -> 
             "recurrence_score": "Recorrência",
             "diversity_score": "Diversidade",
             "redundancy_score": "Redundância",
+            "hits": "Acertos",
+            "efficiency_score": "Eficiência",
+            "retention_reason": "Retenção",
         }
     )
 
@@ -7010,6 +7021,27 @@ def render_expansion_experimental_page() -> None:
 
         ranked_candidates = list(result.get("ranked_candidates", []))
         premium_candidates = list(result.get("premium_games", []))
+        official_result = st.session_state.get("admin_latest_official_contest_result") or {}
+        official_numbers = [int(number) for number in official_result.get("numbers", []) if str(number).isdigit()] if isinstance(official_result, dict) else []
+        lifecycle = evaluate_expansion_lifecycle(result, official_numbers=official_numbers)
+        st.session_state["admin_last_expansion_lifecycle"] = lifecycle
+        if lifecycle["official_present"] and official_result:
+            promotion_signature = (
+                tuple(int(number) for number in result.get("selected_numbers", [])),
+                int(official_result.get("contest_number", 0) or 0),
+                int(result.get("generated_count", 0) or 0),
+                str(lifecycle.get("status", "")),
+            )
+            if st.session_state.get("admin_last_validated_expansion_signature") != promotion_signature:
+                promotion = promote_validated_expansions(
+                    result,
+                    official_numbers=official_numbers,
+                    contest_id=int(official_result.get("contest_number", 0)) or None,
+                )
+                cleanup_removed = cleanup_expansion_history(keep_limit=80)
+                st.session_state["admin_last_validated_expansion_signature"] = promotion_signature
+                st.session_state["admin_last_validated_expansion"] = promotion
+                st.session_state["admin_last_validated_expansion_cleanup"] = {"removed": int(cleanup_removed)}
         if ranked_candidates:
             premium_scores = [float(row["scientific_score"]) for row in ranked_candidates]
             diversity_scores = [float(row["diversity_score"]) for row in ranked_candidates]
@@ -7036,16 +7068,41 @@ def render_expansion_experimental_page() -> None:
                     f"{profile}={count}" for profile, count in sorted(rerank_metrics["profile_distribution"].items())
                 )
             )
+            st.subheader("Ciclo de vida do expansivo")
+            lifecycle_cols = st.columns(5)
+            lifecycle_badges = {row["status"]: row for row in lifecycle.get("badges", [])}
+            lifecycle_cols[0].metric("aguardando validação", lifecycle_badges.get("PENDING", {}).get("count", 0))
+            lifecycle_cols[1].metric("validado", lifecycle_badges.get("VALIDATED", {}).get("count", 0))
+            lifecycle_cols[2].metric("arquivado", lifecycle_badges.get("ARCHIVED", {}).get("count", 0))
+            lifecycle_cols[3].metric("premium", lifecycle_badges.get("PREMIUM", {}).get("count", 0))
+            lifecycle_cols[4].metric("descartado", lifecycle_badges.get("DISCARDED", {}).get("count", 0))
+            st.caption(
+                f"Status geral: {lifecycle.get('status', '-') } | "
+                f"promovidos={len(st.session_state.get('admin_last_validated_expansion', {}).get('promoted', [])) if isinstance(st.session_state.get('admin_last_validated_expansion'), dict) else 0}"
+            )
+            cleanup_info = st.session_state.get("admin_last_validated_expansion_cleanup") or {}
+            if cleanup_info:
+                st.caption(f"Cleanup operacional: {int(cleanup_info.get('removed', 0))} registros antigos removidos da memória validada.")
 
         page_count = max(1, (len(ranked_candidates) + ADMIN_EXPANSION_PAGE_SIZE - 1) // ADMIN_EXPANSION_PAGE_SIZE)
         page = st.number_input("Pagina", min_value=1, max_value=page_count, value=1, key="admin_expansion_page")
         start = (int(page) - 1) * ADMIN_EXPANSION_PAGE_SIZE
         end = start + ADMIN_EXPANSION_PAGE_SIZE
-        ranking_dataframe = _presentational_expansion_rankings_dataframe(ranked_candidates[start:end])
+        ranking_dataframe = _presentational_expansion_rankings_dataframe(
+            [
+                {**row, **next((item for item in lifecycle.get("rows", []) if item.get("dezenas") == row.get("dezenas")), {})}
+                for row in ranked_candidates[start:end]
+            ]
+        )
         st.dataframe(ranking_dataframe, hide_index=True, use_container_width=True)
 
         st.subheader("Seleção premium final")
-        premium_dataframe = _presentational_expansion_rankings_dataframe(premium_candidates)
+        premium_dataframe = _presentational_expansion_rankings_dataframe(
+            [
+                {**row, **next((item for item in lifecycle.get("rows", []) if item.get("dezenas") == row.get("dezenas")), {})}
+                for row in premium_candidates
+            ]
+        )
         st.dataframe(premium_dataframe, hide_index=True, use_container_width=True)
 
         export_dataframe = _presentational_expansion_rankings_dataframe(ranked_candidates)
@@ -7106,6 +7163,13 @@ def render_expansion_experimental_page() -> None:
         )
         st.subheader("Histórico institucional de expansão")
         st.dataframe(_expansion_events_dataframe(), hide_index=True, use_container_width=True)
+        st.subheader("Memória analítica validada")
+        validated_expansion = st.session_state.get("admin_last_validated_expansion") or {}
+        if isinstance(validated_expansion, dict) and validated_expansion.get("promoted"):
+            validated_rows = pd.DataFrame([row for row in validated_expansion.get("promoted", [])])
+            st.dataframe(validated_rows, hide_index=True, use_container_width=True)
+        else:
+            st.caption("Nenhuma promoção institucional validada nesta execução.")
     profile = _page_sql_profile_snapshot()
     _record_performance_metric("expansion_page_ms", render_ms, {"page": "expansion", "status": page_status})
     if profile is not None:
