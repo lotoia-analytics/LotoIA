@@ -1409,6 +1409,44 @@ def _build_observability_trace(
     }
 
 
+def _ensure_generation_profile_metadata(
+    game: dict[str, Any],
+    *,
+    strategy: str,
+    source_mode: str | None = None,
+) -> dict[str, Any]:
+    resolved_profile = str(
+        game.get("profile_type")
+        or game.get("operational_mode")
+        or game.get("profile")
+        or strategy
+        or ""
+    )
+    resolved_source_mode = str(
+        source_mode
+        or game.get("source_mode")
+        or game.get("operational_mode")
+        or strategy
+        or ""
+    )
+    resolved_generation_profile = str(
+        game.get("generation_profile")
+        or game.get("profile_type")
+        or game.get("operational_mode")
+        or resolved_profile
+        or ""
+    )
+    resolved_profile_label = str(game.get("profile") or resolved_profile or resolved_generation_profile or strategy or "")
+    return {
+        **game,
+        "profile": resolved_profile_label,
+        "profile_type": resolved_profile,
+        "generation_profile": resolved_generation_profile,
+        "source_mode": resolved_source_mode,
+        "operational_mode": str(game.get("operational_mode") or resolved_profile or ""),
+    }
+
+
 def _build_premium_generation_package(package_size: int, generation_mode: str) -> dict[str, Any]:
     if package_size not in (16, 17, 18):
         raise ValueError("Pacote premium deve conter 16, 17 ou 18 dezenas.")
@@ -1436,20 +1474,24 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
     selected_games: list[dict[str, Any]] = []
     for source_index, (label, row) in enumerate(selected_sources, start=1):
         selected_games.append(
-            _prepare_operational_premium_game(
-                row,
-                label=label,
-                package_size=package_size,
-                base_numbers=base_numbers,
-                history=history,
-                package_summary=runtime_metrics,
+            _ensure_generation_profile_metadata(
+                _prepare_operational_premium_game(
+                    row,
+                    label=label,
+                    package_size=package_size,
+                    base_numbers=base_numbers,
+                    history=history,
+                    package_summary=runtime_metrics,
+                )
+                | {
+                    "source_index": source_index,
+                    "collision_source": label,
+                    "replacement_reason": "cross_engine_unique_selection" if generation_mode == "HBIA" else "single_engine_selection",
+                    "promoted_candidate_id": int(row.get("rank", source_index) or source_index),
+                },
+                strategy=label,
+                source_mode=generation_mode,
             )
-            | {
-                "source_index": source_index,
-                "collision_source": label,
-                "replacement_reason": "cross_engine_unique_selection" if generation_mode == "HBIA" else "single_engine_selection",
-                "promoted_candidate_id": int(row.get("rank", source_index) or source_index),
-            }
         )
 
     selected_games, dedup_report = _deduplicate_structural_games(
@@ -4815,11 +4857,19 @@ def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
     rows = []
     for index, game in enumerate(games, start=1):
         quadra_score = game.get("quadra_score", {})
+        profile_value = (
+            game.get("profile")
+            or game.get("profile_type")
+            or game.get("generation_profile")
+            or game.get("operational_mode")
+            or game.get("source_mode")
+            or ""
+        )
         rows.append(
             {
                 "rank": index,
                 "dezenas": _format_numbers(game["numbers"]),
-                "perfil": game.get("profile_type", ""),
+                "perfil": profile_value,
                 "profile_score": game.get("profile_score", 0),
                 "motivo": game.get("historical_intelligence", {}).get("ranking_reason", ""),
                 "final_score": _score_value(game),
@@ -6604,6 +6654,14 @@ def render_generation_page() -> None:
                             "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
                         }
                     )
+                games = [
+                    _ensure_generation_profile_metadata(
+                        game,
+                        strategy=str(game.get("profile_type") or game.get("operational_mode") or strategy or ""),
+                        source_mode=str(game.get("source_mode") or strategy or ""),
+                    )
+                    for game in games
+                ]
                 st.session_state["last_generation_games"] = games
             duration_ms = (time.monotonic() - start_time) * 1000.0
             persistence_context: dict[str, Any] = {
