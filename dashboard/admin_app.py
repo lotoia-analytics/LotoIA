@@ -23,7 +23,6 @@ MODE_PAGES = {
         "estatisticas_historicas",
         "conferir_jogos",
         "reconciliacao_operacional",
-        "jogo_expandido_experimental",
         "historical_intelligence",
     ],
     "analitico": [
@@ -3246,7 +3245,7 @@ def _analytical_memory_transparency_context() -> dict[str, Any]:
             "registry_state_count": int(live_summary.get("state_count", 0)),
             "analytics_snapshot_exists": published,
         },
-        "flow": "Expansivo \u2192 Persistência \u2192 Registro \u2192 Memória Analítica",
+        "flow": "Gerar Jogos \u2192 Persistência \u2192 Registro \u2192 Memória Analítica",
     }
 
 
@@ -6124,7 +6123,6 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
         "historical_intelligence": lambda: render_historical_intelligence_page(draws),
         "analytics_intelligence": render_analytics_intelligence_page,
         "ml_intelligence": render_ml_intelligence_page,
-        "jogo_expandido_experimental": render_expansion_experimental_page,
         "ml_governance": render_ml_governance_page,
         "observability": render_observability_page,
         "leitura_uso": _render_lead_intelligence,
@@ -7462,8 +7460,8 @@ def render_expansion_experimental_page() -> None:
     payload_size_bytes = 0
     with st.container(border=True):
         _section_header(
-            "Expansivo",
-            "Validacao operacional interna do motor combinatorio, governada por perfil de acesso.",
+            "Cobertura probabilística",
+            "Validação operacional interna do motor combinatório, governada por perfil de acesso.",
         )
         st.warning("Modos avançados aumentam significativamente o processamento operacional.")
         col_role, col_count, col_preview = st.columns(3)

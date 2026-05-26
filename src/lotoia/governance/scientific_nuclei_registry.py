@@ -51,7 +51,7 @@ SCIENTIFIC_MODE_SECTIONS = {
         },
         {
             "title": "Cobertura estrutural",
-            "description": "Expansão controlada e leitura analítica do acervo.",
+            "description": "Cobertura probabilística e leitura analítica do acervo.",
             "pages": ("estatisticas_historicas", "historical_intelligence"),
         },
     ),
@@ -193,7 +193,7 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         ScientificNucleus(
             nucleus_id="jogo_expandido_experimental",
             page_id="jogo_expandido_experimental",
-            display_name="Expansivo",
+            display_name="Cobertura probabilística",
             scientific_finality="cobertura estrutural",
             persistence_artifact=TEMPORAL_HISTORY_EXPANSION,
             temporal_contract="expansion_only",
@@ -273,7 +273,7 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         "historical_intelligence": "Memória Analítica",
         "analytics_intelligence": "Análise Estrutural",
         "ml_intelligence": "Ranking ML",
-        "jogo_expandido_experimental": "Expansivo",
+        "jogo_expandido_experimental": "Cobertura probabilística",
         "backtesting": "Testar Estratégia",
         "calibracao_experimental": "Estratégia Operacional",
         "benchmark_cientifico": "Comparativos",
