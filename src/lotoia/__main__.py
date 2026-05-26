@@ -14,6 +14,7 @@ def main() -> None:
     subparsers.add_parser("adaptive-intelligence", help="Publica a inteligencia institucional adaptativa.")
     subparsers.add_parser("observational-stabilization", help="Gera o relatorio de estabilizacao observacional.")
     subparsers.add_parser("result-sync", help="Sincroniza concursos oficiais da Caixa.")
+    subparsers.add_parser("official-caixa-validation", help="Valida o historico oficial da Caixa contra o banco institucional.")
     subparsers.add_parser("result-sync-scheduler", help="Monitora automatico da sincronizacao oficial da Caixa.")
     subparsers.add_parser("operational-cleanup-scheduler", help="Executa a limpeza operacional diaria.")
     subparsers.add_parser("workflow-scheduler", help="Executa o agendamento institucional de workflows.")
@@ -34,6 +35,8 @@ def main() -> None:
         cli.run_observational_stabilization_cli(remaining)
     elif args.command == "result-sync":
         cli.run_result_sync_cli(remaining)
+    elif args.command == "official-caixa-validation":
+        cli.run_official_caixa_validation_cli(remaining)
     elif args.command == "result-sync-scheduler":
         cli.run_result_sync_scheduler_cli(remaining)
     elif args.command == "operational-cleanup-scheduler":

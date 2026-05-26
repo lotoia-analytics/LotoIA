@@ -205,6 +205,19 @@ def run_result_sync_cli(argv: list[str] | None = None) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def run_official_caixa_validation_cli(argv: list[str] | None = None) -> None:
+    from lotoia.ingestion.official_caixa_validation import run_official_caixa_validation
+
+    parser = argparse.ArgumentParser(description="Valida deterministicamente o histórico oficial da Caixa contra o banco institucional.")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    parser.add_argument("--last-n", type=int, default=100)
+    parser.add_argument("--report-dir", type=Path, default=Path("reports") / "institutional_caixa_validation")
+    args = parser.parse_args(argv)
+
+    result = run_official_caixa_validation(db_path=args.db_path, last_n=int(args.last_n), report_dir=args.report_dir)
+    print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2, default=str))
+
+
 def run_result_sync_scheduler_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Executa o monitor automatico da sincronizacao oficial da Caixa.")
     parser.add_argument("--poll-seconds", type=int, default=30)
