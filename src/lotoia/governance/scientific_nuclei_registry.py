@@ -35,7 +35,6 @@ SCIENTIFIC_NUCLEI_REGISTRY_STATUS = "scientific_nuclei_consolidation_active"
 
 CORE_NUCLEI = (
     "geracao_jogos",
-    "jogo_expandido_experimental",
     "backtesting",
     "benchmark_cientifico",
     "ml_intelligence",
@@ -53,7 +52,7 @@ SCIENTIFIC_MODE_SECTIONS = {
         {
             "title": "Cobertura estrutural",
             "description": "Expansão controlada e leitura analítica do acervo.",
-            "pages": ("jogo_expandido_experimental", "estatisticas_historicas", "historical_intelligence"),
+            "pages": ("estatisticas_historicas", "historical_intelligence"),
         },
     ),
     "analitico": (

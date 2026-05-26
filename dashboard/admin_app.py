@@ -45,6 +45,7 @@ MODE_PAGES = {
 import io
 import importlib
 import html
+import hashlib
 import math
 import json
 import os
@@ -209,6 +210,10 @@ def _page_sql_profile_snapshot() -> dict[str, Any] | None:
 
 
 build_walk_forward_splits = _LazyImportedAttr("lotoia.experiments.temporal_governance", "build_walk_forward_splits")
+run_longitudinal_temporal_benchmark = _LazyImportedAttr(
+    "lotoia.experiments.longitudinal_temporal",
+    "run_longitudinal_temporal_benchmark",
+)
 generate_backtest_report = _LazyImportedAttr("lotoia.reports", "generate_backtest_report")
 build_adaptive_evolution_tracking = _LazyImportedAttr("lotoia.memory", "build_adaptive_evolution_tracking")
 build_retention_policy_preview = _LazyImportedAttr("lotoia.public.operational_lifecycle", "build_retention_policy_preview")
@@ -219,6 +224,8 @@ estimate_expansion = _LazyImportedAttr("lotoia.combinatorics", "estimate_expansi
 select_premium_expansive_games = _LazyImportedAttr("lotoia.combinatorics", "select_premium_expansive_games")
 ScientificExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ScientificExpansionConfig")
 score_candidate_from_history = _LazyImportedAttr("lotoia.statistics.scoring", "score_candidate_from_history")
+build_temporal_signal = _LazyImportedAttr("lotoia.statistics.temporal", "build_temporal_signal")
+temporal_rerank = _LazyImportedAttr("lotoia.statistics.temporal", "temporal_rerank")
 list_expansion_events = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "list_expansion_events")
 save_expansion_event = _LazyImportedAttr("lotoia.combinatorics.expansion_store", "save_expansion_event")
 evaluate_expansion_lifecycle = _LazyImportedAttr("lotoia.public.expansion_lifecycle", "evaluate_expansion_lifecycle")
@@ -1124,7 +1131,9 @@ def _prepare_operational_premium_game(
     package_summary: dict[str, Any],
 ) -> dict[str, Any]:
     numbers = [int(number) for number in row.get("numbers", [])]
-    scientific_scores = score_candidate_from_history(numbers, history)
+    normalized_history = _normalize_draw_history(history)
+    scientific_scores = score_candidate_from_history(numbers, normalized_history)
+    temporal_signal = build_temporal_signal(numbers, normalized_history)
     enriched = dict(row)
     enriched.update(scientific_scores)
     enriched["sum"] = sum(numbers)
@@ -1140,7 +1149,265 @@ def _prepare_operational_premium_game(
         float(enriched.get("scientific_score", 0.0)) * 0.7 + float(enriched.get("profile_score", 0.0)) * 0.3,
         2,
     )
+    enriched["temporal_signal"] = temporal_signal.as_dict()
+    base_score = max(0.0, min(1.0, float(enriched.get("premium_score", 0.0)) / 100.0))
+    temporal_rank = temporal_rerank(base_score, temporal_signal)
+    enriched["final_score"] = {
+        "base_score": temporal_rank["base_score"],
+        "temporal_adjustment": temporal_rank["temporal_adjustment"],
+        "final_score": round(float(temporal_rank["final_score"]) * 100.0, 2),
+    }
+    enriched["cycle_state"] = temporal_rank["cycle_state"]
+    enriched["pressure_score"] = temporal_rank["pressure_score"]
+    enriched["migration_signal"] = temporal_rank["migration_signal"]
+    enriched["decay_factor"] = temporal_rank["temporal_decay"]
+    enriched["temporal_adjustment"] = temporal_rank["temporal_adjustment"]
+    enriched["temporal_rerank_reason"] = temporal_rank["rerank_reason"]
     return enriched
+
+
+def _game_structural_signature(numbers: list[int] | tuple[int, ...]) -> str:
+    normalized = tuple(sorted(int(number) for number in numbers))
+    payload = json.dumps({"numbers": normalized}, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _game_contextual_signature(
+    numbers: list[int] | tuple[int, ...],
+    *,
+    source_mode: str,
+    profile_type: str,
+    package_size: int | None = None,
+    generation_cycle: str | None = None,
+) -> str:
+    normalized = tuple(sorted(int(number) for number in numbers))
+    payload = {
+        "numbers": normalized,
+        "source_mode": str(source_mode or ""),
+        "profile_type": str(profile_type or ""),
+        "package_size": int(package_size or 0) if package_size is not None else None,
+        "generation_cycle": str(generation_cycle or ""),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _annotate_game_signatures(
+    game: dict[str, Any],
+    *,
+    source_mode: str,
+    package_size: int | None = None,
+    generation_cycle: str | None = None,
+) -> dict[str, Any]:
+    numbers = [int(number) for number in game.get("numbers", [])]
+    structural_hash = _game_structural_signature(numbers)
+    contextual_hash = _game_contextual_signature(
+        numbers,
+        source_mode=source_mode,
+        profile_type=str(game.get("profile_type") or game.get("operational_mode") or ""),
+        package_size=package_size,
+        generation_cycle=generation_cycle,
+    )
+    enriched = dict(game)
+    enriched["game_hash"] = structural_hash
+    enriched["hash_logical"] = structural_hash
+    enriched["hash_contextual"] = contextual_hash
+    enriched["hash_temporal"] = hashlib.sha256(
+        json.dumps(
+            {
+                "numbers": tuple(sorted(numbers)),
+                "source_mode": str(source_mode or ""),
+                "package_size": int(package_size or 0) if package_size is not None else None,
+                "generation_cycle": str(generation_cycle or ""),
+                "stage": "future_ready",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    enriched["structural_signature"] = structural_hash
+    enriched["contextual_signature"] = contextual_hash
+    return enriched
+
+
+def _deduplicate_structural_games(
+    games: list[dict[str, Any]],
+    *,
+    source_mode: str,
+    package_size: int | None = None,
+    generation_cycle: str | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: dict[str, dict[str, Any]] = {}
+    collisions: list[dict[str, Any]] = []
+    duplicate_sources: list[str] = []
+
+    for index, game in enumerate(games, start=1):
+        annotated = _annotate_game_signatures(
+            game,
+            source_mode=source_mode,
+            package_size=package_size,
+            generation_cycle=generation_cycle,
+        )
+        signature = str(annotated.get("game_hash") or "")
+        source_label = str(
+            annotated.get("operational_mode")
+            or annotated.get("profile_type")
+            or source_mode
+            or ""
+        )
+        annotated["source_mode"] = source_mode
+        annotated["source_index"] = index
+        if signature in seen:
+            first = seen[signature]
+            collisions.append(
+                {
+                    "game_hash": signature,
+                    "source_mode": source_mode,
+                    "collision_with": first.get("source_label", ""),
+                    "collision_numbers": _format_numbers(list(annotated.get("numbers", []))),
+                    "original_numbers": _format_numbers(list(first.get("numbers", []))),
+                    "source_index": index,
+                    "original_index": int(first.get("source_index", 0) or 0),
+                }
+            )
+            duplicate_sources.append(source_label or source_mode or "desconhecido")
+            continue
+        seen[signature] = {
+            "numbers": list(annotated.get("numbers", [])),
+            "source_label": source_label,
+            "source_index": index,
+        }
+        deduped.append(annotated)
+
+    duplicates_detected = len(collisions)
+    duplicate_rate = round(duplicates_detected / len(games), 4) if games else 0.0
+    unique_ratio = round(len(deduped) / len(games), 4) if games else 0.0
+    report = {
+        "duplicate_games_detected": duplicates_detected,
+        "duplicate_source": sorted({source for source in duplicate_sources if source}),
+        "collision_details": collisions,
+        "duplicate_rate": duplicate_rate,
+        "unique_ratio_real": unique_ratio,
+        "source_mode": source_mode,
+        "deduped_games": len(deduped),
+        "input_games": len(games),
+        "deduped_hashes": [str(game.get("game_hash") or "") for game in deduped],
+    }
+    return deduped, report
+
+
+def _select_cross_engine_premium_sources(
+    premium_candidates: list[dict[str, Any]],
+    *,
+    generation_mode: str,
+) -> list[tuple[str, dict[str, Any]]]:
+    if not premium_candidates:
+        return []
+
+    hb_source = premium_candidates[0]
+    seen_signatures = {
+        str(
+            _annotate_game_signatures(
+                hb_source,
+                source_mode="HB",
+                package_size=None,
+                generation_cycle="premium_package",
+            ).get("game_hash")
+            or ""
+        )
+    }
+
+    def _first_unique_candidate(pool: list[dict[str, Any]], label: str) -> dict[str, Any] | None:
+        for candidate in pool:
+            signature = str(
+                _annotate_game_signatures(
+                    candidate,
+                    source_mode=label,
+                    package_size=None,
+                    generation_cycle="premium_package",
+                ).get("game_hash")
+                or ""
+            )
+            if signature not in seen_signatures:
+                seen_signatures.add(signature)
+                return candidate
+        return None
+
+    if generation_mode == "HB":
+        return [("HB", hb_source)]
+
+    if generation_mode == "IA":
+        ia_source = _first_unique_candidate(premium_candidates, "IA") or premium_candidates[0]
+        return [("IA", ia_source)]
+
+    ia_source = _first_unique_candidate(premium_candidates[: min(10, len(premium_candidates))], "IA")
+    if ia_source is None:
+        ia_source = _first_unique_candidate(premium_candidates[1:], "IA")
+    selected: list[tuple[str, dict[str, Any]]] = [("HB", hb_source)]
+    if ia_source is not None:
+        selected.append(("IA", ia_source))
+    return selected
+
+
+def _build_observability_trace(
+    game: dict[str, Any],
+    *,
+    accepted_by: list[str],
+    source_mode: str,
+    generation_cycle: str,
+    package_size: int | None = None,
+) -> dict[str, Any]:
+    numbers = [int(number) for number in game.get("numbers", [])]
+    score = float(game.get("premium_score", game.get("scientific_score", 0.0)) or 0.0)
+    diversity = float(game.get("diversity_score", game.get("diversity_index", 0.0)) or 0.0)
+    coverage = float(game.get("coverage_score", 0.0) or 0.0)
+    entropy = float(game.get("entropy_score", 0.0) or 0.0)
+    profile_type = str(game.get("profile_type") or game.get("operational_mode") or "")
+    return {
+        "decision_trace": {
+            "accepted_by": list(accepted_by),
+            "promoted_by": list(accepted_by),
+            "reranked_by": ["scientific_expansive_v1"] if "scientific_expansive_v1" not in accepted_by else list(accepted_by),
+            "filtered_by": [],
+            "rejected_by": [],
+            "final_selection_reason": str(game.get("ranking_reason") or game.get("historical_intelligence", {}).get("ranking_reason") or "operational_premium_curation"),
+        },
+        "generation_lineage": {
+            "origin_pipeline": ["HB", "PremiumPool", "Dedupe", "FinalSelection"],
+            "source_mode": source_mode,
+            "profile_type": profile_type,
+            "package_size": int(package_size or 0) if package_size is not None else None,
+            "generation_cycle": generation_cycle,
+        },
+        "feature_attribution": {
+            "scientific_score": round(float(game.get("scientific_score", 0.0)), 4),
+            "premium_score": round(score, 4),
+            "diversity_score": round(diversity, 4),
+            "coverage_score": round(coverage, 4),
+            "entropy_score": round(entropy, 4),
+            "profile_score": round(float(game.get("profile_score", 0.0) or 0.0), 4),
+            "recurrence_score": round(float(game.get("recurrence_score", 0.0) or 0.0), 4),
+            "structural_rarity": round(float(game.get("structural_rarity", 0.0) or 0.0), 4),
+        },
+        "temporal_snapshot": {
+            "cycle_state": None,
+            "pressure_score": None,
+            "migration_signal": None,
+            "source_mode": source_mode,
+            "package_size": int(package_size or 0) if package_size is not None else None,
+            "generation_cycle": generation_cycle,
+        },
+        "observability_signature": _game_contextual_signature(
+            numbers,
+            source_mode=source_mode,
+            profile_type=profile_type,
+            package_size=package_size,
+            generation_cycle=generation_cycle,
+        ),
+    }
 
 
 def _build_premium_generation_package(package_size: int, generation_mode: str) -> dict[str, Any]:
@@ -1149,7 +1416,7 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
 
     base_numbers_text = _default_admin_expansion_numbers(package_size, allowed_sizes=(package_size,))
     base_numbers = _parse_admin_expansion_numbers(base_numbers_text, allowed_sizes=(package_size,))
-    history = _historical_dataset().get("draws", [])
+    history = _normalize_draw_history(list(_historical_dataset().get("draws", [])))
     total_combinations = int(math.comb(package_size, 15))
     premium_limit = total_combinations if package_size in (16, 17) else _scientific_expansion_limit(package_size)
     scientific_config = ScientificExpansionConfig(
@@ -1165,29 +1432,10 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
     scientific_payload = scientific_result.as_dict()
     runtime_metrics = dict(scientific_payload.get("metrics", {}))
     premium_candidates = list(scientific_payload.get("premium_games", []))
-    if premium_candidates:
-        hb_source = premium_candidates[0]
-        ia_source = max(
-            premium_candidates[: min(10, len(premium_candidates))],
-            key=lambda row: (
-                float(row.get("diversity_score", 0.0)),
-                float(row.get("entropy_score", 0.0)),
-                float(row.get("coverage_score", 0.0)),
-                -float(row.get("recurrence_score", 0.0)),
-                -float(row.get("historical_similarity", 0.0)),
-            ),
-        )
-        selected_sources: list[tuple[str, dict[str, Any]]] = [("HB", hb_source)]
-        if generation_mode in {"IA", "HBIA"}:
-            if ia_source.get("numbers") != hb_source.get("numbers") or generation_mode == "HBIA":
-                selected_sources.append(("IA", ia_source))
-        if generation_mode == "IA":
-            selected_sources = [("IA", ia_source)]
-    else:
-        selected_sources = []
+    selected_sources = _select_cross_engine_premium_sources(premium_candidates, generation_mode=generation_mode)
 
     selected_games: list[dict[str, Any]] = []
-    for label, row in selected_sources:
+    for source_index, (label, row) in enumerate(selected_sources, start=1):
         selected_games.append(
             _prepare_operational_premium_game(
                 row,
@@ -1197,18 +1445,49 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
                 history=history,
                 package_summary=runtime_metrics,
             )
+            | {
+                "source_index": source_index,
+                "collision_source": label,
+                "replacement_reason": "cross_engine_unique_selection" if generation_mode == "HBIA" else "single_engine_selection",
+                "promoted_candidate_id": int(row.get("rank", source_index) or source_index),
+            }
         )
+
+    selected_games, dedup_report = _deduplicate_structural_games(
+        selected_games,
+        source_mode=generation_mode,
+        package_size=package_size,
+        generation_cycle="premium_package",
+    )
+    selected_games = [
+        {
+            **game,
+            **_build_observability_trace(
+                game,
+                accepted_by=[str(game.get("profile_type") or game.get("operational_mode") or generation_mode)],
+                source_mode=generation_mode,
+                generation_cycle="premium_package",
+                package_size=package_size,
+            ),
+        }
+        for game in selected_games
+    ]
 
     if selected_games:
         premium_score = round(sum(float(game.get("premium_score", 0.0)) for game in selected_games) / len(selected_games), 2)
         diversity_score = round(sum(float(game.get("diversity_score", 0.0)) for game in selected_games) / len(selected_games), 4)
         coverage_score = round(sum(float(game.get("coverage_score", 0.0)) for game in selected_games) / len(selected_games), 4)
         overlap_mean = float(runtime_metrics.get("overlap_mean", 0.0))
-        unique_ratio = float(runtime_metrics.get("unique_ratio", 0.0))
+        unique_ratio = float(dedup_report.get("unique_ratio_real", runtime_metrics.get("unique_ratio", 0.0)))
         rerank_entropy = float(runtime_metrics.get("rerank_entropy", 0.0))
         structural_diversity_score = float(runtime_metrics.get("structural_diversity_score", 0.0))
         profile_distribution = dict(runtime_metrics.get("profile_distribution", {}))
         dominant_profile = max(profile_distribution.items(), key=lambda item: (item[1], item[0]))[0] if profile_distribution else "indefinido"
+        temporal_adjustment = round(sum(float(game.get("temporal_adjustment", 0.0)) for game in selected_games) / len(selected_games), 4)
+        cycle_distribution: dict[str, int] = {}
+        for game in selected_games:
+            cycle_state = str(game.get("cycle_state") or "unknown")
+            cycle_distribution[cycle_state] = cycle_distribution.get(cycle_state, 0) + 1
     else:
         premium_score = 0.0
         diversity_score = 0.0
@@ -1219,6 +1498,19 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         structural_diversity_score = 0.0
         profile_distribution = {}
         dominant_profile = "indefinido"
+        temporal_adjustment = 0.0
+        cycle_distribution = {}
+        dedup_report = {
+            "duplicate_games_detected": 0,
+            "duplicate_source": [],
+            "collision_details": [],
+            "duplicate_rate": 0.0,
+            "unique_ratio_real": 0.0,
+            "source_mode": generation_mode,
+            "deduped_games": 0,
+            "input_games": 0,
+            "deduped_hashes": [],
+        }
 
     summary = {
         "package_size": package_size,
@@ -1240,6 +1532,17 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         "runtime_metrics": runtime_metrics,
         "scientific_limit": premium_limit,
         "engine": "scientific_expansive_v1",
+        "duplicate_games_detected": int(dedup_report.get("duplicate_games_detected", 0)),
+        "duplicate_source": list(dedup_report.get("duplicate_source", [])),
+        "collision_details": list(dedup_report.get("collision_details", [])),
+        "duplicate_rate": float(dedup_report.get("duplicate_rate", 0.0)),
+        "unique_ratio_real": float(dedup_report.get("unique_ratio_real", unique_ratio)),
+        "decision_trace_count": len(selected_games),
+        "lineage_count": len(selected_games),
+        "feature_attribution_count": len(selected_games),
+        "temporal_snapshot_count": len(selected_games),
+        "temporal_adjustment": temporal_adjustment,
+        "cycle_distribution": cycle_distribution,
     }
     return {
         "base_numbers": base_numbers,
@@ -1622,6 +1925,19 @@ def _safe_dataframe(dataframe: pd.DataFrame | None, columns: list[str] | None = 
     if columns is not None and dataframe.empty:
         return pd.DataFrame(columns=columns)
     return dataframe
+
+
+def _normalize_draw_history(history: list[Any]) -> list[Any]:
+    normalized_history: list[Any] = []
+    for index, item in enumerate(history or [], start=1):
+        if hasattr(item, "contest") and hasattr(item, "numbers"):
+            normalized_history.append(item)
+            continue
+        if isinstance(item, dict):
+            contest = int(item.get("contest", item.get("concurso", index)) or index)
+            numbers = item.get("numbers") or item.get("dezenas") or []
+            normalized_history.append(DrawLike(contest=contest, numbers=[int(number) for number in numbers]))
+    return normalized_history
 
 
 def _normalize_numbers(numbers: list[int]) -> tuple[int, ...]:
@@ -4671,6 +4987,61 @@ def _benchmark_evolution_chart(result: BenchmarkResult) -> go.Figure:
     return figure
 
 
+def _temporal_longitudinal_summary_dataframe(result: Any) -> pd.DataFrame:
+    summary = dict(result.summary or {})
+    reproducibility = dict(summary.get("reproducibility", {}))
+    return pd.DataFrame(
+        [
+            {"Métrica": "Benchmark", "Valor": result.benchmark_version, "Detalhe": "versão do benchmark longitudinal"},
+            {"Métrica": "Temporal", "Valor": reproducibility.get("freeze_level", "hb_temporal_v1_locked"), "Detalhe": "linha temporal congelada"},
+            {"Métrica": "Concursos", "Valor": result.contests_analyzed, "Detalhe": "concursos avaliados"},
+            {"Métrica": "Jogos", "Valor": result.games_count, "Detalhe": "jogos por replay"},
+            {"Métrica": "Pool", "Valor": result.pool_size, "Detalhe": "pool por janela"},
+            {"Métrica": "Média HB", "Valor": round(float(summary.get("baseline_average_hits", 0.0)), 4), "Detalhe": "baseline HB"},
+            {"Métrica": "Média HB+Temporal", "Valor": round(float(summary.get("temporal_average_hits", 0.0)), 4), "Detalhe": "pipeline com temporal"},
+            {"Métrica": "Delta médio", "Valor": round(float(summary.get("average_hit_delta", 0.0)), 4), "Detalhe": "diferença média"},
+            {"Métrica": "Estabilidade HB", "Valor": round(float(summary.get("baseline_stability", 0.0)), 4), "Detalhe": "desvio baseline"},
+            {"Métrica": "Estabilidade HB+Temporal", "Valor": round(float(summary.get("temporal_stability", 0.0)), 4), "Detalhe": "desvio temporal"},
+            {"Métrica": "Delta estabilidade", "Valor": round(float(summary.get("stability_delta", 0.0)), 4), "Detalhe": "variação de estabilidade"},
+            {"Métrica": "Ajuste temporal", "Valor": round(float(summary.get("temporal_adjustment", 0.0)), 4), "Detalhe": "influência média"},
+            {"Métrica": "Replay windows", "Valor": json.dumps(summary.get("window_deltas", {}), ensure_ascii=False), "Detalhe": "janelas por duração"},
+        ]
+    )
+
+
+def _temporal_longitudinal_windows_dataframe(result: Any) -> pd.DataFrame:
+    rows = []
+    for row in getattr(result, "replay_windows", []) or []:
+        rows.append(
+            {
+                "split_id": row.get("split_id", ""),
+                "contest": row.get("contest", 0),
+                "replay_window": row.get("replay_window", ""),
+                "baseline_average_hits": float(row.get("baseline", {}).get("average_hits", 0.0)),
+                "temporal_average_hits": float(row.get("temporal", {}).get("average_hits", 0.0)),
+                "delta_average_hits": float(row.get("delta_average_hits", 0.0)),
+                "baseline_stability": float(row.get("baseline", {}).get("standard_deviation", 0.0)),
+                "temporal_stability": float(row.get("temporal", {}).get("standard_deviation", 0.0)),
+                "temporal_adjustment": float(row.get("temporal_adjustment", 0.0)),
+                "observability_signature": row.get("observability_signature", ""),
+            }
+        )
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=[
+            "split_id",
+            "contest",
+            "replay_window",
+            "baseline_average_hits",
+            "temporal_average_hits",
+            "delta_average_hits",
+            "baseline_stability",
+            "temporal_stability",
+            "temporal_adjustment",
+            "observability_signature",
+        ]
+    )
+
+
 def _runs_dataframe(runs: list[dict[str, Any]], columns: list[str]) -> pd.DataFrame:
     return pd.DataFrame([{column: run.get(column) for column in columns} for run in runs])
 
@@ -4766,6 +5137,31 @@ def _cached_benchmark(contests: int, games_count: int, pool_size: int, history_w
     from lotoia.benchmark import run_benchmark
 
     return run_benchmark(contests_analyzed=contests, games_count=games_count, pool_size=pool_size, history_window=history_window, seed=seed)
+
+
+@st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
+def _cached_temporal_longitudinal_benchmark(
+    contests_analyzed: int,
+    games_count: int,
+    pool_size: int,
+    history_window: int,
+    seed: int,
+    min_train_size: int,
+    test_size: int,
+    step_size: int,
+    stability_window: int,
+):
+    return run_longitudinal_temporal_benchmark(
+        contests_analyzed=contests_analyzed,
+        games_count=games_count,
+        pool_size=pool_size,
+        history_window=history_window,
+        seed=seed,
+        min_train_size=min_train_size,
+        test_size=test_size,
+        step_size=step_size,
+        stability_window=stability_window,
+    )
 
 
 @st.cache_data(show_spinner=False, ttl=STREAMLIT_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
@@ -6098,7 +6494,7 @@ def render_generation_page() -> None:
             generate_clicked = st.button("Gerar jogos", type="primary", use_container_width=True)
         if premium_mode:
             st.info(
-                "Pacote premium científico ativo. O Expansivo permanece institucional e isolado desta trilha."
+                "Pacote premium científico ativo. O motor seleciona automaticamente as dezenas-base com maior prioridade probabilística."
             )
             package_summary = {
                 "package_size": selected_size,
@@ -6179,6 +6575,37 @@ def render_generation_page() -> None:
                             },
                         }
                     strategy = generation_mode
+                games, dedup_report = _deduplicate_structural_games(
+                    games,
+                    source_mode=strategy,
+                    package_size=selected_size if premium_mode else None,
+                    generation_cycle="operational_generation",
+                )
+                games = [
+                    {
+                        **game,
+                        **_build_observability_trace(
+                            game,
+                            accepted_by=[str(game.get("profile_type") or game.get("operational_mode") or strategy)],
+                            source_mode=strategy,
+                            generation_cycle="operational_generation",
+                            package_size=selected_size if premium_mode else None,
+                        ),
+                    }
+                    for game in games
+                ]
+                payload = dict(payload)
+                payload["deduplication"] = dict(dedup_report)
+                if premium_generation_package is not None:
+                    premium_generation_package["summary"].update(
+                        {
+                            "duplicate_games_detected": int(dedup_report.get("duplicate_games_detected", 0)),
+                            "duplicate_source": list(dedup_report.get("duplicate_source", [])),
+                            "collision_details": list(dedup_report.get("collision_details", [])),
+                            "duplicate_rate": float(dedup_report.get("duplicate_rate", 0.0)),
+                            "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
+                        }
+                    )
                 st.session_state["last_generation_games"] = games
             duration_ms = (time.monotonic() - start_time) * 1000.0
             persistence_context: dict[str, Any] = {
@@ -6186,6 +6613,8 @@ def render_generation_page() -> None:
                 "whatsapp": whatsapp.strip(),
                 "timestamp": _report_timestamp(),
             }
+            if dedup_report:
+                persistence_context["deduplication"] = dict(dedup_report)
             if premium_generation_package is not None:
                 persistence_context.update(
                     {
@@ -6211,16 +6640,46 @@ def render_generation_page() -> None:
                     "package_size": selected_size,
                     "generated_internal_bets": int(premium_generation_package["summary"].get("theoretical_internal_bets", len(games))) if premium_generation_package else len(games),
                     "operational_bets": int(premium_generation_package["summary"].get("operational_bets", len(games))) if premium_generation_package else len(games),
+                    "duplicate_games_detected": int(dedup_report.get("duplicate_games_detected", 0)),
+                    "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
                 },
                 "AFTER_PERSIST": {
                     "generation_event_id": generation_event_id,
                     "generated_games_count": len(games),
                     "strategy": strategy,
                     "commit_state": "ok" if generation_event_id else "failed",
+                    "duplicate_games_detected": int(dedup_report.get("duplicate_games_detected", 0)),
+                    "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
                 },
             }
             if premium_generation_package is not None:
                 persist_trace["PACKAGE_SUMMARY"] = dict(premium_generation_package["summary"])
+            if dedup_report.get("duplicate_games_detected", 0):
+                persist_trace["DEDUPLICATION"] = dict(dedup_report)
+                st.warning(
+                    f"Deduplicacao estrutural aplicada: {int(dedup_report.get('duplicate_games_detected', 0))} jogos removidos."
+                )
+                st.caption(
+                    "Origem das colisoes: "
+                    + ", ".join(str(item) for item in dedup_report.get("duplicate_source", []) or ["indefinido"])
+                )
+            persist_trace["OBSERVABILITY"] = {
+                "decision_trace": [game.get("decision_trace", {}) for game in games],
+                "generation_lineage": [game.get("generation_lineage", {}) for game in games],
+                "feature_attribution": [game.get("feature_attribution", {}) for game in games],
+                "temporal_snapshot": [game.get("temporal_snapshot", {}) for game in games],
+                "observability_signature": [game.get("observability_signature", "") for game in games],
+            }
+            persist_trace["TEMPORAL"] = {
+                "cycle_state": [game.get("cycle_state") for game in games],
+                "pressure_score": [game.get("pressure_score") for game in games],
+                "migration_signal": [game.get("migration_signal") for game in games],
+                "decay_factor": [game.get("decay_factor") for game in games],
+                "temporal_adjustment": [game.get("temporal_adjustment") for game in games],
+                "base_score": [game.get("final_score", {}).get("base_score") for game in games],
+                "final_score": [game.get("final_score", {}).get("final_score") for game in games],
+                "rerank_reason": [game.get("temporal_rerank_reason") for game in games],
+            }
             st.session_state["admin_generation_persist_trace"] = persist_trace
             dataframe = _games_dataframe(games)
             preview_limit = min(ADMIN_EXPANSION_PAGE_SIZE, len(games)) if premium_mode else len(dataframe)
@@ -6241,6 +6700,10 @@ def render_generation_page() -> None:
                 detail_cols[1].metric("Unique ratio", f"{package_summary['unique_ratio']:.4f}")
                 detail_cols[2].metric("Rerank entropy", f"{package_summary['rerank_entropy']:.4f}")
                 detail_cols[3].metric("Foco premium", str(package_summary["dominant_profile"]))
+                temporal_cols = st.columns(3)
+                temporal_cols[0].metric("Temporal adjust", f"{package_summary.get('temporal_adjustment', 0.0):.4f}")
+                temporal_cols[1].metric("Ciclo dominante", str(max(package_summary.get("cycle_distribution", {}) or {"unknown": 0}, key=(package_summary.get("cycle_distribution", {}) or {"unknown": 0}).get)))
+                temporal_cols[2].metric("Snapshot", f"{int(package_summary.get('temporal_snapshot_count', 0))}")
                 st.caption(
                     f"{selected_size} dezenas premium | {package_summary['theoretical_internal_bets']} apostas derivadas automaticamente | "
                     f"{package_summary['operational_bets']} apostas operacionais | "
@@ -6521,52 +6984,38 @@ def _load_operational_reconciliation_rows(baseline_numbers: list[int]) -> tuple[
             "result_informed": _format_numbers(baseline_numbers),
             "contest_id": contest_id,
             "source": source,
+            "simulation_source": source,
             "status": str(run.status or ""),
             "prize_count": int(run.prize_count or 0),
             "total_hits": int(run.total_hits or 0),
             "best_hits": int(run.best_hits or 0),
             "payload": payload,
             "generation_event_id": generation_event_id,
+            "source_generation_event_id": generation_event_id,
+            "source_strategy": str(payload.get("strategy") or payload.get("generation_mode") or payload.get("profile_type") or ""),
+            "source_mode": str(payload.get("source_mode") or payload.get("origin") or source or ""),
+            "generated_games_loaded": len(game_rows),
             "row_count": len(game_rows) + len(expansion_rows),
         }
         return summary, game_rows + expansion_rows
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
-    from lotoia.database.database import GeneratedGame, get_session
+    from lotoia.database.database import GeneratedGame, GenerationEvent, get_session
 
     with get_session(DB_PATH) as session:
-        generation_game = (
-            session.query(GeneratedGame)
-            .order_by(GeneratedGame.generation_event_id.desc(), GeneratedGame.game_index.desc())
+        generation_event = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
             .first()
         )
-        if generation_game is None:
-            generation_event_row = _sqlite_execute_safe(
-                """
-                SELECT id, strategy
-                FROM generation_events
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            )
-            generation_event = generation_event_row.fetchone() if generation_event_row is not None else None
-        else:
-            generation_event = None
-        if generation_game is None and generation_event is None:
+        if generation_event is None:
             return None
-        if generation_game is not None:
-            generation_event_id = int(generation_game.generation_event_id or 0)
-            lead_id = int(generation_game.lead_id or 0) or None
-            target_contest = int(generation_game.target_contest or 0) if generation_game.target_contest is not None else None
-            origin = str(generation_game.origin or "generated")
-            generation_mode = str(generation_game.generation_mode or "dashboard")
-        else:
-            generation_event_id = int(generation_event[0] or 0) if generation_event is not None else 0
-            lead_id = None
-            target_contest = None
-            origin = "dashboard"
-            generation_mode = str(generation_event[1] or "dashboard") if generation_event is not None else "dashboard"
+        generation_event_id = int(generation_event.id or 0) if generation_event is not None else 0
+        lead_id = int(generation_event.lead_id or 0) or None
+        target_contest = None
+        origin = "generated_games"
+        generation_mode = str(getattr(generation_event, "strategy", "dashboard") or "dashboard")
 
         games_query = (
             session.query(GeneratedGame)
@@ -6593,6 +7042,11 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
 
     return {
         "generation_event_id": generation_event_id,
+        "source_generation_event_id": generation_event_id,
+        "source_strategy": generation_mode,
+        "source_mode": origin,
+        "generated_games_loaded": len(games),
+        "simulation_source": "generated_games",
         "lead_id": lead_id,
         "target_contest": target_contest,
         "origin": origin,
@@ -6662,7 +7116,7 @@ def render_operational_reconciliation_page() -> None:
                             generated_games=latest_generation["games"],
                             official_numbers=baseline_numbers,
                             lead_id=latest_generation["lead_id"],
-                            source="operational_dashboard_manual_baseline",
+                            source="generated_games",
                         )
                         summary, rows = _load_operational_reconciliation_rows(baseline_numbers)
                 if summary is None:
@@ -6678,12 +7132,19 @@ def render_operational_reconciliation_page() -> None:
                 st.metric("Concurso simulado", summary["contest_id"])
                 st.metric("Jogos analisados", summary["row_count"])
                 st.metric("Jogos premiados", summary["prize_count"])
+                st.metric("Origem da simulação", summary.get("simulation_source", "generated_games"))
                 best_row = max(rows, key=lambda item: int(item["acertos"]), default=None)
                 st.metric("Melhor jogo", best_row["jogo"] if best_row else 0)
                 st.metric("Perfil vencedor", best_row["perfil_estrategico"] if best_row else "")
                 coverage = (summary["prize_count"] / summary["row_count"] * 100.0) if summary["row_count"] else 0.0
                 st.metric("Cobertura", f"{coverage:.1f}%")
-                st.caption(f"Acertos totais: {summary['total_hits']} | Origem: {summary['source']}")
+                st.caption(
+                    f"Acertos totais: {summary['total_hits']} | Origem: {summary['source']} | "
+                    f"source_generation_event_id={summary.get('source_generation_event_id', '-')} | "
+                    f"source_strategy={summary.get('source_strategy', '-')} | "
+                    f"source_mode={summary.get('source_mode', '-')} | "
+                    f"generated_games_loaded={summary.get('generated_games_loaded', 0)}"
+                )
                 executive = pd.DataFrame(
                     [
                         {
@@ -6928,6 +7389,60 @@ def render_benchmark_page() -> None:
             st.dataframe(comparisons, hide_index=True, use_container_width=True)
             st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/benchmark')}")
 
+    with st.container(border=True):
+        _section_header("Benchmark longitudinal temporal", "Execução institucional HB vs HB+Temporal em replay walk-forward congelado.")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        temporal_contests = col1.number_input("Concursos avaliados", min_value=1, max_value=100, value=5, key="temporal_bench_contests")
+        temporal_games_count = col2.number_input("Jogos", min_value=1, max_value=100, value=5, key="temporal_bench_games")
+        temporal_pool_size = col3.number_input("Pool", min_value=1, max_value=500, value=20, key="temporal_bench_pool")
+        temporal_history_window = col4.number_input("Histórico", min_value=1, max_value=1000, value=200, key="temporal_bench_hist")
+        temporal_seed = col5.number_input("Seed", min_value=0, max_value=999_999, value=42, key="temporal_bench_seed")
+        col6, col7, col8, col9 = st.columns(4)
+        temporal_min_train_size = col6.number_input("Treino mínimo", min_value=1, max_value=10000, value=2000, key="temporal_bench_train")
+        temporal_test_size = col7.number_input("Janela teste", min_value=1, max_value=500, value=20, key="temporal_bench_test")
+        temporal_step_size = col8.number_input("Passo janela", min_value=1, max_value=500, value=20, key="temporal_bench_step")
+        temporal_stability_window = col9.number_input("Estabilidade", min_value=1, max_value=50, value=5, key="temporal_bench_stability")
+        if temporal_games_count > temporal_pool_size:
+            st.warning("O pool do benchmark temporal precisa ser maior ou igual à quantidade de jogos.")
+            return
+        if st.button("Executar Benchmark Longitudinal", type="primary"):
+            with st.spinner("Executando replay longitudinal congelado..."):
+                result = _cached_temporal_longitudinal_benchmark(
+                    int(temporal_contests),
+                    int(temporal_games_count),
+                    int(temporal_pool_size),
+                    int(temporal_history_window),
+                    int(temporal_seed),
+                    int(temporal_min_train_size),
+                    int(temporal_test_size),
+                    int(temporal_step_size),
+                    int(temporal_stability_window),
+                )
+            summary = _temporal_longitudinal_summary_dataframe(result)
+            windows = _temporal_longitudinal_windows_dataframe(result)
+            top_metrics = dict(result.summary or {})
+            meta_cols = st.columns(5)
+            meta_cols[0].metric("Concursos", result.contests_analyzed)
+            meta_cols[1].metric("Delta médio", f"{float(top_metrics.get('average_hit_delta', 0.0)):.2f}")
+            meta_cols[2].metric("Ajuste temporal", f"{float(top_metrics.get('temporal_adjustment', 0.0)):.4f}")
+            meta_cols[3].metric("Estabilidade HB", f"{float(top_metrics.get('baseline_stability', 0.0)):.2f}")
+            meta_cols[4].metric("Estabilidade Temporal", f"{float(top_metrics.get('temporal_stability', 0.0)):.2f}")
+            st.dataframe(summary, hide_index=True, use_container_width=True)
+            st.subheader("Replay por janela")
+            st.dataframe(windows, hide_index=True, use_container_width=True)
+            st.info(
+                " | ".join(
+                    [
+                        f"benchmark_version={top_metrics.get('benchmark_version', '-')}",
+                        f"temporal_version={top_metrics.get('temporal_version', '-')}",
+                        f"replay_window={json.dumps(top_metrics.get('window_deltas', {}), ensure_ascii=False)}",
+                        f"generated_at={result.created_at}",
+                        f"contests_evaluated={result.contests_analyzed}",
+                    ]
+                )
+            )
+            st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/temporal_longitudinal')}")
+
 
 def render_expansion_experimental_page() -> None:
     page_start = time.monotonic()
@@ -7017,7 +7532,7 @@ def render_expansion_experimental_page() -> None:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Dezenas", len(numbers))
-        col2.metric("Apostas internas", f"{estimate['total_combinations']:,}".replace(",", "."))
+        col2.metric("Cobertura combinatória", f"{estimate['total_combinations']:,}".replace(",", "."))
         col3.metric("Custo estimado", f"R$ {float(estimate['estimated_cost']):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         st.caption(
             f"Perfil {selected_role} habilita: {_format_allowed_expansion_sizes(allowed_sizes)} dezenas."
@@ -7279,10 +7794,10 @@ def render_expansion_experimental_page() -> None:
         )
         pdf_path = _save_pdf_report(
             artifact_path(REPORTS_DIR, ArtifactKind.REPORT, "admin_expansion_experimental", "pdf"),
-            "LotoIA - Expansivo",
+            "LotoIA - Gerador Premium",
             [
                 f"Dezenas selecionadas: {_format_numbers(result['selected_numbers'])}",
-                f"Apostas internas: {result['total_combinations']}",
+                f"Cobertura combinatória: {result['total_combinations']}",
                 f"Custo estimado: R$ {float(result['estimated_cost']):.2f}",
                 f"Preview gerado: {result['generated_count']}",
                 f"Runtime ms: {result['runtime_ms']}",
