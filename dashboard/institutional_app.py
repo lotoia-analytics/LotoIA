@@ -20,6 +20,7 @@ import streamlit as st
 from sqlalchemy import inspect, text
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
@@ -974,7 +975,7 @@ def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
     st.caption(f"latest_reconciliation_id: {latest_reconciliation.get('id', '-') if latest_reconciliation else '-'}")
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
-        service = ResultSyncService(db_path=DB_PATH)
+        service = ResultSyncService(repository=ContestRepository(DB_PATH))
         summary = service.sync_latest()
         payload = summary.to_dict()
         payload["status"] = "ok"
