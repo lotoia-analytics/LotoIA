@@ -429,9 +429,29 @@ def _run_institutional_simulation() -> None:
 
 
 def _sync_latest_official_result_now() -> dict[str, Any]:
-    service = ResultSyncService(db_path=DB_PATH)
-    summary = service.sync_latest()
-    return summary.to_dict()
+    try:
+        service = ResultSyncService(db_path=DB_PATH)
+        summary = service.sync_latest()
+        payload = summary.to_dict()
+        payload["status"] = "ok"
+        return payload
+    except Exception as exc:  # pragma: no cover - surfaced in UI
+        return {
+            "status": "error",
+            "error_message": str(exc),
+            "latest_contest": None,
+            "synced_contests": [],
+            "synced_contests_count": 0,
+            "persisted_contests": 0,
+            "provider_payload_count": 0,
+            "contest_ids": [],
+            "db_backend": "unknown",
+            "engine_url": "",
+            "commit_state": "failed",
+            "source": "",
+            "fallback_used": True,
+            "rollback": True,
+        }
 
 
 def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
@@ -776,7 +796,10 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.cache_data.clear()
         except Exception:
             pass
-        st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        if sync_payload.get("status") == "ok":
+            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        else:
+            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
         st.json(sync_payload)
         st.rerun()
     if action_cols[1].button("Importar último resultado oficial", use_container_width=True):
@@ -787,7 +810,10 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.cache_data.clear()
         except Exception:
             pass
-        st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        if sync_payload.get("status") == "ok":
+            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        else:
+            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
         st.json(sync_payload)
         st.rerun()
     last_sync_summary = st.session_state.get("institutional_last_official_sync_summary", {})
