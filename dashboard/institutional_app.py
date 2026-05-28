@@ -325,9 +325,13 @@ def _hb_geometry_state() -> dict[str, Any]:
     }
 
 
-def _load_latest_imported_contest() -> dict[str, Any] | None:
+def _load_imported_contest(contest_number: int | None = None) -> dict[str, Any] | None:
     with get_session(DB_PATH) as session:
-        row = session.query(ImportedContest).order_by(ImportedContest.contest_number.desc()).first()
+        query = session.query(ImportedContest)
+        if contest_number is None:
+            row = query.order_by(ImportedContest.contest_number.desc()).first()
+        else:
+            row = query.filter(ImportedContest.contest_number == int(contest_number)).first()
         if row is None:
             return None
         dezenas = [int(number) for number in str(row.dezenas or "").replace(",", " ").split() if str(number).isdigit()]
@@ -338,6 +342,12 @@ def _load_latest_imported_contest() -> dict[str, Any] | None:
             "dezenas": dezenas,
             "metadata_json": str(row.metadata_json or "{}"),
         }
+
+
+def _load_imported_contest_numbers() -> list[int]:
+    with get_session(DB_PATH) as session:
+        rows = session.query(ImportedContest.contest_number).order_by(ImportedContest.contest_number.asc()).all()
+        return [int(row[0]) for row in rows if row and row[0] is not None]
 
 
 def _load_latest_generated_games() -> dict[str, Any] | None:
@@ -444,9 +454,9 @@ def _run_institutional_generation(*, total_games: int, snapshot: dict[str, Any])
     }
 
 
-def _run_institutional_conference() -> None:
+def _run_institutional_conference(contest_number: int | None = None) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
-    latest_contest = _load_latest_imported_contest()
+    latest_contest = _load_imported_contest(contest_number)
     generation_state = st.session_state.get("institutional_generation") or {}
     if not generation_state.get("games"):
         persisted_generation = _load_latest_generated_games()
@@ -765,7 +775,9 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    latest_contest = _load_latest_imported_contest()
+    contest_numbers = _load_imported_contest_numbers()
+    latest_contest = _load_imported_contest()
+    selected_contest = int(contest_numbers[-1]) if contest_numbers else int(snapshot["latest"].get("imported_contests") or 0) if str(snapshot["latest"].get("imported_contests", "")).isdigit() else 0
     latest_contest_number = latest_contest["contest_number"] if latest_contest else snapshot["latest"].get("imported_contests", "-")
     latest_contest_numbers = " ".join(f"{number:02d}" for number in (latest_contest.get("dezenas", []) if latest_contest else [])) or "-"
 
@@ -775,7 +787,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
     st.markdown("#### Motor de gera??o")
-    gen_cols = st.columns([1.2, 1.0, 1.0, 0.9])
+    gen_cols = st.columns([1.1, 0.75, 0.95, 0.8, 0.95])
     total_games = int(
         gen_cols[0].number_input(
             "Quantidade de jogos",
@@ -786,16 +798,21 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             key="institutional_total_games",
         )
     )
-    if gen_cols[1].button("LotoIA", type="primary", use_container_width=True):
+    if gen_cols[1].button("LotoIA", type="primary"):
         _run_institutional_generation(total_games=total_games, snapshot=snapshot)
         st.rerun()
-    if gen_cols[2].button("Conferir Jogos", type="primary", use_container_width=True):
-        _run_institutional_conference()
+    if gen_cols[2].button("Conferir Jogos", type="primary"):
+        _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
-    gen_cols[3].markdown(
-        f"<div style='padding-top:0.2rem'><div style='font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>?ltimo concurso</div><div style='font-size:2rem;font-weight:800;color:#123456;line-height:1.1;'>{latest_contest_number}</div><div style='font-size:0.82rem;color:#6b7280;margin-top:0.2rem;'>{latest_contest_numbers}</div></div>",
-        unsafe_allow_html=True,
-    )
+    gen_cols[3].number_input("?ltimo concurso", min_value=max(1, contest_numbers[0]) if contest_numbers else 1, max_value=max(contest_numbers) if contest_numbers else 999999, value=selected_contest if selected_contest else 1, step=1, key="institutional_contest_nav")
+    if gen_cols[4].button("Simular Resultado", type="primary"):
+        parsed_draw = _parse_draw_numbers(st.session_state.get("institutional_draw_input", ""))
+        if len(parsed_draw) != 15:
+            st.warning("Informe exatamente 15 dezenas v?lidas entre 1 e 25.")
+        else:
+            _run_institutional_simulation(drawn_numbers=parsed_draw)
+            st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
+            st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
 
     generation_state = st.session_state.get("institutional_generation") or {}
@@ -846,16 +863,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
     )
     st.session_state["institutional_draw_input"] = draw_input
-    sim_cols = st.columns([1.2, 1.0])
-    if sim_cols[0].button("Simular Resultado", type="primary", use_container_width=True):
-        parsed_draw = _parse_draw_numbers(draw_input)
-        if len(parsed_draw) != 15:
-            st.warning("Informe exatamente 15 dezenas v?lidas entre 1 e 25.")
-        else:
-            _run_institutional_simulation(drawn_numbers=parsed_draw)
-            st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
-            st.rerun()
-    sim_cols[1].caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
+    st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
 
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
@@ -889,7 +897,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         rows_html = []
-        for row in cover_result:
+        premium_rows = [row for row in cover_result if int(row.get("hits", 0)) >= 11]
+        for row in premium_rows:
             rows_html.append(
                 "<tr>"
                 f"<td>{row.get('jogo', '-')}</td>"
@@ -898,26 +907,29 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                 f"<td>{row.get('premiado', '-')}</td>"
                 "</tr>"
             )
-        st.markdown(
-            """
-            <table class="lotoia-sim-table">
-                <thead>
-                    <tr>
-                        <th>jogo</th>
-                        <th>resultado</th>
-                        <th>hits</th>
-                        <th>premiado</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-            + "".join(rows_html)
-            + """
-                </tbody>
-            </table>
-            """,
-            unsafe_allow_html=True,
-        )
+        if premium_rows:
+            st.markdown(
+                """
+                <table class="lotoia-sim-table">
+                    <thead>
+                        <tr>
+                            <th>jogo</th>
+                            <th>resultado</th>
+                            <th>hits</th>
+                            <th>premiado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                + "".join(rows_html)
+                + """
+                    </tbody>
+                </table>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Nenhum jogo premiado com 11 pontos ou mais nesta simulação.")
 
     st.markdown("#### Cobertura estrutural")
 
