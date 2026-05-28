@@ -1294,7 +1294,15 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     contest_numbers = _load_imported_contest_numbers()
     latest_contest = _load_imported_contest()
-    current_contest = int(contest_numbers[-1]) if contest_numbers else int(snapshot["latest"].get("imported_contests") or 0) if str(snapshot["latest"].get("imported_contests", "")).isdigit() else 0
+    latest_generation = _load_latest_generated_games() or {}
+    fallback_contest = latest_generation.get("target_contest")
+    current_contest = (
+        int(contest_numbers[-1])
+        if contest_numbers
+        else int(fallback_contest or snapshot["latest"].get("imported_contests") or 0)
+        if str(fallback_contest or snapshot["latest"].get("imported_contests", "")).isdigit()
+        else 0
+    )
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and st.session_state["institutional_contest_nav"] < current_contest:
@@ -1317,7 +1325,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         f"<div style='padding-top:0.15rem;font-size:0.82rem;color:#6b7280;'>{len(contest_numbers)} concursos no banco</div>",
         unsafe_allow_html=True,
     )
-    contest_buttons = st.columns([0.55, 0.7, 0.85])
+    contest_buttons = st.columns([0.42, 0.66, 0.76])
     if contest_buttons[0].button("Conferir Resultados", type="primary"):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
@@ -1334,6 +1342,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         else:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
         st.json(sync_payload)
+        time.sleep(0.9)
         st.rerun()
     if contest_buttons[2].button("Importar último resultado oficial"):
         with st.spinner("Sincronizando o último resultado oficial..."):
@@ -1348,6 +1357,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         else:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
         st.json(sync_payload)
+        time.sleep(0.9)
         st.rerun()
 
     check_result = st.session_state.get("institutional_check_result")
