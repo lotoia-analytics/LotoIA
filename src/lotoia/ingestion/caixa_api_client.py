@@ -47,6 +47,9 @@ class CaixaApiClient:
         self.max_retries = max(1, max_retries)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.session = session or requests.Session()
+        self.last_request_url: str = ""
+        self.last_http_status: int | None = None
+        self.last_error_message: str = ""
 
     def fetch_latest(self) -> CaixaContestResult:
         payload = self._request_json(self.base_url)
@@ -62,6 +65,9 @@ class CaixaApiClient:
 
     def _request_json(self, url: str) -> dict[str, Any]:
         last_error: Exception | None = None
+        self.last_request_url = url
+        self.last_http_status = None
+        self.last_error_message = ""
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = self.session.get(
@@ -72,6 +78,7 @@ class CaixaApiClient:
                         "User-Agent": "LotoIA/1.0 (+https://github.com/openai)",
                     },
                 )
+                self.last_http_status = int(response.status_code)
                 self._raise_for_status(response)
                 payload = response.json()
                 if not isinstance(payload, dict):
@@ -79,6 +86,7 @@ class CaixaApiClient:
                 return payload
             except Exception as exc:  # noqa: BLE001 - controlled retry boundary
                 last_error = exc
+                self.last_error_message = str(exc)
                 if attempt < self.max_retries:
                     time.sleep(self.retry_backoff_seconds * attempt)
                     continue

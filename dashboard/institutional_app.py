@@ -35,6 +35,7 @@ HB_GEOMETRY_DIR = Path(os.fspath(DEFAULT_HB_GEOMETRY_DIR))
 HB_GEOMETRY_PROGRESS_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.progress.json"
 HB_GEOMETRY_JSON_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.json"
 HB_GEOMETRY_CSV_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.csv"
+SYNC_DIAGNOSTIC_FILE = REPORTS_DIR / "institutional_sync_diagnostics.json"
 DB_PATH = DEFAULT_DATABASE_PATH
 
 _JOB_LOCK = threading.Lock()
@@ -63,6 +64,18 @@ def _safe_json_load(path: Path) -> dict[str, Any]:
 def _safe_csv_load(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
+
+
+def _persist_official_sync_diagnostics(payload: dict[str, Any]) -> None:
+    try:
+        SYNC_DIAGNOSTIC_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SYNC_DIAGNOSTIC_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_official_sync_diagnostics() -> dict[str, Any]:
+    return _safe_json_load(SYNC_DIAGNOSTIC_FILE)
     try:
         return pd.read_csv(path)
     except Exception:
@@ -965,11 +978,18 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         summary = service.sync_latest()
         payload = summary.to_dict()
         payload["status"] = "ok"
+        payload["http_status"] = getattr(service.client, "last_http_status", None)
+        payload["request_url"] = getattr(service.client, "last_request_url", "")
+        payload["sync_error"] = ""
+        payload["sync_timestamp"] = datetime.now(UTC).isoformat()
         return payload
     except Exception as exc:  # pragma: no cover - surfaced in UI
+        client = None
         return {
             "status": "error",
             "error_message": str(exc),
+            "sync_error": str(exc),
+            "sync_timestamp": datetime.now(UTC).isoformat(),
             "latest_contest": None,
             "synced_contests": [],
             "synced_contests_count": 0,
@@ -982,6 +1002,8 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
             "source": "",
             "fallback_used": True,
             "rollback": True,
+            "http_status": None,
+            "request_url": "",
         }
 
 
@@ -1338,15 +1360,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     contest_numbers = _load_imported_contest_numbers()
     latest_contest = _load_imported_contest()
-    latest_generation = _load_latest_generated_games() or {}
-    fallback_contest = latest_generation.get("target_contest")
-    current_contest = (
-        int(contest_numbers[-1])
-        if contest_numbers
-        else int(fallback_contest or snapshot["latest"].get("imported_contests") or 0)
-        if str(fallback_contest or snapshot["latest"].get("imported_contests", "")).isdigit()
-        else 0
-    )
+    current_contest = int(contest_numbers[-1]) if contest_numbers else 0
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) < current_contest:
@@ -1370,9 +1384,32 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
     if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
-        with st.spinner("Importando resultado oficial da Caixa..."):
+        with st.status("Importando resultado oficial da Caixa...", expanded=True) as sync_status:
             sync_payload = _sync_latest_official_result_now()
-        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["institutional_sync_status"] = str(sync_payload.get("status", "unknown"))
+            st.session_state["institutional_sync_error"] = str(sync_payload.get("sync_error") or sync_payload.get("error_message") or "")
+            st.session_state["institutional_sync_timestamp"] = str(sync_payload.get("sync_timestamp") or datetime.now(UTC).isoformat())
+            st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
+            st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
+            st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
+            st.session_state["institutional_imported_numbers"] = sync_payload.get("contest_ids", [])
+            _persist_official_sync_diagnostics(
+                {
+                    "sync_status": st.session_state.get("institutional_sync_status", "-"),
+                    "sync_error": st.session_state.get("institutional_sync_error", ""),
+                    "sync_timestamp": st.session_state.get("institutional_sync_timestamp", ""),
+                    "http_status": st.session_state.get("institutional_sync_http_status", None),
+                    "request_url": st.session_state.get("institutional_sync_request_url", ""),
+                    "imported_contest": st.session_state.get("institutional_imported_contest", None),
+                    "imported_numbers": st.session_state.get("institutional_imported_numbers", []),
+                    "payload": sync_payload,
+                }
+            )
+            if sync_payload.get("status") == "ok":
+                sync_status.update(label=f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}", state="complete")
+            else:
+                sync_status.update(label="Falha ao importar resultado oficial", state="error")
         try:
             st.cache_data.clear()
         except Exception:
@@ -1381,13 +1418,39 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
         else:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
+            if sync_payload.get("traceback"):
+                st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
         st.json(sync_payload)
-        time.sleep(0.9)
+        st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
+        time.sleep(1.3)
         st.rerun()
     if contest_buttons[2].button("Importar último resultado oficial", type="primary"):
-        with st.spinner("Sincronizando o último resultado oficial..."):
+        with st.status("Sincronizando o último resultado oficial...", expanded=True) as sync_status:
             sync_payload = _sync_latest_official_result_now()
-        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["institutional_sync_status"] = str(sync_payload.get("status", "unknown"))
+            st.session_state["institutional_sync_error"] = str(sync_payload.get("sync_error") or sync_payload.get("error_message") or "")
+            st.session_state["institutional_sync_timestamp"] = str(sync_payload.get("sync_timestamp") or datetime.now(UTC).isoformat())
+            st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
+            st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
+            st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
+            st.session_state["institutional_imported_numbers"] = sync_payload.get("contest_ids", [])
+            _persist_official_sync_diagnostics(
+                {
+                    "sync_status": st.session_state.get("institutional_sync_status", "-"),
+                    "sync_error": st.session_state.get("institutional_sync_error", ""),
+                    "sync_timestamp": st.session_state.get("institutional_sync_timestamp", ""),
+                    "http_status": st.session_state.get("institutional_sync_http_status", None),
+                    "request_url": st.session_state.get("institutional_sync_request_url", ""),
+                    "imported_contest": st.session_state.get("institutional_imported_contest", None),
+                    "imported_numbers": st.session_state.get("institutional_imported_numbers", []),
+                    "payload": sync_payload,
+                }
+            )
+            if sync_payload.get("status") == "ok":
+                sync_status.update(label=f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}", state="complete")
+            else:
+                sync_status.update(label="Falha ao importar resultado oficial", state="error")
         try:
             st.cache_data.clear()
         except Exception:
@@ -1396,9 +1459,27 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
         else:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
+            if sync_payload.get("traceback"):
+                st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
         st.json(sync_payload)
-        time.sleep(0.9)
+        st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
+        time.sleep(1.3)
         st.rerun()
+
+    diagnostic_state = _load_official_sync_diagnostics()
+    if diagnostic_state:
+        st.markdown("#### Diagnóstico da sincronização")
+        diag_cols = st.columns(4)
+        diag_cols[0].metric("sync_status", diagnostic_state.get("sync_status", "-"))
+        diag_cols[1].metric("http_status", diagnostic_state.get("http_status", "-"))
+        diag_cols[2].metric("imported_contest", diagnostic_state.get("imported_contest", "-"))
+        diag_cols[3].metric("timestamp", diagnostic_state.get("sync_timestamp", "-"))
+        st.caption(f"request_url: {diagnostic_state.get('request_url', '-')}")
+        if diagnostic_state.get("sync_error"):
+            st.error(diagnostic_state.get("sync_error"))
+        imported_numbers = diagnostic_state.get("imported_numbers") or []
+        if imported_numbers:
+            st.caption("dezenas importadas: " + " ".join(f"{int(number):02d}" for number in imported_numbers))
 
     check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
