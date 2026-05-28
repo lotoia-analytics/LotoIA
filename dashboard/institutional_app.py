@@ -119,28 +119,28 @@ def _apply_institutional_styles() -> None:
             margin: 0.6rem 0;
         }
         .lotoia-nav-hint {
-            font-size: 0.70rem;
+            font-size: 0.84rem;
             letter-spacing: 0.07em;
             text-transform: uppercase;
             color: #7a8795;
-            margin-bottom: 0.45rem;
+            margin-bottom: 0.35rem;
         }
         .lotoia-sidebar-title {
             color: #123456;
-            font-size: 1.02rem;
+            font-size: 1.22rem;
             font-weight: 800;
             letter-spacing: 0.01em;
             margin: 0.1rem 0 0.15rem 0;
         }
         .lotoia-section-title {
-            font-size: 1.7rem;
+            font-size: 2.04rem;
             font-weight: 800;
             color: #123456;
             margin-bottom: 0.2rem;
             letter-spacing: 0.01em;
         }
         .lotoia-section-subtitle {
-            font-size: 0.92rem;
+            font-size: 1.10rem;
             color: #5a6b7e;
             margin-bottom: 1rem;
             line-height: 1.5;
@@ -230,6 +230,19 @@ def _apply_institutional_styles() -> None:
             padding-bottom: 0.35rem;
             border-radius: 10px;
             font-size: 0.93rem;
+        }
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] label,
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] span,
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] p {
+            font-size: 1.08rem !important;
+        }
+        .lotoia-sidebar-group {
+            font-size: 0.84rem;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: #6f8195;
+            margin: 0.45rem 0 0.25rem 0;
+            font-weight: 800;
         }
         </style>
         """,
@@ -1162,6 +1175,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Estratégias</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico</div>', unsafe_allow_html=True)
     pages = [
         "Gerar Jogos",
         "Conferir Resultados",
