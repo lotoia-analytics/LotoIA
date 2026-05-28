@@ -20,16 +20,7 @@ import streamlit as st
 from sqlalchemy import inspect, text
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
-from lotoia.database.database import (
-    DEFAULT_DATABASE_PATH,
-    GeneratedGame,
-    GenerationEvent,
-    ImportedContest,
-    ReconciliationGame,
-    ReconciliationRun,
-    get_engine,
-    get_session,
-)
+from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 
@@ -387,6 +378,10 @@ def _render_sidebar(page: str) -> str:
     return choice
 
 
+def _ensure_institutional_schema() -> None:
+    create_database(DB_PATH)
+
+
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
@@ -565,6 +560,7 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA Institucional", page_icon="🧭", layout="wide")
+    _ensure_institutional_schema()
     snapshot = _database_snapshot()
     page = _render_sidebar(st.session_state.get("institutional_page", "Operacional"))
     st.session_state["institutional_page"] = page
