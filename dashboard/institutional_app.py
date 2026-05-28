@@ -353,6 +353,7 @@ def _load_imported_contest_numbers() -> list[int]:
 def _load_latest_generated_games() -> dict[str, Any] | None:
     seed = 0
     created_at = ""
+    target_contest = None
     with get_session(DB_PATH) as session:
         generation_event = (
             session.query(GenerationEvent)
@@ -373,6 +374,8 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
         )
         games: list[dict[str, Any]] = []
         for game in games_query:
+            if getattr(game, "target_contest", None) is not None:
+                target_contest = int(game.target_contest)
             games.append(
                 {
                     "game_index": int(game.game_index or 0),
@@ -393,6 +396,7 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
         "seed": seed,
         "games": games,
         "total_games": len(games),
+        "target_contest": target_contest,
         "created_at": created_at,
         "runtime_status": "loaded_from_database",
     }
@@ -864,7 +868,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         f"<div style='padding-top:0.2rem;font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>Último concurso</div>",
         unsafe_allow_html=True,
     )
-    if nav_cols[2].button("+", use_container_width=True):
+    if nav_cols[2].button("+"):
         st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 1)) + 1
     selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 1) or 1)
     nav_cols[3].markdown(
@@ -875,7 +879,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         f"<div style='padding-top:0.15rem;font-size:0.82rem;color:#6b7280;'>{len(contest_numbers)} concursos no banco</div>",
         unsafe_allow_html=True,
     )
-    contest_buttons = st.columns([0.9, 0.9, 1.4])
+    contest_buttons = st.columns([0.55, 0.7, 0.85])
     if contest_buttons[0].button("Conferir Resultados", type="primary"):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
