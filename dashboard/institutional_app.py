@@ -852,25 +852,61 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     contest_numbers = _load_imported_contest_numbers()
     latest_contest = _load_imported_contest()
-    selected_contest = int(contest_numbers[-1]) if contest_numbers else int(snapshot["latest"].get("imported_contests") or 0) if str(snapshot["latest"].get("imported_contests", "")).isdigit() else 0
-    contest_cols = st.columns([1.15, 0.95, 1.0])
-    selected_contest = int(
-        contest_cols[0].number_input(
-            "Último concurso",
-            min_value=max(1, contest_numbers[0]) if contest_numbers else 1,
-            max_value=max(contest_numbers) if contest_numbers else 999999,
-            value=selected_contest if selected_contest else 1,
-            step=1,
-            key="institutional_contest_nav",
-        )
-    )
-    if contest_cols[1].button("Conferir Resultados", type="primary"):
-        _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
-        st.rerun()
-    contest_cols[2].markdown(
-        f"<div style='padding-top:0.25rem;font-size:0.82rem;color:#6b7280;'>nos banco: {len(contest_numbers)}</div>",
+    current_contest = int(contest_numbers[-1]) if contest_numbers else int(snapshot["latest"].get("imported_contests") or 0) if str(snapshot["latest"].get("imported_contests", "")).isdigit() else 0
+    if "institutional_contest_nav" not in st.session_state:
+        st.session_state["institutional_contest_nav"] = current_contest or 0
+    if current_contest and st.session_state["institutional_contest_nav"] < current_contest:
+        st.session_state["institutional_contest_nav"] = current_contest
+    nav_cols = st.columns([0.35, 0.8, 0.35, 1.05, 1.35])
+    if nav_cols[0].button("−", use_container_width=True):
+        st.session_state["institutional_contest_nav"] = max(1, int(st.session_state.get("institutional_contest_nav", current_contest or 1)) - 1)
+    nav_cols[1].markdown(
+        f"<div style='padding-top:0.2rem;font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>Último concurso</div>",
         unsafe_allow_html=True,
     )
+    if nav_cols[2].button("+", use_container_width=True):
+        st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 1)) + 1
+    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 1) or 1)
+    nav_cols[3].markdown(
+        f"<div style='font-size:1.4rem;font-weight:800;color:#123456;line-height:1.1;'>{selected_contest}</div>",
+        unsafe_allow_html=True,
+    )
+    nav_cols[4].markdown(
+        f"<div style='padding-top:0.15rem;font-size:0.82rem;color:#6b7280;'>{len(contest_numbers)} concursos no banco</div>",
+        unsafe_allow_html=True,
+    )
+    contest_buttons = st.columns([0.9, 0.9, 1.4])
+    if contest_buttons[0].button("Conferir Resultados", type="primary"):
+        _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
+        st.rerun()
+    if contest_buttons[1].button("Sincronizar resultado oficial agora"):
+        with st.spinner("Importando resultado oficial da Caixa..."):
+            sync_payload = _sync_latest_official_result_now()
+        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        if sync_payload.get("status") == "ok":
+            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        else:
+            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
+        st.json(sync_payload)
+        st.rerun()
+    if contest_buttons[2].button("Importar último resultado oficial"):
+        with st.spinner("Sincronizando o último resultado oficial..."):
+            sync_payload = _sync_latest_official_result_now()
+        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        if sync_payload.get("status") == "ok":
+            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        else:
+            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
+        st.json(sync_payload)
+        st.rerun()
 
     check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
@@ -1173,35 +1209,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     diag_cols[1].metric("database_source", snapshot["database_source"])
     diag_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
     st.caption(f"database_url: {_mask_database_url(snapshot['database_url'])}")
-    action_cols = st.columns([1, 1, 2])
-    if action_cols[0].button("Sincronizar resultado oficial agora", type="primary", use_container_width=True):
-        with st.spinner("Importando resultado oficial da Caixa..."):
-            sync_payload = _sync_latest_official_result_now()
-        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        if sync_payload.get("status") == "ok":
-            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
-        else:
-            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
-        st.json(sync_payload)
-        st.rerun()
-    if action_cols[1].button("Importar último resultado oficial", use_container_width=True):
-        with st.spinner("Sincronizando o último resultado oficial..."):
-            sync_payload = _sync_latest_official_result_now()
-        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        if sync_payload.get("status") == "ok":
-            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
-        else:
-            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
-        st.json(sync_payload)
-        st.rerun()
     last_sync_summary = st.session_state.get("institutional_last_official_sync_summary", {})
     if last_sync_summary:
         sync_cols = st.columns(4)
