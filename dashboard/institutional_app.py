@@ -109,10 +109,10 @@ def _apply_institutional_styles() -> None:
             padding-right: 0.8rem;
         }
         section[data-testid="stSidebar"] img {
-            width: 88% !important;
-            max-width: 300px !important;
+            width: 96% !important;
+            max-width: 340px !important;
             display: block;
-            margin: 0 auto 0.4rem auto;
+            margin: -0.2rem auto 0.7rem auto;
         }
         .lotoia-sidebar-divider {
             border-top: 1px solid rgba(18, 52, 86, 0.14);
@@ -127,7 +127,7 @@ def _apply_institutional_styles() -> None:
         }
         .lotoia-sidebar-title {
             color: #123456;
-            font-size: 1.22rem;
+            font-size: 1.18rem;
             font-weight: 800;
             letter-spacing: 0.01em;
             margin: 0.1rem 0 0.15rem 0;
@@ -236,7 +236,7 @@ def _apply_institutional_styles() -> None:
             letter-spacing: 0.12em;
             text-transform: uppercase;
             color: #6f8195;
-            margin: 0.70rem 0 0.35rem 0;
+            margin: 0.55rem 0 0.30rem 0;
             font-weight: 900;
         }
         .lotoia-sidebar-subgroup {
@@ -1180,7 +1180,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
     pages = [
@@ -1309,6 +1308,15 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     else:
         st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
 
+    latest_contest = _load_imported_contest()
+    if latest_contest:
+        contest_cols = st.columns([0.55, 0.75, 1.7])
+        contest_cols[0].metric("Último concurso", int(latest_contest.get("contest_number", 0)))
+        contest_cols[1].caption("Último registro no banco")
+        contest_cols[2].caption(" ".join(f"{number:02d}" for number in latest_contest.get("dezenas", [])))
+    else:
+        st.caption("Último concurso: -")
+
 
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Conferir Resultados")
@@ -1334,7 +1342,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and st.session_state["institutional_contest_nav"] < current_contest:
         st.session_state["institutional_contest_nav"] = current_contest
-    nav_cols = st.columns([0.35, 0.8, 0.35, 1.05, 1.35])
+    nav_cols = st.columns([0.35, 0.85, 0.35, 1.05, 1.35])
     if nav_cols[0].button("−", use_container_width=True):
         st.session_state["institutional_contest_nav"] = max(1, int(st.session_state.get("institutional_contest_nav", current_contest or 1)) - 1)
     nav_cols[1].markdown(
@@ -1352,11 +1360,11 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         f"<div style='padding-top:0.15rem;font-size:0.82rem;color:#6b7280;'>{len(contest_numbers)} concursos no banco</div>",
         unsafe_allow_html=True,
     )
-    contest_buttons = st.columns([0.42, 0.66, 0.76])
+    contest_buttons = st.columns([0.48, 0.62, 0.66])
     if contest_buttons[0].button("Conferir Resultados", type="primary"):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
-    if contest_buttons[1].button("Sincronizar resultado oficial agora"):
+    if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
         with st.spinner("Importando resultado oficial da Caixa..."):
             sync_payload = _sync_latest_official_result_now()
         st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
@@ -1371,7 +1379,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.json(sync_payload)
         time.sleep(0.9)
         st.rerun()
-    if contest_buttons[2].button("Importar último resultado oficial"):
+    if contest_buttons[2].button("Importar último resultado oficial", type="primary"):
         with st.spinner("Sincronizando o último resultado oficial..."):
             sync_payload = _sync_latest_official_result_now()
         st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
@@ -1414,6 +1422,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
         st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
+    elif not latest_contest:
+        st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
 
 
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
