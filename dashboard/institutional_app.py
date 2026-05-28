@@ -29,6 +29,7 @@ BUILD_MARKER = "institutional-clean-runtime-v1"
 APP_BUILD = BUILD_MARKER
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
+LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
 HB_GEOMETRY_DIR = Path(os.fspath(DEFAULT_HB_GEOMETRY_DIR))
 HB_GEOMETRY_PROGRESS_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.progress.json"
 HB_GEOMETRY_JSON_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.json"
@@ -84,6 +85,130 @@ def _mask_database_url(database_url: str) -> str:
         masked_credentials = "***"
     prefix = f"{scheme}://" if scheme else ""
     return f"{prefix}{masked_credentials}@{host_part}"
+
+
+def _apply_institutional_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; max-width: 100%; }
+        section[data-testid="stMain"] > div.block-container {
+            max-width: 100%;
+            padding-left: 1.1rem;
+            padding-right: 1.1rem;
+        }
+        .stApp { background: linear-gradient(180deg, #fbfdff 0%, #f2f6fb 100%); }
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #f7fbff 0%, #eef4fa 100%);
+            border-right: 1px solid rgba(18, 52, 86, 0.10);
+        }
+        section[data-testid="stSidebar"] .block-container {
+            padding-top: 0.9rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        section[data-testid="stSidebar"] img {
+            width: 92% !important;
+            max-width: 340px !important;
+            display: block;
+            margin: 0 auto 0.4rem auto;
+        }
+        .lotoia-sidebar-divider {
+            border-top: 1px solid rgba(18, 52, 86, 0.14);
+            margin: 0.85rem 0;
+        }
+        .lotoia-nav-hint {
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #7a8795;
+            margin-bottom: 0.65rem;
+        }
+        .lotoia-section-title {
+            font-size: 1.7rem;
+            font-weight: 800;
+            color: #123456;
+            margin-bottom: 0.2rem;
+            letter-spacing: 0.01em;
+        }
+        .lotoia-section-subtitle {
+            font-size: 0.92rem;
+            color: #5a6b7e;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+        .lotoia-kpi-card {
+            background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+            border: 1px solid rgba(18, 52, 86, 0.10);
+            border-radius: 16px;
+            padding: 0.95rem 1rem 0.85rem 1rem;
+            box-shadow: 0 6px 22px rgba(18, 52, 86, 0.05);
+            min-height: 114px;
+        }
+        .lotoia-kpi-label {
+            color: #5a6b7e;
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 0.35rem;
+        }
+        .lotoia-kpi-value {
+            color: #123456;
+            font-size: 1.72rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 0.3rem;
+        }
+        .lotoia-kpi-caption {
+            color: #718399;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        .lotoia-operational-hint {
+            color: #6d7f92;
+            font-size: 0.86rem;
+            margin-top: -0.15rem;
+            margin-bottom: 0.5rem;
+        }
+        div[data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid rgba(18, 52, 86, 0.10);
+            border-radius: 14px;
+            padding: 0.85rem 0.95rem;
+            box-shadow: 0 4px 14px rgba(18, 52, 86, 0.04);
+        }
+        div[data-testid="stMetric"] label {
+            color: #5a6b7e;
+            font-size: 0.78rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        div[data-testid="stMetric"] [data-testid="metric-container"] {
+            gap: 0.2rem;
+        }
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+            color: #123456;
+            font-weight: 800;
+        }
+        .lotoia-table-wrap {
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sidebar_logo() -> None:
+    try:
+        if LOGO_PATH.exists():
+            st.sidebar.image(str(LOGO_PATH), use_container_width=True)
+    except Exception:
+        st.sidebar.markdown(
+            '<div style="font-weight:900;color:#123456;text-align:center;font-size:1.1rem;letter-spacing:0.12em;margin-bottom:0.4rem;">LotoIA</div>',
+            unsafe_allow_html=True,
+        )
 
 
 @st.cache_resource(show_spinner=False)
@@ -176,6 +301,10 @@ def _load_latest_imported_contest() -> dict[str, Any] | None:
             "dezenas": dezenas,
             "metadata_json": str(row.metadata_json or "{}"),
         }
+
+
+def _build_simulated_draw(size: int = 15) -> list[int]:
+    return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
 
 def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
@@ -369,6 +498,10 @@ def _reset_hb_geometry_job() -> None:
 
 
 def _render_sidebar(page: str) -> str:
+    _apply_institutional_styles()
+    _render_sidebar_logo()
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação</div>', unsafe_allow_html=True)
     st.sidebar.title("LotoIA")
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
@@ -385,22 +518,32 @@ def _ensure_institutional_schema() -> None:
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
+    status_cols = st.columns(5)
+    status_cols[0].metric("build", BUILD_MARKER)
+    status_cols[1].metric("backend", snapshot["backend"])
+    status_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+    status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+
     control_cols = st.columns([1, 1, 2])
-    total_games = int(
-        control_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games")
-    )
-    control_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
-    cols = st.columns(2)
+    total_games = int(control_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games"))
+    target_contest = snapshot["latest"].get("imported_contests", "-")
+    control_cols[1].caption(f"Concurso alvo: {target_contest if str(target_contest).strip() else '-'}")
+    control_cols[2].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
+
+    st.markdown("#### Motor de geração")
+    cols = st.columns(3)
     if "institutional_generation" not in st.session_state:
         st.session_state["institutional_generation"] = {}
     if "institutional_check" not in st.session_state:
         st.session_state["institutional_check"] = {}
+    if "institutional_simulation" not in st.session_state:
+        st.session_state["institutional_simulation"] = {}
     if cols[0].button("Gerar Jogos", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
         started = time.monotonic()
         seed = int(time.time()) % 1_000_000
         games = generate_ranked_games(total_games=total_games, seed=seed, ml_enabled=False)
-        target_contest = snapshot["latest"].get("imported_contests")
         generation_snapshot = _persist_generation_snapshot(
             games=games,
             seed=seed,
@@ -433,6 +576,42 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             hide_index=True,
             use_container_width=True,
         )
+    st.markdown("#### Cobertura estrutural")
+    cover_cols = st.columns(3)
+    if cover_cols[0].button("Gerador LotoIA", use_container_width=True):
+        st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
+        st.info("Gerador LotoIA selecionado no runtime institucional.")
+    if cover_cols[1].button("Históricos Institucional", use_container_width=True):
+        st.session_state["institutional_last_ui_event"] = "operacional:historicos_institucional"
+        st.info("Históricos institucionais disponíveis via banco atual.")
+    if cover_cols[2].button("Memória Analítica", use_container_width=True):
+        st.session_state["institutional_last_ui_event"] = "operacional:memoria_analitica"
+        st.info("Memória analítica institucional selecionada.")
+    if cols[2].button("Simular Resultado", use_container_width=True):
+        st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
+        generation_state = st.session_state.get("institutional_generation") or {}
+        simulated_numbers = _build_simulated_draw(15)
+        games = list(generation_state.get("games") or [])
+        simulation_rows: list[dict[str, Any]] = []
+        for index, game in enumerate(games, start=1):
+            numbers = sorted(int(number) for number in game.get("numbers", []))
+            matched = sorted(set(numbers) & set(simulated_numbers))
+            simulation_rows.append(
+                {
+                    "jogo": index,
+                    "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                    "hits": len(matched),
+                    "premiado": "sim" if len(matched) >= 11 else "nao",
+                }
+            )
+        st.session_state["institutional_simulation"] = {
+            "runtime_status": "simulated",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "contest_numbers": simulated_numbers,
+            "results": simulation_rows,
+        }
+        st.info("Simulação concluída com resultado sintético de 15 dezenas.")
+        st.dataframe(pd.DataFrame(simulation_rows), hide_index=True, use_container_width=True)
     if cols[1].button("Conferir Jogos", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
         latest_contest = _load_latest_imported_contest()
@@ -472,6 +651,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                 hide_index=True,
                 use_container_width=True,
             )
+    summary_cols = st.columns(4)
+    summary_cols[0].metric("último evento", st.session_state.get("institutional_last_ui_event", "-"))
+    summary_cols[1].metric("runtime", st.session_state.get("institutional_generation", {}).get("runtime_status", "idle"))
+    summary_cols[2].metric("simulação", st.session_state.get("institutional_simulation", {}).get("runtime_status", "-"))
+    summary_cols[3].metric("timestamp", datetime.now(UTC).strftime("%H:%M:%S"))
     runtime_status = st.session_state.get("institutional_generation", {}).get("runtime_status", "idle")
     last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
     st.caption(f"last_ui_event: {last_ui_event}")
@@ -502,6 +686,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
+    st.write("Auditoria incremental isolada do motor oficial.")
     job = state["job"]
     progress = state["progress"]
     summary = state["summary"]
