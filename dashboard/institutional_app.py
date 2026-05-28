@@ -103,26 +103,33 @@ def _apply_institutional_styles() -> None:
             border-right: 1px solid rgba(18, 52, 86, 0.10);
         }
         section[data-testid="stSidebar"] .block-container {
-            padding-top: 0.9rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
+            padding-top: 0.55rem;
+            padding-left: 0.8rem;
+            padding-right: 0.8rem;
         }
         section[data-testid="stSidebar"] img {
-            width: 92% !important;
-            max-width: 340px !important;
+            width: 88% !important;
+            max-width: 300px !important;
             display: block;
             margin: 0 auto 0.4rem auto;
         }
         .lotoia-sidebar-divider {
             border-top: 1px solid rgba(18, 52, 86, 0.14);
-            margin: 0.85rem 0;
+            margin: 0.6rem 0;
         }
         .lotoia-nav-hint {
-            font-size: 0.74rem;
-            letter-spacing: 0.08em;
+            font-size: 0.70rem;
+            letter-spacing: 0.07em;
             text-transform: uppercase;
             color: #7a8795;
-            margin-bottom: 0.65rem;
+            margin-bottom: 0.45rem;
+        }
+        .lotoia-sidebar-title {
+            color: #123456;
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            margin: 0.1rem 0 0.15rem 0;
         }
         .lotoia-section-title {
             font-size: 1.7rem;
@@ -195,7 +202,7 @@ def _apply_institutional_styles() -> None:
             border: 1px solid rgba(18, 52, 86, 0.12);
             background: #ffffff;
             color: #123456;
-            min-height: 44px;
+            min-height: 38px;
             font-weight: 700;
             box-shadow: 0 3px 10px rgba(18, 52, 86, 0.04);
         }
@@ -215,6 +222,13 @@ def _apply_institutional_styles() -> None:
         .lotoia-table-wrap {
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
+        }
+        section[data-testid="stSidebar"] .stButton > button {
+            min-height: 34px;
+            padding-top: 0.35rem;
+            padding-bottom: 0.35rem;
+            border-radius: 10px;
+            font-size: 0.93rem;
         }
         </style>
         """,
@@ -608,7 +622,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação</div>', unsafe_allow_html=True)
-    st.sidebar.title("LotoIA")
+    st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
     choice = st.sidebar.radio("Navegação", ["Operacional", "Analítico", "HB Geometry"], index=["Operacional", "Analítico", "HB Geometry"].index(page))
