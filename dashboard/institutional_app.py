@@ -340,6 +340,54 @@ def _load_latest_imported_contest() -> dict[str, Any] | None:
         }
 
 
+def _load_latest_generated_games() -> dict[str, Any] | None:
+    seed = 0
+    created_at = ""
+    with get_session(DB_PATH) as session:
+        generation_event = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .first()
+        )
+        if generation_event is None:
+            return None
+
+        generation_event_id = int(generation_event.id or 0)
+        seed = int(getattr(generation_event, "seed", 0) or 0)
+        created_at = generation_event.created_at.isoformat() if getattr(generation_event, "created_at", None) else ""
+        games_query = (
+            session.query(GeneratedGame)
+            .filter(GeneratedGame.generation_event_id == generation_event_id)
+            .order_by(GeneratedGame.game_index)
+            .all()
+        )
+        games: list[dict[str, Any]] = []
+        for game in games_query:
+            games.append(
+                {
+                    "game_index": int(game.game_index or 0),
+                    "numbers": [int(number) for number in (game.numbers or [])],
+                    "profile_type": str(game.profile_type or ""),
+                    "final_score": dict(game.final_score or {}),
+                    "quadra_score": dict(game.quadra_score or {}),
+                    "origin": str(game.origin or "institutional"),
+                    "context_json": dict(game.context_json or {}),
+                }
+            )
+
+    if not games:
+        return None
+
+    return {
+        "generation_event_id": generation_event_id,
+        "seed": seed,
+        "games": games,
+        "total_games": len(games),
+        "created_at": created_at,
+        "runtime_status": "loaded_from_database",
+    }
+
+
 def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
@@ -376,8 +424,26 @@ def _run_institutional_conference() -> None:
     latest_contest = _load_latest_imported_contest()
     generation_state = st.session_state.get("institutional_generation") or {}
     if not generation_state.get("games"):
-        st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
-        return
+        persisted_generation = _load_latest_generated_games()
+        if persisted_generation and persisted_generation.get("games"):
+            generation_state = dict(persisted_generation)
+            st.session_state["institutional_generation"] = {
+                "seed": int(persisted_generation.get("seed") or 0),
+                "games": list(persisted_generation.get("games") or []),
+                "total_games": int(persisted_generation.get("total_games") or len(persisted_generation.get("games") or [])),
+                "generation_event_id": int(persisted_generation.get("generation_event_id") or 0),
+                "created_at": str(persisted_generation.get("created_at") or ""),
+                "runtime_status": "loaded_from_database",
+                "elapsed_time": 0.0,
+            }
+            st.session_state["institutional_generation_result"] = {
+                "generation_event_id": int(persisted_generation.get("generation_event_id") or 0),
+                "seed": int(persisted_generation.get("seed") or 0),
+                "jogos": list(persisted_generation.get("games") or []),
+            }
+        else:
+            st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
+            return
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
             "status": "waiting_contest",
