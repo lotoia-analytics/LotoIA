@@ -392,6 +392,16 @@ def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
 
+def _parse_draw_numbers(raw_text: str) -> list[int]:
+    values: list[int] = []
+    for token in str(raw_text or "").replace(",", " ").split():
+        if token.isdigit():
+            number = int(token)
+            if 1 <= number <= 25 and number not in values:
+                values.append(number)
+    return sorted(values)
+
+
 def _run_institutional_generation(*, total_games: int, snapshot: dict[str, Any]) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     started = time.monotonic()
@@ -468,10 +478,10 @@ def _run_institutional_conference() -> None:
     }
 
 
-def _run_institutional_simulation() -> None:
+def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
     generation_state = st.session_state.get("institutional_generation") or {}
-    simulated_numbers = _build_simulated_draw(15)
+    simulated_numbers = sorted(drawn_numbers or _build_simulated_draw(15))
     games = list(generation_state.get("games") or [])
     simulation_rows: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
@@ -798,14 +808,29 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     if action_cols[0].button("Conferir Jogos", use_container_width=True):
         _run_institutional_conference()
         st.rerun()
-    if action_cols[1].button("Simular Resultado", use_container_width=True):
-        _run_institutional_simulation()
-        st.rerun()
     if action_cols[2].button("Gerador LotoIA", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
         st.rerun()
 
     st.markdown("#### Cobertura estrutural")
+    st.markdown("#### Simular Resultado")
+    draw_input = st.text_input(
+        "Dezenas sorteadas",
+        value=st.session_state.get("institutional_draw_input", ""),
+        placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
+    )
+    st.session_state["institutional_draw_input"] = draw_input
+    sim_cols = st.columns([1, 2])
+    if sim_cols[0].button("Simular Resultado", type="primary", use_container_width=True):
+        parsed_draw = _parse_draw_numbers(draw_input)
+        if len(parsed_draw) != 15:
+            st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
+        else:
+            _run_institutional_simulation(drawn_numbers=parsed_draw)
+            st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
+            st.rerun()
+    sim_cols[1].caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
+
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
         st.dataframe(pd.DataFrame(cover_result), hide_index=True, use_container_width=True)
