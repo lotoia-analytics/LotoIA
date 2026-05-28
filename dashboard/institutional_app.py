@@ -365,6 +365,7 @@ def _run_institutional_conference() -> None:
         return
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
+            "status": "waiting_contest",
             "warning": "imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática."
         }
         return
@@ -380,7 +381,10 @@ def _run_institutional_conference() -> None:
         "best_hits": comparison["best_hits"],
         "total_hits": comparison["total_hits"],
     }
-    st.session_state["institutional_check_result"] = comparison
+    st.session_state["institutional_check_result"] = {
+        **comparison,
+        "status": "checked",
+    }
 
 
 def _run_institutional_simulation() -> None:
@@ -703,6 +707,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.dataframe(pd.DataFrame(cover_result), hide_index=True, use_container_width=True)
 
     check_result = st.session_state.get("institutional_check_result")
+    if isinstance(check_result, dict) and check_result.get("warning"):
+        st.warning(check_result["warning"])
     if isinstance(check_result, dict) and check_result.get("results"):
         st.markdown("#### Conferência")
         st.dataframe(
@@ -720,6 +726,13 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             hide_index=True,
             use_container_width=True,
         )
+        check_summary_cols = st.columns(4)
+        check_summary_cols[0].metric("concurso", check_result.get("contest_number", "-"))
+        check_summary_cols[1].metric("best_hits", check_result.get("best_hits", "-"))
+        check_summary_cols[2].metric("prizes", check_result.get("prize_count", "-"))
+        check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
+    elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
+        st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
 
     summary_cols = st.columns(4)
     summary_cols[0].metric("último evento", st.session_state.get("institutional_last_ui_event", "-"))
