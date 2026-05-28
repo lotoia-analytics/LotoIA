@@ -1019,6 +1019,224 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
+def _mean_or_zero(values: list[float]) -> float:
+    values = [float(value) for value in values if value is not None]
+    return round(sum(values) / len(values), 4) if values else 0.0
+
+
+def _load_generation_history(limit: int = 12) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    with get_session(DB_PATH) as session:
+        events = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .limit(limit)
+            .all()
+        )
+        for event in events:
+            games_rows = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == event.id)
+                .order_by(GeneratedGame.game_index.asc())
+                .all()
+            )
+            games: list[dict[str, Any]] = []
+            scores: list[float] = []
+            entropies: list[float] = []
+            coverages: list[float] = []
+            overlaps: list[float] = []
+            target_contests: list[int] = []
+            for row in games_rows:
+                numbers = [int(number) for number in (row.numbers or [])]
+                final_score = dict(row.final_score or {})
+                quadra_score = dict(row.quadra_score or {})
+                context_json = dict(row.context_json or {})
+                structural_metrics = dict(context_json.get("structural_metrics") or {})
+                historical_intelligence = dict(context_json.get("historical_intelligence") or {})
+                score_value = float(final_score.get("final_score", 0.0) or 0.0)
+                entropy_value = float(
+                    structural_metrics.get("entropy_score", historical_intelligence.get("entropy_score", 0.0)) or 0.0
+                )
+                coverage_value = float(
+                    structural_metrics.get("coverage_score", historical_intelligence.get("coverage_score", 0.0)) or 0.0
+                )
+                games.append(
+                    {
+                        "game_index": int(row.game_index or 0),
+                        "numbers": numbers,
+                        "profile_type": str(row.profile_type or ""),
+                        "score": score_value,
+                        "final_score": final_score,
+                        "quadra_score": quadra_score,
+                        "target_contest": int(row.target_contest) if getattr(row, "target_contest", None) is not None else None,
+                        "coverage": round(coverage_value, 4),
+                        "entropy": round(entropy_value, 4),
+                        "sequence_max": int(structural_metrics.get("sequence_max", historical_intelligence.get("sequence_max", 0)) or 0),
+                    }
+                )
+                scores.append(score_value)
+                entropies.append(entropy_value)
+                coverages.append(coverage_value)
+                if getattr(row, "target_contest", None) is not None:
+                    target_contests.append(int(row.target_contest))
+            structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
+            top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))[:5]
+            history.append(
+                {
+                    "generation_event_id": int(event.id or 0),
+                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    "seed": int(getattr(event, "seed", 0) or 0),
+                    "strategy": str(getattr(event, "strategy", "") or ""),
+                    "ml_enabled": bool(getattr(event, "ml_enabled", 0) or 0),
+                    "total_games": len(games),
+                    "target_contest": max(target_contests) if target_contests else None,
+                    "first_name": str(getattr(event, "first_name", "") or ""),
+                    "whatsapp": str(getattr(event, "whatsapp", "") or ""),
+                    "avg_score": _mean_or_zero(scores),
+                    "avg_entropy": _mean_or_zero(entropies),
+                    "avg_coverage": _mean_or_zero(coverages),
+                    "average_overlap": float(structural_summary.get("average_overlap", 0.0) or 0.0),
+                    "dominant_numbers": list(structural_summary.get("dominant_numbers", [])),
+                    "games": games,
+                    "top_games": top_games,
+                }
+            )
+    return history
+
+
+def _load_reconciliation_history(limit: int = 12) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    with get_session(DB_PATH) as session:
+        runs = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .limit(limit)
+            .all()
+        )
+        for run in runs:
+            games_rows = (
+                session.query(ReconciliationGame)
+                .filter(ReconciliationGame.reconciliation_run_id == run.id)
+                .order_by(ReconciliationGame.game_index.asc())
+                .all()
+            )
+            matched_numbers: set[int] = set()
+            for row in games_rows:
+                matched_numbers.update(int(number) for number in (row.matched_numbers or []))
+            history.append(
+                {
+                    "id": int(run.id or 0),
+                    "generation_event_id": int(getattr(run, "generation_event_id", 0) or 0),
+                    "contest_id": int(getattr(run, "contest_id", 0) or 0),
+                    "status": str(getattr(run, "status", "") or ""),
+                    "prize_count": int(getattr(run, "prize_count", 0) or 0),
+                    "total_hits": int(getattr(run, "total_hits", 0) or 0),
+                    "best_hits": int(getattr(run, "best_hits", 0) or 0),
+                    "created_at": run.created_at.isoformat() if getattr(run, "created_at", None) else "",
+                    "matched_numbers": sorted(matched_numbers),
+                    "games_count": len(games_rows),
+                }
+            )
+    return history
+
+
+def _load_operational_logs_history(limit: int = 20) -> list[dict[str, Any]]:
+    with get_session(DB_PATH) as session:
+        inspector = inspect(session.get_bind())
+        if "operational_logs" not in set(inspector.get_table_names()):
+            return []
+        try:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT id, event_type, status, duration_ms, context_json, created_at
+                    FROM operational_logs
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"limit": int(limit)},
+            ).mappings().all()
+        except Exception:
+            return []
+        history: list[dict[str, Any]] = []
+        for row in rows:
+            context_json = row.get("context_json", {})
+            if isinstance(context_json, str):
+                try:
+                    context_json = json.loads(context_json or "{}")
+                except Exception:
+                    context_json = {}
+            history.append(
+                {
+                    "id": int(row.get("id") or 0),
+                    "event_type": str(row.get("event_type") or ""),
+                    "status": str(row.get("status") or ""),
+                    "duration_ms": float(row.get("duration_ms") or 0.0),
+                    "created_at": row.get("created_at").isoformat() if getattr(row.get("created_at"), "isoformat", None) else str(row.get("created_at") or ""),
+                    "context_json": context_json if isinstance(context_json, dict) else {},
+                }
+            )
+        return history
+
+
+def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for entry in _load_generation_history(limit=limit):
+        items.append(
+            {
+                "kind": "generation",
+                "created_at": entry["created_at"],
+                "title": f"Geração #{entry['generation_event_id']}",
+                "details": f"jogos={entry['total_games']} | seed={entry['seed']} | target_contest={entry.get('target_contest', '-') or '-'}",
+            }
+        )
+    for entry in _load_reconciliation_history(limit=limit):
+        items.append(
+            {
+                "kind": "reconciliation",
+                "created_at": entry["created_at"],
+                "title": f"Reconciliação #{entry['id']}",
+                "details": f"contest_id={entry['contest_id']} | best_hits={entry['best_hits']} | prizes={entry['prize_count']} | total_hits={entry['total_hits']}",
+            }
+        )
+    sync_summary = _load_official_sync_diagnostics()
+    if sync_summary:
+        items.append(
+            {
+                "kind": "sync",
+                "created_at": str(sync_summary.get("sync_timestamp", "") or ""),
+                "title": "Sincronização Caixa",
+                "details": f"status={sync_summary.get('sync_status', '-')} | contest={sync_summary.get('imported_contest', '-')} | http={sync_summary.get('http_status', '-')}",
+            }
+        )
+    hb_state = _hb_geometry_state()
+    progress = hb_state.get("progress") or {}
+    if progress:
+        items.append(
+            {
+                "kind": "hb_geometry",
+                "created_at": str(progress.get("created_at", "") or ""),
+                "title": "HB Geometry",
+                "details": f"batch={progress.get('current_batch', '-')} | contests={progress.get('contests_processed', '-')} | completed={'sim' if progress.get('completed') else 'não'}",
+            }
+        )
+    for entry in _load_operational_logs_history(limit=limit):
+        items.append(
+            {
+                "kind": "log",
+                "created_at": entry["created_at"],
+                "title": f"Log operacional #{entry['id']}",
+                "details": f"{entry['event_type']} | status={entry['status']} | duration_ms={entry['duration_ms']:.1f}",
+            }
+        )
+    return sorted(
+        items,
+        key=lambda item: item.get("created_at", ""),
+        reverse=True,
+    )[:limit]
+
+
 def _clear_institutional_history_state() -> None:
     for key in (
         "institutional_generation",
@@ -1058,40 +1276,55 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 
 
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
-    st.subheader("Histórico Institucional")
-    st.write("Visão consolidada do runtime institucional limpo.")
-    diag_cols = st.columns(4)
-    diag_cols[0].metric("backend", snapshot["backend"])
-    diag_cols[1].metric("database_source", snapshot["database_source"])
-    diag_cols[2].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    diag_cols[3].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    st.subheader("Hist?rico Institucional")
+    st.write("Vis?o consolidada do runtime institucional limpo.")
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
-    if latest_sync:
-        sync_cols = st.columns(4)
-        sync_cols[0].metric("latest_contest", latest_sync.get("latest_contest", "-"))
-        sync_cols[1].metric("synced_contests", len(latest_sync.get("synced_contests", []) or []))
-        sync_cols[2].metric("commit_state", latest_sync.get("commit_state", "-"))
-        sync_cols[3].metric("fallback", "sim" if latest_sync.get("fallback_used") else "não")
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_contest = _load_latest_contest_summary() or {}
+    top_cols = st.columns(5)
+    top_cols[0].metric("total_execucoes", int(snapshot["counts"].get("generation_events", 0)))
+    top_cols[1].metric("total_jogos", int(snapshot["counts"].get("generated_games", 0)))
+    top_cols[2].metric("ultimo_concurso", latest_contest.get("contest_number", "-"))
+    top_cols[3].metric("ultimo_sync", latest_sync.get("latest_contest", latest_contest.get("contest_number", "-")))
+    top_cols[4].metric("status_postgresql", snapshot["backend"])
+    sync_cols = st.columns(4)
+    sync_cols[0].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    sync_cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    sync_cols[2].metric("operational_logs", int(snapshot["counts"].get("operational_logs", 0)))
+    sync_cols[3].metric("database_source", snapshot["database_source"])
+    if latest_sync:
+        st.caption(
+            " | ".join(
+                [
+                    f"latest_contest={latest_sync.get('latest_contest', '-')}",
+                    f"synced_contests={len(latest_sync.get('synced_contests', []) or [])}",
+                    f"commit_state={latest_sync.get('commit_state', '-')}",
+                    f"fallback={'sim' if latest_sync.get('fallback_used') else 'n?o'}",
+                ]
+            )
+        )
     info_cols = st.columns([1, 1])
     with info_cols[0]:
-        st.markdown("##### Última geração persistida")
+        st.markdown("##### ?ltima gera??o persistida")
         if latest_generation.get("games"):
             st.caption(
                 f"generation_event_id={latest_generation.get('generation_event_id', '-')}"
                 f" | seed={latest_generation.get('seed', '-')}"
                 f" | total_games={latest_generation.get('total_games', '-')}"
                 f" | target_contest={latest_generation.get('target_contest', '-')}"
+                f" | avg_score={_mean_or_zero([float(game.get('score', 0.0) or 0.0) for game in latest_generation.get('games', [])])}"
             )
             st.dataframe(
                 pd.DataFrame(
                     [
                         {
-                            "rank": game.get("game_index", "-"),
+                            "jogo": game.get("game_index", "-"),
                             "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
                             "perfil": game.get("profile_type", "-"),
-                            "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                            "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                            "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                            "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
                         }
                         for game in latest_generation.get("games") or []
                     ]
@@ -1100,21 +1333,23 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 use_container_width=True,
             )
         else:
-            st.info("Ainda não há jogos persistidos nesta instância.")
+            st.info("Ainda n?o h? jogos persistidos nesta inst?ncia.")
     with info_cols[1]:
-        st.markdown("##### Última reconciliação persistida")
+        st.markdown("##### ?ltima reconcilia??o persistida")
         if latest_reconciliation:
             st.caption(
                 f"reconciliation_id={latest_reconciliation.get('id', '-')}"
+                f" | generation_event_id={latest_reconciliation.get('generation_event_id', '-')}"
                 f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
                 f" | status={latest_reconciliation.get('status', '-')}"
             )
-            recon_cols = st.columns(3)
+            recon_cols = st.columns(4)
             recon_cols[0].metric("best_hits", latest_reconciliation.get("best_hits", "-"))
             recon_cols[1].metric("prize_count", latest_reconciliation.get("prize_count", "-"))
             recon_cols[2].metric("total_hits", latest_reconciliation.get("total_hits", "-"))
+            recon_cols[3].metric("matched_numbers", len(latest_reconciliation.get("matched_numbers", []) or []))
         else:
-            st.info("Ainda não há reconciliação persistida nesta instância.")
+            st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
     st.divider()
     st.markdown("##### Tabelas institucionais")
     table_rows = []
@@ -1127,6 +1362,13 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+    st.divider()
+    st.markdown("##### Timeline operacional")
+    timeline = _load_institutional_timeline(limit=30)
+    if timeline:
+        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
+    else:
+        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
 
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
@@ -2305,12 +2547,13 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
         st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
-    st.subheader("Histórico Analítico")
+    st.subheader("Hist?rico Anal?tico")
     st.write("Snapshot institucional do banco atual via DATABASE_URL.")
-    diag_cols = st.columns(3)
+    diag_cols = st.columns(4)
     diag_cols[0].metric("backend", snapshot["backend"])
     diag_cols[1].metric("database_source", snapshot["database_source"])
     diag_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    diag_cols[3].metric("generation_events", int(snapshot["counts"].get("generation_events", 0)))
     st.caption(f"database_url: {_mask_database_url(snapshot['database_url'])}")
     last_sync_summary = st.session_state.get("institutional_last_official_sync_summary", {})
     if last_sync_summary:
@@ -2318,7 +2561,75 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         sync_cols[0].metric("latest_contest", last_sync_summary.get("latest_contest", "-"))
         sync_cols[1].metric("synced_contests", len(last_sync_summary.get("synced_contests", []) or []))
         sync_cols[2].metric("commit_state", last_sync_summary.get("commit_state", "-"))
-        sync_cols[3].metric("fallback", "sim" if last_sync_summary.get("fallback_used") else "não")
+        sync_cols[3].metric("fallback", "sim" if last_sync_summary.get("fallback_used") else "n?o")
+
+    generations = _load_generation_history(limit=12)
+    if generations:
+        st.markdown("##### Gera??es agrupadas por `generation_event_id`")
+        for generation in generations:
+            with st.expander(
+                f"Gera??o #{generation['generation_event_id']} | jogos={generation['total_games']} | seed={generation['seed']} | "
+                f"concurso={generation.get('target_contest', '-') or '-'} | score_medio={generation['avg_score']:.4f}",
+                expanded=False,
+            ):
+                meta_cols = st.columns(5)
+                meta_cols[0].metric("timestamp", generation.get("created_at", "-"))
+                meta_cols[1].metric("perfil HB", generation.get("strategy", "-") or "-")
+                meta_cols[2].metric("score m?dio", f"{generation.get('avg_score', 0.0):.4f}")
+                meta_cols[3].metric("entropia m?dia", f"{generation.get('avg_entropy', 0.0):.4f}")
+                meta_cols[4].metric("cobertura m?dia", f"{generation.get('avg_coverage', 0.0):.4f}")
+                summary_cols = st.columns(3)
+                summary_cols[0].metric("overlap m?dio", f"{generation.get('average_overlap', 0.0):.4f}")
+                summary_cols[1].metric("total jogos", generation.get("total_games", 0))
+                summary_cols[2].metric("status operacional", "persistido")
+                if generation.get("dominant_numbers"):
+                    st.caption(
+                        "dominantes: "
+                        + ", ".join(
+                            f"{item.get('number', '-')}: {item.get('frequency', '-')}"
+                            for item in generation.get("dominant_numbers", [])[:8]
+                        )
+                    )
+                st.markdown("###### Top jogos")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "jogo": game.get("game_index", "-"),
+                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                                "perfil": game.get("profile_type", "-"),
+                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                                "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                                "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                            }
+                            for game in generation.get("top_games", [])
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.markdown("###### Jogos completos da gera??o")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "jogo": game.get("game_index", "-"),
+                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                                "perfil": game.get("profile_type", "-"),
+                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                                "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                                "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                            }
+                            for game in generation.get("games", [])
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+    else:
+        st.info("Ainda n?o h? gera??es persistidas para reconstru??o anal?tica.")
+    st.divider()
+    st.markdown("##### Tabelas institucionais")
     table_rows = []
     for table, count in snapshot["counts"].items():
         table_rows.append(
@@ -2329,6 +2640,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+    st.divider()
+    st.markdown("##### Timeline operacional")
+    timeline = _load_institutional_timeline(limit=30)
+    if timeline:
+        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
+    else:
+        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
 
 
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
