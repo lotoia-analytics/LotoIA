@@ -1802,10 +1802,10 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
     status_cols[3].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
 
-    contest_numbers = _load_imported_contest_numbers()
     latest_contest = _load_imported_contest()
     latest_generation = _load_latest_generated_games() or {}
-    current_contest = int(contest_numbers[-1]) if contest_numbers else int(latest_generation.get("target_contest") or 0) if str(latest_generation.get("target_contest") or "").isdigit() else 0
+    contest_numbers = _load_imported_contest_numbers()
+    current_contest = int(latest_contest["contest_number"]) if latest_contest else int(contest_numbers[-1]) if contest_numbers else int(latest_generation.get("target_contest") or 0) if str(latest_generation.get("target_contest") or "").isdigit() else 0
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) != current_contest:
