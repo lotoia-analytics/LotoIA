@@ -8,8 +8,10 @@ except ImportError:
 
 import json
 import os
+import random
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +20,18 @@ import streamlit as st
 from sqlalchemy import inspect, text
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
-from lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    GeneratedGame,
+    GenerationEvent,
+    ImportedContest,
+    ReconciliationGame,
+    ReconciliationRun,
+    get_engine,
+    get_session,
+)
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
+from lotoia.generator.engine import generate_ranked_games
 
 
 BUILD_MARKER = "institutional-clean-runtime-v1"
@@ -160,6 +172,136 @@ def _hb_geometry_state() -> dict[str, Any]:
     }
 
 
+def _load_latest_imported_contest() -> dict[str, Any] | None:
+    with get_session(DB_PATH) as session:
+        row = session.query(ImportedContest).order_by(ImportedContest.contest_number.desc()).first()
+        if row is None:
+            return None
+        dezenas = [int(number) for number in str(row.dezenas or "").replace(",", " ").split() if str(number).isdigit()]
+        return {
+            "contest_number": int(row.contest_number),
+            "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+            "data": str(row.data or ""),
+            "dezenas": dezenas,
+            "metadata_json": str(row.metadata_json or "{}"),
+        }
+
+
+def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
+    started_at = time.monotonic()
+    with get_session(DB_PATH) as session:
+        event = GenerationEvent(
+            lead_id=None,
+            first_name="institutional",
+            whatsapp="",
+            generated_games=games,
+            ml_enabled=0,
+            seed=seed,
+            strategy="institutional_clean_hb",
+            ranking_score=0.0,
+            execution_time_ms=0.0,
+        )
+        session.add(event)
+        session.flush()
+        generation_event_id = int(event.id)
+        for index, game in enumerate(games, start=1):
+            session.add(
+                GeneratedGame(
+                    generation_event_id=generation_event_id,
+                    lead_id=None,
+                    target_contest=target_contest,
+                    origin="institutional",
+                    generation_mode="hb_baseline",
+                    game_index=index,
+                    numbers=list(game.get("numbers", [])),
+                    profile_type=str(game.get("profile_type", "")),
+                    final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
+                    quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
+                    context_json={
+                        "source": "institutional_app",
+                        "target_contest": target_contest,
+                        "build_marker": BUILD_MARKER,
+                    },
+                )
+            )
+        event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
+        session.commit()
+        return {
+            "generation_event_id": generation_event_id,
+            "seed": seed,
+            "games_count": len(games),
+            "target_contest": target_contest,
+        }
+
+
+def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
+    official_numbers = sorted(int(number) for number in contest.get("dezenas", []))
+    results: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        numbers = sorted(int(number) for number in game.get("numbers", []))
+        matched = sorted(set(numbers) & set(official_numbers))
+        results.append(
+            {
+                "game_index": index,
+                "numbers": numbers,
+                "hits": len(matched),
+                "matched_numbers": matched,
+                "prize_status": "premiado" if len(matched) >= 11 else "nao_premiado",
+                "prize_tier": f"faixa_{len(matched)}" if len(matched) >= 11 else "",
+            }
+        )
+    best_hits = max((int(row["hits"]) for row in results), default=0)
+    total_hits = sum(int(row["hits"]) for row in results)
+    prize_count = sum(1 for row in results if int(row["hits"]) >= 11)
+    with get_session(DB_PATH) as session:
+        run = ReconciliationRun(
+            generation_event_id=generation_event_id,
+            lead_id=None,
+            contest_id=int(contest["contest_number"]),
+            source="institutional",
+            status="reconciled" if results else "sem_jogos",
+            prize_count=prize_count,
+            total_hits=total_hits,
+            best_hits=best_hits,
+            payload={
+                "source": "institutional",
+                "contest_id": int(contest["contest_number"]),
+                "best_hits": best_hits,
+                "total_hits": total_hits,
+                "prize_count": prize_count,
+            },
+        )
+        session.add(run)
+        session.flush()
+        for game in results:
+            session.add(
+                ReconciliationGame(
+                    reconciliation_run_id=run.id,
+                    generation_event_id=generation_event_id,
+                    lead_id=None,
+                    contest_id=int(contest["contest_number"]),
+                    game_index=int(game["game_index"]),
+                    numbers=list(game["numbers"]),
+                    hits=int(game["hits"]),
+                    matched_numbers=list(game["matched_numbers"]),
+                    prize_status=str(game["prize_status"]),
+                    prize_tier=str(game["prize_tier"]),
+                    context_json={"source": "institutional", "build_marker": BUILD_MARKER},
+                )
+            )
+        session.commit()
+    return {
+        "contest_number": int(contest["contest_number"]),
+        "contest_date": str(contest.get("data", "")),
+        "official_numbers": official_numbers,
+        "results": results,
+        "best_hits": best_hits,
+        "total_hits": total_hits,
+        "prize_count": prize_count,
+        "reconciliation": {"id": int(run.id), "contest_id": int(contest["contest_number"])},
+    }
+
+
 def _start_hb_geometry_job(*, resume: bool) -> None:
     def _runner() -> None:
         started_at = time.monotonic()
@@ -249,18 +391,91 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
     cols = st.columns(2)
+    if "institutional_generation" not in st.session_state:
+        st.session_state["institutional_generation"] = {}
+    if "institutional_check" not in st.session_state:
+        st.session_state["institutional_check"] = {}
     if cols[0].button("Gerar Jogos", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
-        st.success("Ação registrada. O fluxo de geração está pronto para o serviço oficial.")
+        started = time.monotonic()
+        seed = int(time.time()) % 1_000_000
+        games = generate_ranked_games(total_games=5, seed=seed, ml_enabled=False)
+        target_contest = snapshot["latest"].get("imported_contests")
+        generation_snapshot = _persist_generation_snapshot(
+            games=games,
+            seed=seed,
+            target_contest=int(target_contest) if str(target_contest).isdigit() else None,
+        )
+        st.session_state["institutional_generation"] = {
+            "seed": seed,
+            "games": games,
+            "generation_event_id": generation_snapshot["generation_event_id"],
+            "created_at": datetime.now(UTC).isoformat(),
+            "runtime_status": "generated",
+            "elapsed_time": round(time.monotonic() - started, 3),
+        }
+        st.success(
+            f"Geração concluída. generation_event_id={generation_snapshot['generation_event_id']} | jogos={len(games)} | seed={seed}"
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "rank": index + 1,
+                        "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                        "perfil": game.get("profile_type", "-"),
+                        "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                    }
+                    for index, game in enumerate(games)
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
     if cols[1].button("Conferir Jogos", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
-        latest_contest = snapshot["latest"].get("imported_contests", "-")
-        count = snapshot["counts"].get("imported_contests", 0)
-        if int(count) > 0:
-            st.success(f"Conferência pronta. imported_contests={count}, latest_contest={latest_contest}.")
-        else:
+        latest_contest = _load_latest_imported_contest()
+        generation_state = st.session_state.get("institutional_generation") or {}
+        if not generation_state.get("games"):
+            st.warning("Gere jogos antes de conferir.")
+        elif latest_contest is None:
             st.warning("imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática.")
-    st.caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
+        else:
+            comparison = _compare_games_against_contest(
+                generation_event_id=int(generation_state.get("generation_event_id") or 0),
+                games=list(generation_state.get("games") or []),
+                contest=latest_contest,
+            )
+            st.session_state["institutional_check"] = {
+                "runtime_status": "checked",
+                "timestamp": datetime.now(UTC).isoformat(),
+                "contest_number": comparison["contest_number"],
+                "best_hits": comparison["best_hits"],
+                "total_hits": comparison["total_hits"],
+            }
+            st.success(
+                f"Conferência pronta. contest={comparison['contest_number']} | best_hits={comparison['best_hits']} | prizes={comparison['prize_count']}"
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "jogo": row["game_index"],
+                            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                            "hits": row["hits"],
+                            "premiado": row["prize_status"],
+                        }
+                        for row in comparison["results"]
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+    runtime_status = st.session_state.get("institutional_generation", {}).get("runtime_status", "idle")
+    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
+    st.caption(f"last_ui_event: {last_ui_event}")
+    st.caption(f"runtime_status: {runtime_status}")
+    st.caption(f"timestamp: {datetime.now(UTC).isoformat()}")
 
 
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
