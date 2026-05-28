@@ -966,8 +966,16 @@ def _institutional_generation_games() -> list[dict[str, Any]]:
     return []
 
 
-def _summarize_games_structurally(games: list[dict[str, Any]]) -> dict[str, Any]:
-    normalized_games = [sorted(int(number) for number in game.get("numbers", [])) for game in games if game.get("numbers")]
+def _summarize_games_structurally(games: list[Any]) -> dict[str, Any]:
+    normalized_games: list[list[int]] = []
+    for game in games:
+        if isinstance(game, dict):
+            raw_numbers = game.get("numbers", [])
+        else:
+            raw_numbers = game
+        numbers = [int(number) for number in raw_numbers or [] if str(number).isdigit() or isinstance(number, int)]
+        if numbers:
+            normalized_games.append(sorted(numbers))
     if not normalized_games:
         return {
             "games": 0,
