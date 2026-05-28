@@ -17,14 +17,9 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import inspect, text
 
-try:
-    from lotoia.database.adapter import InstitutionalDatabaseAdapter
-    from lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine
-    from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
-except ImportError:
-    from src.lotoia.database.adapter import InstitutionalDatabaseAdapter  # type: ignore[no-redef]
-    from src.lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine  # type: ignore[no-redef]
-    from src.lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit  # type: ignore[no-redef]
+from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine
+from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 
 
 BUILD_MARKER = "institutional-clean-runtime-v1"
