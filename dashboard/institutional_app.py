@@ -329,6 +329,86 @@ def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
 
+def _run_institutional_generation(*, total_games: int, snapshot: dict[str, Any]) -> None:
+    st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
+    started = time.monotonic()
+    seed = int(time.time()) % 1_000_000
+    target_contest = snapshot["latest"].get("imported_contests", "-")
+    games = generate_ranked_games(total_games=total_games, seed=seed, ml_enabled=False)
+    generation_snapshot = _persist_generation_snapshot(
+        games=games,
+        seed=seed,
+        target_contest=int(target_contest) if str(target_contest).isdigit() else None,
+    )
+    st.session_state["institutional_generation"] = {
+        "seed": seed,
+        "games": games,
+        "total_games": total_games,
+        "generation_event_id": generation_snapshot["generation_event_id"],
+        "created_at": datetime.now(UTC).isoformat(),
+        "runtime_status": "generated",
+        "elapsed_time": round(time.monotonic() - started, 3),
+    }
+    st.session_state["institutional_generation_result"] = {
+        "generation_event_id": generation_snapshot["generation_event_id"],
+        "seed": seed,
+        "jogos": games,
+    }
+
+
+def _run_institutional_conference() -> None:
+    st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
+    latest_contest = _load_latest_imported_contest()
+    generation_state = st.session_state.get("institutional_generation") or {}
+    if not generation_state.get("games"):
+        st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
+        return
+    if latest_contest is None:
+        st.session_state["institutional_check_result"] = {
+            "warning": "imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática."
+        }
+        return
+    comparison = _compare_games_against_contest(
+        generation_event_id=int(generation_state.get("generation_event_id") or 0),
+        games=list(generation_state.get("games") or []),
+        contest=latest_contest,
+    )
+    st.session_state["institutional_check"] = {
+        "runtime_status": "checked",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "contest_number": comparison["contest_number"],
+        "best_hits": comparison["best_hits"],
+        "total_hits": comparison["total_hits"],
+    }
+    st.session_state["institutional_check_result"] = comparison
+
+
+def _run_institutional_simulation() -> None:
+    st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
+    generation_state = st.session_state.get("institutional_generation") or {}
+    simulated_numbers = _build_simulated_draw(15)
+    games = list(generation_state.get("games") or [])
+    simulation_rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        numbers = sorted(int(number) for number in game.get("numbers", []))
+        matched = sorted(set(numbers) & set(simulated_numbers))
+        simulation_rows.append(
+            {
+                "jogo": index,
+                "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                "hits": len(matched),
+                "premiado": "sim" if len(matched) >= 11 else "nao",
+            }
+        )
+    st.session_state["institutional_simulation"] = {
+        "runtime_status": "simulated",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "contest_numbers": simulated_numbers,
+        "results": simulation_rows,
+    }
+    st.session_state["institutional_simulation_result"] = simulation_rows
+
+
 def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
     started_at = time.monotonic()
     with get_session(DB_PATH) as session:
@@ -519,7 +599,7 @@ def _reset_hb_geometry_job() -> None:
         )
 
 
-def _render_sidebar(page: str) -> str:
+def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _apply_institutional_styles()
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
@@ -530,6 +610,28 @@ def _render_sidebar(page: str) -> str:
     choice = st.sidebar.radio("Navegação", ["Operacional", "Analítico", "HB Geometry"], index=["Operacional", "Analítico", "HB Geometry"].index(page))
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
+    if page == "Operacional":
+        st.sidebar.markdown("**Operações**")
+        total_games = int(st.sidebar.selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games"))
+        if st.sidebar.button("Gerar Jogos", type="primary", use_container_width=True):
+            _run_institutional_generation(total_games=total_games, snapshot=snapshot)
+            st.rerun()
+        if st.sidebar.button("Conferir Jogos", use_container_width=True):
+            _run_institutional_conference()
+            st.rerun()
+        if st.sidebar.button("Simular Resultado", use_container_width=True):
+            _run_institutional_simulation()
+            st.rerun()
+        st.sidebar.markdown("**Cobertura estrutural**")
+        if st.sidebar.button("Gerador LotoIA", use_container_width=True):
+            st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
+            st.rerun()
+        if st.sidebar.button("Históricos Institucional", use_container_width=True):
+            st.session_state["institutional_last_ui_event"] = "operacional:historicos_institucional"
+            st.rerun()
+        if st.sidebar.button("Memória Analítica", use_container_width=True):
+            st.session_state["institutional_last_ui_event"] = "operacional:memoria_analitica"
+            st.rerun()
     return choice
 
 
@@ -540,48 +642,25 @@ def _ensure_institutional_schema() -> None:
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
-    status_cols = st.columns(5)
+    status_cols = st.columns([1, 1, 1, 1, 1])
     status_cols[0].metric("build", BUILD_MARKER)
     status_cols[1].metric("backend", snapshot["backend"])
     status_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    control_cols = st.columns([1, 1, 2])
-    total_games = int(control_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games"))
-    target_contest = snapshot["latest"].get("imported_contests", "-")
-    control_cols[1].caption(f"Concurso alvo: {target_contest if str(target_contest).strip() else '-'}")
-    control_cols[2].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
+    top_cols = st.columns([1.3, 1.3, 1.8])
+    top_cols[0].caption(f"Concurso alvo: {snapshot['latest'].get('imported_contests', '-')}")
+    top_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
+    top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
     st.markdown("#### Motor de geração")
-    cols = st.columns(3)
-    if "institutional_generation" not in st.session_state:
-        st.session_state["institutional_generation"] = {}
-    if "institutional_check" not in st.session_state:
-        st.session_state["institutional_check"] = {}
-    if "institutional_simulation" not in st.session_state:
-        st.session_state["institutional_simulation"] = {}
-    if cols[0].button("Gerar Jogos", type="primary", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
-        started = time.monotonic()
-        seed = int(time.time()) % 1_000_000
-        games = generate_ranked_games(total_games=total_games, seed=seed, ml_enabled=False)
-        generation_snapshot = _persist_generation_snapshot(
-            games=games,
-            seed=seed,
-            target_contest=int(target_contest) if str(target_contest).isdigit() else None,
-        )
-        st.session_state["institutional_generation"] = {
-            "seed": seed,
-            "games": games,
-            "total_games": total_games,
-            "generation_event_id": generation_snapshot["generation_event_id"],
-            "created_at": datetime.now(UTC).isoformat(),
-            "runtime_status": "generated",
-            "elapsed_time": round(time.monotonic() - started, 3),
-        }
+    gen_cols = st.columns([1.25, 1.25, 1.5])
+    generation_state = st.session_state.get("institutional_generation") or {}
+    generation_result = st.session_state.get("institutional_generation_result") or {}
+    if generation_result:
         st.success(
-            f"Geração concluída. generation_event_id={generation_snapshot['generation_event_id']} | jogos={len(games)} | seed={seed}"
+            f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
         )
         st.dataframe(
             pd.DataFrame(
@@ -592,98 +671,61 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                         "perfil": game.get("profile_type", "-"),
                         "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
                     }
-                    for index, game in enumerate(games)
+                    for index, game in enumerate(generation_result.get("jogos") or [])
                 ]
             ),
             hide_index=True,
             use_container_width=True,
         )
+    elif generation_state.get("games"):
+        st.info("Última geração carregada. Use a sidebar para gerar, conferir ou simular novamente.")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "rank": index + 1,
+                        "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                        "perfil": game.get("profile_type", "-"),
+                        "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                    }
+                    for index, game in enumerate(generation_state.get("games") or [])
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
+
     st.markdown("#### Cobertura estrutural")
-    cover_cols = st.columns(3)
-    if cover_cols[0].button("Gerador LotoIA", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
-        st.info("Gerador LotoIA selecionado no runtime institucional.")
-    if cover_cols[1].button("Históricos Institucional", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:historicos_institucional"
-        st.info("Históricos institucionais disponíveis via banco atual.")
-    if cover_cols[2].button("Memória Analítica", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:memoria_analitica"
-        st.info("Memória analítica institucional selecionada.")
-    if cols[2].button("Simular Resultado", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
-        generation_state = st.session_state.get("institutional_generation") or {}
-        simulated_numbers = _build_simulated_draw(15)
-        games = list(generation_state.get("games") or [])
-        simulation_rows: list[dict[str, Any]] = []
-        for index, game in enumerate(games, start=1):
-            numbers = sorted(int(number) for number in game.get("numbers", []))
-            matched = sorted(set(numbers) & set(simulated_numbers))
-            simulation_rows.append(
-                {
-                    "jogo": index,
-                    "dezenas": " ".join(f"{number:02d}" for number in numbers),
-                    "hits": len(matched),
-                    "premiado": "sim" if len(matched) >= 11 else "nao",
-                }
-            )
-        st.session_state["institutional_simulation"] = {
-            "runtime_status": "simulated",
-            "timestamp": datetime.now(UTC).isoformat(),
-            "contest_numbers": simulated_numbers,
-            "results": simulation_rows,
-        }
-        st.info("Simulação concluída com resultado sintético de 15 dezenas.")
-        st.dataframe(pd.DataFrame(simulation_rows), hide_index=True, use_container_width=True)
-    if cols[1].button("Conferir Jogos", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
-        latest_contest = _load_latest_imported_contest()
-        generation_state = st.session_state.get("institutional_generation") or {}
-        if not generation_state.get("games"):
-            st.warning("Gere jogos antes de conferir.")
-        elif latest_contest is None:
-            st.warning("imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática.")
-        else:
-            comparison = _compare_games_against_contest(
-                generation_event_id=int(generation_state.get("generation_event_id") or 0),
-                games=list(generation_state.get("games") or []),
-                contest=latest_contest,
-            )
-            st.session_state["institutional_check"] = {
-                "runtime_status": "checked",
-                "timestamp": datetime.now(UTC).isoformat(),
-                "contest_number": comparison["contest_number"],
-                "best_hits": comparison["best_hits"],
-                "total_hits": comparison["total_hits"],
-            }
-            st.success(
-                f"Conferência pronta. contest={comparison['contest_number']} | best_hits={comparison['best_hits']} | prizes={comparison['prize_count']}"
-            )
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "jogo": row["game_index"],
-                            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
-                            "hits": row["hits"],
-                            "premiado": row["prize_status"],
-                        }
-                        for row in comparison["results"]
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
+    cover_result = st.session_state.get("institutional_simulation_result")
+    if cover_result:
+        st.dataframe(pd.DataFrame(cover_result), hide_index=True, use_container_width=True)
+
+    check_result = st.session_state.get("institutional_check_result")
+    if isinstance(check_result, dict) and check_result.get("results"):
+        st.markdown("#### Conferência")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "jogo": row["game_index"],
+                        "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                        "hits": row["hits"],
+                        "premiado": row["prize_status"],
+                    }
+                    for row in check_result["results"]
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
     summary_cols = st.columns(4)
     summary_cols[0].metric("último evento", st.session_state.get("institutional_last_ui_event", "-"))
     summary_cols[1].metric("runtime", st.session_state.get("institutional_generation", {}).get("runtime_status", "idle"))
     summary_cols[2].metric("simulação", st.session_state.get("institutional_simulation", {}).get("runtime_status", "-"))
     summary_cols[3].metric("timestamp", datetime.now(UTC).strftime("%H:%M:%S"))
-    runtime_status = st.session_state.get("institutional_generation", {}).get("runtime_status", "idle")
-    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
-    st.caption(f"last_ui_event: {last_ui_event}")
-    st.caption(f"runtime_status: {runtime_status}")
-    st.caption(f"total_games: {st.session_state.get('institutional_generation', {}).get('total_games', total_games)}")
-    st.caption(f"timestamp: {datetime.now(UTC).isoformat()}")
 
 
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
@@ -714,15 +756,15 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     summary = state["summary"]
     csv_frame = state["csv_frame"]
     button_cols = st.columns(3)
-    if button_cols[0].button("Iniciar Auditoria", type="primary", disabled=bool(job.get("running"))):
+    if button_cols[0].button("Iniciar Auditoria", type="primary", use_container_width=True, disabled=bool(job.get("running"))):
         st.session_state["institutional_last_ui_event"] = "hb_geometry:iniciar"
         _start_hb_geometry_job(resume=bool(progress) and not bool(progress.get("completed", False)))
         st.rerun()
-    if button_cols[1].button("Continuar Auditoria", disabled=bool(job.get("running")) or not bool(progress) or bool(progress.get("completed", False))):
+    if button_cols[1].button("Continuar Auditoria", use_container_width=True, disabled=bool(job.get("running")) or not bool(progress) or bool(progress.get("completed", False))):
         st.session_state["institutional_last_ui_event"] = "hb_geometry:continuar"
         _start_hb_geometry_job(resume=True)
         st.rerun()
-    if button_cols[2].button("Resetar Auditoria", disabled=bool(job.get("running"))):
+    if button_cols[2].button("Resetar Auditoria", use_container_width=True, disabled=bool(job.get("running"))):
         st.session_state["institutional_last_ui_event"] = "hb_geometry:resetar"
         _reset_hb_geometry_job()
         st.rerun()
@@ -776,7 +818,7 @@ def main() -> None:
     st.set_page_config(page_title="LotoIA Institucional", page_icon="🧭", layout="wide")
     _ensure_institutional_schema()
     snapshot = _database_snapshot()
-    page = _render_sidebar(st.session_state.get("institutional_page", "Operacional"))
+    page = _render_sidebar(st.session_state.get("institutional_page", "Operacional"), snapshot)
     st.session_state["institutional_page"] = page
     st.title("LotoIA Institucional")
     st.success(BUILD_MARKER)
