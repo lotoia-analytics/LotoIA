@@ -628,28 +628,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     choice = st.sidebar.radio("Navegação", ["Operacional", "Analítico", "HB Geometry"], index=["Operacional", "Analítico", "HB Geometry"].index(page))
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
-    if page == "Operacional":
-        st.sidebar.markdown("**Operações**")
-        total_games = int(st.sidebar.selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games"))
-        if st.sidebar.button("Gerar Jogos", type="primary", use_container_width=True):
-            _run_institutional_generation(total_games=total_games, snapshot=snapshot)
-            st.rerun()
-        if st.sidebar.button("Conferir Jogos", use_container_width=True):
-            _run_institutional_conference()
-            st.rerun()
-        if st.sidebar.button("Simular Resultado", use_container_width=True):
-            _run_institutional_simulation()
-            st.rerun()
-        st.sidebar.markdown("**Cobertura estrutural**")
-        if st.sidebar.button("Gerador LotoIA", use_container_width=True):
-            st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
-            st.rerun()
-        if st.sidebar.button("Históricos Institucional", use_container_width=True):
-            st.session_state["institutional_last_ui_event"] = "operacional:historicos_institucional"
-            st.rerun()
-        if st.sidebar.button("Memória Analítica", use_container_width=True):
-            st.session_state["institutional_last_ui_event"] = "operacional:memoria_analitica"
-            st.rerun()
     return choice
 
 
@@ -673,7 +651,15 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
     st.markdown("#### Motor de geração")
-    gen_cols = st.columns([1.25, 1.25, 1.5])
+    gen_cols = st.columns([1.2, 1.8, 1.0])
+    total_games = int(
+        gen_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games")
+    )
+    gen_cols[1].caption("Escolha a quantidade antes de gerar.")
+    if gen_cols[2].button("Gerar Jogos", type="primary", use_container_width=True):
+        _run_institutional_generation(total_games=total_games, snapshot=snapshot)
+        st.rerun()
+
     generation_state = st.session_state.get("institutional_generation") or {}
     generation_result = st.session_state.get("institutional_generation_result") or {}
     if generation_result:
@@ -714,6 +700,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         )
     else:
         st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
+
+    action_cols = st.columns(3)
+    if action_cols[0].button("Conferir Jogos", use_container_width=True):
+        _run_institutional_conference()
+        st.rerun()
+    if action_cols[1].button("Simular Resultado", use_container_width=True):
+        _run_institutional_simulation()
+        st.rerun()
+    if action_cols[2].button("Gerador LotoIA", use_container_width=True):
+        st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
+        st.rerun()
 
     st.markdown("#### Cobertura estrutural")
     cover_result = st.session_state.get("institutional_simulation_result")
