@@ -776,16 +776,12 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    latest_contest = _load_imported_contest()
-    latest_contest_number = latest_contest["contest_number"] if latest_contest else snapshot["latest"].get("imported_contests", "-")
-    latest_contest_numbers = " ".join(f"{number:02d}" for number in (latest_contest.get("dezenas", []) if latest_contest else [])) or "-"
-
     top_cols = st.columns([1.3, 1.3, 1.8])
     top_cols[0].caption(f"Concurso alvo: {snapshot['latest'].get('imported_contests', '-')}")
     top_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
-    gen_cols = st.columns([1.1, 0.75, 0.85])
+    gen_cols = st.columns([1.0, 0.25])
     total_games = int(
         gen_cols[0].number_input(
             "Quantidade de jogos",
@@ -796,13 +792,11 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             key="institutional_total_games",
         )
     )
-    if gen_cols[1].button("LotoIA", type="primary"):
+    gen_cols[1].caption("")
+    button_cols = st.columns([0.28, 1.72])
+    if button_cols[0].button("LotoIA", type="primary"):
         _run_institutional_generation(total_games=total_games, snapshot=snapshot)
         st.rerun()
-    gen_cols[2].markdown(
-        f"<div style='padding-top:0.2rem'><div style='font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>Último concurso</div><div style='font-size:1.6rem;font-weight:800;color:#123456;line-height:1.1;'>{latest_contest_number}</div><div style='font-size:0.82rem;color:#6b7280;margin-top:0.2rem;'>{latest_contest_numbers}</div></div>",
-        unsafe_allow_html=True,
-    )
     st.caption("Escolha a quantidade antes de gerar.")
 
     generation_state = st.session_state.get("institutional_generation") or {}
