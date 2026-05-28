@@ -7,10 +7,12 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
 import json
+import math
 import os
 import random
 import threading
 import time
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,9 +24,11 @@ from sqlalchemy import inspect, text
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
+from lotoia.data.loader import load_draws_csv
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
+from lotoia.statistics.basic import number_frequency
 
 
 BUILD_MARKER = "institutional-clean-runtime-v1"
@@ -65,6 +69,10 @@ def _safe_json_load(path: Path) -> dict[str, Any]:
 def _safe_csv_load(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
 
 
 def _persist_official_sync_diagnostics(payload: dict[str, Any]) -> None:
@@ -77,10 +85,6 @@ def _persist_official_sync_diagnostics(payload: dict[str, Any]) -> None:
 
 def _load_official_sync_diagnostics() -> dict[str, Any]:
     return _safe_json_load(SYNC_DIAGNOSTIC_FILE)
-    try:
-        return pd.read_csv(path)
-    except Exception:
-        return pd.DataFrame()
 
 
 def _mask_database_url(database_url: str) -> str:
@@ -267,14 +271,10 @@ def _apply_institutional_styles() -> None:
 
 
 def _render_sidebar_logo() -> None:
-    try:
-        if LOGO_PATH.exists():
-            st.sidebar.image(str(LOGO_PATH), use_container_width=True)
-    except Exception:
-        st.sidebar.markdown(
-            '<div style="font-weight:900;color:#123456;text-align:center;font-size:1.1rem;letter-spacing:0.12em;margin-bottom:0.4rem;">LotoIA</div>',
-            unsafe_allow_html=True,
-        )
+    if LOGO_PATH.exists():
+        st.sidebar.image(str(LOGO_PATH), width=220)
+    else:
+        st.sidebar.empty()
 
 
 def _sidebar_nav_button(label: str, target_page: str, current_page: str) -> None:
@@ -437,6 +437,159 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
     }
 
 
+def _load_latest_contest_summary() -> dict[str, Any] | None:
+    latest_contest = _load_imported_contest()
+    if latest_contest:
+        return {
+            "contest_number": int(latest_contest.get("contest_number", 0) or 0),
+            "data": str(latest_contest.get("data") or ""),
+            "dezenas": [int(number) for number in latest_contest.get("dezenas", [])],
+            "source": "banco oficial",
+        }
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def _history_number_frequency() -> dict[int, int]:
+    try:
+        draws = load_draws_csv()
+    except Exception:
+        return {}
+    frequencies = number_frequency(draws)
+    return {int(number): int(amount) for number, amount in frequencies.items()}
+
+
+def _sequence_metrics(numbers: list[int]) -> dict[str, int]:
+    ordered = sorted(int(number) for number in numbers)
+    if not ordered:
+        return {"sequence_count": 0, "largest_sequence": 0}
+    longest = 1
+    current = 1
+    count = 0
+    for index in range(1, len(ordered)):
+        if ordered[index] == ordered[index - 1] + 1:
+            current += 1
+        else:
+            if current > 1:
+                count += 1
+            longest = max(longest, current)
+            current = 1
+    if current > 1:
+        count += 1
+    longest = max(longest, current)
+    return {"sequence_count": count, "largest_sequence": longest}
+
+
+def _coverage_metrics(numbers: list[int]) -> dict[str, Any]:
+    blocks = Counter(((int(number) - 1) // 5) for number in numbers)
+    block_distribution = [int(blocks.get(index, 0)) for index in range(5)]
+    active_blocks = sum(1 for amount in block_distribution if amount > 0)
+    coverage_score = round(active_blocks / 5.0, 4)
+    return {
+        "coverage_score": coverage_score,
+        "block_distribution": block_distribution,
+        "active_blocks": active_blocks,
+    }
+
+
+def _entropy_score(numbers: list[int]) -> float:
+    coverage = _coverage_metrics(numbers)["block_distribution"]
+    total = sum(coverage) or 1
+    entropy = 0.0
+    for amount in coverage:
+        if amount <= 0:
+            continue
+        share = amount / total
+        entropy -= share * math.log2(share)
+    non_zero_blocks = sum(1 for amount in coverage if amount > 0)
+    max_entropy = math.log2(non_zero_blocks) if non_zero_blocks > 1 else 1.0
+    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
+
+
+def _select_subset_from_candidate(
+    numbers: list[int],
+    *,
+    target_size: int,
+    frequency_map: dict[int, int],
+    latest_numbers: set[int],
+    odd_min: int,
+    odd_max: int,
+    even_min: int,
+    even_max: int,
+    sequence_max: int,
+    coverage_min: float,
+    entropy_min: float,
+    repeat_limit: int,
+) -> list[int] | None:
+    unique_numbers = sorted({int(number) for number in numbers})
+    if not unique_numbers or target_size < 1:
+        return None
+    if target_size > len(unique_numbers):
+        target_size = len(unique_numbers)
+
+    scoring = sorted(
+        unique_numbers,
+        key=lambda number: (
+            -int(frequency_map.get(int(number), 0)),
+            int(number in latest_numbers),
+            int(number),
+        ),
+    )
+
+    odd_target = min(max((target_size + 1) // 2, odd_min), odd_max)
+    even_target = target_size - odd_target
+    if even_target < even_min:
+        even_target = even_min
+        odd_target = target_size - even_target
+    if odd_target < odd_min:
+        odd_target = odd_min
+        even_target = target_size - odd_target
+    if odd_target > odd_max:
+        odd_target = odd_max
+        even_target = target_size - odd_target
+    if even_target > even_max:
+        even_target = even_max
+        odd_target = target_size - even_target
+    if odd_target < 0 or even_target < 0 or odd_target + even_target != target_size:
+        return None
+
+    selected: list[int] = []
+    for pool, quota in (
+        ([number for number in scoring if number % 2 != 0], odd_target),
+        ([number for number in scoring if number % 2 == 0], even_target),
+    ):
+        for number in pool:
+            if number not in selected:
+                selected.append(number)
+            if sum(1 for item in selected if item % 2 == pool[0] % 2) >= quota:
+                break
+
+    if len(selected) < target_size:
+        for number in scoring:
+            if number not in selected:
+                selected.append(number)
+            if len(selected) >= target_size:
+                break
+
+    selected = sorted(selected[:target_size])
+    if not selected:
+        return None
+
+    odd_count = sum(1 for number in selected if number % 2 != 0)
+    even_count = len(selected) - odd_count
+    if not (odd_min <= odd_count <= odd_max and even_min <= even_count <= even_max):
+        return None
+    if _sequence_metrics(selected)["largest_sequence"] > sequence_max:
+        return None
+    if len(set(selected).intersection(latest_numbers)) > repeat_limit:
+        return None
+    if _coverage_metrics(selected)["coverage_score"] < coverage_min:
+        return None
+    if _entropy_score(selected) < entropy_min:
+        return None
+    return selected
+
+
 def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
@@ -466,21 +619,163 @@ def _format_simulation_numbers(numbers: list[int], matched_numbers: list[int]) -
     return " ".join(fragments)
 
 
-def _run_institutional_generation(*, total_games: int, snapshot: dict[str, Any]) -> None:
+def _run_institutional_generation(
+    *,
+    total_games: int,
+    dezenas_per_game: int,
+    use_top50: bool,
+    odd_min: int,
+    odd_max: int,
+    even_min: int,
+    even_max: int,
+    sequence_max: int,
+    coverage_min: float,
+    entropy_min: float,
+    repeat_limit: int,
+    snapshot: dict[str, Any],
+) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     started = time.monotonic()
     seed = int(time.time()) % 1_000_000
-    target_contest = snapshot["latest"].get("imported_contests", "-")
-    games = generate_ranked_games(total_games=total_games, seed=seed, ml_enabled=False)
+    latest_contest = _load_latest_contest_summary()
+    target_contest = int(latest_contest["contest_number"]) if latest_contest else None
+    history_frequency = _history_number_frequency()
+    latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
+    candidate_count = max(total_games * 5, 50 if use_top50 else 30)
+    ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
+    games: list[dict[str, Any]] = []
+    used_signatures: set[tuple[int, ...]] = set()
+    repeat_limit = max(0, min(repeat_limit, dezenas_per_game))
+    for candidate in ranked_candidates:
+        selected_numbers = _select_subset_from_candidate(
+            list(candidate.get("numbers", [])),
+            target_size=dezenas_per_game,
+            frequency_map=history_frequency,
+            latest_numbers=latest_numbers,
+            odd_min=odd_min,
+            odd_max=odd_max,
+            even_min=even_min,
+            even_max=even_max,
+            sequence_max=sequence_max,
+            coverage_min=coverage_min,
+            entropy_min=entropy_min,
+            repeat_limit=repeat_limit,
+        )
+        if not selected_numbers:
+            continue
+        signature = tuple(selected_numbers)
+        if signature in used_signatures:
+            continue
+        sequence_stats = _sequence_metrics(selected_numbers)
+        coverage_stats = _coverage_metrics(selected_numbers)
+        entropy_value = _entropy_score(selected_numbers)
+        odd_count = sum(1 for number in selected_numbers if number % 2 != 0)
+        even_count = len(selected_numbers) - odd_count
+        structural_score = round(
+            max(
+                0.0,
+                min(
+                    100.0,
+                    float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0)
+                    * 0.45
+                    + float(candidate.get("final_score", {}).get("final_score", 0.0) or 0.0) * 0.30
+                    + coverage_stats["coverage_score"] * 25.0
+                    + entropy_value * 20.0
+                    - abs(odd_count - even_count) * 1.5,
+                ),
+            ),
+            2,
+        )
+        games.append(
+            {
+                "numbers": selected_numbers,
+                "odd": odd_count,
+                "even": even_count,
+                "sum": sum(selected_numbers),
+                "frame": len({((number - 1) // 5) for number in selected_numbers}),
+                "center": sum(1 for number in selected_numbers if 8 <= number <= 18),
+                "quadra_score": {
+                    "found_quadras": int(candidate.get("quadra_score", {}).get("found_quadras", 0) or 0),
+                    "average_rank": float(candidate.get("quadra_score", {}).get("average_rank", 0.0) or 0.0),
+                },
+                "final_score": {
+                    "final_score": structural_score,
+                    "components": {
+                        "structural_score": structural_score,
+                        "coverage_score": coverage_stats["coverage_score"],
+                        "entropy_score": entropy_value,
+                        "sequence_score": max(0.0, 1.0 - (sequence_stats["largest_sequence"] / max(1, dezenas_per_game))),
+                    },
+                },
+                "historical_intelligence": {
+                    "profile_type": str(candidate.get("profile_type", "")),
+                    "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
+                    "coverage_score": coverage_stats["coverage_score"],
+                    "entropy_score": entropy_value,
+                    "sequence_max": sequence_stats["largest_sequence"],
+                    "dominant_numbers": [
+                        {"number": int(number), "frequency": int(history_frequency.get(int(number), 0))}
+                        for number in selected_numbers
+                    ],
+                },
+                "profile_type": str(candidate.get("profile_type", "")),
+                "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
+                "ml_enabled": False,
+                "structural_metrics": {
+                    "coverage_score": coverage_stats["coverage_score"],
+                    "entropy_score": entropy_value,
+                    "sequence_max": sequence_stats["largest_sequence"],
+                    "block_distribution": coverage_stats["block_distribution"],
+                },
+            }
+        )
+        used_signatures.add(signature)
+        if len(games) >= total_games:
+            break
+
+    if not games:
+        games = [
+            {
+                "numbers": list(candidate.get("numbers", []))[:dezenas_per_game],
+                "odd": sum(1 for number in candidate.get("numbers", [])[:dezenas_per_game] if int(number) % 2 != 0),
+                "even": sum(1 for number in candidate.get("numbers", [])[:dezenas_per_game] if int(number) % 2 == 0),
+                "sum": sum(int(number) for number in candidate.get("numbers", [])[:dezenas_per_game]),
+                "frame": 0,
+                "center": 0,
+                "quadra_score": dict(candidate.get("quadra_score", {})),
+                "final_score": dict(candidate.get("final_score", {})),
+                "historical_intelligence": dict(candidate.get("historical_intelligence", {})),
+                "profile_type": str(candidate.get("profile_type", "")),
+                "profile_score": float(candidate.get("profile_score", 0.0) or 0.0),
+                "ml_enabled": False,
+                "structural_metrics": {},
+            }
+            for candidate in ranked_candidates[:total_games]
+        ]
     generation_snapshot = _persist_generation_snapshot(
         games=games,
         seed=seed,
-        target_contest=int(target_contest) if str(target_contest).isdigit() else None,
+        target_contest=target_contest,
+        generation_context={
+            "dezenas_per_game": dezenas_per_game,
+            "total_games": total_games,
+            "use_top50": use_top50,
+            "odd_min": odd_min,
+            "odd_max": odd_max,
+            "even_min": even_min,
+            "even_max": even_max,
+            "sequence_max": sequence_max,
+            "coverage_min": coverage_min,
+            "entropy_min": entropy_min,
+            "repeat_limit": repeat_limit,
+        },
     )
     st.session_state["institutional_generation"] = {
         "seed": seed,
         "games": games,
         "total_games": total_games,
+        "dezenas_per_game": dezenas_per_game,
+        "use_top50": use_top50,
         "generation_event_id": generation_snapshot["generation_event_id"],
         "created_at": datetime.now(UTC).isoformat(),
         "runtime_status": "generated",
@@ -1008,8 +1303,21 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         }
 
 
-def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
+def _persist_generation_snapshot(
+    *,
+    games: list[dict[str, Any]],
+    seed: int,
+    target_contest: int | None,
+    generation_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started_at = time.monotonic()
+    context_payload = {
+        "source": "institutional_app",
+        "target_contest": target_contest,
+        "build_marker": BUILD_MARKER,
+    }
+    if generation_context:
+        context_payload.update({str(key): value for key, value in generation_context.items()})
     with get_session(DB_PATH) as session:
         event = GenerationEvent(
             lead_id=None,
@@ -1039,9 +1347,7 @@ def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, targ
                     final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
                     quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
                     context_json={
-                        "source": "institutional_app",
-                        "target_contest": target_contest,
-                        "build_marker": BUILD_MARKER,
+                        **context_payload,
                     },
                 )
             )
@@ -1267,26 +1573,144 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    top_cols = st.columns([1.3, 1.3, 1.8])
-    top_cols[0].caption(f"Concurso alvo: {snapshot['latest'].get('imported_contests', '-')}")
-    top_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
-    top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
+    contest_summary = _load_latest_contest_summary()
+    top_cols = st.columns([1.1, 1.3, 1.6])
+    if contest_summary:
+        top_cols[0].metric("Último concurso", int(contest_summary["contest_number"]))
+        top_cols[1].caption(f"Fonte: {contest_summary['source']}")
+        top_cols[2].caption(
+            f"dezenas: {' '.join(f'{number:02d}' for number in contest_summary.get('dezenas', [])) or '-'} | last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}"
+        )
+    else:
+        top_cols[0].caption("Último concurso: -")
+        top_cols[1].caption("Fonte: banco vazio")
+        top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
-    gen_cols = st.columns([1.0, 0.25])
+    controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
     total_games = int(
-        gen_cols[0].number_input(
+        controls_cols[0].number_input(
             "Quantidade de jogos",
             min_value=1,
             max_value=100,
-            value=15,
+            value=int(st.session_state.get("institutional_total_games", 15) or 15),
             step=1,
             key="institutional_total_games",
         )
     )
-    gen_cols[1].caption("")
+    dezenas_per_game = int(
+        controls_cols[1].number_input(
+            "Quantidade de dezenas por jogo",
+            min_value=2,
+            max_value=15,
+            value=int(st.session_state.get("institutional_dezenas_per_game", 15) or 15),
+            step=1,
+            key="institutional_dezenas_per_game",
+        )
+    )
+    use_top50 = bool(
+        controls_cols[2].checkbox(
+            "Usar TOP50 estrutural HB",
+            value=bool(st.session_state.get("institutional_use_top50", True)),
+            key="institutional_use_top50",
+        )
+    )
+    repeat_limit = int(
+        controls_cols[3].number_input(
+            "Máx. repetição do último concurso",
+            min_value=0,
+            max_value=15,
+            value=int(st.session_state.get("institutional_repeat_limit", 8) or 8),
+            step=1,
+            key="institutional_repeat_limit",
+        )
+    )
+
+    parity_cols = st.columns([1.0, 1.0, 1.0, 1.0])
+    odd_min = int(
+        parity_cols[0].slider(
+            "Ímpares mínimo",
+            min_value=0,
+            max_value=dezenas_per_game,
+            value=min(6, dezenas_per_game),
+            key="institutional_odd_min",
+        )
+    )
+    odd_max = int(
+        parity_cols[1].slider(
+            "Ímpares máximo",
+            min_value=0,
+            max_value=dezenas_per_game,
+            value=max(min(9, dezenas_per_game), odd_min),
+            key="institutional_odd_max",
+        )
+    )
+    even_min = int(
+        parity_cols[2].slider(
+            "Pares mínimo",
+            min_value=0,
+            max_value=dezenas_per_game,
+            value=max(0, dezenas_per_game - odd_max),
+            key="institutional_even_min",
+        )
+    )
+    even_max = int(
+        parity_cols[3].slider(
+            "Pares máximo",
+            min_value=0,
+            max_value=dezenas_per_game,
+            value=min(dezenas_per_game, dezenas_per_game - odd_min),
+            key="institutional_even_max",
+        )
+    )
+
+    structural_cols = st.columns([1.0, 1.0, 1.0, 1.0])
+    sequence_max = int(
+        structural_cols[0].slider(
+            "Limite de sequência",
+            min_value=1,
+            max_value=dezenas_per_game,
+            value=min(5, dezenas_per_game),
+            key="institutional_sequence_max",
+        )
+    )
+    coverage_min = float(
+        structural_cols[1].slider(
+            "Cobertura mínima",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(st.session_state.get("institutional_coverage_min", 0.4) or 0.4),
+            step=0.05,
+            key="institutional_coverage_min",
+        )
+    )
+    entropy_min = float(
+        structural_cols[2].slider(
+            "Entropia mínima",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(st.session_state.get("institutional_entropy_min", 0.45) or 0.45),
+            step=0.05,
+            key="institutional_entropy_min",
+        )
+    )
+    structural_cols[3].caption("Controle HB estrutural ativo")
+
     button_cols = st.columns([0.28, 1.72])
     if button_cols[0].button("LotoIA", type="primary"):
-        _run_institutional_generation(total_games=total_games, snapshot=snapshot)
+        _run_institutional_generation(
+            total_games=total_games,
+            dezenas_per_game=dezenas_per_game,
+            use_top50=use_top50,
+            odd_min=odd_min,
+            odd_max=odd_max,
+            even_min=even_min,
+            even_max=even_max,
+            sequence_max=sequence_max,
+            coverage_min=coverage_min,
+            entropy_min=entropy_min,
+            repeat_limit=repeat_limit,
+            snapshot=snapshot,
+        )
         st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
 
@@ -1303,6 +1727,11 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                         "rank": index + 1,
                         "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
                         "perfil": game.get("profile_type", "-"),
+                        "pares": int(game.get("even", 0) or 0),
+                        "ímpares": int(game.get("odd", 0) or 0),
+                        "seq_max": int(game.get("structural_metrics", {}).get("sequence_max", 0) or 0),
+                        "cobertura": round(float(game.get("structural_metrics", {}).get("coverage_score", 0.0) or 0.0), 4),
+                        "entropia": round(float(game.get("structural_metrics", {}).get("entropy_score", 0.0) or 0.0), 4),
                         "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
                     }
                     for index, game in enumerate(generation_result.get("jogos") or [])
@@ -1320,6 +1749,11 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                         "rank": index + 1,
                         "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
                         "perfil": game.get("profile_type", "-"),
+                        "pares": int(game.get("even", 0) or 0),
+                        "ímpares": int(game.get("odd", 0) or 0),
+                        "seq_max": int(game.get("structural_metrics", {}).get("sequence_max", 0) or 0),
+                        "cobertura": round(float(game.get("structural_metrics", {}).get("coverage_score", 0.0) or 0.0), 4),
+                        "entropia": round(float(game.get("structural_metrics", {}).get("entropy_score", 0.0) or 0.0), 4),
                         "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
                     }
                     for index, game in enumerate(generation_state.get("games") or [])
@@ -1364,7 +1798,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     current_contest = int(contest_numbers[-1]) if contest_numbers else 0
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
-    if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) < current_contest:
+    if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) != current_contest:
         st.session_state["institutional_contest_nav"] = current_contest
     nav_cols = st.columns([0.35, 1.0, 0.35, 1.35])
     if nav_cols[0].button("−", use_container_width=True, disabled=not bool(current_contest)):
@@ -1375,7 +1809,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     )
     if nav_cols[2].button("+", disabled=not bool(current_contest)):
         st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 0)) + 1
-    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 0) or 0)
+    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 0) or 0) if current_contest else 0
     if selected_contest:
         nav_cols[3].metric("Último concurso", selected_contest)
     else:
