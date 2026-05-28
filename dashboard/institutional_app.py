@@ -535,6 +535,409 @@ def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> 
     st.session_state["institutional_simulation_result"] = simulation_rows
 
 
+def _institutional_generation_games() -> list[dict[str, Any]]:
+    generation_state = st.session_state.get("institutional_generation") or {}
+    if generation_state.get("games"):
+        return list(generation_state.get("games") or [])
+    persisted_generation = _load_latest_generated_games()
+    if persisted_generation and persisted_generation.get("games"):
+        return list(persisted_generation.get("games") or [])
+    return []
+
+
+def _summarize_games_structurally(games: list[dict[str, Any]]) -> dict[str, Any]:
+    normalized_games = [sorted(int(number) for number in game.get("numbers", [])) for game in games if game.get("numbers")]
+    if not normalized_games:
+        return {
+            "games": 0,
+            "average_overlap": 0.0,
+            "average_unique_numbers": 0.0,
+            "dominant_numbers": [],
+            "number_frequency": {},
+        }
+    frequencies: dict[int, int] = {}
+    total_unique = 0
+    pairwise_overlap = 0
+    pair_count = 0
+    for numbers in normalized_games:
+        total_unique += len(set(numbers))
+        for number in numbers:
+            frequencies[number] = frequencies.get(number, 0) + 1
+    for index, left in enumerate(normalized_games):
+        left_set = set(left)
+        for right in normalized_games[index + 1 :]:
+            pairwise_overlap += len(left_set & set(right))
+            pair_count += 1
+    dominant_numbers = [
+        {"number": number, "frequency": frequency}
+        for number, frequency in sorted(frequencies.items(), key=lambda item: (-item[1], item[0]))[:10]
+    ]
+    return {
+        "games": len(normalized_games),
+        "average_overlap": round(pairwise_overlap / pair_count, 4) if pair_count else 0.0,
+        "average_unique_numbers": round(total_unique / len(normalized_games), 4),
+        "dominant_numbers": dominant_numbers,
+        "number_frequency": {str(number): frequency for number, frequency in sorted(frequencies.items())},
+    }
+
+
+def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
+    with get_session(DB_PATH) as session:
+        run = session.query(ReconciliationRun).order_by(ReconciliationRun.id.desc()).first()
+        if run is None:
+            return None
+        return {
+            "id": int(run.id or 0),
+            "contest_id": int(getattr(run, "contest_id", 0) or 0),
+            "generation_event_id": int(getattr(run, "generation_event_id", 0) or 0),
+            "status": str(getattr(run, "status", "") or ""),
+            "prize_count": int(getattr(run, "prize_count", 0) or 0),
+            "total_hits": int(getattr(run, "total_hits", 0) or 0),
+            "best_hits": int(getattr(run, "best_hits", 0) or 0),
+            "created_at": run.created_at.isoformat() if getattr(run, "created_at", None) else "",
+        }
+
+
+def _clear_institutional_history_state() -> None:
+    for key in (
+        "institutional_generation",
+        "institutional_generation_result",
+        "institutional_check",
+        "institutional_check_result",
+        "institutional_simulation",
+        "institutional_simulation_result",
+        "institutional_last_official_sync_summary",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _purge_institutional_history_tables() -> dict[str, Any]:
+    tables = [
+        "reconciliation_games",
+        "reconciliation_runs",
+        "generated_games",
+        "generation_events",
+        "operational_logs",
+        "expansion_events",
+    ]
+    deleted: dict[str, int] = {}
+    with get_session(DB_PATH) as session:
+        for table in tables:
+            try:
+                deleted[table] = int(session.execute(text(f'DELETE FROM "{table}"')).rowcount or 0)
+            except Exception:
+                deleted[table] = 0
+        session.commit()
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+    _clear_institutional_history_state()
+    return {"status": "ok", "deleted": deleted}
+
+
+def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Histórico Institucional")
+    st.write("Visão consolidada do runtime institucional limpo.")
+    diag_cols = st.columns(4)
+    diag_cols[0].metric("backend", snapshot["backend"])
+    diag_cols[1].metric("database_source", snapshot["database_source"])
+    diag_cols[2].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+    diag_cols[3].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
+    if latest_sync:
+        sync_cols = st.columns(4)
+        sync_cols[0].metric("latest_contest", latest_sync.get("latest_contest", "-"))
+        sync_cols[1].metric("synced_contests", len(latest_sync.get("synced_contests", []) or []))
+        sync_cols[2].metric("commit_state", latest_sync.get("commit_state", "-"))
+        sync_cols[3].metric("fallback", "sim" if latest_sync.get("fallback_used") else "não")
+    latest_generation = _load_latest_generated_games() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    info_cols = st.columns([1, 1])
+    with info_cols[0]:
+        st.markdown("##### Última geração persistida")
+        if latest_generation.get("games"):
+            st.caption(
+                f"generation_event_id={latest_generation.get('generation_event_id', '-')}"
+                f" | seed={latest_generation.get('seed', '-')}"
+                f" | total_games={latest_generation.get('total_games', '-')}"
+                f" | target_contest={latest_generation.get('target_contest', '-')}"
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "rank": game.get("game_index", "-"),
+                            "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                            "perfil": game.get("profile_type", "-"),
+                            "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                        }
+                        for game in latest_generation.get("games") or []
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Ainda não há jogos persistidos nesta instância.")
+    with info_cols[1]:
+        st.markdown("##### Última reconciliação persistida")
+        if latest_reconciliation:
+            st.caption(
+                f"reconciliation_id={latest_reconciliation.get('id', '-')}"
+                f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
+                f" | status={latest_reconciliation.get('status', '-')}"
+            )
+            recon_cols = st.columns(3)
+            recon_cols[0].metric("best_hits", latest_reconciliation.get("best_hits", "-"))
+            recon_cols[1].metric("prize_count", latest_reconciliation.get("prize_count", "-"))
+            recon_cols[2].metric("total_hits", latest_reconciliation.get("total_hits", "-"))
+        else:
+            st.info("Ainda não há reconciliação persistida nesta instância.")
+    st.divider()
+    st.markdown("##### Tabelas institucionais")
+    table_rows = []
+    for table, count in snapshot["counts"].items():
+        table_rows.append(
+            {
+                "tabela": table,
+                "contagem": int(count),
+                "ultima_persistencia": snapshot["latest"].get(table, "-"),
+            }
+        )
+    st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+
+
+def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Limpar Históricos")
+    st.write("Limpa apenas os estados visuais e operacionais desta sessão.")
+    state_keys = sorted([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
+    st.caption(f"Chaves institucionais ativas: {len(state_keys)}")
+    st.code("\n".join(state_keys) if state_keys else "-", language="text")
+    if st.button("Limpar históricos desta sessão", type="primary"):
+        _clear_institutional_history_state()
+        st.success("Históricos visuais limpos desta sessão.")
+        st.rerun()
+
+
+def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Apagar Histórico")
+    st.write("Remove os registros operacionais institucionais persistidos no banco atual.")
+    st.warning("Esta ação remove gerações, reconciliações e logs institucionais do runtime. Não afeta imported_contests.")
+    confirm = st.checkbox("Confirmo que desejo apagar o histórico institucional persistido.")
+    if st.button("Apagar histórico persistido", type="primary", disabled=not confirm):
+        result = _purge_institutional_history_tables()
+        st.success("Histórico institucional apagado.")
+        st.json(result)
+        st.rerun()
+
+
+def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Comparativos histórico")
+    st.write("Comparação resumida entre geração, reconciliação e base oficial.")
+    latest_generation = _load_latest_generated_games() or {}
+    latest_contest = _load_imported_contest()
+    structural_stats = _summarize_games_structurally(list(latest_generation.get("games") or []))
+    cols = st.columns(4)
+    cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+    cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    cols[3].metric("average_overlap", f"{structural_stats.get('average_overlap', 0.0):.4f}")
+    comp_cols = st.columns([1, 1])
+    with comp_cols[0]:
+        st.markdown("##### Geração atual")
+        if latest_generation.get("games"):
+            st.json(
+                {
+                    "generation_event_id": latest_generation.get("generation_event_id", "-"),
+                    "seed": latest_generation.get("seed", "-"),
+                    "total_games": latest_generation.get("total_games", 0),
+                    "target_contest": latest_generation.get("target_contest", "-"),
+                }
+            )
+        else:
+            st.info("Nenhuma geração persistida encontrada.")
+    with comp_cols[1]:
+        st.markdown("##### Concurso oficial")
+        if latest_contest:
+            st.json(
+                {
+                    "contest_number": latest_contest.get("contest_number", "-"),
+                    "data": latest_contest.get("data", "-"),
+                    "dezenas": latest_contest.get("dezenas", []),
+                }
+            )
+        else:
+            st.info("Nenhum concurso oficial importado ainda.")
+    if structural_stats.get("dominant_numbers"):
+        st.markdown("##### Números dominantes")
+        st.dataframe(pd.DataFrame(structural_stats.get("dominant_numbers") or []), hide_index=True, use_container_width=True)
+
+
+def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
+    st.subheader(page_title)
+    st.write("Ações analíticas desacopladas do fluxo operacional principal.")
+    latest_generation = _load_latest_generated_games() or {}
+    games = list(latest_generation.get("games") or [])
+    structural_stats = _summarize_games_structurally(games)
+    action_cols = st.columns(3)
+    if action_cols[0].button("Análises Estratégicas", type="primary"):
+        st.session_state["institutional_strategy_action"] = "análises_estratégicas"
+    if action_cols[1].button("Testar Estratégias", type="primary"):
+        st.session_state["institutional_strategy_action"] = "testar_estratégias"
+    if action_cols[2].button("Simular Estratégias", type="primary"):
+        st.session_state["institutional_strategy_action"] = "simular_estratégias"
+    st.caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
+    st.caption(f"strategy_action: {st.session_state.get('institutional_strategy_action', '-')}")
+    stats_cols = st.columns(4)
+    stats_cols[0].metric("games", structural_stats.get("games", 0))
+    stats_cols[1].metric("average_overlap", f"{structural_stats.get('average_overlap', 0.0):.4f}")
+    stats_cols[2].metric("average_unique_numbers", f"{structural_stats.get('average_unique_numbers', 0.0):.4f}")
+    stats_cols[3].metric("dominant_numbers", len(structural_stats.get("dominant_numbers") or []))
+    if structural_stats.get("dominant_numbers"):
+        st.dataframe(pd.DataFrame(structural_stats["dominant_numbers"]), hide_index=True, use_container_width=True)
+    latest_contest = _load_imported_contest()
+    if latest_generation.get("games") and latest_contest:
+        comparison = _compare_games_against_contest(
+            generation_event_id=int(latest_generation.get("generation_event_id") or 0),
+            games=list(latest_generation.get("games") or []),
+            contest=latest_contest,
+        )
+        st.markdown("##### Replay institucional")
+        st.caption(
+            f"concurso={comparison['contest_number']} | best_hits={comparison['best_hits']} | "
+            f"prizes={comparison['prize_count']} | total_hits={comparison['total_hits']}"
+        )
+        replay_df = pd.DataFrame(
+            [
+                {
+                    "jogo": row["game_index"],
+                    "hits": row["hits"],
+                    "premiado": row["prize_status"],
+                    "matched_numbers": " ".join(f"{number:02d}" for number in row["matched_numbers"]),
+                }
+                for row in comparison["results"]
+            ]
+        )
+        st.dataframe(replay_df, hide_index=True, use_container_width=True)
+
+
+def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Métricas HB")
+    st.write("Resumo HB do replay estrutural incremental.")
+    state = _hb_geometry_state()
+    summary = state["summary"] or {}
+    baseline = summary.get("hb_baseline", {})
+    cols = st.columns(4)
+    cols[0].metric("avg_hits", round(float(baseline.get("average_hits", 0.0)), 4))
+    cols[1].metric("11+", int(baseline.get("hits_11_plus", 0)))
+    cols[2].metric("12+", int(baseline.get("hits_12_plus", 0)))
+    cols[3].metric("entropy", round(float(baseline.get("entropy", 0.0)), 4))
+    metrics_df = pd.DataFrame(
+        [
+            {"métrica": "average_overlap", "valor": round(float(baseline.get("average_overlap", 0.0)), 4)},
+            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in baseline.get("dominant_numbers", [])[:5]) or "-"},
+            {"métrica": "contests_analyzed", "valor": int(summary.get("contests_analyzed", 0) or 0)},
+            {"métrica": "games_count", "valor": int(summary.get("games_count", 0) or 0)},
+            {"métrica": "pool_size", "valor": int(summary.get("pool_size", 0) or 0)},
+        ]
+    )
+    st.dataframe(metrics_df, hide_index=True, use_container_width=True)
+
+
+def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Cobertura estrutural")
+    st.write("Geometria e concentração do lote institucional persistido.")
+    games = _institutional_generation_games()
+    stats = _summarize_games_structurally(games)
+    cols = st.columns(4)
+    cols[0].metric("games", stats.get("games", 0))
+    cols[1].metric("average_overlap", f"{stats.get('average_overlap', 0.0):.4f}")
+    cols[2].metric("average_unique_numbers", f"{stats.get('average_unique_numbers', 0.0):.4f}")
+    cols[3].metric("dominant_numbers", len(stats.get("dominant_numbers") or []))
+    if stats.get("dominant_numbers"):
+        st.dataframe(pd.DataFrame(stats["dominant_numbers"]), hide_index=True, use_container_width=True)
+
+
+def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Replay institucional")
+    st.write("Reexecuta a leitura do último lote persistido contra o concurso oficial corrente.")
+    latest_generation = _load_latest_generated_games() or {}
+    latest_contest = _load_imported_contest()
+    if st.button("Executar replay institucional", type="primary"):
+        if latest_generation.get("games") and latest_contest:
+            replay = _compare_games_against_contest(
+                generation_event_id=int(latest_generation.get("generation_event_id") or 0),
+                games=list(latest_generation.get("games") or []),
+                contest=latest_contest,
+            )
+            st.session_state["institutional_replay"] = replay
+            st.success("Replay institucional executado.")
+            st.rerun()
+        else:
+            st.warning("É preciso ter geração persistida e concurso oficial importado.")
+    replay = st.session_state.get("institutional_replay")
+    if replay:
+        st.caption(
+            f"concurso={replay.get('contest_number', '-')}"
+            f" | best_hits={replay.get('best_hits', '-')}"
+            f" | prizes={replay.get('prize_count', '-')}"
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "jogo": row["game_index"],
+                        "hits": row["hits"],
+                        "premiado": row["prize_status"],
+                    }
+                    for row in replay.get("results", [])
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Benchmark resumido")
+    st.write("Snapshot curto dos indicadores institucionais atuais.")
+    latest_generation = _load_latest_generated_games() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    cols = st.columns(4)
+    cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+    cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    cols[3].metric("latest_generation", latest_generation.get("generation_event_id", "-"))
+    summary_cols = st.columns(2)
+    with summary_cols[0]:
+        st.markdown("##### Última geração")
+        st.json(
+            {
+                "generation_event_id": latest_generation.get("generation_event_id", "-"),
+                "seed": latest_generation.get("seed", "-"),
+                "total_games": latest_generation.get("total_games", 0),
+                "target_contest": latest_generation.get("target_contest", "-"),
+            }
+        )
+    with summary_cols[1]:
+        st.markdown("##### Última reconciliação")
+        st.json(latest_reconciliation or {"status": "sem_reconciliação"})
+
+
+def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Estatísticas operacionais")
+    st.write("Fluxo operacional persistido e sessão corrente.")
+    latest_generation = _load_latest_generated_games() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    cols = st.columns(4)
+    cols[0].metric("generation_events", int(snapshot["counts"].get("generation_events", 0)))
+    cols[1].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+    cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    cols[3].metric("session_keys", len([key for key in st.session_state.keys() if str(key).startswith("institutional_")]))
+    st.caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
+    st.caption(f"latest_generation_event_id: {latest_generation.get('generation_event_id', '-')}")
+    st.caption(f"latest_reconciliation_id: {latest_reconciliation.get('id', '-') if latest_reconciliation else '-'}")
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
         service = ResultSyncService(db_path=DB_PATH)
@@ -759,7 +1162,25 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
-    pages = ["Gerar Jogos", "Conferir Resultados", "Simular Resultados", "Histórico Analítico", "HB Geometry"]
+    pages = [
+        "Gerar Jogos",
+        "Conferir Resultados",
+        "Simular Resultados",
+        "Histórico Analítico",
+        "Histórico Institucional",
+        "Limpar Históricos",
+        "Apagar Histórico",
+        "Comparativos histórico",
+        "Análises Estratégicas",
+        "Testar Estratégias",
+        "Simular Estratégias",
+        "Métricas HB",
+        "Cobertura estrutural",
+        "Replay institucional",
+        "Benchmark resumido",
+        "Estatísticas operacionais",
+        "HB Geometry",
+    ]
     choice = st.sidebar.radio("Navegação", pages, index=pages.index(page) if page in pages else 0)
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
@@ -1315,6 +1736,30 @@ def main() -> None:
         _render_simulation_page(snapshot)
     elif page == "Histórico Analítico":
         _render_analytical_page(snapshot)
+    elif page == "Histórico Institucional":
+        _render_history_institutional_page(snapshot)
+    elif page == "Limpar Históricos":
+        _render_clear_histories_page(snapshot)
+    elif page == "Apagar Histórico":
+        _render_delete_history_page(snapshot)
+    elif page == "Comparativos histórico":
+        _render_comparative_history_page(snapshot)
+    elif page == "Análises Estratégicas":
+        _render_strategies_page("Análises Estratégicas", snapshot)
+    elif page == "Testar Estratégias":
+        _render_strategies_page("Testar Estratégias", snapshot)
+    elif page == "Simular Estratégias":
+        _render_strategies_page("Simular Estratégias", snapshot)
+    elif page == "Métricas HB":
+        _render_metrics_hb_page(snapshot)
+    elif page == "Cobertura estrutural":
+        _render_cobertura_estrutural_page(snapshot)
+    elif page == "Replay institucional":
+        _render_replay_institutional_page(snapshot)
+    elif page == "Benchmark resumido":
+        _render_benchmark_resumido_page(snapshot)
+    elif page == "Estatísticas operacionais":
+        _render_estatisticas_operacionais_page(snapshot)
     else:
         _render_hb_geometry_page(_hb_geometry_state())
 
