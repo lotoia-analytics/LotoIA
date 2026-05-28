@@ -765,26 +765,44 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
+    latest_contest = _load_latest_imported_contest()
+    latest_contest_number = latest_contest["contest_number"] if latest_contest else snapshot["latest"].get("imported_contests", "-")
+    latest_contest_numbers = " ".join(f"{number:02d}" for number in (latest_contest.get("dezenas", []) if latest_contest else [])) or "-"
+
     top_cols = st.columns([1.3, 1.3, 1.8])
     top_cols[0].caption(f"Concurso alvo: {snapshot['latest'].get('imported_contests', '-')}")
-    top_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
+    top_cols[1].caption("Cada jogo mant?m 15 dezenas da Lotof?cil.")
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
-    st.markdown("#### Motor de geração")
-    gen_cols = st.columns([1.2, 1.8, 1.0])
+    st.markdown("#### Motor de gera??o")
+    gen_cols = st.columns([1.2, 1.0, 1.0, 0.9])
     total_games = int(
-        gen_cols[0].number_input("Quantidade de jogos", min_value=1, max_value=100, value=15, step=1, key="institutional_total_games")
+        gen_cols[0].number_input(
+            "Quantidade de jogos",
+            min_value=1,
+            max_value=100,
+            value=15,
+            step=1,
+            key="institutional_total_games",
+        )
     )
-    gen_cols[1].caption("Escolha a quantidade antes de gerar.")
-    if gen_cols[2].button("Gerar Jogos", type="primary"):
+    if gen_cols[1].button("LotoIA", type="primary", use_container_width=True):
         _run_institutional_generation(total_games=total_games, snapshot=snapshot)
         st.rerun()
+    if gen_cols[2].button("Conferir Jogos", type="primary", use_container_width=True):
+        _run_institutional_conference()
+        st.rerun()
+    gen_cols[3].markdown(
+        f"<div style='padding-top:0.2rem'><div style='font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>?ltimo concurso</div><div style='font-size:2rem;font-weight:800;color:#123456;line-height:1.1;'>{latest_contest_number}</div><div style='font-size:0.82rem;color:#6b7280;margin-top:0.2rem;'>{latest_contest_numbers}</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Escolha a quantidade antes de gerar.")
 
     generation_state = st.session_state.get("institutional_generation") or {}
     generation_result = st.session_state.get("institutional_generation_result") or {}
     if generation_result:
         st.success(
-            f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
+            f"Gera??o conclu?da. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
         )
         st.dataframe(
             pd.DataFrame(
@@ -802,7 +820,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             use_container_width=True,
         )
     elif generation_state.get("games"):
-        st.info("Última geração carregada. Use a sidebar para gerar, conferir ou simular novamente.")
+        st.info("?ltima gera??o carregada. Use a barra lateral para gerar, conferir ou simular novamente.")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -819,15 +837,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             use_container_width=True,
         )
     else:
-        st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
+        st.caption("Use a barra lateral para acionar gera??o, confer?ncia e simula??o.")
 
-    action_cols = st.columns([1, 1])
-    if action_cols[0].button("Conferir Jogos"):
-        _run_institutional_conference()
-        st.rerun()
-    action_cols[1].metric("Último concurso", snapshot["latest"].get("imported_contests", "-"))
-
-    st.markdown("#### Cobertura estrutural")
     st.markdown("#### Simular Resultado")
     draw_input = st.text_input(
         "Dezenas sorteadas",
@@ -835,11 +846,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
     )
     st.session_state["institutional_draw_input"] = draw_input
-    sim_cols = st.columns([1, 2])
+    sim_cols = st.columns([1.2, 1.0])
     if sim_cols[0].button("Simular Resultado", type="primary", use_container_width=True):
         parsed_draw = _parse_draw_numbers(draw_input)
         if len(parsed_draw) != 15:
-            st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
+            st.warning("Informe exatamente 15 dezenas v?lidas entre 1 e 25.")
         else:
             _run_institutional_simulation(drawn_numbers=parsed_draw)
             st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
@@ -848,8 +859,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
-        st.markdown("#### Resultado da simulação")
-        st.caption("Conferência dos jogos gerados contra as dezenas sorteadas informadas acima.")
+        st.markdown("#### Resultado da simula??o")
+        st.caption("Confer?ncia dos jogos gerados contra as dezenas sorteadas informadas acima.")
         st.markdown(
             """
             <style>
@@ -882,10 +893,9 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             rows_html.append(
                 "<tr>"
                 f"<td>{row.get('jogo', '-')}</td>"
-                f"<td>{row.get('resultado', row.get('dezenas', '-'))}</td>"
+                f"<td>{row.get('resultado', '-')}</td>"
                 f"<td>{row.get('hits', '-')}</td>"
                 f"<td>{row.get('premiado', '-')}</td>"
-                f"<td class='lotoia-sim-meta'>{' '.join(f'{n:02d}' for n in row.get('matched_numbers', [])) or '-'}</td>"
                 "</tr>"
             )
         st.markdown(
@@ -894,10 +904,9 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                 <thead>
                     <tr>
                         <th>jogo</th>
-                        <th>dezenas</th>
+                        <th>resultado</th>
                         <th>hits</th>
                         <th>premiado</th>
-                        <th>sorteados</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -910,11 +919,13 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
 
+    st.markdown("#### Cobertura estrutural")
+
     check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
     if isinstance(check_result, dict) and check_result.get("results"):
-        st.markdown("#### Conferência")
+        st.markdown("#### Confer?ncia")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -936,15 +947,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         check_summary_cols[2].metric("prizes", check_result.get("prize_count", "-"))
         check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
-        st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
-
-    summary_cols = st.columns(4)
-    summary_cols[0].metric("último evento", st.session_state.get("institutional_last_ui_event", "-"))
-    summary_cols[1].metric("runtime", st.session_state.get("institutional_generation", {}).get("runtime_status", "idle"))
-    summary_cols[2].metric("simulação", st.session_state.get("institutional_simulation", {}).get("runtime_status", "-"))
-    summary_cols[3].metric("timestamp", datetime.now(UTC).strftime("%H:%M:%S"))
-
-
+        st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Analítico")
     st.write("Snapshot institucional do banco atual via DATABASE_URL.")
