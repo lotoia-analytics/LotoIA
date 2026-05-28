@@ -1309,11 +1309,20 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
 
     latest_contest = _load_imported_contest()
+    latest_generation = _load_latest_generated_games() or {}
+    contest_number = None
+    contest_numbers_text = "-"
+    contest_source = "banco oficial"
     if latest_contest:
-        contest_cols = st.columns([0.55, 0.75, 1.7])
-        contest_cols[0].metric("Último concurso", int(latest_contest.get("contest_number", 0)))
-        contest_cols[1].caption("Último registro no banco")
-        contest_cols[2].caption(" ".join(f"{number:02d}" for number in latest_contest.get("dezenas", [])))
+        contest_number = int(latest_contest.get("contest_number", 0) or 0)
+        contest_numbers_text = " ".join(f"{number:02d}" for number in latest_contest.get("dezenas", [])) or "-"
+    elif str(latest_generation.get("target_contest") or "").isdigit():
+        contest_number = int(latest_generation.get("target_contest") or 0)
+        contest_source = "última geração persistida"
+    if contest_number:
+        contest_cols = st.columns([0.65, 1.6])
+        contest_cols[0].metric("Último concurso", contest_number)
+        contest_cols[1].caption(f"Fonte: {contest_source} | dezenas: {contest_numbers_text}")
     else:
         st.caption("Último concurso: -")
 
@@ -1340,28 +1349,24 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     )
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
-    if current_contest and st.session_state["institutional_contest_nav"] < current_contest:
+    if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) < current_contest:
         st.session_state["institutional_contest_nav"] = current_contest
-    nav_cols = st.columns([0.35, 0.85, 0.35, 1.05, 1.35])
-    if nav_cols[0].button("−", use_container_width=True):
-        st.session_state["institutional_contest_nav"] = max(1, int(st.session_state.get("institutional_contest_nav", current_contest or 1)) - 1)
+    nav_cols = st.columns([0.35, 1.0, 0.35, 1.35])
+    if nav_cols[0].button("−", use_container_width=True, disabled=not bool(current_contest)):
+        st.session_state["institutional_contest_nav"] = max(0, int(st.session_state.get("institutional_contest_nav", current_contest or 0)) - 1)
     nav_cols[1].markdown(
         f"<div style='padding-top:0.2rem;font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>Último concurso</div>",
         unsafe_allow_html=True,
     )
-    if nav_cols[2].button("+"):
-        st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 1)) + 1
-    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 1) or 1)
-    nav_cols[3].markdown(
-        f"<div style='font-size:1.4rem;font-weight:800;color:#123456;line-height:1.1;'>{selected_contest}</div>",
-        unsafe_allow_html=True,
-    )
-    nav_cols[4].markdown(
-        f"<div style='padding-top:0.15rem;font-size:0.82rem;color:#6b7280;'>{len(contest_numbers)} concursos no banco</div>",
-        unsafe_allow_html=True,
-    )
+    if nav_cols[2].button("+", disabled=not bool(current_contest)):
+        st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 0)) + 1
+    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 0) or 0)
+    if selected_contest:
+        nav_cols[3].metric("Último concurso", selected_contest)
+    else:
+        nav_cols[3].caption("Último concurso: -")
     contest_buttons = st.columns([0.48, 0.62, 0.66])
-    if contest_buttons[0].button("Conferir Resultados", type="primary"):
+    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_contest)):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
     if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
@@ -1789,7 +1794,6 @@ def main() -> None:
     snapshot = _database_snapshot()
     page = _render_sidebar(st.session_state.get("institutional_page", "Gerar Jogos"), snapshot)
     st.session_state["institutional_page"] = page
-    st.title("LotoIA Institucional")
     st.success(BUILD_MARKER)
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
     if page == "Gerar Jogos":
