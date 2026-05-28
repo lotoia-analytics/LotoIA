@@ -225,24 +225,26 @@ def _apply_institutional_styles() -> None:
             padding-bottom: 0.15rem;
         }
         section[data-testid="stSidebar"] .stButton > button {
-            min-height: 34px;
-            padding-top: 0.35rem;
-            padding-bottom: 0.35rem;
+            min-height: 36px;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
             border-radius: 10px;
-            font-size: 0.93rem;
-        }
-        section[data-testid="stSidebar"] div[data-testid="stRadio"] label,
-        section[data-testid="stSidebar"] div[data-testid="stRadio"] span,
-        section[data-testid="stSidebar"] div[data-testid="stRadio"] p {
-            font-size: 1.08rem !important;
+            font-size: 1.02rem;
         }
         .lotoia-sidebar-group {
-            font-size: 0.84rem;
-            letter-spacing: 0.10em;
+            font-size: 0.88rem;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
             color: #6f8195;
-            margin: 0.45rem 0 0.25rem 0;
-            font-weight: 800;
+            margin: 0.70rem 0 0.35rem 0;
+            font-weight: 900;
+        }
+        .lotoia-sidebar-subgroup {
+            font-size: 0.80rem;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: #8b97a8;
+            margin: 0.55rem 0 0.25rem 0;
         }
         </style>
         """,
@@ -259,6 +261,12 @@ def _render_sidebar_logo() -> None:
             '<div style="font-weight:900;color:#123456;text-align:center;font-size:1.1rem;letter-spacing:0.12em;margin-bottom:0.4rem;">LotoIA</div>',
             unsafe_allow_html=True,
         )
+
+
+def _sidebar_nav_button(label: str, target_page: str, current_page: str) -> None:
+    if st.sidebar.button(label, key=f"nav_{target_page}"):
+        st.session_state["institutional_page"] = target_page
+        st.rerun()
 
 
 @st.cache_resource(show_spinner=False)
@@ -1175,10 +1183,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-title">LotoIA</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Estratégias</div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico</div>', unsafe_allow_html=True)
     pages = [
         "Gerar Jogos",
         "Conferir Resultados",
@@ -1198,7 +1202,30 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "Estatísticas operacionais",
         "HB Geometry",
     ]
-    choice = st.sidebar.radio("Navegação", pages, index=pages.index(page) if page in pages else 0)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
+    _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
+    _sidebar_nav_button("Simular Resultados", "Simular Resultados", page)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Histórico Analítico", "Histórico Analítico", page)
+    _sidebar_nav_button("Histórico Institucional", "Histórico Institucional", page)
+    _sidebar_nav_button("Limpar Históricos", "Limpar Históricos", page)
+    _sidebar_nav_button("Apagar Histórico", "Apagar Histórico", page)
+    _sidebar_nav_button("Comparativos histórico", "Comparativos histórico", page)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Estratégias</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Análises Estratégicas", "Análises Estratégicas", page)
+    _sidebar_nav_button("Testar Estratégias", "Testar Estratégias", page)
+    _sidebar_nav_button("Simular Estratégias", "Simular Estratégias", page)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Métricas HB", "Métricas HB", page)
+    _sidebar_nav_button("Cobertura estrutural", "Cobertura estrutural", page)
+    _sidebar_nav_button("Replay institucional", "Replay institucional", page)
+    _sidebar_nav_button("Benchmark resumido", "Benchmark resumido", page)
+    _sidebar_nav_button("Estatísticas operacionais", "Estatísticas operacionais", page)
+    _sidebar_nav_button("HB Geometry", "HB Geometry", page)
+    choice = st.session_state.get("institutional_page", page)
+    if choice not in pages:
+        choice = page if page in pages else "Gerar Jogos"
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
     return choice
