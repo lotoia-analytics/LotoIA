@@ -21,6 +21,7 @@ from sqlalchemy import inspect, text
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
+from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 
@@ -427,6 +428,12 @@ def _run_institutional_simulation() -> None:
     st.session_state["institutional_simulation_result"] = simulation_rows
 
 
+def _sync_latest_official_result_now() -> dict[str, Any]:
+    service = ResultSyncService(db_path=DB_PATH)
+    summary = service.sync_latest()
+    return summary.to_dict()
+
+
 def _persist_generation_snapshot(*, games: list[dict[str, Any]], seed: int, target_contest: int | None) -> dict[str, Any]:
     started_at = time.monotonic()
     with get_session(DB_PATH) as session:
@@ -760,6 +767,36 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     diag_cols[1].metric("database_source", snapshot["database_source"])
     diag_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
     st.caption(f"database_url: {_mask_database_url(snapshot['database_url'])}")
+    action_cols = st.columns([1, 1, 2])
+    if action_cols[0].button("Sincronizar resultado oficial agora", type="primary", use_container_width=True):
+        with st.spinner("Importando resultado oficial da Caixa..."):
+            sync_payload = _sync_latest_official_result_now()
+        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        st.json(sync_payload)
+        st.rerun()
+    if action_cols[1].button("Importar último resultado oficial", use_container_width=True):
+        with st.spinner("Sincronizando o último resultado oficial..."):
+            sync_payload = _sync_latest_official_result_now()
+        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
+        st.json(sync_payload)
+        st.rerun()
+    last_sync_summary = st.session_state.get("institutional_last_official_sync_summary", {})
+    if last_sync_summary:
+        sync_cols = st.columns(4)
+        sync_cols[0].metric("latest_contest", last_sync_summary.get("latest_contest", "-"))
+        sync_cols[1].metric("synced_contests", len(last_sync_summary.get("synced_contests", []) or []))
+        sync_cols[2].metric("commit_state", last_sync_summary.get("commit_state", "-"))
+        sync_cols[3].metric("fallback", "sim" if last_sync_summary.get("fallback_used") else "não")
     table_rows = []
     for table, count in snapshot["counts"].items():
         table_rows.append(
