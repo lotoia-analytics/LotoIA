@@ -446,6 +446,15 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
             "dezenas": [int(number) for number in latest_contest.get("dezenas", [])],
             "source": "banco oficial",
         }
+    latest_generation = _load_latest_generated_games() or {}
+    target_contest = latest_generation.get("target_contest")
+    if str(target_contest or "").isdigit():
+        return {
+            "contest_number": int(target_contest or 0),
+            "data": str(latest_generation.get("created_at") or ""),
+            "dezenas": [],
+            "source": "última geração persistida",
+        }
     return None
 
 
@@ -1795,7 +1804,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     contest_numbers = _load_imported_contest_numbers()
     latest_contest = _load_imported_contest()
-    current_contest = int(contest_numbers[-1]) if contest_numbers else 0
+    latest_generation = _load_latest_generated_games() or {}
+    current_contest = int(contest_numbers[-1]) if contest_numbers else int(latest_generation.get("target_contest") or 0) if str(latest_generation.get("target_contest") or "").isdigit() else 0
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) != current_contest:
