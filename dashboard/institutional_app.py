@@ -385,6 +385,11 @@ def _ensure_institutional_schema() -> None:
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
+    control_cols = st.columns([1, 1, 2])
+    total_games = int(
+        control_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games")
+    )
+    control_cols[1].caption("Cada jogo mantém 15 dezenas da Lotofácil.")
     cols = st.columns(2)
     if "institutional_generation" not in st.session_state:
         st.session_state["institutional_generation"] = {}
@@ -394,7 +399,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
         started = time.monotonic()
         seed = int(time.time()) % 1_000_000
-        games = generate_ranked_games(total_games=5, seed=seed, ml_enabled=False)
+        games = generate_ranked_games(total_games=total_games, seed=seed, ml_enabled=False)
         target_contest = snapshot["latest"].get("imported_contests")
         generation_snapshot = _persist_generation_snapshot(
             games=games,
@@ -404,6 +409,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_generation"] = {
             "seed": seed,
             "games": games,
+            "total_games": total_games,
             "generation_event_id": generation_snapshot["generation_event_id"],
             "created_at": datetime.now(UTC).isoformat(),
             "runtime_status": "generated",
@@ -470,6 +476,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
     st.caption(f"last_ui_event: {last_ui_event}")
     st.caption(f"runtime_status: {runtime_status}")
+    st.caption(f"total_games: {st.session_state.get('institutional_generation', {}).get('total_games', total_games)}")
     st.caption(f"timestamp: {datetime.now(UTC).isoformat()}")
 
 
