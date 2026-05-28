@@ -402,6 +402,21 @@ def _parse_draw_numbers(raw_text: str) -> list[int]:
     return sorted(values)
 
 
+def _format_simulation_numbers(numbers: list[int], matched_numbers: list[int]) -> str:
+    matched_set = set(int(number) for number in matched_numbers)
+    fragments: list[str] = []
+    for number in numbers:
+        if int(number) in matched_set:
+            fragments.append(
+                f'<span style="color:#1b7f2a;font-weight:700;">{int(number):02d}</span>'
+            )
+        else:
+            fragments.append(
+                f'<span style="color:#9aa4b2;text-decoration:line-through;">{int(number):02d}</span>'
+            )
+    return " ".join(fragments)
+
+
 def _run_institutional_generation(*, total_games: int, snapshot: dict[str, Any]) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     started = time.monotonic()
@@ -491,8 +506,10 @@ def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> 
             {
                 "jogo": index,
                 "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                "resultado": _format_simulation_numbers(numbers, matched),
                 "hits": len(matched),
                 "premiado": "sim" if len(matched) >= 11 else "nao",
+                "matched_numbers": matched,
             }
         )
     st.session_state["institutional_simulation"] = {
@@ -756,10 +773,10 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     st.markdown("#### Motor de geração")
     gen_cols = st.columns([1.2, 1.8, 1.0])
     total_games = int(
-        gen_cols[0].selectbox("Quantidade de jogos", [15, 16, 17, 18], index=0, key="institutional_total_games")
+        gen_cols[0].number_input("Quantidade de jogos", min_value=1, max_value=100, value=15, step=1, key="institutional_total_games")
     )
     gen_cols[1].caption("Escolha a quantidade antes de gerar.")
-    if gen_cols[2].button("Gerar Jogos", type="primary", use_container_width=True):
+    if gen_cols[2].button("Gerar Jogos", type="primary"):
         _run_institutional_generation(total_games=total_games, snapshot=snapshot)
         st.rerun()
 
@@ -804,13 +821,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     else:
         st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
 
-    action_cols = st.columns(3)
-    if action_cols[0].button("Conferir Jogos", use_container_width=True):
+    action_cols = st.columns([1, 1])
+    if action_cols[0].button("Conferir Jogos"):
         _run_institutional_conference()
         st.rerun()
-    if action_cols[2].button("Gerador LotoIA", use_container_width=True):
-        st.session_state["institutional_last_ui_event"] = "operacional:gerador_lotoia"
-        st.rerun()
+    action_cols[1].metric("Último concurso", snapshot["latest"].get("imported_contests", "-"))
 
     st.markdown("#### Cobertura estrutural")
     st.markdown("#### Simular Resultado")
@@ -833,7 +848,67 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
-        st.dataframe(pd.DataFrame(cover_result), hide_index=True, use_container_width=True)
+        st.markdown("#### Resultado da simulação")
+        st.caption("Conferência dos jogos gerados contra as dezenas sorteadas informadas acima.")
+        st.markdown(
+            """
+            <style>
+            .lotoia-sim-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.95rem;
+            }
+            .lotoia-sim-table th,
+            .lotoia-sim-table td {
+                border-bottom: 1px solid rgba(0,0,0,0.08);
+                padding: 0.55rem 0.6rem;
+                vertical-align: top;
+                text-align: left;
+            }
+            .lotoia-sim-table th {
+                color: #6b7280;
+                font-weight: 600;
+            }
+            .lotoia-sim-meta {
+                color: #6b7280;
+                font-size: 0.88rem;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        rows_html = []
+        for row in cover_result:
+            rows_html.append(
+                "<tr>"
+                f"<td>{row.get('jogo', '-')}</td>"
+                f"<td>{row.get('resultado', row.get('dezenas', '-'))}</td>"
+                f"<td>{row.get('hits', '-')}</td>"
+                f"<td>{row.get('premiado', '-')}</td>"
+                f"<td class='lotoia-sim-meta'>{' '.join(f'{n:02d}' for n in row.get('matched_numbers', [])) or '-'}</td>"
+                "</tr>"
+            )
+        st.markdown(
+            """
+            <table class="lotoia-sim-table">
+                <thead>
+                    <tr>
+                        <th>jogo</th>
+                        <th>dezenas</th>
+                        <th>hits</th>
+                        <th>premiado</th>
+                        <th>sorteados</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            + "".join(rows_html)
+            + """
+                </tbody>
+            </table>
+            """,
+            unsafe_allow_html=True,
+        )
 
     check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
