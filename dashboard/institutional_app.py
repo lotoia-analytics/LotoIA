@@ -19,7 +19,7 @@ from sqlalchemy import inspect, text
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine
-from lotoia.experiments import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
+from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 
 
 BUILD_MARKER = "institutional-clean-runtime-v1"
