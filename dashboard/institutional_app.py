@@ -190,6 +190,28 @@ def _apply_institutional_styles() -> None:
             color: #123456;
             font-weight: 800;
         }
+        section[data-testid="stMain"] .stButton > button {
+            border-radius: 12px;
+            border: 1px solid rgba(18, 52, 86, 0.12);
+            background: #ffffff;
+            color: #123456;
+            min-height: 44px;
+            font-weight: 700;
+            box-shadow: 0 3px 10px rgba(18, 52, 86, 0.04);
+        }
+        section[data-testid="stMain"] .stButton > button:hover {
+            border-color: rgba(18, 52, 86, 0.20);
+            background: #f8fbff;
+        }
+        section[data-testid="stMain"] .stButton > button[kind="primary"] {
+            background: linear-gradient(180deg, #ff6666 0%, #ff4d4d 100%);
+            color: #ffffff;
+            border-color: rgba(255, 77, 77, 0.35);
+        }
+        section[data-testid="stMain"] .stButton > button[kind="primary"]:hover {
+            background: linear-gradient(180deg, #ff7777 0%, #ff5f5f 100%);
+            color: #ffffff;
+        }
         .lotoia-table-wrap {
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
@@ -539,7 +561,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_check"] = {}
     if "institutional_simulation" not in st.session_state:
         st.session_state["institutional_simulation"] = {}
-    if cols[0].button("Gerar Jogos", use_container_width=True):
+    if cols[0].button("Gerar Jogos", type="primary", use_container_width=True):
         st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
         started = time.monotonic()
         seed = int(time.time()) % 1_000_000
