@@ -11,12 +11,14 @@ import math
 import os
 import re
 import random
+import subprocess
 import threading
 import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 import streamlit as st
@@ -107,6 +109,29 @@ def _mask_database_url(database_url: str) -> str:
         masked_credentials = "***"
     prefix = f"{scheme}://" if scheme else ""
     return f"{prefix}{masked_credentials}@{host_part}"
+
+
+def _resolve_active_commit() -> str:
+    for env_name in (
+        "RAILWAY_GIT_COMMIT_SHA",
+        "RAILWAY_GIT_COMMIT",
+        "GIT_COMMIT",
+        "COMMIT_SHA",
+        "SOURCE_VERSION",
+    ):
+        value = str(os.getenv(env_name, "") or "").strip()
+        if value:
+            return value[:12]
+    try:
+        value = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        return value[:12] if value else "-"
+    except Exception:
+        return "-"
 
 
 def _apply_institutional_styles() -> None:
@@ -339,6 +364,7 @@ def _database_snapshot() -> dict[str, Any]:
                 latest[table] = "-"
     return {
         "backend": adapter.backend,
+        "engine_url": str(engine.url),
         "database_url": adapter.database_url,
         "database_source": adapter.database_source,
         "counts": counts,
@@ -377,6 +403,62 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
             "uso": f"build={BUILD_MARKER}",
         },
     ]
+
+
+def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
+    audit = _runtime_audit_payload(snapshot)
+    st.subheader("Auditoria do Runtime")
+    st.write("Auditoria temporária da instância publicada no runtime institucional ativo.")
+    if audit["backend"] != "postgresql":
+        st.warning(f"Backend atual resolvido: {audit['backend']}. Esta instância não está apontando para PostgreSQL.")
+    top_cols = st.columns(5)
+    top_cols[0].metric("build ativo", audit["build_active"])
+    top_cols[1].metric("commit ativo", audit["commit_active"])
+    top_cols[2].metric("backend", audit["backend"])
+    top_cols[3].metric("database_source", audit["database_source"])
+    top_cols[4].metric("schema", audit["schema"])
+    conn_cols = st.columns(3)
+    conn_cols[0].caption(f"DATABASE_URL: {audit['database_url']}")
+    conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
+    conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
+    st.markdown("##### SELECT COUNT(*) no runtime")
+    counts = audit["counts"]
+    audit_df = pd.DataFrame(
+        [
+            {"query": "SELECT COUNT(*) FROM generation_events;", "count": int(counts.get("generation_events", 0))},
+            {"query": "SELECT COUNT(*) FROM generated_games;", "count": int(counts.get("generated_games", 0))},
+            {"query": "SELECT COUNT(*) FROM reconciliation_runs;", "count": int(counts.get("reconciliation_runs", 0))},
+            {"query": "SELECT COUNT(*) FROM reconciliation_games;", "count": int(counts.get("reconciliation_games", 0))},
+            {"query": "SELECT COUNT(*) FROM imported_contests;", "count": int(counts.get("imported_contests", 0))},
+        ]
+    )
+    st.dataframe(audit_df, hide_index=True, use_container_width=True)
+    st.markdown("##### Diferenças entre módulos")
+    source_map = _institutional_source_map(snapshot)
+    st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
+    st.caption(f"build={BUILD_MARKER} | commit={audit['commit_active']}")
+
+
+def _runtime_audit_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
+    engine_url = str(snapshot.get("engine_url") or snapshot.get("database_url") or "")
+    parsed = urlparse(engine_url)
+    database_name = "-"
+    if parsed.scheme.startswith("sqlite"):
+        database_name = parsed.path or engine_url
+    elif parsed.path:
+        database_name = parsed.path.lstrip("/") or "-"
+    return {
+        "backend": snapshot.get("backend", "-"),
+        "host": parsed.hostname or "-",
+        "database": database_name,
+        "schema": "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main",
+        "engine_url": _mask_database_url(engine_url),
+        "database_url": _mask_database_url(str(snapshot.get("database_url") or engine_url)),
+        "database_source": snapshot.get("database_source", "-"),
+        "build_active": BUILD_MARKER,
+        "commit_active": _resolve_active_commit(),
+        "counts": dict(snapshot.get("counts") or {}),
+    }
 
 
 def _hb_geometry_state() -> dict[str, Any]:
@@ -2120,7 +2202,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
     pages = [
+        "Auditoria Runtime",
         "Gerar Jogos",
         "Conferir Resultados",
         "Simular Resultados",
@@ -3145,7 +3230,9 @@ def main() -> None:
     st.session_state["institutional_page"] = page
     st.success(BUILD_MARKER)
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
-    if page == "Gerar Jogos":
+    if page == "Auditoria Runtime":
+        _render_runtime_audit_page(snapshot)
+    elif page == "Gerar Jogos":
         _render_generation_page(snapshot)
     elif page == "Conferir Resultados":
         _render_conference_page(snapshot)
