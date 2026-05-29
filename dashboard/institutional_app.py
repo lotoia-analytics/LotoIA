@@ -2555,6 +2555,41 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
+    database_snapshot_imported_contests = int(_database_snapshot()["counts"].get("imported_contests", 0))
+    live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
+    metric_imported_contests = int(live_counts_imported_contests)
+    try:
+        with _get_engine_cached().begin() as connection:
+            runtime_query_imported_contests = int(
+                connection.execute(text('SELECT COUNT(*) FROM "imported_contests"')).scalar() or 0
+            )
+        runtime_query_error = ""
+    except Exception as exc:  # pragma: no cover - surfaced in UI
+        runtime_query_imported_contests = None
+        runtime_query_error = str(exc)
+
+    st.markdown("##### Prova do imported_contests")
+    proof_cols = st.columns(4)
+    proof_cols[0].metric("database_snapshot_imported_contests", database_snapshot_imported_contests)
+    proof_cols[1].metric("live_counts_imported_contests", live_counts_imported_contests)
+    proof_cols[2].metric("metric_imported_contests", metric_imported_contests)
+    if runtime_query_imported_contests is None:
+        proof_cols[3].metric("runtime_query_imported_contests", "-")
+        st.error(runtime_query_error)
+    else:
+        proof_cols[3].metric("runtime_query_imported_contests", runtime_query_imported_contests)
+    st.code(
+        "\n".join(
+            [
+                f"database_snapshot_imported_contests = {database_snapshot_imported_contests}",
+                f"live_counts_imported_contests = {live_counts_imported_contests}",
+                f"metric_imported_contests = {metric_imported_contests}",
+                f"runtime_query_imported_contests = {runtime_query_imported_contests if runtime_query_imported_contests is not None else 'ERROR'}",
+            ]
+        ),
+        language="text",
+    )
+
     latest_contest = _get_latest_contest()
     latest_generation = _load_latest_generated_games() or {}
     current_contest = (
