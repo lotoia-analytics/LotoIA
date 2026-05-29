@@ -459,6 +459,20 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
     return None
 
 
+def _get_latest_contest() -> dict[str, Any] | None:
+    latest_contest = _load_imported_contest()
+    if latest_contest and int(latest_contest.get("contest_number", 0) or 0) > 0:
+        return latest_contest
+    contest_numbers = _load_imported_contest_numbers()
+    if contest_numbers:
+        return _load_imported_contest(contest_numbers[-1])
+    latest_generation = _load_latest_generated_games() or {}
+    target_contest = latest_generation.get("target_contest")
+    if str(target_contest or "").isdigit():
+        return _load_imported_contest(int(target_contest))
+    return None
+
+
 @st.cache_data(show_spinner=False)
 def _history_number_frequency() -> dict[int, int]:
     try:
@@ -880,52 +894,114 @@ def _run_institutional_generation(
     }
 
 
+def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    with get_session(DB_PATH) as session:
+        events = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .all()
+        )
+        for event in events:
+            rows = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == event.id)
+                .order_by(GeneratedGame.game_index.asc())
+                .all()
+            )
+            games: list[dict[str, Any]] = []
+            for row in rows:
+                numbers = [int(number) for number in (row.numbers or [])]
+                context_json = dict(row.context_json or {})
+                structural_metrics = dict(context_json.get("structural_metrics") or {})
+                games.append(
+                    {
+                        "game_index": int(row.game_index or 0),
+                        "numbers": numbers,
+                        "profile_type": str(row.profile_type or ""),
+                        "score": round(float((row.final_score or {}).get("final_score", 0.0) or 0.0), 4),
+                        "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
+                        "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
+                        "odd": sum(1 for number in numbers if number % 2 != 0),
+                        "even": sum(1 for number in numbers if number % 2 == 0),
+                        "frame": len({((number - 1) // 5) for number in numbers}),
+                        "center": sum(1 for number in numbers if 8 <= number <= 18),
+                    }
+                )
+            groups.append(
+                {
+                    "generation_event_id": int(event.id or 0),
+                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    "seed": int(getattr(event, "seed", 0) or 0),
+                    "strategy": str(getattr(event, "strategy", "") or ""),
+                    "total_games": len(games),
+                    "target_contest": max((int(game.get("target_contest") or 0) for game in rows if getattr(game, "target_contest", None) is not None), default=None),
+                    "games": games,
+                    "structural_summary": _summarize_games_structurally([game["numbers"] for game in games]),
+                }
+            )
+    return groups
+
+
 def _run_institutional_conference(contest_number: int | None = None) -> None:
-    st.session_state["institutional_last_ui_event"] = "operacional:conferir_jogos"
-    latest_contest = _load_imported_contest(contest_number)
-    generation_state = st.session_state.get("institutional_generation") or {}
-    if not generation_state.get("games"):
-        persisted_generation = _load_latest_generated_games()
-        if persisted_generation and persisted_generation.get("games"):
-            generation_state = dict(persisted_generation)
-            st.session_state["institutional_generation"] = {
-                "seed": int(persisted_generation.get("seed") or 0),
-                "games": list(persisted_generation.get("games") or []),
-                "total_games": int(persisted_generation.get("total_games") or len(persisted_generation.get("games") or [])),
-                "generation_event_id": int(persisted_generation.get("generation_event_id") or 0),
-                "created_at": str(persisted_generation.get("created_at") or ""),
-                "runtime_status": "loaded_from_database",
-                "elapsed_time": 0.0,
-            }
-            st.session_state["institutional_generation_result"] = {
-                "generation_event_id": int(persisted_generation.get("generation_event_id") or 0),
-                "seed": int(persisted_generation.get("seed") or 0),
-                "jogos": list(persisted_generation.get("games") or []),
-            }
-        else:
-            st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
-            return
+    latest_contest = _load_imported_contest(contest_number) or _get_latest_contest()
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
             "status": "waiting_contest",
-            "warning": "imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática."
+            "warning": "imported_contests ainda est? vazio. Sincronize o resultado oficial para habilitar a confer?ncia autom?tica.",
         }
         return
-    comparison = _compare_games_against_contest(
-        generation_event_id=int(generation_state.get("generation_event_id") or 0),
-        games=list(generation_state.get("games") or []),
-        contest=latest_contest,
-    )
+    grouped_generations = _load_persisted_generation_event_groups()
+    if not grouped_generations:
+        st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
+        return
+    generation_results: list[dict[str, Any]] = []
+    total_prizes = 0
+    total_hits = 0
+    best_hits_global = 0
+    for group in grouped_generations:
+        comparison = _compare_games_against_contest(
+            generation_event_id=int(group.get("generation_event_id") or 0),
+            games=list(group.get("games") or []),
+            contest=latest_contest,
+        )
+        hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
+        generation_results.append(
+            {
+                "generation_event_id": int(group.get("generation_event_id") or 0),
+                "created_at": group.get("created_at", ""),
+                "seed": int(group.get("seed") or 0),
+                "total_games": int(group.get("total_games") or 0),
+                "target_contest": group.get("target_contest"),
+                "best_hits": int(comparison.get("best_hits", 0) or 0),
+                "total_hits": int(comparison.get("total_hits", 0) or 0),
+                "prize_count": int(comparison.get("prize_count", 0) or 0),
+                "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
+                "results": list(comparison.get("results", [])),
+                "games": list(group.get("games") or []),
+                "contest_number": int(comparison.get("contest_number", latest_contest.get("contest_number", 0)) or 0),
+                "contest_date": str(comparison.get("contest_date", latest_contest.get("data", "")) or ""),
+            }
+        )
+        total_prizes += int(comparison.get("prize_count", 0) or 0)
+        total_hits += int(comparison.get("total_hits", 0) or 0)
+        best_hits_global = max(best_hits_global, int(comparison.get("best_hits", 0) or 0))
     st.session_state["institutional_check"] = {
         "runtime_status": "checked",
         "timestamp": datetime.now(UTC).isoformat(),
-        "contest_number": comparison["contest_number"],
-        "best_hits": comparison["best_hits"],
-        "total_hits": comparison["total_hits"],
+        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
+        "best_hits": best_hits_global,
+        "total_hits": total_hits,
     }
     st.session_state["institutional_check_result"] = {
-        **comparison,
         "status": "checked",
+        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
+        "contest_date": str(latest_contest.get("data", "") or ""),
+        "dezenas": list(latest_contest.get("dezenas", []) or []),
+        "generation_results": generation_results,
+        "best_hits": best_hits_global,
+        "total_hits": total_hits,
+        "prize_count": total_prizes,
     }
 
 
@@ -1927,12 +2003,11 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         top_cols[0].metric("Último concurso", int(contest_summary["contest_number"]))
         top_cols[1].caption(f"Fonte: {contest_summary['source']}")
         top_cols[2].caption(
-            f"dezenas: {' '.join(f'{number:02d}' for number in contest_summary.get('dezenas', [])) or '-'} | last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}"
+            f"dezenas: {' '.join(f'{number:02d}' for number in contest_summary.get('dezenas', [])) or '-'}"
         )
     else:
         top_cols[0].caption("Último concurso: -")
         top_cols[1].caption("Fonte: banco vazio")
-        top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
     controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
     total_games = int(
@@ -2145,7 +2220,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[0].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
     status_cols[1].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
-    status_cols[3].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
 
     latest_contest = _load_imported_contest()
     latest_generation = _load_latest_generated_games() or {}
@@ -2612,25 +2686,28 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 )
             )
         st.markdown("###### Jogos completos da gera??o selecionada")
-        selected_games = pd.DataFrame(
-            [
-                {
-                    "jogo": game.get("game_index", "-"),
-                    "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                    "perfil": game.get("profile_type", "-"),
-                    "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                    "pares": int(game.get("even", 0) or 0),
-                    "?mpares": int(game.get("odd", 0) or 0),
-                    "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
-                    "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
-                    "seq_max": int(game.get("sequence_max", 0) or 0),
-                    "frame": int(game.get("frame", 0) or 0),
-                    "center": int(game.get("center", 0) or 0),
-                }
-                for game in selected_generation.get("games", [])
-            ]
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "jogo": game.get("game_index", "-"),
+                        "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                        "perfil": game.get("profile_type", "-"),
+                        "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                        "pares": int(game.get("even", 0) or 0),
+                        "?mpares": int(game.get("odd", 0) or 0),
+                        "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                        "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                        "seq_max": int(game.get("sequence_max", 0) or 0),
+                        "frame": int(game.get("frame", 0) or 0),
+                        "center": int(game.get("center", 0) or 0),
+                    }
+                    for game in selected_generation.get("games", [])
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
         )
-        st.dataframe(selected_games, hide_index=True, use_container_width=True)
         st.markdown("###### Top jogos da gera??o")
         st.dataframe(
             pd.DataFrame(
@@ -2653,7 +2730,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         )
     else:
         st.info("Ainda n?o h? gera??es persistidas para reconstru??o anal?tica.")
-
     st.divider()
     st.markdown("##### Tabelas institucionais")
     table_rows = []
