@@ -373,6 +373,26 @@ def _database_snapshot() -> dict[str, Any]:
     }
 
 
+def _live_institutional_snapshot(snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+    try:
+        live_snapshot = _database_snapshot()
+    except Exception:
+        return snapshot or {
+            "backend": "unknown",
+            "engine_url": "",
+            "database_url": "",
+            "database_source": "",
+            "counts": {},
+            "latest": {},
+            "tables": [],
+        }
+    if snapshot:
+        snapshot = dict(snapshot)
+        snapshot.update(live_snapshot)
+        return snapshot
+    return live_snapshot
+
+
 def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
     latest_contest = _get_latest_contest() or _load_latest_contest_summary() or {}
     latest_generation = _load_latest_generated_games() or {}
@@ -406,6 +426,7 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     audit = _runtime_audit_payload(snapshot)
     st.subheader("Auditoria do Runtime")
     st.write("Auditoria temporária da instância publicada no runtime institucional ativo.")
@@ -1648,6 +1669,7 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 
 
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Hist?rico Institucional")
     st.write("Vis?o consolidada do runtime institucional limpo.")
     source_map = _institutional_source_map(snapshot)
@@ -1729,6 +1751,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Limpar Históricos")
     st.write("Limpa apenas os estados visuais e operacionais desta sessão.")
     state_keys = sorted([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
@@ -1741,6 +1764,7 @@ def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Apagar Histórico")
     st.write("Remove os registros operacionais institucionais persistidos no banco atual.")
     st.warning("Esta ação remove gerações, reconciliações e logs institucionais do runtime. Não afeta imported_contests.")
@@ -1753,6 +1777,7 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Comparativos histórico")
     st.write("Comparação resumida entre geração, reconciliação e base oficial.")
     latest_generation = _load_latest_generated_games() or {}
@@ -1843,6 +1868,7 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
 
 
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
     st.write("Resumo HB do replay estrutural incremental.")
     state = _hb_geometry_state()
@@ -1866,6 +1892,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura estrutural")
     st.write("Geometria e concentração do lote institucional persistido.")
     games = _institutional_generation_games()
@@ -1880,6 +1907,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Replay institucional")
     st.write("Reexecuta a leitura do último lote persistido contra o concurso oficial corrente.")
     latest_generation = _load_latest_generated_games() or {}
@@ -1920,6 +1948,7 @@ def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Benchmark resumido")
     st.write("Snapshot curto dos indicadores institucionais atuais.")
     latest_generation = _load_latest_generated_games() or {}
@@ -1946,6 +1975,7 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Estatísticas operacionais")
     st.write("Fluxo operacional persistido e sessão corrente.")
     latest_generation = _load_latest_generated_games() or {}
@@ -2287,6 +2317,7 @@ def _ensure_institutional_schema() -> None:
 
 
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Gerar Jogos")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
     status_cols = st.columns([1, 1, 1, 1, 1])
@@ -2513,6 +2544,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Conferir Resultados")
     st.write("Compare os jogos gerados com o concurso selecionado no banco.")
     status_cols = st.columns([1, 1, 1, 1])
@@ -2785,6 +2817,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
     st.write("Digite as dezenas sorteadas para comparar com os jogos persistidos.")
     status_cols = st.columns([1, 1, 1, 1])
@@ -2878,10 +2911,12 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_history_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     _render_analytical_page(snapshot)
 
 
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Operacional")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
     status_cols = st.columns([1, 1, 1, 1, 1])
@@ -3077,6 +3112,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
         st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Hist?rico Anal?tico")
     st.write("Snapshot institucional do banco atual via DATABASE_URL.")
     st.markdown("##### Fontes institucionais")
