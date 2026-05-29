@@ -341,12 +341,38 @@ def _database_snapshot() -> dict[str, Any]:
     }
     counts: dict[str, int] = {}
     latest: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    query_logs: list[dict[str, Any]] = []
+    table_diagnostics: dict[str, dict[str, Any]] = {}
     with engine.begin() as connection:
         for table in preferred_tables:
+            query = f'SELECT COUNT(*) FROM "{table}"'
             try:
-                counts[table] = int(connection.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
-            except Exception:
+                value = connection.execute(text(query)).scalar()
+                counts[table] = int(value or 0)
+                table_diagnostics[table] = {
+                    "table": table,
+                    "query": query,
+                    "status": "ok",
+                    "count": counts[table],
+                    "error": "",
+                }
+                query_logs.append(
+                    dict(table_diagnostics[table])
+                )
+            except Exception as exc:
                 counts[table] = 0
+                errors[table] = str(exc)
+                table_diagnostics[table] = {
+                    "table": table,
+                    "query": query,
+                    "status": "error",
+                    "count": 0,
+                    "error": str(exc),
+                }
+                query_logs.append(
+                    dict(table_diagnostics[table])
+                )
             latest_field = latest_fields.get(table, "created_at")
             if latest_field in {"created_at", "contest_number"}:
                 try:
@@ -364,6 +390,9 @@ def _database_snapshot() -> dict[str, Any]:
         "counts": counts,
         "latest": latest,
         "tables": preferred_tables,
+        "errors": errors,
+        "query_logs": query_logs,
+        "table_diagnostics": table_diagnostics,
     }
 
 
@@ -1734,6 +1763,11 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.divider()
     st.markdown("##### Tabelas Institucionais")
     table_proof_imported_contests = int(live_counts.get("imported_contests", 0))
+    snapshot_diagnostics = _database_snapshot().get("table_diagnostics", {})
+    imported_contests_diag = snapshot_diagnostics.get("imported_contests", {})
+    snapshot_error_imported_contests = str(imported_contests_diag.get("error", "") or "")
+    snapshot_status_imported_contests = str(imported_contests_diag.get("status", "-") or "-")
+    snapshot_query_imported_contests = str(imported_contests_diag.get("query", "") or "")
     try:
         with _get_engine_cached().begin() as connection:
             runtime_query_imported_contests = int(
@@ -1763,10 +1797,15 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 f"runtime_query_imported_contests = {runtime_query_imported_contests if runtime_query_imported_contests is not None else 'ERROR'}",
                 f"table_row_imported_contests = {table_proof_imported_contests}",
                 f"latest_imported_contests = {snapshot['latest'].get('imported_contests', '-')}",
+                f"snapshot_status_imported_contests = {snapshot_status_imported_contests}",
+                f"snapshot_query_imported_contests = {snapshot_query_imported_contests}",
+                f"snapshot_error_imported_contests = {snapshot_error_imported_contests or '-'}",
             ]
         ),
         language="text",
     )
+    if snapshot_error_imported_contests:
+        st.error(f"snapshot_error_imported_contests = {snapshot_error_imported_contests}")
     if runtime_query_error:
         st.error(runtime_query_error)
     table_rows = []
