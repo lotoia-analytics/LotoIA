@@ -1069,6 +1069,8 @@ def _load_generation_history(limit: int = 12) -> list[dict[str, Any]]:
                 coverage_value = float(
                     structural_metrics.get("coverage_score", historical_intelligence.get("coverage_score", 0.0)) or 0.0
                 )
+                odd_count = sum(1 for number in numbers if number % 2 != 0)
+                even_count = len(numbers) - odd_count
                 games.append(
                     {
                         "game_index": int(row.game_index or 0),
@@ -1081,6 +1083,10 @@ def _load_generation_history(limit: int = 12) -> list[dict[str, Any]]:
                         "coverage": round(coverage_value, 4),
                         "entropy": round(entropy_value, 4),
                         "sequence_max": int(structural_metrics.get("sequence_max", historical_intelligence.get("sequence_max", 0)) or 0),
+                        "odd": odd_count,
+                        "even": even_count,
+                        "center": sum(1 for number in numbers if 8 <= number <= 18),
+                        "frame": len({((number - 1) // 5) for number in numbers}),
                     }
                 )
                 scores.append(score_value)
@@ -2579,69 +2585,75 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     generations = _load_generation_history(limit=12)
     if generations:
-        st.markdown("##### Gera??es agrupadas por `generation_event_id`")
-        for generation in generations:
-            with st.expander(
-                f"Gera??o #{generation['generation_event_id']} | jogos={generation['total_games']} | seed={generation['seed']} | "
-                f"concurso={generation.get('target_contest', '-') or '-'} | score_medio={generation['avg_score']:.4f}",
-                expanded=False,
-            ):
-                meta_cols = st.columns(5)
-                meta_cols[0].metric("timestamp", generation.get("created_at", "-"))
-                meta_cols[1].metric("perfil HB", generation.get("strategy", "-") or "-")
-                meta_cols[2].metric("score m?dio", f"{generation.get('avg_score', 0.0):.4f}")
-                meta_cols[3].metric("entropia m?dia", f"{generation.get('avg_entropy', 0.0):.4f}")
-                meta_cols[4].metric("cobertura m?dia", f"{generation.get('avg_coverage', 0.0):.4f}")
-                summary_cols = st.columns(3)
-                summary_cols[0].metric("overlap m?dio", f"{generation.get('average_overlap', 0.0):.4f}")
-                summary_cols[1].metric("total jogos", generation.get("total_games", 0))
-                summary_cols[2].metric("status operacional", "persistido")
-                if generation.get("dominant_numbers"):
-                    st.caption(
-                        "dominantes: "
-                        + ", ".join(
-                            f"{item.get('number', '-')}: {item.get('frequency', '-')}"
-                            for item in generation.get("dominant_numbers", [])[:8]
-                        )
-                    )
-                st.markdown("###### Top jogos")
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                "jogo": game.get("game_index", "-"),
-                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                                "perfil": game.get("profile_type", "-"),
-                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                                "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
-                                "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
-                            }
-                            for game in generation.get("top_games", [])
-                        ]
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
+        st.markdown("##### Gera??es persistidas")
+        generation_options = {
+            f"Gera??o #{item['generation_event_id']} | jogos={item['total_games']} | seed={item['seed']} | concurso={item.get('target_contest', '-') or '-'} | score_medio={item['avg_score']:.4f}": item
+            for item in generations
+        }
+        selected_label = st.selectbox("Escolha uma gera??o", list(generation_options.keys()), index=0)
+        selected_generation = generation_options[selected_label]
+        selected_cols = st.columns(5)
+        selected_cols[0].metric("timestamp", selected_generation.get("created_at", "-"))
+        selected_cols[1].metric("seed", selected_generation.get("seed", "-"))
+        selected_cols[2].metric("target_contest", selected_generation.get("target_contest", "-"))
+        selected_cols[3].metric("total_games", selected_generation.get("total_games", 0))
+        selected_cols[4].metric("perfil HB", selected_generation.get("strategy", "-") or "-")
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("score m?dio", f"{selected_generation.get('avg_score', 0.0):.4f}")
+        summary_cols[1].metric("entropia m?dia", f"{selected_generation.get('avg_entropy', 0.0):.4f}")
+        summary_cols[2].metric("cobertura m?dia", f"{selected_generation.get('avg_coverage', 0.0):.4f}")
+        summary_cols[3].metric("overlap m?dio", f"{selected_generation.get('average_overlap', 0.0):.4f}")
+        if selected_generation.get("dominant_numbers"):
+            st.caption(
+                "dominantes: "
+                + ", ".join(
+                    f"{item.get('number', '-')}: {item.get('frequency', '-')}"
+                    for item in selected_generation.get("dominant_numbers", [])[:8]
                 )
-                st.markdown("###### Jogos completos da gera??o")
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                "jogo": game.get("game_index", "-"),
-                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                                "perfil": game.get("profile_type", "-"),
-                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                                "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
-                                "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
-                            }
-                            for game in generation.get("games", [])
-                        ]
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+            )
+        st.markdown("###### Jogos completos da gera??o selecionada")
+        selected_games = pd.DataFrame(
+            [
+                {
+                    "jogo": game.get("game_index", "-"),
+                    "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                    "perfil": game.get("profile_type", "-"),
+                    "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                    "pares": int(game.get("even", 0) or 0),
+                    "?mpares": int(game.get("odd", 0) or 0),
+                    "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                    "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                    "seq_max": int(game.get("sequence_max", 0) or 0),
+                    "frame": int(game.get("frame", 0) or 0),
+                    "center": int(game.get("center", 0) or 0),
+                }
+                for game in selected_generation.get("games", [])
+            ]
+        )
+        st.dataframe(selected_games, hide_index=True, use_container_width=True)
+        st.markdown("###### Top jogos da gera??o")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "jogo": game.get("game_index", "-"),
+                        "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                        "perfil": game.get("profile_type", "-"),
+                        "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                        "pares": int(game.get("even", 0) or 0),
+                        "?mpares": int(game.get("odd", 0) or 0),
+                        "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                        "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                    }
+                    for game in selected_generation.get("top_games", [])
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
     else:
         st.info("Ainda n?o h? gera??es persistidas para reconstru??o anal?tica.")
+
     st.divider()
     st.markdown("##### Tabelas institucionais")
     table_rows = []
