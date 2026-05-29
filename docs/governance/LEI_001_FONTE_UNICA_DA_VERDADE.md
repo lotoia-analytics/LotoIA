@@ -105,3 +105,10 @@ Esta lei vale para:
 ## Nota final
 
 Se houver conflito entre implementacao local e runtime publicado, a fonte oficial da verdade continua sendo o PostgreSQL institucional do ambiente publicado.
+
+## Referencia cruzada
+
+Esta lei define a Fonte Unica da Verdade.
+A governanca operacional complementar esta documentada em:
+
+- [GOVERNANCA_OPERACIONAL_LOTOIA.md](./GOVERNANCA_OPERACIONAL_LOTOIA.md)
