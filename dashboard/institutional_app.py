@@ -319,8 +319,6 @@ def _get_engine_cached():
 def _database_snapshot() -> dict[str, Any]:
     adapter = InstitutionalDatabaseAdapter(DB_PATH)
     engine = _get_engine_cached()
-    inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
     preferred_tables = [
         "generation_events",
         "generated_games",
@@ -365,7 +363,7 @@ def _database_snapshot() -> dict[str, Any]:
         "database_source": adapter.database_source,
         "counts": counts,
         "latest": latest,
-        "tables": sorted(table_names),
+        "tables": preferred_tables,
     }
 
 
