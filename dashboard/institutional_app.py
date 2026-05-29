@@ -9,6 +9,7 @@ except ImportError:
 import json
 import math
 import os
+import re
 import random
 import threading
 import time
@@ -370,7 +371,7 @@ def _load_imported_contest(contest_number: int | None = None) -> dict[str, Any] 
             row = query.filter(ImportedContest.contest_number == int(contest_number)).first()
         if row is None:
             return None
-        dezenas = [int(number) for number in str(row.dezenas or "").replace(",", " ").split() if str(number).isdigit()]
+        dezenas = _extract_int_numbers(str(row.dezenas or ""))
         return {
             "contest_number": int(row.contest_number),
             "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
@@ -712,6 +713,15 @@ def _select_subset_from_candidate(
 
 def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
+
+
+def _extract_int_numbers(raw_text: str) -> list[int]:
+    numbers: list[int] = []
+    for token in re.findall(r"\d+", str(raw_text or "")):
+        number = int(token)
+        if 1 <= number <= 25 and number not in numbers:
+            numbers.append(number)
+    return sorted(numbers)
 
 
 def _parse_draw_numbers(raw_text: str) -> list[int]:
@@ -1852,10 +1862,10 @@ def _persist_generation_snapshot(
 
 
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
-    official_numbers = sorted(int(number) for number in contest.get("dezenas", []))
+    official_numbers = _extract_int_numbers(contest.get("dezenas", []))
     results: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
-        numbers = sorted(int(number) for number in game.get("numbers", []))
+        numbers = _extract_int_numbers(game.get("numbers", []))
         matched = sorted(set(numbers) & set(official_numbers))
         results.append(
             {
@@ -1870,6 +1880,17 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
     best_hits = max((int(row["hits"]) for row in results), default=0)
     total_hits = sum(int(row["hits"]) for row in results)
     prize_count = sum(1 for row in results if int(row["hits"]) >= 11)
+    diagnostics = {
+        "official_numbers": official_numbers,
+        "official_numbers_count": len(official_numbers),
+        "first_game": results[0]["numbers"] if results else [],
+        "first_game_hits": int(results[0]["hits"]) if results else 0,
+        "first_intersection": results[0]["matched_numbers"] if results else [],
+        "total_games": len(results),
+        "total_hits": total_hits,
+        "best_hits": best_hits,
+        "prize_count": prize_count,
+    }
     with get_session(DB_PATH) as session:
         run = ReconciliationRun(
             generation_event_id=generation_event_id,
@@ -1916,6 +1937,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "total_hits": total_hits,
         "prize_count": prize_count,
         "reconciliation": {"id": int(run.id), "contest_id": int(contest["contest_number"])},
+        "diagnostics": diagnostics,
     }
 
 
@@ -2439,6 +2461,9 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.write(total_runs)
             st.write(total_games_reconciled)
             st.write(best_hits)
+            st.write(f"total_runs={total_runs}")
+            st.write(f"total_games_reconciled={total_games_reconciled}")
+            st.write(f"best_hits={best_hits}")
             summary_cols = st.columns(5)
             summary_cols[0].metric("Concurso", check_result.get("contest_number", "-"))
             summary_cols[1].metric("Total jogos conferidos", total_games_reconciled)
@@ -2486,6 +2511,15 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                         st.dataframe(generation_df, hide_index=True, use_container_width=True)
                     else:
                         st.info("Nenhum jogo encontrado para esta geração.")
+            diagnostics = check_result.get("diagnostics") or {}
+            if diagnostics:
+                st.markdown("#### Diagnóstico temporário")
+                st.write(f"Resultado oficial: {diagnostics.get('official_numbers', [])}")
+                st.write(f"Tipo resultado: {type(diagnostics.get('official_numbers', []))}")
+                st.write(f"Primeiro jogo: {diagnostics.get('first_game', [])}")
+                st.write(f"Tipo jogo: {type(diagnostics.get('first_game', []))}")
+                st.write(f"Interseção: {set(int(number) for number in diagnostics.get('first_intersection', []) or [])}")
+                st.write(f"Hits: {diagnostics.get('first_game_hits', 0)}")
             st.markdown("#### Últimas reconciliações")
             reconciliations = _load_reconciliation_history(limit=10)
             if reconciliations:
