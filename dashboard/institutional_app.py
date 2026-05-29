@@ -460,6 +460,12 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
 
 
 def _get_latest_contest() -> dict[str, Any] | None:
+    sync_summary = st.session_state.get("institutional_last_official_sync_summary", {}) or {}
+    sync_contest = sync_summary.get("latest_contest")
+    if str(sync_contest or "").isdigit():
+        synced_contest = _load_imported_contest(int(sync_contest))
+        if synced_contest and int(synced_contest.get("contest_number", 0) or 0) > 0:
+            return synced_contest
     latest_contest = _load_imported_contest()
     if latest_contest and int(latest_contest.get("contest_number", 0) or 0) > 0:
         return latest_contest
@@ -470,6 +476,14 @@ def _get_latest_contest() -> dict[str, Any] | None:
     target_contest = latest_generation.get("target_contest")
     if str(target_contest or "").isdigit():
         return _load_imported_contest(int(target_contest))
+    if str(sync_contest or "").isdigit():
+        return {
+            "contest_number": int(sync_contest),
+            "created_at": str(sync_summary.get("sync_timestamp", "") or ""),
+            "data": "",
+            "dezenas": list(sync_summary.get("imported_numbers", []) or []),
+            "metadata_json": "{}",
+        }
     return None
 
 
@@ -1997,7 +2011,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    contest_summary = _load_latest_contest_summary()
+    contest_summary = _get_latest_contest() or _load_latest_contest_summary()
     top_cols = st.columns([1.1, 1.3, 1.6])
     if contest_summary:
         top_cols[0].metric("Último concurso", int(contest_summary["contest_number"]))
@@ -2221,10 +2235,15 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
 
-    latest_contest = _load_imported_contest()
+    latest_contest = _get_latest_contest()
     latest_generation = _load_latest_generated_games() or {}
-    contest_numbers = _load_imported_contest_numbers()
-    current_contest = int(latest_contest["contest_number"]) if latest_contest else int(contest_numbers[-1]) if contest_numbers else int(latest_generation.get("target_contest") or 0) if str(latest_generation.get("target_contest") or "").isdigit() else 0
+    current_contest = (
+        int(latest_contest["contest_number"])
+        if latest_contest
+        else int(latest_generation.get("target_contest") or 0)
+        if str(latest_generation.get("target_contest") or "").isdigit()
+        else 0
+    )
     if "institutional_contest_nav" not in st.session_state:
         st.session_state["institutional_contest_nav"] = current_contest or 0
     if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) != current_contest:
@@ -2329,6 +2348,14 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
+    if latest_contest:
+        contest_buttons[0].caption(
+            f"Último concurso: {int(latest_contest['contest_number'])} | dezenas: {' '.join(f'{number:02d}' for number in latest_contest.get('dezenas', [])) or '-'}"
+        )
+    elif latest_generation.get("target_contest"):
+        contest_buttons[0].caption(f"Último concurso: {latest_generation.get('target_contest')}")
+    else:
+        contest_buttons[0].caption("Último concurso: -")
 
     diagnostic_state = _load_official_sync_diagnostics()
     if diagnostic_state:
