@@ -42,6 +42,7 @@ HB_GEOMETRY_JSON_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.json"
 HB_GEOMETRY_CSV_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.csv"
 SYNC_DIAGNOSTIC_FILE = REPORTS_DIR / "institutional_sync_diagnostics.json"
 DB_PATH = DEFAULT_DATABASE_PATH
+MAX_INSTITUTIONAL_DEZENAS_PER_GAME = 23
 
 _JOB_LOCK = threading.Lock()
 _JOB_STATE: dict[str, Any] = {
@@ -1942,8 +1943,13 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         controls_cols[1].number_input(
             "Quantidade de dezenas por jogo",
             min_value=2,
-            max_value=15,
-            value=int(st.session_state.get("institutional_dezenas_per_game", 15) or 15),
+            max_value=MAX_INSTITUTIONAL_DEZENAS_PER_GAME,
+            value=int(
+                min(
+                    MAX_INSTITUTIONAL_DEZENAS_PER_GAME,
+                    max(2, int(st.session_state.get("institutional_dezenas_per_game", 15) or 15)),
+                )
+            ),
             step=1,
             key="institutional_dezenas_per_game",
         )
