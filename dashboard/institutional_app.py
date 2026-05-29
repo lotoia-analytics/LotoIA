@@ -1639,8 +1639,8 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Apagar Histórico")
     st.write("Remove os registros operacionais institucionais persistidos no banco atual.")
     st.warning("Esta ação remove gerações, reconciliações e logs institucionais do runtime. Não afeta imported_contests.")
-    confirm = st.checkbox("Confirmo que desejo apagar o histórico institucional persistido.")
-    if st.button("Apagar histórico persistido", type="primary", disabled=not confirm):
+    st.caption("Ação irreversível no runtime atual. Preserva imported_contests.")
+    if st.button("Apagar histórico persistido", type="primary"):
         result = _purge_institutional_history_tables()
         st.success("Histórico institucional apagado.")
         st.json(result)
