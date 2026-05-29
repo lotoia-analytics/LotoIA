@@ -33,6 +33,21 @@ class CaixaContestResult:
 class CaixaApiClient:
     """Official Caixa result client with conservative retry and normalization."""
 
+    DEFAULT_HEADERS = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Origin": "https://loterias.caixa.gov.br",
+        "Referer": "https://loterias.caixa.gov.br/lotofacil",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
     def __init__(
         self,
         base_url: str = DEFAULT_CAIXA_LOTOFACIL_URL,
@@ -50,6 +65,9 @@ class CaixaApiClient:
         self.last_request_url: str = ""
         self.last_http_status: int | None = None
         self.last_error_message: str = ""
+        self.last_request_headers: dict[str, str] = {}
+        self.last_response_headers: dict[str, str] = {}
+        self.last_response_preview: str = ""
 
     def fetch_latest(self) -> CaixaContestResult:
         payload = self._request_json(self.base_url)
@@ -68,17 +86,19 @@ class CaixaApiClient:
         self.last_request_url = url
         self.last_http_status = None
         self.last_error_message = ""
+        self.last_request_headers = dict(self.DEFAULT_HEADERS)
+        self.last_response_headers = {}
+        self.last_response_preview = ""
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = self.session.get(
                     url,
                     timeout=self.timeout_seconds,
-                    headers={
-                        "Accept": "application/json",
-                        "User-Agent": "LotoIA/1.0 (+https://github.com/openai)",
-                    },
+                    headers=self.last_request_headers,
                 )
                 self.last_http_status = int(response.status_code)
+                self.last_response_headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
+                self.last_response_preview = (response.text or "")[:500]
                 self._raise_for_status(response)
                 payload = response.json()
                 if not isinstance(payload, dict):

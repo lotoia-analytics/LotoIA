@@ -1967,6 +1967,9 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         payload["status"] = "ok"
         payload["http_status"] = getattr(service.client, "last_http_status", None)
         payload["request_url"] = getattr(service.client, "last_request_url", "")
+        payload["request_headers"] = getattr(service.client, "last_request_headers", {})
+        payload["response_headers"] = getattr(service.client, "last_response_headers", {})
+        payload["response_preview"] = getattr(service.client, "last_response_preview", "")
         payload["sync_error"] = ""
         payload["sync_timestamp"] = datetime.now(UTC).isoformat()
         latest_record = repository.get_latest_contest_record()
@@ -2000,6 +2003,9 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
             "rollback": True,
             "http_status": None,
             "request_url": "",
+            "request_headers": {},
+            "response_headers": {},
+            "response_preview": "",
             "latest_contest_record": None,
             "imported_numbers": [],
         }
@@ -2647,6 +2653,11 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         diag_cols[2].metric("imported_contest", diagnostic_state.get("imported_contest", "-"))
         diag_cols[3].metric("timestamp", diagnostic_state.get("sync_timestamp", "-"))
         st.caption(f"request_url: {diagnostic_state.get('request_url', '-')}")
+        st.caption(f"request_headers: {json.dumps(diagnostic_state.get('request_headers', {}), ensure_ascii=False)}")
+        st.caption(f"response_headers: {json.dumps(diagnostic_state.get('response_headers', {}), ensure_ascii=False)}")
+        preview = str(diagnostic_state.get("response_preview") or "")
+        if preview:
+            st.text_area("response_preview", preview[:500], height=160)
         if diagnostic_state.get("sync_error"):
             st.error(diagnostic_state.get("sync_error"))
         imported_numbers = diagnostic_state.get("imported_numbers") or []
