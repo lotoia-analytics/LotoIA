@@ -25,6 +25,7 @@ from sqlalchemy import inspect, text
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
+from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
@@ -1801,6 +1802,12 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
+        try:
+            export_historical_csv(repository.get_all_contests())
+            payload["history_export_status"] = "ok"
+        except Exception as export_exc:  # pragma: no cover - surfaced in UI
+            payload["history_export_status"] = "failed"
+            payload["history_export_error"] = str(export_exc)
         return payload
     except Exception as exc:  # pragma: no cover - surfaced in UI
         client = None
