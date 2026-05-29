@@ -1670,6 +1670,7 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    live_counts = _database_snapshot()["counts"]
     st.subheader("Hist?rico Institucional")
     st.write("Vis?o consolidada do runtime institucional limpo.")
     source_map = _institutional_source_map(snapshot)
@@ -1679,15 +1680,15 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_contest = _load_latest_contest_summary() or {}
     top_cols = st.columns(5)
-    top_cols[0].metric("total_execucoes", int(snapshot["counts"].get("generation_events", 0)))
-    top_cols[1].metric("total_jogos", int(snapshot["counts"].get("generated_games", 0)))
+    top_cols[0].metric("total_execucoes", int(live_counts.get("generation_events", 0)))
+    top_cols[1].metric("total_jogos", int(live_counts.get("generated_games", 0)))
     top_cols[2].metric("ultimo_concurso", latest_contest.get("contest_number", "-"))
     top_cols[3].metric("ultimo_sync", latest_sync.get("latest_contest", latest_contest.get("contest_number", "-")))
     top_cols[4].metric("status_postgresql", snapshot["backend"])
     sync_cols = st.columns(4)
-    sync_cols[0].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    sync_cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
-    sync_cols[2].metric("operational_logs", int(snapshot["counts"].get("operational_logs", 0)))
+    sync_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
+    sync_cols[1].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
+    sync_cols[2].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
     sync_cols[3].metric("database_source", snapshot["database_source"])
     if latest_sync:
         st.caption(
@@ -1739,7 +1740,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.divider()
     st.markdown("##### Tabelas Institucionais")
     table_rows = []
-    for table, count in snapshot["counts"].items():
+    for table, count in live_counts.items():
         table_rows.append(
             {
                 "tabela": table,
@@ -2318,14 +2319,15 @@ def _ensure_institutional_schema() -> None:
 
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    live_counts = _database_snapshot()["counts"]
     st.subheader("Gerar Jogos")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")
     status_cols = st.columns([1, 1, 1, 1, 1])
     status_cols[0].metric("build", BUILD_MARKER)
     status_cols[1].metric("backend", snapshot["backend"])
-    status_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    status_cols[3].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    status_cols[4].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    status_cols[2].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
+    status_cols[3].metric("generated_games", int(live_counts.get("generated_games", 0)))
+    status_cols[4].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
     contest_summary = _get_latest_contest() or _load_latest_contest_summary()
     top_cols = st.columns([1.1, 1.3, 1.6])
@@ -2545,12 +2547,13 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
 
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    live_counts = _database_snapshot()["counts"]
     st.subheader("Conferir Resultados")
     st.write("Compare os jogos gerados com o concurso selecionado no banco.")
     status_cols = st.columns([1, 1, 1, 1])
-    status_cols[0].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    status_cols[1].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    status_cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
+    status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
+    status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
     latest_contest = _get_latest_contest()
     latest_generation = _load_latest_generated_games() or {}
