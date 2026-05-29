@@ -347,6 +347,38 @@ def _database_snapshot() -> dict[str, Any]:
     }
 
 
+def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
+    latest_contest = _get_latest_contest() or _load_latest_contest_summary() or {}
+    latest_generation = _load_latest_generated_games() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    return [
+        {
+            "camada": "GERADOR",
+            "origem": "PostgreSQL",
+            "tabelas": "generation_events / generated_games",
+            "uso": f"última geração={latest_generation.get('generation_event_id', '-')}",
+        },
+        {
+            "camada": "CONFERÊNCIA",
+            "origem": "PostgreSQL",
+            "tabelas": "imported_contests / reconciliation_runs / reconciliation_games",
+            "uso": f"último concurso={latest_contest.get('contest_number', '-')} | última reconciliação={latest_reconciliation.get('id', '-')}",
+        },
+        {
+            "camada": "MEMÓRIA",
+            "origem": "PostgreSQL",
+            "tabelas": "generated_games / reconciliation_* / operational_logs",
+            "uso": "timeline e resumos institucionais",
+        },
+        {
+            "camada": "PAINEL",
+            "origem": "PostgreSQL + session_state",
+            "tabelas": "snapshot institucional",
+            "uso": f"build={BUILD_MARKER}",
+        },
+    ]
+
+
 def _hb_geometry_state() -> dict[str, Any]:
     with _JOB_LOCK:
         state = dict(_JOB_STATE)
@@ -1459,10 +1491,9 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
     tables = [
         "reconciliation_games",
         "reconciliation_runs",
-        "generated_games",
-        "generation_events",
+        "reconciliation_events",
         "operational_logs",
-        "expansion_events",
+        "reset_events",
     ]
     deleted: dict[str, int] = {}
     with get_session(DB_PATH) as session:
@@ -1483,6 +1514,9 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Hist?rico Institucional")
     st.write("Vis?o consolidada do runtime institucional limpo.")
+    source_map = _institutional_source_map(snapshot)
+    st.markdown("##### Fontes institucionais")
+    st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_contest = _load_latest_contest_summary() or {}
@@ -2895,6 +2929,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Hist?rico Anal?tico")
     st.write("Snapshot institucional do banco atual via DATABASE_URL.")
+    st.markdown("##### Fontes institucionais")
+    st.dataframe(pd.DataFrame(_institutional_source_map(snapshot)), hide_index=True, use_container_width=True)
     diag_cols = st.columns(4)
     diag_cols[0].metric("backend", snapshot["backend"])
     diag_cols[1].metric("database_source", snapshot["database_source"])
