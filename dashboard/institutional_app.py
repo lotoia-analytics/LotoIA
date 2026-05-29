@@ -1608,6 +1608,22 @@ def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
                 "details": f"status={sync_summary.get('sync_status', '-')} | contest={sync_summary.get('imported_contest', '-')} | http={sync_summary.get('http_status', '-')}",
             }
         )
+    items.append(
+        {
+            "kind": "audit",
+            "created_at": "",
+            "title": "Auditoria Runtime",
+            "details": "Fonte oficial validada no PostgreSQL Institucional",
+        }
+    )
+    items.append(
+        {
+            "kind": "governance",
+            "created_at": "",
+            "title": "Lei Nº 001",
+            "details": "PostgreSQL Institucional como Fonte Única da Verdade",
+        }
+    )
     hb_state = _hb_geometry_state()
     progress = hb_state.get("progress") or {}
     if progress:
@@ -1619,6 +1635,14 @@ def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
                 "details": f"batch={progress.get('current_batch', '-')} | contests={progress.get('contests_processed', '-')} | completed={'sim' if progress.get('completed') else 'não'}",
             }
         )
+    items.append(
+        {
+            "kind": "whatsapp",
+            "created_at": "",
+            "title": "WhatsApp",
+            "details": "Futura integração operacional da plataforma",
+        }
+    )
     for entry in _load_operational_logs_history(limit=limit):
         items.append(
             {
@@ -1722,9 +1746,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     top_cols[4].metric("status_postgresql", snapshot["backend"])
     sync_cols = st.columns(4)
     sync_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
-    sync_cols[1].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
-    sync_cols[2].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
-    sync_cols[3].metric("database_source", snapshot["database_source"])
+    sync_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
+    sync_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
+    sync_cols[3].metric("reconciliation_games", int(live_counts.get("reconciliation_games", 0)))
     if latest_sync:
         st.caption(
             " | ".join(
@@ -1736,6 +1760,21 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+    st.markdown("##### Status da Fonte Oficial")
+    source_cols = st.columns(4)
+    source_cols[0].metric("backend", snapshot["backend"])
+    source_cols[1].metric("database_source", snapshot["database_source"])
+    source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
+    source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
+    st.caption(
+        " | ".join(
+            [
+                f"build={BUILD_MARKER}",
+                f"commit={_resolve_active_commit()}",
+                f"last_imported_contest={latest_contest.get('contest_number', '-')}",
+            ]
+        )
+    )
     st.markdown("##### ?ltima reconcilia??o persistida")
     if latest_reconciliation:
         st.caption(
@@ -1744,25 +1783,11 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
             f" | status={latest_reconciliation.get('status', '-')}"
         )
-        recon_cols = st.columns(5)
+        recon_cols = st.columns(4)
         recon_cols[0].metric("Concurso", latest_reconciliation.get("contest_id", "-"))
         recon_cols[1].metric("Total jogos conferidos", latest_reconciliation.get("games_count", 0))
-        recon_cols[2].metric("Melhor acerto", latest_reconciliation.get("best_hits", "-"))
-        recon_cols[3].metric("Premiações", latest_reconciliation.get("prize_count", "-"))
-        recon_cols[4].metric("Total hits", latest_reconciliation.get("total_hits", "-"))
-        distribution = latest_reconciliation.get("hit_distribution") or {}
-        if distribution:
-            st.markdown("###### Distribui??o de acertos")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {"acertos": hits, "quantidade": count}
-                        for hits, count in sorted(distribution.items(), key=lambda item: (-int(item[0]), int(item[1])))
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
+        recon_cols[2].metric("Status", latest_reconciliation.get("status", "-"))
+        recon_cols[3].metric("Reconcilia??o", latest_reconciliation.get("id", "-"))
     else:
         st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
     st.divider()
