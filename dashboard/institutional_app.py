@@ -1735,6 +1735,42 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
     st.divider()
     st.markdown("##### Tabelas Institucionais")
+    table_proof_imported_contests = int(live_counts.get("imported_contests", 0))
+    try:
+        with _get_engine_cached().begin() as connection:
+            runtime_query_imported_contests = int(
+                connection.execute(text('SELECT COUNT(*) FROM "imported_contests"')).scalar() or 0
+            )
+        runtime_query_error = ""
+    except Exception as exc:  # pragma: no cover - surfaced in UI
+        runtime_query_imported_contests = None
+        runtime_query_error = str(exc)
+    st.markdown("###### Prova do imported_contests")
+    proof_cols = st.columns(6)
+    proof_cols[0].metric("commit_ativo", BUILD_MARKER)
+    proof_cols[1].metric("database_snapshot_imported_contests", int(_database_snapshot()["counts"].get("imported_contests", 0)))
+    proof_cols[2].metric("live_counts_imported_contests", int(live_counts.get("imported_contests", 0)))
+    if runtime_query_imported_contests is None:
+        proof_cols[3].metric("runtime_query_imported_contests", "-")
+    else:
+        proof_cols[3].metric("runtime_query_imported_contests", runtime_query_imported_contests)
+    proof_cols[4].metric("table_row_imported_contests", table_proof_imported_contests)
+    proof_cols[5].metric("latest_imported_contests", snapshot["latest"].get("imported_contests", "-"))
+    st.code(
+        "\n".join(
+            [
+                f"commit_ativo = {BUILD_MARKER}",
+                f"database_snapshot_imported_contests = {int(_database_snapshot()['counts'].get('imported_contests', 0))}",
+                f"live_counts_imported_contests = {int(live_counts.get('imported_contests', 0))}",
+                f"runtime_query_imported_contests = {runtime_query_imported_contests if runtime_query_imported_contests is not None else 'ERROR'}",
+                f"table_row_imported_contests = {table_proof_imported_contests}",
+                f"latest_imported_contests = {snapshot['latest'].get('imported_contests', '-')}",
+            ]
+        ),
+        language="text",
+    )
+    if runtime_query_error:
+        st.error(runtime_query_error)
     table_rows = []
     for table, count in live_counts.items():
         table_rows.append(
