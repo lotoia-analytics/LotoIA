@@ -1487,6 +1487,37 @@ def _clear_institutional_history_state() -> None:
         st.session_state.pop(key, None)
 
 
+def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None:
+    history_counts = (
+        int(snapshot["counts"].get("generation_events", 0) or 0),
+        int(snapshot["counts"].get("generated_games", 0) or 0),
+        int(snapshot["counts"].get("reconciliation_runs", 0) or 0),
+        int(snapshot["counts"].get("reconciliation_games", 0) or 0),
+        int(snapshot["counts"].get("reconciliation_events", 0) or 0),
+    )
+    if any(history_counts):
+        return
+    _clear_institutional_history_state()
+    for key in (
+        "institutional_contest_nav",
+        "institutional_draw_input",
+        "institutional_sync_last_payload",
+        "institutional_sync_status",
+        "institutional_sync_error",
+        "institutional_sync_timestamp",
+        "institutional_sync_http_status",
+        "institutional_sync_request_url",
+        "institutional_imported_contest",
+        "institutional_imported_numbers",
+        "institutional_simulation",
+        "institutional_simulation_result",
+        "institutional_simulation_error",
+        "institutional_check_result",
+        "institutional_check",
+    ):
+        st.session_state.pop(key, None)
+
+
 def _purge_institutional_history_tables() -> dict[str, Any]:
     tables = [
         "reconciliation_games",
@@ -3109,6 +3140,7 @@ def main() -> None:
     st.set_page_config(page_title="LotoIA Institucional", page_icon="🧭", layout="wide")
     _ensure_institutional_schema()
     snapshot = _database_snapshot()
+    _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(st.session_state.get("institutional_page", "Gerar Jogos"), snapshot)
     st.session_state["institutional_page"] = page
     st.success(BUILD_MARKER)
