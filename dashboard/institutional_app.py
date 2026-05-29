@@ -345,10 +345,6 @@ def _database_snapshot() -> dict[str, Any]:
     latest: dict[str, Any] = {}
     with engine.begin() as connection:
         for table in preferred_tables:
-            if table not in table_names:
-                counts[table] = 0
-                latest[table] = "-"
-                continue
             try:
                 counts[table] = int(connection.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
             except Exception:
@@ -2333,7 +2329,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     top_cols = st.columns([1.1, 1.3, 1.6])
     if contest_summary:
         top_cols[0].metric("Último concurso", int(contest_summary["contest_number"]))
-        top_cols[1].caption(f"Fonte: {contest_summary['source']}")
+        top_cols[1].caption(f"Fonte: {contest_summary.get('source', 'banco oficial')}")
         top_cols[2].caption(
             f"dezenas: {' '.join(f'{number:02d}' for number in contest_summary.get('dezenas', [])) or '-'}"
         )
