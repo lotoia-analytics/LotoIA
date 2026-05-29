@@ -1774,56 +1774,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
     st.divider()
     st.markdown("##### Tabelas Institucionais")
-    table_proof_imported_contests = int(live_counts.get("imported_contests", 0))
-    snapshot_diagnostics = _database_snapshot().get("table_diagnostics", {})
-    imported_contests_diag = snapshot_diagnostics.get("imported_contests", {})
-    snapshot_error_imported_contests = str(imported_contests_diag.get("error", "") or "")
-    snapshot_status_imported_contests = str(imported_contests_diag.get("status", "-") or "-")
-    snapshot_query_imported_contests = str(imported_contests_diag.get("query", "") or "")
-    try:
-        with _get_engine_cached().begin() as connection:
-            runtime_query_imported_contests = int(
-                connection.execute(text('SELECT COUNT(*) FROM "imported_contests"')).scalar() or 0
-            )
-        runtime_query_error = ""
-    except Exception as exc:  # pragma: no cover - surfaced in UI
-        runtime_query_imported_contests = None
-        runtime_query_error = str(exc)
-    st.markdown("###### Prova do imported_contests")
-    proof_cols = st.columns(6)
-    proof_cols[0].metric("commit_ativo", BUILD_MARKER)
-    proof_cols[1].metric("database_snapshot_imported_contests", int(_database_snapshot()["counts"].get("imported_contests", 0)))
-    proof_cols[2].metric("live_counts_imported_contests", int(live_counts.get("imported_contests", 0)))
-    if runtime_query_imported_contests is None:
-        proof_cols[3].metric("runtime_query_imported_contests", "-")
-    else:
-        proof_cols[3].metric("runtime_query_imported_contests", runtime_query_imported_contests)
-    proof_cols[4].metric("table_row_imported_contests", table_proof_imported_contests)
-    proof_cols[5].metric("latest_imported_contests", snapshot["latest"].get("imported_contests", "-"))
-    st.code(
-        "\n".join(
-            [
-                f"commit_ativo = {BUILD_MARKER}",
-                f"database_snapshot_imported_contests = {int(_database_snapshot()['counts'].get('imported_contests', 0))}",
-                f"live_counts_imported_contests = {int(live_counts.get('imported_contests', 0))}",
-                f"runtime_query_imported_contests = {runtime_query_imported_contests if runtime_query_imported_contests is not None else 'ERROR'}",
-                f"table_row_imported_contests = {table_proof_imported_contests}",
-                f"latest_imported_contests = {snapshot['latest'].get('imported_contests', '-')}",
-                f"snapshot_status_imported_contests = {snapshot_status_imported_contests}",
-                f"snapshot_query_imported_contests = {snapshot_query_imported_contests}",
-                f"snapshot_error_imported_contests = {snapshot_error_imported_contests or '-'}",
-                f"snapshot_count_status_imported_contests = {imported_contests_diag.get('count_status', '-')}",
-                f"snapshot_count_error_imported_contests = {imported_contests_diag.get('count_error', '-') or '-'}",
-                f"snapshot_latest_status_imported_contests = {imported_contests_diag.get('latest_status', '-')}",
-                f"snapshot_latest_error_imported_contests = {imported_contests_diag.get('latest_error', '-') or '-'}",
-            ]
-        ),
-        language="text",
-    )
-    if snapshot_error_imported_contests:
-        st.error(f"snapshot_error_imported_contests = {snapshot_error_imported_contests}")
-    if runtime_query_error:
-        st.error(runtime_query_error)
     table_rows = []
     for table, count in live_counts.items():
         table_rows.append(
@@ -2640,9 +2590,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
-    database_snapshot_imported_contests = int(_database_snapshot()["counts"].get("imported_contests", 0))
     live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
-    metric_imported_contests = int(live_counts_imported_contests)
     try:
         with _get_engine_cached().begin() as connection:
             runtime_query_imported_contests = int(
@@ -2652,28 +2600,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     except Exception as exc:  # pragma: no cover - surfaced in UI
         runtime_query_imported_contests = None
         runtime_query_error = str(exc)
-
-    st.markdown("##### Prova do imported_contests")
-    proof_cols = st.columns(4)
-    proof_cols[0].metric("database_snapshot_imported_contests", database_snapshot_imported_contests)
-    proof_cols[1].metric("live_counts_imported_contests", live_counts_imported_contests)
-    proof_cols[2].metric("metric_imported_contests", metric_imported_contests)
-    if runtime_query_imported_contests is None:
-        proof_cols[3].metric("runtime_query_imported_contests", "-")
-        st.error(runtime_query_error)
-    else:
-        proof_cols[3].metric("runtime_query_imported_contests", runtime_query_imported_contests)
-    st.code(
-        "\n".join(
-            [
-                f"database_snapshot_imported_contests = {database_snapshot_imported_contests}",
-                f"live_counts_imported_contests = {live_counts_imported_contests}",
-                f"metric_imported_contests = {metric_imported_contests}",
-                f"runtime_query_imported_contests = {runtime_query_imported_contests if runtime_query_imported_contests is not None else 'ERROR'}",
-            ]
-        ),
-        language="text",
-    )
 
     latest_contest = _get_latest_contest()
     latest_generation = _load_latest_generated_games() or {}
