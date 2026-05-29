@@ -344,44 +344,56 @@ def _database_snapshot() -> dict[str, Any]:
     errors: dict[str, str] = {}
     query_logs: list[dict[str, Any]] = []
     table_diagnostics: dict[str, dict[str, Any]] = {}
-    with engine.begin() as connection:
-        for table in preferred_tables:
-            query = f'SELECT COUNT(*) FROM "{table}"'
+    for table in preferred_tables:
+        count_query = f'SELECT COUNT(*) FROM "{table}"'
+        count_status = "ok"
+        count_error = ""
+        count_value = 0
+        try:
+            with engine.connect() as connection:
+                value = connection.execute(text(count_query)).scalar()
+            count_value = int(value or 0)
+        except Exception as exc:
+            count_status = "error"
+            count_error = str(exc)
+            errors[table] = count_error
+        counts[table] = count_value
+
+        latest_field = latest_fields.get(table, "created_at")
+        latest_status = "ok"
+        latest_error = ""
+        latest_value: Any = "-"
+        if latest_field in {"created_at", "contest_number"}:
+            latest_query = f'SELECT MAX("{latest_field}") FROM "{table}"'
             try:
-                value = connection.execute(text(query)).scalar()
-                counts[table] = int(value or 0)
-                table_diagnostics[table] = {
-                    "table": table,
-                    "query": query,
-                    "status": "ok",
-                    "count": counts[table],
-                    "error": "",
-                }
-                query_logs.append(
-                    dict(table_diagnostics[table])
-                )
+                with engine.connect() as connection:
+                    value = connection.execute(text(latest_query)).scalar()
+                latest_value = value if value is not None else "-"
             except Exception as exc:
-                counts[table] = 0
-                errors[table] = str(exc)
-                table_diagnostics[table] = {
-                    "table": table,
-                    "query": query,
-                    "status": "error",
-                    "count": 0,
-                    "error": str(exc),
-                }
-                query_logs.append(
-                    dict(table_diagnostics[table])
-                )
-            latest_field = latest_fields.get(table, "created_at")
-            if latest_field in {"created_at", "contest_number"}:
-                try:
-                    value = connection.execute(text(f'SELECT MAX("{latest_field}") FROM "{table}"')).scalar()
-                    latest[table] = value if value is not None else "-"
-                except Exception:
-                    latest[table] = "-"
-            else:
-                latest[table] = "-"
+                latest_status = "error"
+                latest_error = str(exc)
+                latest_value = "-"
+        latest[table] = latest_value
+        table_diagnostics[table] = {
+            "table": table,
+            "count_query": count_query,
+            "count_status": count_status,
+            "count": count_value,
+            "count_error": count_error,
+            "latest_field": latest_field,
+            "latest_query": f'SELECT MAX("{latest_field}") FROM "{table}"' if latest_field in {"created_at", "contest_number"} else "",
+            "latest_status": latest_status,
+            "latest_error": latest_error,
+        }
+        query_logs.append(
+            {
+                "table": table,
+                "query": count_query,
+                "status": count_status,
+                "count": count_value,
+                "error": count_error,
+            }
+        )
     return {
         "backend": adapter.backend,
         "engine_url": str(engine.url),
@@ -1800,6 +1812,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 f"snapshot_status_imported_contests = {snapshot_status_imported_contests}",
                 f"snapshot_query_imported_contests = {snapshot_query_imported_contests}",
                 f"snapshot_error_imported_contests = {snapshot_error_imported_contests or '-'}",
+                f"snapshot_count_status_imported_contests = {imported_contests_diag.get('count_status', '-')}",
+                f"snapshot_count_error_imported_contests = {imported_contests_diag.get('count_error', '-') or '-'}",
+                f"snapshot_latest_status_imported_contests = {imported_contests_diag.get('latest_status', '-')}",
+                f"snapshot_latest_error_imported_contests = {imported_contests_diag.get('latest_error', '-') or '-'}",
             ]
         ),
         language="text",
