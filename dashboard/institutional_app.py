@@ -1161,6 +1161,18 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         run = session.query(ReconciliationRun).order_by(ReconciliationRun.id.desc()).first()
         if run is None:
             return None
+        games_rows = (
+            session.query(ReconciliationGame)
+            .filter(ReconciliationGame.reconciliation_run_id == run.id)
+            .order_by(ReconciliationGame.game_index.asc())
+            .all()
+        )
+        matched_numbers: set[int] = set()
+        hit_counts: Counter[int] = Counter()
+        for row in games_rows:
+            hits = int(getattr(row, "hits", 0) or 0)
+            hit_counts[hits] += 1
+            matched_numbers.update(int(number) for number in (row.matched_numbers or []))
         return {
             "id": int(run.id or 0),
             "contest_id": int(getattr(run, "contest_id", 0) or 0),
@@ -1169,6 +1181,9 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
             "prize_count": int(getattr(run, "prize_count", 0) or 0),
             "total_hits": int(getattr(run, "total_hits", 0) or 0),
             "best_hits": int(getattr(run, "best_hits", 0) or 0),
+            "games_count": len(games_rows),
+            "matched_numbers": sorted(matched_numbers),
+            "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
             "created_at": run.created_at.isoformat() if getattr(run, "created_at", None) else "",
         }
 
@@ -1439,7 +1454,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Hist?rico Institucional")
     st.write("Vis?o consolidada do runtime institucional limpo.")
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
-    latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_contest = _load_latest_contest_summary() or {}
     top_cols = st.columns(5)
@@ -1464,54 +1478,44 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
-    info_cols = st.columns([1, 1])
-    with info_cols[0]:
-        st.markdown("##### ?ltima gera??o persistida")
-        if latest_generation.get("games"):
-            st.caption(
-                f"generation_event_id={latest_generation.get('generation_event_id', '-')}"
-                f" | seed={latest_generation.get('seed', '-')}"
-                f" | total_games={latest_generation.get('total_games', '-')}"
-                f" | target_contest={latest_generation.get('target_contest', '-')}"
-                f" | avg_score={_mean_or_zero([float(game.get('score', 0.0) or 0.0) for game in latest_generation.get('games', [])])}"
-            )
+    st.markdown("##### ?ltima reconcilia??o persistida")
+    if latest_reconciliation:
+        st.caption(
+            f"reconciliation_id={latest_reconciliation.get('id', '-')}"
+            f" | generation_event_id={latest_reconciliation.get('generation_event_id', '-')}"
+            f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
+            f" | status={latest_reconciliation.get('status', '-')}"
+        )
+        recon_cols = st.columns(5)
+        recon_cols[0].metric("Concurso", latest_reconciliation.get("contest_id", "-"))
+        recon_cols[1].metric("Total jogos conferidos", latest_reconciliation.get("games_count", 0))
+        recon_cols[2].metric("Melhor acerto", latest_reconciliation.get("best_hits", "-"))
+        recon_cols[3].metric("Premiações", latest_reconciliation.get("prize_count", "-"))
+        recon_cols[4].metric("Total hits", latest_reconciliation.get("total_hits", "-"))
+        distribution = latest_reconciliation.get("hit_distribution") or {}
+        if distribution:
+            st.markdown("###### Distribui??o de acertos")
             st.dataframe(
                 pd.DataFrame(
                     [
-                        {
-                            "jogo": game.get("game_index", "-"),
-                            "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                            "perfil": game.get("profile_type", "-"),
-                            "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                            "coverage": round(float(game.get("coverage", 0.0) or 0.0), 4),
-                            "entropy": round(float(game.get("entropy", 0.0) or 0.0), 4),
-                        }
-                        for game in latest_generation.get("games") or []
+                        {"acertos": hits, "quantidade": count}
+                        for hits, count in sorted(distribution.items(), key=lambda item: (-int(item[0]), int(item[1])))
                     ]
                 ),
                 hide_index=True,
                 use_container_width=True,
             )
-        else:
-            st.info("Ainda n?o h? jogos persistidos nesta inst?ncia.")
-    with info_cols[1]:
-        st.markdown("##### ?ltima reconcilia??o persistida")
-        if latest_reconciliation:
-            st.caption(
-                f"reconciliation_id={latest_reconciliation.get('id', '-')}"
-                f" | generation_event_id={latest_reconciliation.get('generation_event_id', '-')}"
-                f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
-                f" | status={latest_reconciliation.get('status', '-')}"
-            )
-            recon_cols = st.columns(4)
-            recon_cols[0].metric("best_hits", latest_reconciliation.get("best_hits", "-"))
-            recon_cols[1].metric("prize_count", latest_reconciliation.get("prize_count", "-"))
-            recon_cols[2].metric("total_hits", latest_reconciliation.get("total_hits", "-"))
-            recon_cols[3].metric("matched_numbers", len(latest_reconciliation.get("matched_numbers", []) or []))
-        else:
-            st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
+    else:
+        st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
     st.divider()
-    st.markdown("##### Tabelas institucionais")
+    st.markdown("##### Timeline Institucional")
+    timeline = _load_institutional_timeline(limit=30)
+    if timeline:
+        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
+    else:
+        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
+    st.divider()
+    st.markdown("##### Tabelas Institucionais")
     table_rows = []
     for table, count in snapshot["counts"].items():
         table_rows.append(
@@ -1522,13 +1526,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
-    st.divider()
-    st.markdown("##### Timeline operacional")
-    timeline = _load_institutional_timeline(limit=30)
-    if timeline:
-        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
-    else:
-        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
 
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
@@ -2918,6 +2915,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     else:
         st.info("Ainda n?o h? gera??es persistidas para reconstru??o anal?tica.")
     st.divider()
+    st.markdown("##### Timeline operacional")
+    timeline = _load_institutional_timeline(limit=30)
+    if timeline:
+        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
+    else:
+        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
+    st.divider()
     st.markdown("##### Tabelas institucionais")
     table_rows = []
     for table, count in snapshot["counts"].items():
@@ -2929,13 +2933,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
-    st.divider()
-    st.markdown("##### Timeline operacional")
-    timeline = _load_institutional_timeline(limit=30)
-    if timeline:
-        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
-    else:
-        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
 
 
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
