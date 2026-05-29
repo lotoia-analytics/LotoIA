@@ -422,20 +422,43 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
     conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
     st.markdown("##### SELECT COUNT(*) no runtime")
-    counts = audit["counts"]
-    audit_df = pd.DataFrame(
-        [
-            {"query": "SELECT COUNT(*) FROM generation_events;", "count": int(counts.get("generation_events", 0))},
-            {"query": "SELECT COUNT(*) FROM generated_games;", "count": int(counts.get("generated_games", 0))},
-            {"query": "SELECT COUNT(*) FROM reconciliation_runs;", "count": int(counts.get("reconciliation_runs", 0))},
-            {"query": "SELECT COUNT(*) FROM reconciliation_games;", "count": int(counts.get("reconciliation_games", 0))},
-            {"query": "SELECT COUNT(*) FROM imported_contests;", "count": int(counts.get("imported_contests", 0))},
-        ]
-    )
+    audit_rows: list[dict[str, Any]] = []
+    with _get_engine_cached().begin() as connection:
+        for query in (
+            "SELECT COUNT(*) FROM generation_events;",
+            "SELECT COUNT(*) FROM generated_games;",
+            "SELECT COUNT(*) FROM reconciliation_runs;",
+            "SELECT COUNT(*) FROM reconciliation_games;",
+            "SELECT COUNT(*) FROM imported_contests;",
+        ):
+            row: dict[str, Any] = {"query": query, "count": None, "status": "ok", "error": ""}
+            try:
+                value = connection.execute(text(query)).scalar()
+                row["count"] = int(value or 0)
+            except Exception as exc:
+                row["status"] = "error"
+                row["error"] = str(exc)
+                row["count"] = None
+            audit_rows.append(row)
+    audit_df = pd.DataFrame(audit_rows)
     st.dataframe(audit_df, hide_index=True, use_container_width=True)
+    error_rows = [row for row in audit_rows if row.get("status") == "error"]
+    if error_rows:
+        with st.expander("Erros SQL da auditoria", expanded=True):
+            st.dataframe(
+                pd.DataFrame(error_rows)[["query", "error"]],
+                hide_index=True,
+                use_container_width=True,
+            )
     st.markdown("##### Diferenças entre módulos")
     source_map = _institutional_source_map(snapshot)
     st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
+    st.markdown("##### Papel do session_state")
+    st.info(
+        "session_state é apenas estado temporário de interface: página ativa, seleção de botões, "
+        "diagnósticos e resultados recentes. A verdade operacional vem do PostgreSQL Institucional; "
+        "session_state não deve ser usado como fonte de dados persistente nem como origem de conferência."
+    )
     st.caption(f"build={BUILD_MARKER} | commit={audit['commit_active']}")
 
 
