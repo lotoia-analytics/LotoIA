@@ -2,17 +2,33 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from datetime import datetime, UTC
 from typing import Any
+
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from lotoia.database.adapter import resolve_institutional_adapter
+from lotoia.database.database import ImportedContest
+from lotoia.database.database import create_database
+from lotoia.database.database import get_session
 
 
 class ContestRepository:
     """Legacy contest persistence API owned by the official database namespace."""
 
     def __init__(self, db_path: str | Path = "data/lotoia.db") -> None:
-        self.connection = sqlite3.connect(db_path)
+        self.db_path = Path(db_path)
+        self.adapter = resolve_institutional_adapter(self.db_path)
+        self.backend = self.adapter.backend
+        self.database_url = self.adapter.database_url
+        self.connection = sqlite3.connect(self.db_path) if self.backend == "sqlite" else None
 
     def create_table(self) -> None:
+        if self.backend != "sqlite":
+            create_database(self.db_path)
+            return
         cursor = self.connection.cursor()
 
         cursor.execute("""
@@ -91,52 +107,106 @@ class ContestRepository:
 
         self.connection.commit()
 
-    def save_contest(self, contest: dict[str, Any]) -> None:
-        cursor = self.connection.cursor()
+    @contextmanager
+    def transaction(self):
+        if self.backend == "sqlite":
+            if self.connection is None:
+                raise RuntimeError("SQLite connection not available.")
+            try:
+                yield self.connection
+                self.connection.commit()
+            except Exception:
+                self.connection.rollback()
+                raise
+            return
+        with get_session(self.db_path) as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
 
+    def save_contest(self, contest: dict[str, Any], *, commit: bool = True, session: Any | None = None) -> None:
         dezenas = ",".join(contest["dezenas"])
         metadata = contest.get("metadata_json", contest.get("metadata", {}))
         if isinstance(metadata, str):
             metadata_json = metadata
         else:
             metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+        if self.backend != "sqlite":
+            values = {
+                "contest_number": int(contest["concurso"]),
+                "created_at": contest.get("created_at") or datetime.now(UTC),
+                "data": str(contest["data"]),
+                "dezenas": dezenas,
+                "metadata_json": metadata_json,
+            }
+            stmt = pg_insert(ImportedContest).values(**values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[ImportedContest.contest_number],
+                set_={
+                    "created_at": stmt.excluded.created_at,
+                    "data": stmt.excluded.data,
+                    "dezenas": stmt.excluded.dezenas,
+                    "metadata_json": stmt.excluded.metadata_json,
+                },
+            )
+            if session is None:
+                with get_session(self.db_path) as active_session:
+                    try:
+                        active_session.execute(stmt)
+                        if commit:
+                            active_session.commit()
+                    except Exception:
+                        active_session.rollback()
+                        raise
+            else:
+                session.execute(stmt)
+            return
 
-        cursor.execute(
-            """
-        INSERT OR IGNORE INTO contests (
-            concurso,
-            data,
-            dezenas
-        )
-        VALUES (?, ?, ?)
-        """,
-            (
-                contest["concurso"],
-                contest["data"],
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                """
+            INSERT OR IGNORE INTO contests (
+                concurso,
+                data,
+                dezenas
+            )
+            VALUES (?, ?, ?)
+            """,
+                (
+                    contest["concurso"],
+                    contest["data"],
+                    dezenas,
+                ),
+            )
+
+            cursor.execute(
+                """
+            INSERT OR REPLACE INTO imported_contests (
+                contest_number,
+                created_at,
+                data,
                 dezenas,
-            ),
-        )
+                metadata_json
+            )
+            VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
+            """,
+                (
+                    contest["concurso"],
+                    contest["data"],
+                    dezenas,
+                    metadata_json,
+                ),
+            )
 
-        cursor.execute(
-            """
-        INSERT OR REPLACE INTO imported_contests (
-            contest_number,
-            created_at,
-            data,
-            dezenas,
-            metadata_json
-        )
-        VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
-        """,
-            (
-                contest["concurso"],
-                contest["data"],
-                dezenas,
-                metadata_json,
-            ),
-        )
-
-        self.connection.commit()
+            if commit:
+                self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def save_generated_games(
         self,
@@ -189,6 +259,14 @@ class ContestRepository:
         return inserted
 
     def get_last_contest(self) -> int | None:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                row = (
+                    session.query(ImportedContest.contest_number)
+                    .order_by(ImportedContest.contest_number.desc())
+                    .first()
+                )
+                return int(row[0]) if row else None
         cursor = self.connection.cursor()
 
         cursor.execute("""
@@ -201,6 +279,22 @@ class ContestRepository:
         return result[0]
 
     def get_all_contests(self) -> list[dict[str, Any]]:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                rows = (
+                    session.query(ImportedContest)
+                    .order_by(ImportedContest.contest_number)
+                    .all()
+                )
+                return [
+                    {
+                        "concurso": row.contest_number,
+                        "data": row.data,
+                        "dezenas": row.dezenas.split(","),
+                        "metadata_json": row.metadata_json,
+                    }
+                    for row in rows
+                ]
         cursor = self.connection.cursor()
 
         cursor.execute("""
@@ -226,6 +320,17 @@ class ContestRepository:
         return contests
 
     def get_contest(self, contest_number: int) -> dict[str, Any] | None:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                row = session.get(ImportedContest, int(contest_number))
+                if row is None:
+                    return None
+                return {
+                    "concurso": row.contest_number,
+                    "data": row.data,
+                    "dezenas": row.dezenas.split(","),
+                    "metadata_json": row.metadata_json,
+                }
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -249,6 +354,21 @@ class ContestRepository:
         }
 
     def get_latest_contest_record(self) -> dict[str, Any] | None:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                row = (
+                    session.query(ImportedContest)
+                    .order_by(ImportedContest.contest_number.desc())
+                    .first()
+                )
+                if row is None:
+                    return None
+                return {
+                    "concurso": row.contest_number,
+                    "data": row.data,
+                    "dezenas": row.dezenas.split(","),
+                    "metadata_json": row.metadata_json,
+                }
         cursor = self.connection.cursor()
 
         cursor.execute(
