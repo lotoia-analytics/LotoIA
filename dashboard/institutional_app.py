@@ -1021,30 +1021,85 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
 
 def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
-    generation_state = st.session_state.get("institutional_generation") or {}
-    simulated_numbers = sorted(drawn_numbers or _build_simulated_draw(15))
-    games = list(generation_state.get("games") or [])
-    simulation_rows: list[dict[str, Any]] = []
-    for index, game in enumerate(games, start=1):
-        numbers = sorted(int(number) for number in game.get("numbers", []))
-        matched = sorted(set(numbers) & set(simulated_numbers))
-        simulation_rows.append(
-            {
-                "jogo": index,
-                "dezenas": " ".join(f"{number:02d}" for number in numbers),
-                "resultado": _format_simulation_numbers(numbers, matched),
-                "hits": len(matched),
-                "premiado": "sim" if len(matched) >= 11 else "nao",
-                "matched_numbers": matched,
-            }
-        )
-    st.session_state["institutional_simulation"] = {
-        "runtime_status": "simulated",
-        "timestamp": datetime.now(UTC).isoformat(),
-        "contest_numbers": simulated_numbers,
-        "results": simulation_rows,
-    }
-    st.session_state["institutional_simulation_result"] = simulation_rows
+    try:
+        simulated_numbers = sorted(drawn_numbers or _build_simulated_draw(15))
+        source = "session_generation"
+        generation_state = st.session_state.get("institutional_generation") or {}
+        games = list(generation_state.get("games") or [])
+        if not games:
+            source = "session_generation_result"
+            generation_result = st.session_state.get("institutional_generation_result") or {}
+            games = list(generation_result.get("jogos") or [])
+        if not games:
+            source = "latest_persisted_generation"
+            games = _institutional_generation_games()
+        if not games:
+            source = "all_persisted_games"
+            games = [game for group in _load_persisted_generation_event_groups() for game in list(group.get("games") or [])]
+        simulation_rows: list[dict[str, Any]] = []
+        for index, game in enumerate(games, start=1):
+            numbers = sorted(int(number) for number in game.get("numbers", []))
+            matched = sorted(set(numbers) & set(simulated_numbers))
+            simulation_rows.append(
+                {
+                    "jogo": index,
+                    "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                    "resultado": _format_simulation_numbers(numbers, matched),
+                    "hits": len(matched),
+                    "premiado": "sim" if len(matched) >= 11 else "nao",
+                    "matched_numbers": matched,
+                    "generation_event_id": int(game.get("generation_event_id", 0) or 0),
+                    "profile_type": str(game.get("profile_type", "") or ""),
+                    "score": float(game.get("score", game.get("final_score", {}).get("final_score", 0.0)) or 0.0),
+                    "odd": int(game.get("odd", 0) or 0),
+                    "even": int(game.get("even", 0) or 0),
+                    "entropy": float(game.get("entropy", 0.0) or 0.0),
+                    "coverage": float(game.get("coverage", 0.0) or 0.0),
+                }
+            )
+        premium_rows = [row for row in simulation_rows if int(row.get("hits", 0) or 0) >= 11]
+        st.session_state["institutional_simulation"] = {
+            "runtime_status": "simulated",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "contest_numbers": simulated_numbers,
+            "source": source,
+            "loaded_games": len(games),
+            "compared_games": len(simulation_rows),
+            "premium_games": len(premium_rows),
+            "results": simulation_rows,
+            "summary": {
+                "source": source,
+                "loaded_games": len(games),
+                "compared_games": len(simulation_rows),
+                "premium_games": len(premium_rows),
+                "contest_numbers": simulated_numbers,
+            },
+        }
+        st.session_state["institutional_simulation_result"] = simulation_rows
+        st.session_state["institutional_simulation_error"] = None
+    except Exception as exc:  # pragma: no cover - diagnostic path
+        st.session_state["institutional_simulation"] = {
+            "runtime_status": "error",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "contest_numbers": sorted(drawn_numbers or []),
+            "results": [],
+            "source": "error",
+            "loaded_games": 0,
+            "compared_games": 0,
+            "premium_games": 0,
+            "summary": {
+                "source": "error",
+                "loaded_games": 0,
+                "compared_games": 0,
+                "premium_games": 0,
+            },
+        }
+        st.session_state["institutional_simulation_result"] = []
+        st.session_state["institutional_simulation_error"] = {
+            "error": str(exc),
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        st.exception(exc)
 
 
 def _institutional_generation_games() -> list[dict[str, Any]]:
@@ -2375,30 +2430,107 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
-    if isinstance(check_result, dict) and check_result.get("results"):
-        st.markdown("#### Conferência")
-        st.dataframe(
-            pd.DataFrame(
+    if isinstance(check_result, dict):
+        generation_results = list(check_result.get("generation_results") or [])
+        if generation_results:
+            st.markdown("#### Resumo geral")
+            total_games_reconciled = sum(int(item.get("total_games", 0) or 0) for item in generation_results)
+            total_runs = len(generation_results)
+            best_hits = max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0)
+            total_hits = int(check_result.get("total_hits", 0) or 0)
+            prize_count = int(check_result.get("prize_count", 0) or 0)
+            st.write(total_runs)
+            st.write(total_games_reconciled)
+            st.write(best_hits)
+            summary_cols = st.columns(5)
+            summary_cols[0].metric("Concurso", check_result.get("contest_number", "-"))
+            summary_cols[1].metric("Total jogos conferidos", total_games_reconciled)
+            summary_cols[2].metric("Melhor acerto", best_hits)
+            summary_cols[3].metric("Prêmios", prize_count)
+            summary_cols[4].metric("Total hits", total_hits)
+            hit_totals: Counter[int] = Counter()
+            for item in generation_results:
+                for row in item.get("results", []) or []:
+                    hit_totals[int(row.get("hits", 0) or 0)] += 1
+            hit_counts_df = pd.DataFrame(
                 [
-                    {
-                        "jogo": row["game_index"],
-                        "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
-                        "hits": row["hits"],
-                        "premiado": row["prize_status"],
-                    }
-                    for row in check_result["results"]
+                    {"faixa": f"{hits} acertos", "quantidade": count}
+                    for hits, count in sorted(hit_totals.items(), key=lambda item: (-item[0], item[1]))
+                    if hits >= 10
                 ]
-            ),
-            hide_index=True,
-            use_container_width=True,
-        )
-        check_summary_cols = st.columns(4)
-        check_summary_cols[0].metric("concurso", check_result.get("contest_number", "-"))
-        check_summary_cols[1].metric("best_hits", check_result.get("best_hits", "-"))
-        check_summary_cols[2].metric("prizes", check_result.get("prize_count", "-"))
-        check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
-    elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
-        st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
+            )
+            if not hit_counts_df.empty:
+                st.dataframe(hit_counts_df, hide_index=True, use_container_width=True)
+            st.markdown("#### Por geração")
+            for item in generation_results:
+                title = f"Geração #{item.get('generation_event_id', '-')}"
+                with st.expander(
+                    f"{title} | jogos={item.get('total_games', '-') } | best_hits={item.get('best_hits', '-')}",
+                    expanded=False,
+                ):
+                    gen_cols = st.columns(4)
+                    gen_cols[0].metric("seed", item.get("seed", "-"))
+                    gen_cols[1].metric("contest", item.get("contest_number", "-"))
+                    gen_cols[2].metric("best_hits", item.get("best_hits", "-"))
+                    gen_cols[3].metric("prize_count", item.get("prize_count", "-"))
+                    generation_df = pd.DataFrame(
+                        [
+                            {
+                                "jogo": row["game_index"],
+                                "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                                "hits": row["hits"],
+                                "premiado": row["prize_status"],
+                                "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
+                            }
+                            for row in item.get("results", []) or []
+                        ]
+                    )
+                    if not generation_df.empty:
+                        st.dataframe(generation_df, hide_index=True, use_container_width=True)
+                    else:
+                        st.info("Nenhum jogo encontrado para esta geração.")
+            st.markdown("#### Últimas reconciliações")
+            reconciliations = _load_reconciliation_history(limit=10)
+            if reconciliations:
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "concurso": row.get("contest_id", "-"),
+                                "data": row.get("created_at", "-"),
+                                "jogos conferidos": row.get("games_count", "-"),
+                                "melhor acerto": row.get("best_hits", "-"),
+                                "prêmios": row.get("prize_count", "-"),
+                            }
+                            for row in reconciliations
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.info("Ainda não há reconciliações persistidas nesta instância.")
+            st.markdown("#### Conferência")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "jogo": row["game_index"],
+                            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                            "hits": row["hits"],
+                            "premiado": row["prize_status"],
+                        }
+                        for generation in generation_results
+                        for row in generation.get("results", []) or []
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        elif check_result.get("status") == "waiting_contest":
+            st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
+        elif check_result.get("status") == "checked":
+            st.info("Conferência executada, mas nenhum resultado foi renderizado.")
     elif not latest_contest:
         st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
 
@@ -2427,6 +2559,21 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
             st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
             st.rerun()
     st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
+
+    simulation_state = st.session_state.get("institutional_simulation") or {}
+    if simulation_state:
+        sim_diag_cols = st.columns([1, 1, 1, 1])
+        sim_diag_cols[0].metric("source", str(simulation_state.get("source", "-") or "-"))
+        sim_diag_cols[1].metric("loaded_games", int(simulation_state.get("loaded_games", 0) or 0))
+        sim_diag_cols[2].metric("compared_games", int(simulation_state.get("compared_games", 0) or 0))
+        sim_diag_cols[3].metric("premium_games", int(simulation_state.get("premium_games", 0) or 0))
+        with st.expander("Diagnóstico da simulação", expanded=False):
+            st.json(simulation_state.get("summary") or {})
+            st.write("Jogos carregados:", int(simulation_state.get("loaded_games", 0) or 0))
+            st.write("Jogos comparados:", int(simulation_state.get("compared_games", 0) or 0))
+            error_payload = st.session_state.get("institutional_simulation_error")
+            if error_payload:
+                st.error(error_payload.get("error", "Erro desconhecido"))
 
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
@@ -2466,6 +2613,19 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
             )
         else:
             st.info("Nenhum jogo premiado com 11 pontos ou mais nesta simulação.")
+            st.dataframe(
+                pd.DataFrame(cover_result)[
+                    ["jogo", "dezenas", "hits", "premiado"]
+                ]
+                if cover_result
+                else pd.DataFrame(columns=["jogo", "dezenas", "hits", "premiado"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+    elif simulation_state.get("runtime_status") == "error":
+        st.error("A simulação encontrou um erro. Veja o diagnóstico acima.")
+    else:
+        st.info("Nenhum jogo encontrado para simulação.")
 
 
 def _render_history_page(snapshot: dict[str, Any]) -> None:
