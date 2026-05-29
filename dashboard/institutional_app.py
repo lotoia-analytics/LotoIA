@@ -381,6 +381,22 @@ def _load_imported_contest(contest_number: int | None = None) -> dict[str, Any] 
         }
 
 
+def _normalize_contest_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(record, dict):
+        return None
+    contest_number = record.get("contest_number", record.get("concurso"))
+    if not str(contest_number or "").isdigit():
+        return None
+    dezenas = _extract_int_numbers(record.get("dezenas", []) or [])
+    return {
+        "contest_number": int(contest_number),
+        "created_at": str(record.get("created_at", "") or ""),
+        "data": str(record.get("data", "") or ""),
+        "dezenas": dezenas,
+        "metadata_json": str(record.get("metadata_json", "{}") or "{}"),
+    }
+
+
 def _load_imported_contest_numbers() -> list[int]:
     with get_session(DB_PATH) as session:
         rows = session.query(ImportedContest.contest_number).order_by(ImportedContest.contest_number.asc()).all()
@@ -462,6 +478,9 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
 
 def _get_latest_contest() -> dict[str, Any] | None:
     sync_summary = st.session_state.get("institutional_last_official_sync_summary", {}) or {}
+    sync_record = _normalize_contest_record(sync_summary.get("latest_contest_record"))
+    if sync_record:
+        return sync_record
     sync_contest = sync_summary.get("latest_contest")
     if str(sync_contest or "").isdigit():
         synced_contest = _load_imported_contest(int(sync_contest))
@@ -1770,7 +1789,8 @@ def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
     st.caption(f"latest_reconciliation_id: {latest_reconciliation.get('id', '-') if latest_reconciliation else '-'}")
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
-        service = ResultSyncService(repository=ContestRepository(DB_PATH))
+        repository = ContestRepository(DB_PATH)
+        service = ResultSyncService(repository=repository)
         summary = service.sync_latest()
         payload = summary.to_dict()
         payload["status"] = "ok"
@@ -1778,6 +1798,9 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         payload["request_url"] = getattr(service.client, "last_request_url", "")
         payload["sync_error"] = ""
         payload["sync_timestamp"] = datetime.now(UTC).isoformat()
+        latest_record = repository.get_latest_contest_record()
+        payload["latest_contest_record"] = latest_record
+        payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
         return payload
     except Exception as exc:  # pragma: no cover - surfaced in UI
         client = None
@@ -1800,6 +1823,8 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
             "rollback": True,
             "http_status": None,
             "request_url": "",
+            "latest_contest_record": None,
+            "imported_numbers": [],
         }
 
 
@@ -2350,7 +2375,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
             st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
             st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
-            st.session_state["institutional_imported_numbers"] = sync_payload.get("contest_ids", [])
+            latest_contest_record = _normalize_contest_record(sync_payload.get("latest_contest_record"))
+            st.session_state["institutional_imported_numbers"] = list(latest_contest_record.get("dezenas", [])) if latest_contest_record else list(sync_payload.get("imported_numbers", []) or [])
             _persist_official_sync_diagnostics(
                 {
                     "sync_status": st.session_state.get("institutional_sync_status", "-"),
@@ -2391,7 +2417,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
             st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
             st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
-            st.session_state["institutional_imported_numbers"] = sync_payload.get("contest_ids", [])
+            latest_contest_record = _normalize_contest_record(sync_payload.get("latest_contest_record"))
+            st.session_state["institutional_imported_numbers"] = list(latest_contest_record.get("dezenas", [])) if latest_contest_record else list(sync_payload.get("imported_numbers", []) or [])
             _persist_official_sync_diagnostics(
                 {
                     "sync_status": st.session_state.get("institutional_sync_status", "-"),
