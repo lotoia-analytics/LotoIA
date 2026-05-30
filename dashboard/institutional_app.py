@@ -1408,6 +1408,10 @@ def _run_institutional_generation_batch(
     batch_status = "APROVADO" if batch_total_generated == batch_total_unique and batch_total_duplicates == 0 else "ERRO_CRITICO"
     st.session_state["institutional_generation_batch_result"] = {
         "batch_id": batch_id,
+        "quantidade_jogos_por_geracao": int(total_games),
+        "quantidade_geracoes_na_bateria": batch_runs,
+        "quantidade_dezenas_por_jogo": int(dezenas_per_game),
+        "total_jogos_esperados": int(total_games) * batch_runs,
         "total_gens_solicitadas": batch_runs,
         "total_jogos_solicitados": batch_total_requested,
         "total_jogos_gerados": batch_total_generated,
@@ -2289,11 +2293,12 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
-    source_cols = st.columns(4)
+    source_cols = st.columns(5)
     source_cols[0].metric("backend", snapshot["backend"])
     source_cols[1].metric("database_source", snapshot["database_source"])
     source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
     source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
+    source_cols[4].metric("institutional_output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
     st.caption(
         " | ".join(
             [
@@ -2562,6 +2567,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         diag_cols[7].metric("generation_event_id_mais_recente", int(generation_df["generation_event_id"].max()) if not generation_df.empty else "-")
         diag_cols[8].metric("total_eventos_com_alerta", int((generation_df["observações/alertas"].astype(str) != "OK").sum()) if not generation_df.empty else 0)
         diag_cols[9].metric("total_eventos_ok", int((generation_df["observações/alertas"].astype(str) == "OK").sum()) if not generation_df.empty else 0)
+        st.caption(f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}")
     else:
         st.info("Ainda não há gerações persistidas para reconstrução institucional.")
 
@@ -3378,7 +3384,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         )
     )
     entropy_min = float(
-        structural_cols[2].slider(
+    structural_cols[2].slider(
             "Entropia mínima",
             min_value=0.0,
             max_value=1.0,
@@ -3389,40 +3395,53 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     )
     structural_cols[3].caption("Perfil geométrico adaptado automaticamente ao tamanho do jogo.")
 
+    total_jogos_esperados = int(total_games) * int(generation_runs)
+    st.markdown("##### Resumo da bateria")
+    resume_cols = st.columns(4)
+    resume_cols[0].metric("jogos por geração", int(total_games))
+    resume_cols[1].metric("gerações na bateria", int(generation_runs))
+    resume_cols[2].metric("dezenas por jogo", int(dezenas_per_game))
+    resume_cols[3].metric("total esperado de jogos", total_jogos_esperados)
+    if generation_runs > 1 and dezenas_per_game != 15:
+        st.error("Nesta fase, a bateria oficial precisa usar 15 dezenas por jogo para manter a calibração institucional.")
+
     button_cols = st.columns([0.28, 1.72])
     if button_cols[0].button("LotoIA", type="primary"):
-        if generation_runs > 1:
-            _run_institutional_generation_batch(
-                generation_runs=generation_runs,
-                total_games=total_games,
-                dezenas_per_game=dezenas_per_game,
-                use_top50=use_top50,
-                odd_min=odd_min,
-                odd_max=odd_max,
-                even_min=even_min,
-                even_max=even_max,
-                sequence_max=sequence_max,
-                coverage_min=coverage_min,
-                entropy_min=entropy_min,
-                repeat_limit=repeat_limit,
-                snapshot=snapshot,
-            )
+        if generation_runs > 1 and dezenas_per_game != 15:
+            st.error("A bateria institucional oficial exige 15 dezenas por jogo nesta fase.")
         else:
-            _run_institutional_generation(
-                total_games=total_games,
-                dezenas_per_game=dezenas_per_game,
-                use_top50=use_top50,
-                odd_min=odd_min,
-                odd_max=odd_max,
-                even_min=even_min,
-                even_max=even_max,
-                sequence_max=sequence_max,
-                coverage_min=coverage_min,
-                entropy_min=entropy_min,
-                repeat_limit=repeat_limit,
-                snapshot=snapshot,
-            )
-        st.rerun()
+            if generation_runs > 1:
+                _run_institutional_generation_batch(
+                    generation_runs=generation_runs,
+                    total_games=total_games,
+                    dezenas_per_game=dezenas_per_game,
+                    use_top50=use_top50,
+                    odd_min=odd_min,
+                    odd_max=odd_max,
+                    even_min=even_min,
+                    even_max=even_max,
+                    sequence_max=sequence_max,
+                    coverage_min=coverage_min,
+                    entropy_min=entropy_min,
+                    repeat_limit=repeat_limit,
+                    snapshot=snapshot,
+                )
+            else:
+                _run_institutional_generation(
+                    total_games=total_games,
+                    dezenas_per_game=dezenas_per_game,
+                    use_top50=use_top50,
+                    odd_min=odd_min,
+                    odd_max=odd_max,
+                    even_min=even_min,
+                    even_max=even_max,
+                    sequence_max=sequence_max,
+                    coverage_min=coverage_min,
+                    entropy_min=entropy_min,
+                    repeat_limit=repeat_limit,
+                    snapshot=snapshot,
+                )
+            st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
 
     batch_result = st.session_state.get("institutional_generation_batch_result") or {}
@@ -3432,6 +3451,10 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.info(
             " | ".join(
                 [
+                    f"quantidade_jogos_por_geracao={batch_result.get('quantidade_jogos_por_geracao', '-')}",
+                    f"quantidade_geracoes_na_bateria={batch_result.get('quantidade_geracoes_na_bateria', '-')}",
+                    f"quantidade_dezenas_por_jogo={batch_result.get('quantidade_dezenas_por_jogo', '-')}",
+                    f"total_jogos_esperados={batch_result.get('total_jogos_esperados', '-')}",
                     f"total_gens_solicitadas={batch_result.get('total_gens_solicitadas', '-')}",
                     f"total_jogos_solicitados={batch_result.get('total_jogos_solicitados', '-')}",
                     f"total_jogos_gerados={batch_result.get('total_jogos_gerados', '-')}",
