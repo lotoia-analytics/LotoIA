@@ -855,15 +855,17 @@ def _select_subset_from_candidate(
     entropy_min: float,
     repeat_limit: int,
 ) -> list[int] | None:
-    unique_numbers = sorted({int(number) for number in numbers})
-    if not unique_numbers or target_size < 1:
+    candidate_numbers = sorted({int(number) for number in numbers})
+    if target_size < 1:
         return None
-    if target_size > len(unique_numbers):
-        target_size = len(unique_numbers)
-
+    if target_size > 25:
+        return None
+    universe = list(range(1, 26))
+    candidate_set = set(candidate_numbers)
     scoring = sorted(
-        unique_numbers,
+        universe,
         key=lambda number: (
+            -int(number in candidate_set),
             -int(frequency_map.get(int(number), 0)),
             int(number in latest_numbers),
             int(number),
@@ -1077,24 +1079,58 @@ def _run_institutional_generation(
             break
 
     if not games:
-        games = [
-            {
-                "numbers": list(candidate.get("numbers", []))[:dezenas_per_game],
-                "odd": sum(1 for number in candidate.get("numbers", [])[:dezenas_per_game] if int(number) % 2 != 0),
-                "even": sum(1 for number in candidate.get("numbers", [])[:dezenas_per_game] if int(number) % 2 == 0),
-                "sum": sum(int(number) for number in candidate.get("numbers", [])[:dezenas_per_game]),
-                "frame": 0,
-                "center": 0,
-                "quadra_score": dict(candidate.get("quadra_score", {})),
-                "final_score": dict(candidate.get("final_score", {})),
-                "historical_intelligence": dict(candidate.get("historical_intelligence", {})),
-                "profile_type": str(candidate.get("profile_type", "")),
-                "profile_score": float(candidate.get("profile_score", 0.0) or 0.0),
-                "ml_enabled": False,
-                "structural_metrics": {},
-            }
-            for candidate in ranked_candidates[:total_games]
-        ]
+        games = []
+        for candidate in ranked_candidates[:total_games]:
+            fallback_numbers = _select_subset_from_candidate(
+                list(candidate.get("numbers", [])),
+                target_size=dezenas_per_game,
+                frequency_map=history_frequency,
+                latest_numbers=latest_numbers,
+                odd_min=odd_min,
+                odd_max=odd_max,
+                even_min=even_min,
+                even_max=even_max,
+                sequence_max=sequence_max,
+                coverage_min=coverage_min,
+                entropy_min=entropy_min,
+                repeat_limit=repeat_limit,
+            )
+            if not fallback_numbers:
+                fallback_numbers = _select_subset_from_candidate(
+                    list(range(1, 26)),
+                    target_size=dezenas_per_game,
+                    frequency_map=history_frequency,
+                    latest_numbers=latest_numbers,
+                    odd_min=odd_min,
+                    odd_max=odd_max,
+                    even_min=even_min,
+                    even_max=even_max,
+                    sequence_max=sequence_max,
+                    coverage_min=coverage_min,
+                    entropy_min=entropy_min,
+                    repeat_limit=repeat_limit,
+                )
+            if not fallback_numbers:
+                continue
+            odd_count = sum(1 for number in fallback_numbers if number % 2 != 0)
+            even_count = len(fallback_numbers) - odd_count
+            games.append(
+                {
+                    "numbers": fallback_numbers,
+                    "odd": odd_count,
+                    "even": even_count,
+                    "sum": sum(fallback_numbers),
+                    "frame": len({((number - 1) // 5) for number in fallback_numbers}),
+                    "center": sum(1 for number in fallback_numbers if 8 <= number <= 18),
+                    "quadra_score": dict(candidate.get("quadra_score", {})),
+                    "final_score": dict(candidate.get("final_score", {})),
+                    "historical_intelligence": dict(candidate.get("historical_intelligence", {})),
+                    "profile_type": str(candidate.get("profile_type", "")),
+                    "profile_score": float(candidate.get("profile_score", 0.0) or 0.0),
+                    "ml_enabled": False,
+                    "structural_metrics": {},
+                }
+            )
     generation_snapshot = _persist_generation_snapshot(
         games=games,
         seed=seed,
@@ -3062,7 +3098,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     top_cols = st.columns([1.3, 1.3, 1.8])
     top_cols[0].caption(f"Concurso alvo: {snapshot['latest'].get('imported_contests', '-')}")
-    top_cols[1].caption("Cada jogo mant?m 15 dezenas da Lotof?cil.")
+    top_cols[1].caption("Cada jogo respeita a quantidade selecionada.")
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
     st.markdown("#### Motor de gera??o")
