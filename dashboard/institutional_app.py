@@ -47,6 +47,15 @@ HB_GEOMETRY_CSV_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.csv"
 SYNC_DIAGNOSTIC_FILE = REPORTS_DIR / "institutional_sync_diagnostics.json"
 DB_PATH = DEFAULT_DATABASE_PATH
 MAX_INSTITUTIONAL_DEZENAS_PER_GAME = 23
+HISTORICAL_TEST_TABLES = (
+    "generation_events",
+    "generated_games",
+    "reconciliation_runs",
+    "reconciliation_games",
+    "reconciliation_events",
+    "operational_logs",
+    "reset_events",
+)
 
 _JOB_LOCK = threading.Lock()
 _JOB_STATE: dict[str, Any] = {
@@ -2022,27 +2031,41 @@ def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None
 
 
 def _purge_institutional_history_tables() -> dict[str, Any]:
-    tables = [
-        "reconciliation_games",
-        "reconciliation_runs",
-        "reconciliation_events",
-        "operational_logs",
-        "reset_events",
-    ]
+    before_snapshot = _database_snapshot()
     deleted: dict[str, int] = {}
-    with get_session(DB_PATH) as session:
-        for table in tables:
-            try:
-                deleted[table] = int(session.execute(text(f'DELETE FROM "{table}"')).rowcount or 0)
-            except Exception:
-                deleted[table] = 0
-        session.commit()
+    errors: dict[str, str] = {}
+    engine = get_engine(DB_PATH)
+    for table in HISTORICAL_TEST_TABLES:
+        try:
+            with engine.begin() as connection:
+                result = connection.execute(text(f'DELETE FROM "{table}"'))
+            deleted[table] = int(result.rowcount or 0)
+        except Exception as exc:
+            deleted[table] = 0
+            errors[table] = str(exc)
     try:
         st.cache_data.clear()
     except Exception:
         pass
     _clear_institutional_history_state()
-    return {"status": "ok", "deleted": deleted}
+    after_snapshot = _database_snapshot()
+    return {
+        "status": "partial" if errors else "ok",
+        "deleted": deleted,
+        "errors": errors,
+        "before": {
+            "counts": {table: int(before_snapshot["counts"].get(table, 0) or 0) for table in HISTORICAL_TEST_TABLES},
+            "latest": {table: before_snapshot["latest"].get(table, "-") for table in HISTORICAL_TEST_TABLES},
+        },
+        "after": {
+            "counts": {table: int(after_snapshot["counts"].get(table, 0) or 0) for table in HISTORICAL_TEST_TABLES},
+            "latest": {table: after_snapshot["latest"].get(table, "-") for table in HISTORICAL_TEST_TABLES},
+        },
+        "preserved": {
+            "imported_contests": int(after_snapshot["counts"].get("imported_contests", 0) or 0),
+            "latest_imported_contest": after_snapshot["latest"].get("imported_contests", "-"),
+        },
+    }
 
 
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
@@ -2321,28 +2344,59 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Limpar Históricos")
-    st.write("Limpa apenas os estados visuais e operacionais desta sessão.")
+    st.subheader("Limpar Histories")
+    st.write("Limpa apenas os estados visuais e operacionais desta sessao. Nao apaga o banco.")
     state_keys = sorted([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
     st.caption(f"Chaves institucionais ativas: {len(state_keys)}")
     st.code("\n".join(state_keys) if state_keys else "-", language="text")
-    if st.button("Limpar históricos desta sessão", type="primary"):
+    if st.button("Limpar historicos desta sessao", type="primary"):
         _clear_institutional_history_state()
-        st.success("Históricos visuais limpos desta sessão.")
+        st.success("Historicos visuais limpos desta sessao.")
         st.rerun()
+
 
 
 def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Apagar Histórico")
+    st.subheader("Apagar Historico")
     st.write("Remove os registros operacionais institucionais persistidos no banco atual.")
-    st.warning("Esta ação remove gerações, reconciliações e logs institucionais do runtime. Não afeta imported_contests.")
-    st.caption("Ação irreversível no runtime atual. Preserva imported_contests.")
-    if st.button("Apagar histórico persistido", type="primary"):
+    st.warning(
+        "Esta acao remove geracoes, reconciliacoes, logs e eventos de reset do runtime. "
+        "Nao afeta imported_contests."
+    )
+    st.caption("Acao irreversivel no runtime atual. Preserva imported_contests.")
+    before_rows = [
+        {
+            "tabela": table,
+            "contagem": int(snapshot["counts"].get(table, 0) or 0),
+            "ultima_persistencia": snapshot["latest"].get(table, "-"),
+        }
+        for table in HISTORICAL_TEST_TABLES
+    ]
+    st.markdown("##### Diagnostico antes da limpeza")
+    st.dataframe(pd.DataFrame(before_rows), hide_index=True, use_container_width=True)
+    if st.button("Apagar historico persistido", type="primary"):
         result = _purge_institutional_history_tables()
-        st.success("Histórico institucional apagado.")
+        refreshed_snapshot = _database_snapshot()
+        after_rows = [
+            {
+                "tabela": table,
+                "contagem": int(refreshed_snapshot["counts"].get(table, 0) or 0),
+                "ultima_persistencia": refreshed_snapshot["latest"].get(table, "-"),
+            }
+            for table in HISTORICAL_TEST_TABLES
+        ]
+        preserved_row = {
+            "tabela": "imported_contests",
+            "contagem": int(refreshed_snapshot["counts"].get("imported_contests", 0) or 0),
+            "ultima_persistencia": refreshed_snapshot["latest"].get("imported_contests", "-"),
+        }
+        st.success("Historico institucional apagado.")
+        st.markdown("##### Resultado da limpeza")
         st.json(result)
-        st.rerun()
+        st.markdown("##### Diagnostico depois da limpeza")
+        st.dataframe(pd.DataFrame(after_rows + [preserved_row]), hide_index=True, use_container_width=True)
+
 
 
 def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
