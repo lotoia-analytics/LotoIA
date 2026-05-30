@@ -57,6 +57,48 @@ HISTORICAL_TEST_TABLES = (
     "reset_events",
 )
 
+PAGE_TARGETS = {
+    "Auditoria Runtime": "audit",
+    "Gerar Jogos": "generation",
+    "Conferir Resultados": "conference",
+    "Simular Resultados": "simulation",
+    "Histórico Analítico": "history_analytical",
+    "Histórico Institucional": "history_institutional",
+    "Limpar Históricos": "clear_histories",
+    "Apagar Histórico": "delete_history",
+    "Comparativos histórico": "comparative_history",
+    "Análises Estratégicas": "strategies_analysis",
+    "Testar Estratégias": "strategies_test",
+    "Simular Estratégias": "strategies_simulation",
+    "Métricas HB": "hb_metrics",
+    "Cobertura estrutural": "structural_coverage",
+    "Replay institucional": "institutional_replay",
+    "Benchmark resumido": "summary_benchmark",
+    "Estatísticas operacionais": "operational_statistics",
+    "HB Geometry": "hb_geometry",
+}
+
+PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
+
+
+def _canonical_page_id(value: str | None) -> str:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return "generation"
+    if text_value in PAGE_TARGETS:
+        return PAGE_TARGETS[text_value]
+    if text_value in PAGE_LABELS:
+        return text_value
+    normalized = text_value.casefold()
+    for label, page_id in PAGE_TARGETS.items():
+        if label.casefold() == normalized:
+            return page_id
+    return "generation"
+
+
+def _canonical_page_label(value: str | None) -> str:
+    return PAGE_LABELS.get(_canonical_page_id(value), "Gerar Jogos")
+
 _JOB_LOCK = threading.Lock()
 _JOB_STATE: dict[str, Any] = {
     "running": False,
@@ -316,7 +358,9 @@ def _render_sidebar_logo() -> None:
 
 def _sidebar_nav_button(label: str, target_page: str, current_page: str) -> None:
     if st.sidebar.button(label, key=f"nav_{target_page}"):
-        st.session_state["institutional_page"] = target_page
+        page_id = _canonical_page_id(target_page)
+        st.session_state["institutional_page_id"] = page_id
+        st.session_state["institutional_page"] = _canonical_page_label(page_id)
         st.rerun()
 
 
@@ -2899,26 +2943,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.caption("Painel institucional limpo")
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
-    pages = [
-        "Auditoria Runtime",
-        "Gerar Jogos",
-        "Conferir Resultados",
-        "Simular Resultados",
-        "Histórico Analítico",
-        "Histórico Institucional",
-        "Limpar Históricos",
-        "Apagar Histórico",
-        "Comparativos histórico",
-        "Análises Estratégicas",
-        "Testar Estratégias",
-        "Simular Estratégias",
-        "Métricas HB",
-        "Cobertura estrutural",
-        "Replay institucional",
-        "Benchmark resumido",
-        "Estatísticas operacionais",
-        "HB Geometry",
-    ]
+    pages = list(PAGE_TARGETS.values())
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
     _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
@@ -2940,9 +2965,11 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _sidebar_nav_button("Benchmark resumido", "Benchmark resumido", page)
     _sidebar_nav_button("Estatísticas operacionais", "Estatísticas operacionais", page)
     _sidebar_nav_button("HB Geometry", "HB Geometry", page)
-    choice = st.session_state.get("institutional_page", page)
+    choice = _canonical_page_id(st.session_state.get("institutional_page_id") or st.session_state.get("institutional_page") or page)
     if choice not in pages:
-        choice = page if page in pages else "Gerar Jogos"
+        choice = _canonical_page_id(page)
+    st.session_state["institutional_page_id"] = choice
+    st.session_state["institutional_page"] = _canonical_page_label(choice)
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
     return choice
@@ -4017,43 +4044,47 @@ def main() -> None:
     _ensure_institutional_schema()
     snapshot = _database_snapshot()
     _align_institutional_runtime_with_database(snapshot)
-    page = _render_sidebar(st.session_state.get("institutional_page", "Gerar Jogos"), snapshot)
-    st.session_state["institutional_page"] = page
+    page = _render_sidebar(
+        st.session_state.get("institutional_page_id") or st.session_state.get("institutional_page", "Gerar Jogos"),
+        snapshot,
+    )
+    st.session_state["institutional_page_id"] = page
+    st.session_state["institutional_page"] = _canonical_page_label(page)
     st.success(BUILD_MARKER)
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
-    if page == "Auditoria Runtime":
+    if page == "audit":
         _render_runtime_audit_page(snapshot)
-    elif page == "Gerar Jogos":
+    elif page == "generation":
         _render_generation_page(snapshot)
-    elif page == "Conferir Resultados":
+    elif page == "conference":
         _render_conference_page(snapshot)
-    elif page == "Simular Resultados":
+    elif page == "simulation":
         _render_simulation_page(snapshot)
-    elif page == "Histórico Analítico":
+    elif page == "history_analytical":
         _render_analytical_page(snapshot)
-    elif page == "Histórico Institucional":
+    elif page == "history_institutional":
         _render_history_institutional_page(snapshot)
-    elif page == "Limpar Históricos":
+    elif page == "clear_histories":
         _render_clear_histories_page(snapshot)
-    elif page == "Apagar Histórico":
+    elif page == "delete_history":
         _render_delete_history_page(snapshot)
-    elif page == "Comparativos histórico":
+    elif page == "comparative_history":
         _render_comparative_history_page(snapshot)
-    elif page == "Análises Estratégicas":
+    elif page == "strategies_analysis":
         _render_strategies_page("Análises Estratégicas", snapshot)
-    elif page == "Testar Estratégias":
+    elif page == "strategies_test":
         _render_strategies_page("Testar Estratégias", snapshot)
-    elif page == "Simular Estratégias":
+    elif page == "strategies_simulation":
         _render_strategies_page("Simular Estratégias", snapshot)
-    elif page == "Métricas HB":
+    elif page == "hb_metrics":
         _render_metrics_hb_page(snapshot)
-    elif page == "Cobertura estrutural":
+    elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
-    elif page == "Replay institucional":
+    elif page == "institutional_replay":
         _render_replay_institutional_page(snapshot)
-    elif page == "Benchmark resumido":
+    elif page == "summary_benchmark":
         _render_benchmark_resumido_page(snapshot)
-    elif page == "Estatísticas operacionais":
+    elif page == "operational_statistics":
         _render_estatisticas_operacionais_page(snapshot)
     else:
         _render_hb_geometry_page(_hb_geometry_state())
