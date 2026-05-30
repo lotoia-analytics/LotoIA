@@ -1318,6 +1318,11 @@ def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
                         "center": sum(1 for number in numbers if 8 <= number <= 18),
                     }
                 )
+            target_contests: list[int] = []
+            for row in rows:
+                value = _safe_int(_safe_get(row, "target_contest"), default=None)
+                if value is not None and value > 0:
+                    target_contests.append(value)
             groups.append(
                 {
                     "generation_event_id": int(event.id or 0),
@@ -1325,7 +1330,7 @@ def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "total_games": len(games),
-                    "target_contest": max((int(game.get("target_contest") or 0) for game in rows if getattr(game, "target_contest", None) is not None), default=None),
+                    "target_contest": max(target_contests) if target_contests else None,
                     "games": games,
                     "structural_summary": _summarize_games_structurally([game["numbers"] for game in games]),
                 }
@@ -1334,7 +1339,8 @@ def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
 
 
 def _run_institutional_conference(contest_number: int | None = None) -> None:
-    latest_contest = _load_imported_contest(contest_number) or _get_latest_contest()
+    selected_contest = _safe_int(contest_number, default=None)
+    latest_contest = _load_imported_contest(selected_contest) or _get_latest_contest()
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
             "status": "waiting_contest",
@@ -1349,11 +1355,17 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     total_prizes = 0
     total_hits = 0
     best_hits_global = 0
+    latest_imported_contest_number = _safe_int(_safe_get(latest_contest, "contest_number"), default=None)
     for group in grouped_generations:
+        group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
+        contest_to_use = selected_contest or group_target_contest or latest_imported_contest_number
+        contest_payload = _load_imported_contest(contest_to_use) if contest_to_use else latest_contest
+        if contest_payload is None:
+            contest_payload = latest_contest
         comparison = _compare_games_against_contest(
             generation_event_id=int(group.get("generation_event_id") or 0),
             games=list(group.get("games") or []),
-            contest=latest_contest,
+            contest=contest_payload,
         )
         hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
         generation_results.append(
@@ -1362,15 +1374,15 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
                 "created_at": group.get("created_at", ""),
                 "seed": int(group.get("seed") or 0),
                 "total_games": int(group.get("total_games") or 0),
-                "target_contest": group.get("target_contest"),
+                "target_contest": contest_to_use,
                 "best_hits": int(comparison.get("best_hits", 0) or 0),
                 "total_hits": int(comparison.get("total_hits", 0) or 0),
                 "prize_count": int(comparison.get("prize_count", 0) or 0),
                 "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
                 "results": list(comparison.get("results", [])),
                 "games": list(group.get("games") or []),
-                "contest_number": int(comparison.get("contest_number", latest_contest.get("contest_number", 0)) or 0),
-                "contest_date": str(comparison.get("contest_date", latest_contest.get("data", "")) or ""),
+                "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
+                "contest_date": str(comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""),
             }
         )
         total_prizes += int(comparison.get("prize_count", 0) or 0)
@@ -2776,6 +2788,35 @@ def _count_generated_games_for_event(generation_event_id: int) -> int:
 
 def _generated_games_count_sql(generation_event_id: int) -> str:
     return f"SELECT COUNT(*) FROM generated_games WHERE generation_event_id = {int(generation_event_id)};"
+
+
+def _safe_get(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    getter = getattr(row, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except Exception:
+            pass
+    return getattr(row, key, default)
+
+
+def _safe_int(value: Any, default: int | None = None) -> int | None:
+    if value is None:
+        return default
+    try:
+        if isinstance(value, str):
+            value = value.strip()
+            if value in {"", "-", "None", "nan", "NaN"}:
+                return default
+        if value != value:  # NaN guard
+            return default
+        return int(float(value))
+    except Exception:
+        return default
 
 
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
