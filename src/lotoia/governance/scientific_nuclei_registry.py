@@ -64,7 +64,7 @@ SCIENTIFIC_MODE_SECTIONS = {
         {
             "title": "Histórico e persistência",
             "description": "Artefatos científicos, observabilidade e governança.",
-            "pages": ("relatorios", "ml_governance", "observability", "leitura_uso", "workflows", "historico_experimental", "calibracao_experimental", "reports_engine"),
+            "pages": ("relatorios", "ml_governance", "observability", "workflows", "historico_experimental", "calibracao_experimental", "reports_engine"),
         },
     ),
 }
@@ -191,18 +191,6 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
             source_tables=("generation_events", "generated_games"),
         ),
         ScientificNucleus(
-            nucleus_id="jogo_expandido_experimental",
-            page_id="jogo_expandido_experimental",
-            display_name="Cobertura probabilística",
-            scientific_finality="cobertura estrutural",
-            persistence_artifact=TEMPORAL_HISTORY_EXPANSION,
-            temporal_contract="expansion_only",
-            validation_mode="structural_coverage",
-            visual_identity="structural_engine",
-            runtime_scope="scientific_runtime",
-            source_tables=("expansion_events",),
-        ),
-        ScientificNucleus(
             nucleus_id="backtesting",
             page_id="backtesting",
             display_name="Testar Estratégia",
@@ -273,7 +261,6 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         "historical_intelligence": "Memória Analítica",
         "analytics_intelligence": "Análise Estrutural",
         "ml_intelligence": "Ranking ML",
-        "jogo_expandido_experimental": "Cobertura probabilística",
         "backtesting": "Testar Estratégia",
         "calibracao_experimental": "Estratégia Operacional",
         "benchmark_cientifico": "Comparativos",
@@ -281,7 +268,6 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         "relatorios": "Analíticas Persistidas",
         "ml_governance": "Governança Científica",
         "observability": "Observabilidade Científica",
-        "leitura_uso": "Leitura Institucional",
         "workflows": "Fluxos Institucionais",
         "reports_engine": "Relatórios Científicos",
     }
@@ -290,7 +276,6 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         "geracao_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
         "conferir_jogos": {"category": "operacional", "usage": "alto", "action": "permanecer"},
         "reconciliacao_operacional": {"category": "operacional", "usage": "alto", "action": "permanecer"},
-        "jogo_expandido_experimental": {"category": "cobertura_estrutural", "usage": "medio", "action": "recolher"},
         "estatisticas_historicas": {"category": "historico", "usage": "medio", "action": "recolher"},
         "historical_intelligence": {"category": "memoria_analitica", "usage": "medio", "action": "recolher"},
         "analytics_intelligence": {"category": "analise_estrutural", "usage": "medio", "action": "recolher"},
@@ -302,7 +287,6 @@ def build_scientific_nuclei_registry() -> ScientificNucleiRegistry:
         "relatorios": {"category": "persistencia_cientifica", "usage": "medio", "action": "recolher"},
         "ml_governance": {"category": "governanca_cientifica", "usage": "medio", "action": "recolher"},
         "observability": {"category": "observabilidade_cientifica", "usage": "medio", "action": "recolher"},
-        "leitura_uso": {"category": "leitura_institucional", "usage": "medio", "action": "recolher"},
         "workflows": {"category": "fluxos_institucionais", "usage": "alto", "action": "permanecer"},
         "reports_engine": {"category": "relatorios_cientificos", "usage": "baixo", "action": "ocultar"},
     }
@@ -406,7 +390,6 @@ def _runtime_stability_ready() -> bool:
             "testar_estrategia",
             "comparativos_operacionais",
             "ranking_ml",
-            "expansivo",
             "analiticas_persistidas",
         }
         and required_metrics == {

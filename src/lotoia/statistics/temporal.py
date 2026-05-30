@@ -3,11 +3,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from math import log2
 from typing import Protocol
 
 from lotoia.statistics.combinations import combo_stats
 
 CENTER_NUMBERS = {7, 8, 9, 12, 13, 14, 17, 18, 19}
+MAX_TEMPORAL_INFLUENCE = 0.05
 
 
 class DrawLike(Protocol):
@@ -57,6 +59,24 @@ class FeatureContext(Mapping[str, object]):
 
     def __len__(self) -> int:
         return len(self.to_dict())
+
+
+@dataclass(frozen=True)
+class TemporalSignal:
+    cycle_state: str | None
+    pressure_score: float
+    migration_signal: float
+    decay_factor: float
+    temporal_adjustment: float
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "cycle_state": self.cycle_state,
+            "pressure_score": round(self.pressure_score, 4),
+            "migration_signal": round(self.migration_signal, 4),
+            "decay_factor": round(self.decay_factor, 4),
+            "temporal_adjustment": round(self.temporal_adjustment, 4),
+        }
 
 
 def calculate_delays(draws: Iterable[DrawLike]) -> dict[str, int]:
@@ -208,3 +228,149 @@ def sequence_component(numbers: list[int]) -> float:
         max(0, int(sequence_stats["largest_sequence"]) - 2) * 16
     )
     return max(0, 100 - penalty)
+
+
+def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def infer_cycle_state(history: Sequence[DrawLike], current_contest: int | None = None) -> str:
+    ordered_history = sorted(history, key=lambda draw: draw.contest)
+    if not ordered_history:
+        return "early_cycle"
+    history_size = len(ordered_history)
+    if history_size < 50:
+        return "early_cycle"
+    if history_size < 200:
+        return "mid_cycle"
+    return "late_cycle"
+
+
+def calculate_temporal_pressure(numbers: Sequence[int], history: Sequence[DrawLike]) -> float:
+    ordered_history = sorted(history, key=lambda draw: draw.contest)
+    if not ordered_history:
+        return 0.0
+
+    counts = Counter()
+    recent_window = ordered_history[-20:]
+    prior_window = ordered_history[-40:-20] if len(ordered_history) > 20 else ordered_history[:-20]
+    recent_counts = Counter()
+    prior_counts = Counter()
+    for draw in recent_window:
+        recent_counts.update(draw.numbers)
+    for draw in prior_window:
+        prior_counts.update(draw.numbers)
+
+    average_delay = 0.0
+    last_seen = {number: 0 for number in range(1, 26)}
+    for draw in ordered_history:
+        for number in draw.numbers:
+            last_seen[number] = draw.contest
+    last_contest = ordered_history[-1].contest
+    if numbers:
+        average_delay = sum(last_contest - last_seen.get(int(number), last_contest) for number in numbers) / len(numbers)
+    delay_pressure = _clamp(average_delay / max(1.0, len(ordered_history) / 2.0))
+
+    recurrence_pressure = 0.0
+    if numbers:
+        recurrence_pressure = sum(recent_counts.get(int(number), 0) for number in numbers) / max(1.0, len(numbers) * len(recent_window))
+
+    frequency_compression = 0.0
+    if recent_counts:
+        recent_values = list(recent_counts.values())
+        prior_values = list(prior_counts.values()) or [0]
+        recent_mean = sum(recent_values) / len(recent_values)
+        prior_mean = sum(prior_values) / len(prior_values)
+        if prior_mean:
+            frequency_compression = _clamp((recent_mean - prior_mean) / max(prior_mean, 1.0), 0.0, 1.0)
+
+    density = _clamp(len(recent_window) / max(1.0, len(ordered_history)))
+    pressure = _clamp((delay_pressure * 0.45) + (recurrence_pressure * 0.25) + (frequency_compression * 0.2) + (density * 0.1))
+    return round(pressure, 4)
+
+
+def detect_migration_signal(numbers: Sequence[int], history: Sequence[DrawLike]) -> float:
+    ordered_history = sorted(history, key=lambda draw: draw.contest)
+    if len(ordered_history) < 10:
+        return 0.0
+
+    recent_window = ordered_history[-20:]
+    prior_window = ordered_history[-40:-20] if len(ordered_history) > 20 else ordered_history[:-20]
+    if not prior_window:
+        return 0.0
+
+    def _cluster_distribution(draws: Sequence[DrawLike]) -> dict[int, float]:
+        counts = Counter()
+        total = 0
+        for draw in draws:
+            for number in draw.numbers:
+                counts[number // 5] += 1
+                total += 1
+        return {cluster: count / max(1, total) for cluster, count in counts.items()}
+
+    recent_distribution = _cluster_distribution(recent_window)
+    prior_distribution = _cluster_distribution(prior_window)
+    all_clusters = set(recent_distribution) | set(prior_distribution)
+    divergence = 0.0
+    for cluster in all_clusters:
+        divergence += abs(recent_distribution.get(cluster, 0.0) - prior_distribution.get(cluster, 0.0))
+
+    selected_clusters = {int(number) // 5 for number in numbers}
+    cluster_bias = 0.0
+    if selected_clusters:
+        recent_bias = sum(recent_distribution.get(cluster, 0.0) for cluster in selected_clusters) / len(selected_clusters)
+        prior_bias = sum(prior_distribution.get(cluster, 0.0) for cluster in selected_clusters) / len(selected_clusters)
+        cluster_bias = abs(recent_bias - prior_bias)
+
+    return round(_clamp((divergence * 0.6) + (cluster_bias * 0.4)), 4)
+
+
+def calculate_temporal_decay(numbers: Sequence[int], history: Sequence[DrawLike]) -> float:
+    ordered_history = sorted(history, key=lambda draw: draw.contest)
+    if not ordered_history or not numbers:
+        return 0.0
+    last_contest = ordered_history[-1].contest
+    last_seen = {number: 0 for number in range(1, 26)}
+    for draw in ordered_history:
+        for number in draw.numbers:
+            last_seen[number] = draw.contest
+    ages = [last_contest - last_seen.get(int(number), last_contest) for number in numbers]
+    average_age = sum(ages) / len(ages) if ages else 0.0
+    return round(_clamp(1.0 - (average_age / max(1.0, len(ordered_history)))), 4)
+
+
+def build_temporal_signal(numbers: Sequence[int], history: Sequence[DrawLike]) -> TemporalSignal:
+    cycle_state = infer_cycle_state(history)
+    pressure_score = calculate_temporal_pressure(numbers, history)
+    migration_signal = detect_migration_signal(numbers, history)
+    decay_factor = calculate_temporal_decay(numbers, history)
+    temporal_adjustment = _clamp((pressure_score * 0.03) + (migration_signal * 0.02) + (decay_factor * 0.015), 0.0, 0.05)
+    return TemporalSignal(
+        cycle_state=cycle_state,
+        pressure_score=pressure_score,
+        migration_signal=migration_signal,
+        decay_factor=decay_factor,
+        temporal_adjustment=round(temporal_adjustment, 4),
+    )
+
+
+def apply_temporal_adjustment(base_score: float, signal: TemporalSignal, *, cap: float = 0.05) -> float:
+    adjustment = min(max(signal.temporal_adjustment, 0.0), cap)
+    return round(max(0.0, min(1.0, base_score + adjustment)), 4)
+
+
+def temporal_rerank(base_score: float, signal: TemporalSignal, *, cap: float = MAX_TEMPORAL_INFLUENCE) -> dict[str, float | str | None]:
+    adjustment = min(max(signal.temporal_adjustment, 0.0), cap)
+    final_score = max(0.0, min(1.0, base_score + adjustment))
+    return {
+        "base_score": round(max(0.0, min(1.0, base_score)), 4),
+        "temporal_adjustment": round(adjustment, 4),
+        "final_score": round(final_score, 4),
+        "cycle_state": signal.cycle_state,
+        "pressure_score": round(signal.pressure_score, 4),
+        "migration_signal": round(signal.migration_signal, 4),
+        "temporal_decay": round(signal.decay_factor, 4),
+        "rerank_reason": (
+            "temporal_adjustment_capped" if adjustment >= cap else "temporal_adjustment_applied"
+        ),
+    }

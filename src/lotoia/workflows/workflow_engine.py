@@ -72,7 +72,7 @@ class WorkflowEngine:
         self.db_path = db_path
         self.repository = WorkflowRepository(db_path)
         self.observability = ObservabilityRepository(db_path)
-        self.sync_service = ResultSyncService()
+        self.sync_service = ResultSyncService(db_path=db_path)
         self.reconciliation_engine = self._load_reconciliation_engine()(db_path)
         self.lifecycle = self._load_operational_lifecycle_engine()(db_path)
         self.restart_policy = ServiceRestartPolicy()
@@ -84,7 +84,17 @@ class WorkflowEngine:
         started = datetime.now(UTC)
         try:
             summary = self.sync_service.sync_latest()
-            telemetry = {"synced_contests": len(summary.synced_contests), "fallback_used": summary.fallback_used}
+            telemetry = {
+                "synced_contests": len(summary.synced_contests),
+                "synced_contests_count": len(summary.synced_contests),
+                "persisted_contests": summary.persisted_contests,
+                "provider_payload_count": summary.provider_payload_count,
+                "contest_ids": summary.contest_ids,
+                "fallback_used": summary.fallback_used,
+                "commit_state": summary.commit_state,
+                "db_backend": summary.db_backend,
+                "engine_url": summary.engine_url,
+            }
             self.repository.record_step(run.workflow_id, step_name="sync_latest", status="ok", payload=summary.to_dict(), duration_ms=0.0)
             self.repository.finish_run(run.workflow_id, status="ok", duration_ms=(datetime.now(UTC) - started).total_seconds() * 1000, telemetry=telemetry)
             return WorkflowExecutionSnapshot(

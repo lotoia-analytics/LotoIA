@@ -93,7 +93,7 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda label, **kwargs: label == "Expansivo")
+    monkeypatch.setattr(admin_app.st.sidebar, "button", lambda label, **kwargs: label == "Gerar Jogos")
 
     def _radio(label, options, **kwargs):
         if label == "Modo":
@@ -106,8 +106,8 @@ def test_sidebar_navigation_includes_institutional_pages(monkeypatch) -> None:
 
     page = admin_app._sidebar_navigation()
 
-    assert page == "jogo_expandido_experimental"
-    assert admin_app.LABELS["jogo_expandido_experimental"] == "Expansivo"
+    assert page == "geracao_jogos"
+    assert "jogo_expandido_experimental" not in admin_app.LABELS
 
 
 def test_sidebar_navigation_filters_pages_by_mode(monkeypatch) -> None:
@@ -145,7 +145,6 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
         "estatisticas_historicas",
         "conferir_jogos",
         "reconciliacao_operacional",
-        "jogo_expandido_experimental",
         "historical_intelligence",
     ]
     assert admin_app.PAGES[0] == "geracao_jogos"
@@ -162,7 +161,7 @@ def test_adm_redundancy_matrix_marks_core_operational_pages_as_keep() -> None:
 def test_sidebar_labels_separate_past_games_from_check_games() -> None:
     assert admin_app.LABELS["estatisticas_historicas"] == "Jogos Passados"
     assert admin_app.LABELS["conferir_jogos"] == "Conferir Jogos"
-    assert admin_app.LABELS["leitura_uso"] == "Leitura Institucional"
+    assert admin_app.LABELS["leitura_uso"] == "Uso Operacional"
 
 
 def test_leitura_de_uso_is_available_in_analytic_mode() -> None:
@@ -341,7 +340,7 @@ def test_admin_router_renders_expansion_experimental_page(monkeypatch) -> None:
 
     monkeypatch.setattr(admin_app, "render_expansion_experimental_page", _render_expansion)
 
-    admin_app._render_sidebar_dispatch("jogo_expandido_experimental", [])
+    admin_app.render_expansion_experimental_page()
 
     assert rendered["expansion"] is True
 

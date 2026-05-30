@@ -1371,17 +1371,6 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         ):
             if column_name not in runtime_snapshot_columns:
                 connection.exec_driver_sql(column_sql)
-        lead_columns = {
-            row[1]
-            for row in connection.exec_driver_sql("PRAGMA table_info(leads)").fetchall()
-        }
-        for column_sql, column_name in (
-            ("ALTER TABLE leads ADD COLUMN source TEXT NOT NULL DEFAULT 'public'", "source"),
-            ("ALTER TABLE leads ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''", "ip_hash"),
-            ("ALTER TABLE leads ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''", "user_agent"),
-        ):
-            if column_name not in lead_columns:
-                connection.exec_driver_sql(column_sql)
         institutional_memory_snapshot_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(institutional_memory_snapshots)").fetchall()

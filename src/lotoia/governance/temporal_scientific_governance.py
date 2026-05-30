@@ -26,7 +26,7 @@ TEMPORAL_OPERATIONAL_NUCLEI = (
     "testar_estrategia",
     "comparativos_operacionais",
     "ranking_ml",
-    "expansivo",
+    "cobertura_estrutural",
     "analiticas_persistidas",
 )
 
@@ -409,17 +409,17 @@ def build_temporal_operational_nuclei() -> tuple[TemporalOperationalNucleus, ...
             },
         ),
         TemporalOperationalNucleus(
-            nucleus_id="expansivo",
+            nucleus_id="cobertura_estrutural",
             official_artifact="expansion_history",
-            scientific_finality="segregated expansion history",
+            scientific_finality="segregated structural coverage history",
             persistence_scope="expansion_history",
-            temporal_scope="operational_expansion_history",
+            temporal_scope="operational_structural_coverage_history",
             source_tables=("expansion_events",),
             history_categories=(TEMPORAL_HISTORY_EXPANSION,),
             metadata={
-                "purpose": "expansion_history",
-                "temporal_scope": "operational_expansion_history",
-                "scientific_signature": "segregated_expansion_artifact",
+                "purpose": "structural_coverage_history",
+                "temporal_scope": "operational_structural_coverage_history",
+                "scientific_signature": "segregated_structural_coverage_artifact",
                 "persistence_policy": "expansion_only",
             },
         ),

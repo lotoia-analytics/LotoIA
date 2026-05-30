@@ -20,7 +20,6 @@ from lotoia.database.database import (
     FeatureUsageEvent,
     GenerationEvent,
     GeneratedGame,
-    Lead,
     MlUsageEvent,
     ReconciliationEvent,
     ReconciliationGame,
@@ -161,6 +160,5 @@ class InstitutionalResetService:
                 "workflow_events": WorkflowEvent,
                 "workflow_runs": WorkflowRun,
                 "generation_events": GenerationEvent,
-                "leads": Lead,
             }
         raise ValueError(f"unsupported reset scope: {scope}")

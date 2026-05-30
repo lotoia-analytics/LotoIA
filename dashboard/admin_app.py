@@ -32,7 +32,6 @@ MODE_PAGES = {
         "workflows",
         "ml_governance",
         "observability",
-        "leitura_uso",
         "backtesting",
         "calibracao_experimental",
         "benchmark_cientifico",
@@ -51,6 +50,7 @@ import os
 import sqlite3
 import shutil
 import time
+import threading
 import tempfile
 import textwrap
 import traceback
@@ -78,6 +78,7 @@ LEAD_HISTORY_LIMIT = 5000
 STREAMLIT_CACHE_TTL_SECONDS = 300
 STREAMLIT_CACHE_MAX_ENTRIES = 16
 USAGE_CACHE_TTL_SECONDS = 15
+UI_DEBUG_DEFAULT = os.environ.get("LOTOIA_UI_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
 ADMIN_EXPANSION_ROLE_SIZES = {
     "basic": (16,),
     "premium": (16, 17, 18),
@@ -87,7 +88,7 @@ ADMIN_EXPANSION_ROLE_SIZES = {
 ADMIN_EXPANSION_DEFAULT_ROLE = "admin"
 ADMIN_EXPANSION_PREVIEW_LIMIT = 816
 ADMIN_EXPANSION_PAGE_SIZE = 50
-ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "workflow_events", "operational_logs", "audit_trail", "leads"})
+ALLOWED_ADMIN_EVENT_TABLES = frozenset({"generation_events", "generated_games", "check_events", "ml_usage_events", "expansion_events", "reconciliation_events", "workflow_events", "operational_logs", "audit_trail"})
 ALERT_GENERATION_MS = 5_000.0
 ALERT_CHECK_MS = 3_000.0
 ALERT_REPORT_MS = 15_000.0
@@ -98,6 +99,7 @@ SCIENTIFIC_EXPANSION_LIMITS = {
 }
 
 _PAGE_SQL_PROFILE: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("PAGE_SQL_PROFILE", default=None)
+_HB_GEOMETRY_THREAD_STATE: dict[str, Any] = {}
 
 
 class _LazyImportedAttr:
@@ -222,6 +224,8 @@ expand_lotofacil_numbers = _LazyImportedAttr("lotoia.combinatorics", "expand_lot
 estimate_expansion = _LazyImportedAttr("lotoia.combinatorics", "estimate_expansion")
 select_premium_expansive_games = _LazyImportedAttr("lotoia.combinatorics", "select_premium_expansive_games")
 ScientificExpansionConfig = _LazyImportedAttr("lotoia.combinatorics", "ScientificExpansionConfig")
+DEFAULT_HB_GEOMETRY_DIR = _LazyImportedAttr("lotoia.experiments.hb_geometry_audit", "DEFAULT_HB_GEOMETRY_DIR")
+run_hb_geometry_audit = _LazyImportedAttr("lotoia.experiments.hb_geometry_audit", "run_hb_geometry_audit")
 score_candidate_from_history = _LazyImportedAttr("lotoia.statistics.scoring", "score_candidate_from_history")
 build_temporal_signal = _LazyImportedAttr("lotoia.statistics.temporal", "build_temporal_signal")
 temporal_rerank = _LazyImportedAttr("lotoia.statistics.temporal", "temporal_rerank")
@@ -271,8 +275,6 @@ persist_intelligent_operational_orchestration = _LazyImportedAttr(
     "lotoia.orchestration.intelligent_orchestration",
     "persist_intelligent_operational_orchestration",
 )
-LeadCaptureRequest = _LazyImportedAttr("lotoia.public.services.lead_capture_service", "LeadCaptureRequest")
-LeadCaptureService = _LazyImportedAttr("lotoia.public.services.lead_capture_service", "LeadCaptureService")
 ReconciliationEngine = _LazyImportedAttr("lotoia.public.reconciliation", "ReconciliationEngine")
 InstitutionalResetService = _LazyImportedAttr("lotoia.public.reset_service", "InstitutionalResetService")
 ResetScope = _LazyImportedAttr("lotoia.public.reset_service", "ResetScope")
@@ -370,9 +372,10 @@ SQLITE_MEMORY_LOGS: list[dict[str, Any]] = []
 SQLITE_RECOVERY_STATE = {"attempted": False, "active": False, "last_backup": "", "last_error": ""}
 SQLITE_BOOTSTRAP_STATE = {"fallback_used": False, "requested_path": "", "active_path": ""}
 AUTO_SYNC_OFFICIAL_RESULTS_ON_STARTUP = os.getenv("LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
-DISABLE_INSTITUTIONAL_COCKPIT = os.getenv("LOTOIA_DISABLE_INSTITUTIONAL_COCKPIT", "").strip().lower() in {"1", "true", "yes", "on"}
-RUNTIME_AUDIT_ENABLED = os.getenv("LOTOIA_RUNTIME_AUDIT", "").strip().lower() in {"1", "true", "yes", "on"}
-BOOTSTRAP_SCHEMA_ON_STARTUP = os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
+LIGHTWEIGHT_ADMIN_RUNTIME = os.getenv("LOTOIA_LIGHTWEIGHT_ADMIN_RUNTIME", "1").strip().lower() in {"1", "true", "yes", "on"}
+DISABLE_INSTITUTIONAL_COCKPIT = LIGHTWEIGHT_ADMIN_RUNTIME or os.getenv("LOTOIA_DISABLE_INSTITUTIONAL_COCKPIT", "").strip().lower() in {"1", "true", "yes", "on"}
+RUNTIME_AUDIT_ENABLED = (not LIGHTWEIGHT_ADMIN_RUNTIME) and os.getenv("LOTOIA_RUNTIME_AUDIT", "").strip().lower() in {"1", "true", "yes", "on"}
+BOOTSTRAP_SCHEMA_ON_STARTUP = (not LIGHTWEIGHT_ADMIN_RUNTIME) and os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP", "").strip().lower() in {"1", "true", "yes", "on"}
 
 conn: sqlite3.Connection | None = None
 cursor: sqlite3.Cursor | None = None
@@ -733,14 +736,6 @@ def _sqlite_ensure_admin_schema() -> None:
         )
         """,
         """
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            first_name TEXT NOT NULL,
-            whatsapp TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-        """
         CREATE TABLE IF NOT EXISTS operational_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_type TEXT NOT NULL,
@@ -773,7 +768,7 @@ def _sqlite_ensure_admin_schema() -> None:
     )
     for statement in schema_statements:
         table_name = None
-        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "reconciliation_events", "workflow_events", "generated_games", "imported_contests", "leads", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
+        for candidate in ("generation_events", "check_events", "ml_usage_events", "report_events", "expansion_events", "reconciliation_events", "workflow_events", "generated_games", "imported_contests", "operational_logs", "audit_trail", "snapshots", "adaptive_governance_reports"):
             if candidate in statement:
                 table_name = candidate
                 break
@@ -839,12 +834,6 @@ def _sqlite_ensure_admin_schema() -> None:
     _sqlite_ensure_column("generated_games", "generation_mode", "TEXT", "''")
     _sqlite_ensure_column("generated_games", "context_json", "TEXT", "'{}'")
     _sqlite_ensure_column("imported_contests", "metadata_json", "TEXT", "'{}'")
-    _sqlite_ensure_column("leads", "first_name", "TEXT", "''")
-    _sqlite_ensure_column("leads", "whatsapp", "TEXT", "''")
-    _sqlite_ensure_column("leads", "created_at", "TIMESTAMP", "CURRENT_TIMESTAMP")
-    _sqlite_ensure_column("leads", "source", "TEXT", "'public'")
-    _sqlite_ensure_column("leads", "ip_hash", "TEXT", "''")
-    _sqlite_ensure_column("leads", "user_agent", "TEXT", "''")
     _sqlite_ensure_column("operational_logs", "event_type", "TEXT", "''")
     _sqlite_ensure_column("operational_logs", "status", "TEXT", "''")
     _sqlite_ensure_column("operational_logs", "duration_ms", "REAL")
@@ -1298,6 +1287,80 @@ def _deduplicate_structural_games(
     return deduped, report
 
 
+def _apply_output_gate(
+    games: list[dict[str, Any]],
+    *,
+    requested_games: int,
+    candidate_pool: list[dict[str, Any]] | None = None,
+    generation_mode: str,
+    package_size: int | None = None,
+    generation_cycle: str | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if not games:
+        return [], {
+            "requested_games": int(requested_games),
+            "delivered_games": 0,
+            "duplicate_blocked": 0,
+            "duplicate_hashes": [],
+            "replacement_attempts": 0,
+            "output_gate_status": "empty",
+            "source_mode": generation_mode,
+            "package_size": package_size,
+            "generation_cycle": generation_cycle,
+        }
+
+    pool = list(candidate_pool or [])
+    delivered: list[dict[str, Any]] = []
+    seen_hashes: set[str] = set()
+    duplicate_hashes: list[str] = []
+    replacement_attempts = 0
+    duplicate_blocked = 0
+    accepted_signatures: list[str] = []
+
+    def _signature(game: dict[str, Any]) -> str:
+        return _game_structural_signature(list(game.get("numbers", [])))
+
+    def _accept(game: dict[str, Any]) -> bool:
+        signature = _signature(game)
+        if not signature or signature in seen_hashes:
+            return False
+        seen_hashes.add(signature)
+        accepted_signatures.append(signature)
+        delivered.append(game)
+        return True
+
+    for game in games:
+        if _accept(game):
+            continue
+        duplicate_blocked += 1
+        signature = _signature(game)
+        if signature:
+            duplicate_hashes.append(signature)
+        replacement_attempts += 1
+        replacement = next((candidate for candidate in pool if _signature(candidate) not in seen_hashes), None)
+        if replacement is not None and _accept(replacement):
+            continue
+
+    status = "passed"
+    if duplicate_blocked and len(delivered) < int(requested_games):
+        status = "reduced"
+    elif duplicate_blocked:
+        status = "replaced"
+
+    return delivered, {
+        "requested_games": int(requested_games),
+        "delivered_games": len(delivered),
+        "duplicate_blocked": duplicate_blocked,
+        "duplicate_hashes": duplicate_hashes,
+        "replacement_attempts": replacement_attempts,
+        "output_gate_status": status,
+        "source_mode": generation_mode,
+        "package_size": package_size,
+        "generation_cycle": generation_cycle,
+        "unique_ratio_real": round(len(delivered) / max(1, int(requested_games)), 4),
+    }
+
+
 def _select_cross_engine_premium_sources(
     premium_candidates: list[dict[str, Any]],
     *,
@@ -1347,6 +1410,72 @@ def _select_cross_engine_premium_sources(
         ia_source = _first_unique_candidate(premium_candidates[1:], "IA")
     selected: list[tuple[str, dict[str, Any]]] = [("HB", hb_source)]
     if ia_source is not None:
+        selected.append(("IA", ia_source))
+    return selected
+
+
+def _split_premium_candidate_pools(
+    premium_candidates: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def _numbers_key(candidate: dict[str, Any]) -> tuple[int, ...]:
+        return tuple(int(number) for number in candidate.get("numbers", []))
+
+    hb_pool = sorted(
+        premium_candidates,
+        key=lambda candidate: (
+            -float(candidate.get("scientific_score", 0.0) or 0.0),
+            -float(candidate.get("profile_score", 0.0) or 0.0),
+            -float(candidate.get("recurrence_score", 0.0) or 0.0),
+            -float(candidate.get("coverage_score", 0.0) or 0.0),
+            _numbers_key(candidate),
+        ),
+    )
+    ia_pool = sorted(
+        premium_candidates,
+        key=lambda candidate: (
+            -float(candidate.get("diversity_index", candidate.get("diversity_score", 0.0)) or 0.0),
+            -float(candidate.get("coverage_score", 0.0) or 0.0),
+            -float(candidate.get("entropy_score", 0.0) or 0.0),
+            float(candidate.get("recurrence_score", 0.0) or 0.0),
+            _numbers_key(candidate),
+        ),
+    )
+    if not hb_pool:
+        hb_pool = list(premium_candidates)
+    if not ia_pool:
+        ia_pool = list(premium_candidates)
+    return hb_pool, ia_pool
+
+
+def _select_mode_specific_premium_sources(
+    *,
+    hb_pool: list[dict[str, Any]],
+    ia_pool: list[dict[str, Any]],
+    generation_mode: str,
+) -> list[tuple[str, dict[str, Any]]]:
+    mode = str(generation_mode or "").upper()
+    if mode == "HB":
+        return [("HB", hb_pool[0])] if hb_pool else []
+    if mode == "IA":
+        return [("IA", ia_pool[0])] if ia_pool else []
+    if mode not in {"HB", "IA"}:
+        return _select_cross_engine_premium_sources(list(hb_pool or ia_pool), generation_mode=generation_mode)
+
+    selected: list[tuple[str, dict[str, Any]]] = []
+    if hb_pool:
+        selected.append(("HB", hb_pool[0]))
+    if ia_pool:
+        hb_signature = _game_structural_signature(list(selected[0][1].get("numbers", []))) if selected else ""
+        ia_source = next(
+            (
+                candidate
+                for candidate in ia_pool
+                if _game_structural_signature(list(candidate.get("numbers", []))) != hb_signature
+            ),
+            None,
+        )
+        if ia_source is None:
+            ia_source = ia_pool[0]
         selected.append(("IA", ia_source))
     return selected
 
@@ -1469,7 +1598,16 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
     scientific_payload = scientific_result.as_dict()
     runtime_metrics = dict(scientific_payload.get("metrics", {}))
     premium_candidates = list(scientific_payload.get("premium_games", []))
-    selected_sources = _select_cross_engine_premium_sources(premium_candidates, generation_mode=generation_mode)
+    hb_pool, ia_pool = _split_premium_candidate_pools(premium_candidates)
+    selected_sources = _select_mode_specific_premium_sources(
+        hb_pool=hb_pool,
+        ia_pool=ia_pool,
+        generation_mode=generation_mode,
+    )
+    mode_pool_origin = {
+        "HB": "hb_pool",
+        "IA": "ia_pool",
+    }.get(str(generation_mode or "").upper(), "shared_pool")
 
     selected_games: list[dict[str, Any]] = []
     for source_index, (label, row) in enumerate(selected_sources, start=1):
@@ -1486,8 +1624,9 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
                 | {
                     "source_index": source_index,
                     "collision_source": label,
-                    "replacement_reason": "cross_engine_unique_selection" if generation_mode == "HBIA" else "single_engine_selection",
+                    "replacement_reason": "mode_specific_selection" if generation_mode in {"HB", "IA"} else "single_engine_selection",
                     "promoted_candidate_id": int(row.get("rank", source_index) or source_index),
+                    "mode_pool_origin": mode_pool_origin,
                 },
                 strategy=label,
                 source_mode=generation_mode,
@@ -1529,6 +1668,21 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         for game in selected_games:
             cycle_state = str(game.get("cycle_state") or "unknown")
             cycle_distribution[cycle_state] = cycle_distribution.get(cycle_state, 0) + 1
+        hb_top_hash = str(_game_structural_signature(list(hb_pool[0].get("numbers", []))) if hb_pool else "")
+        ia_top_hash = str(_game_structural_signature(list(ia_pool[0].get("numbers", []))) if ia_pool else "")
+        shared_candidates = sorted(
+            {
+                _game_structural_signature(list(candidate.get("numbers", [])))
+                for candidate in hb_pool
+            }.intersection(
+                {
+                    _game_structural_signature(list(candidate.get("numbers", [])))
+                    for candidate in ia_pool
+                }
+            )
+        )
+        convergence_stage = "mode_specific_pool_selection" if generation_mode.upper() in {"HB", "IA"} else "mode_specific_pooling"
+        rerank_owner = "scientific_expansive_v1+temporal_rerank"
     else:
         premium_score = 0.0
         diversity_score = 0.0
@@ -1541,6 +1695,11 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         dominant_profile = "indefinido"
         temporal_adjustment = 0.0
         cycle_distribution = {}
+        hb_top_hash = ""
+        ia_top_hash = ""
+        shared_candidates = []
+        convergence_stage = "empty"
+        rerank_owner = "unknown"
         dedup_report = {
             "duplicate_games_detected": 0,
             "duplicate_source": [],
@@ -1584,6 +1743,12 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         "temporal_snapshot_count": len(selected_games),
         "temporal_adjustment": temporal_adjustment,
         "cycle_distribution": cycle_distribution,
+        "hb_top_hash": hb_top_hash,
+        "ia_top_hash": ia_top_hash,
+        "shared_candidates": shared_candidates,
+        "convergence_stage": convergence_stage,
+        "rerank_owner": rerank_owner,
+        "mode_pool_origin": mode_pool_origin,
     }
     return {
         "base_numbers": base_numbers,
@@ -1591,6 +1756,9 @@ def _build_premium_generation_package(package_size: int, generation_mode: str) -
         "scientific_games": premium_candidates,
         "summary": summary,
         "scientific_payload": scientific_payload,
+        "hb_pool_candidates": hb_pool,
+        "ia_pool_candidates": ia_pool,
+        "mode_pool_origin": mode_pool_origin,
     }
 
 
@@ -4853,6 +5021,25 @@ def _score_value(game: dict[str, Any]) -> float:
     return float(final_score.get("final_score", 0))
 
 
+def _mask_database_url(database_url: str) -> str:
+    text = str(database_url or "").strip()
+    if not text:
+        return "-"
+    if "@" not in text:
+        return text if len(text) <= 96 else f"{text[:48]}...{text[-24:]}"
+    scheme, remainder = text.split("://", maxsplit=1) if "://" in text else ("", text)
+    if "@" not in remainder:
+        return text if len(text) <= 96 else f"{text[:48]}...{text[-24:]}"
+    credentials, host_part = remainder.split("@", maxsplit=1)
+    if ":" in credentials:
+        username = credentials.split(":", maxsplit=1)[0]
+        masked_credentials = f"{username}:***"
+    else:
+        masked_credentials = "***"
+    prefix = f"{scheme}://" if scheme else ""
+    return f"{prefix}{masked_credentials}@{host_part}"
+
+
 def _games_dataframe(games: list[dict[str, Any]]) -> pd.DataFrame:
     rows = []
     for index, game in enumerate(games, start=1):
@@ -5091,6 +5278,199 @@ def _temporal_longitudinal_windows_dataframe(result: Any) -> pd.DataFrame:
     )
 
 
+def _hb_geometry_output_dir() -> Path:
+    return Path(os.fspath(DEFAULT_HB_GEOMETRY_DIR))
+
+
+def _hb_geometry_paths() -> dict[str, Path]:
+    output_dir = _hb_geometry_output_dir()
+    return {
+        "dir": output_dir,
+        "json": output_dir / "hb_geometry_audit.json",
+        "csv": output_dir / "hb_geometry_audit.csv",
+        "progress": output_dir / "hb_geometry_audit.progress.json",
+    }
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _load_csv_summary(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _hb_geometry_read_state() -> dict[str, Any]:
+    paths = _hb_geometry_paths()
+    progress = _load_json_file(paths["progress"])
+    report = _load_json_file(paths["json"])
+    csv_frame = _load_csv_summary(paths["csv"])
+    scenarios = report.get("scenarios") or progress.get("rows") or []
+    summary = report.get("summary") or progress.get("summary") or {}
+    return {
+        "paths": {name: str(path) for name, path in paths.items()},
+        "progress": progress,
+        "report": report,
+        "summary": summary,
+        "scenarios": scenarios,
+        "csv_rows": int(len(csv_frame)) if not csv_frame.empty else 0,
+        "csv_frame": csv_frame,
+    }
+
+
+def _hb_geometry_job_state() -> dict[str, Any]:
+    job = st.session_state.get("admin_hb_geometry_job") or {}
+    thread = job.get("thread")
+    alive = bool(thread.is_alive()) if thread is not None else False
+    progress = _hb_geometry_read_state()["progress"]
+    thread_state = dict(_HB_GEOMETRY_THREAD_STATE)
+    return {
+        "running": alive or thread_state.get("status") == "running",
+        "job": job,
+        "progress": progress,
+        "completed": bool(progress.get("completed", False)),
+        "processed_batches": int(progress.get("processed_batches", job.get("processed_batches", 0)) or 0),
+        "contests_processed": len(progress.get("processed_contests", [])),
+        "current_scenario": progress.get("current_scenario", ""),
+        "elapsed_time": float(progress.get("elapsed_seconds", 0.0) or 0.0),
+        "error": thread_state.get("error", "") or st.session_state.get("admin_hb_geometry_job_error", ""),
+        "result": thread_state.get("result"),
+        "thread_status": thread_state.get("status", "idle"),
+    }
+
+
+def _hb_geometry_start_job(*, resume: bool) -> None:
+    paths = _hb_geometry_paths()
+    progress = _load_json_file(paths["progress"])
+    if progress and progress.get("completed") is True and not resume:
+        resume = False
+
+    def _worker() -> None:
+        try:
+            result = run_hb_geometry_audit(
+                contests_analyzed=30,
+                games_count=5,
+                pool_size=18,
+                history_window=200,
+                batch_size=5,
+                lightweight=True,
+                resume=resume,
+                max_batches_per_run=1,
+                output_dir=paths["dir"],
+            )
+            _HB_GEOMETRY_THREAD_STATE.update(
+                {
+                    "status": "finished",
+                    "result": result.to_dict(),
+                    "error": "",
+                    "finished_at": time.time(),
+                }
+            )
+        except Exception as exc:
+            _HB_GEOMETRY_THREAD_STATE.update(
+                {
+                    "status": "error",
+                    "result": None,
+                    "error": str(exc),
+                    "finished_at": time.time(),
+                }
+            )
+        finally:
+            _HB_GEOMETRY_THREAD_STATE["running"] = False
+
+    if st.session_state.get("admin_hb_geometry_job_running"):
+        return
+
+    _HB_GEOMETRY_THREAD_STATE.update({"status": "running", "result": None, "error": "", "started_at": time.time(), "running": True})
+    st.session_state["admin_hb_geometry_job_running"] = True
+    st.session_state["admin_hb_geometry_job_started_at"] = time.time()
+    st.session_state["admin_hb_geometry_job_resume"] = bool(resume)
+    thread = threading.Thread(target=_worker, name="hb-geometry-audit", daemon=True)
+    st.session_state["admin_hb_geometry_job"] = {
+        "thread": thread,
+        "resume": bool(resume),
+        "started_at": st.session_state["admin_hb_geometry_job_started_at"],
+        "processed_batches": int(progress.get("processed_batches", 0) if progress else 0),
+    }
+    thread.start()
+
+
+def _hb_geometry_reset_job() -> None:
+    for key in [
+        "admin_hb_geometry_job",
+        "admin_hb_geometry_job_running",
+        "admin_hb_geometry_job_error",
+        "admin_hb_geometry_job_started_at",
+        "admin_hb_geometry_job_finished_at",
+        "admin_hb_geometry_job_resume",
+    ]:
+        st.session_state.pop(key, None)
+    for path in _hb_geometry_paths().values():
+        if path.exists():
+            try:
+                path.unlink()
+            except Exception:
+                pass
+    _HB_GEOMETRY_THREAD_STATE.clear()
+
+
+def _render_ui_diagnostics(*, page: str, dashboard_mode: str) -> None:
+    debug_enabled = bool(st.session_state.get("_admin_debug", UI_DEBUG_DEFAULT))
+    if not debug_enabled:
+        return
+    with st.expander("Diagnóstico de interação", expanded=True):
+        hb_state = _hb_geometry_job_state()
+        st.write(
+            {
+                "page": page,
+                "dashboard_mode": dashboard_mode,
+                "sidebar_page": st.session_state.get("_admin_sidebar_page", "-"),
+                "mode_state": st.session_state.get("_admin_mode", "-"),
+                "hb_geometry_running": hb_state.get("running", False),
+                "hb_geometry_completed": hb_state.get("completed", False),
+                "hb_geometry_processed_batches": hb_state.get("processed_batches", 0),
+                "hb_geometry_contests_processed": hb_state.get("contests_processed", 0),
+                "hb_geometry_current_scenario": hb_state.get("current_scenario", "-"),
+                "hb_geometry_error": hb_state.get("error", ""),
+                "last_ui_event": st.session_state.get("_admin_last_ui_event", "-"),
+                "session_keys": sorted(list(st.session_state.keys()))[:120],
+            }
+        )
+
+
+def _hb_geometry_dashboard_summary(summary: dict[str, Any]) -> pd.DataFrame:
+    if not summary:
+        return pd.DataFrame(
+            [
+                {"Métrica": "avg_hits", "Valor": 0.0},
+                {"Métrica": "11+", "Valor": 0},
+                {"Métrica": "12+", "Valor": 0},
+                {"Métrica": "overlap", "Valor": 0.0},
+                {"Métrica": "entropy", "Valor": 0.0},
+                {"Métrica": "dominant_numbers", "Valor": "[]"},
+            ]
+        )
+    flattened = [
+        {"Métrica": "avg_hits", "Valor": round(float(summary.get("hb_baseline", {}).get("average_hits", 0.0)), 4)},
+        {"Métrica": "11+", "Valor": int(summary.get("hb_baseline", {}).get("hits_11_plus", 0))},
+        {"Métrica": "12+", "Valor": int(summary.get("hb_baseline", {}).get("hits_12_plus", 0))},
+        {"Métrica": "overlap", "Valor": round(float(summary.get("hb_baseline", {}).get("average_overlap", 0.0)), 4)},
+        {"Métrica": "entropy", "Valor": round(float(summary.get("hb_baseline", {}).get("entropy", 0.0)), 4)},
+        {"Métrica": "dominant_numbers", "Valor": json.dumps(summary.get("hb_baseline", {}).get("dominant_numbers", []), ensure_ascii=False)},
+    ]
+    return pd.DataFrame(flattened)
+
+
 def _runs_dataframe(runs: list[dict[str, Any]], columns: list[str]) -> pd.DataFrame:
     return pd.DataFrame([{column: run.get(column) for column in columns} for run in runs])
 
@@ -5283,52 +5663,6 @@ def _read_sql_query_safe(query: str, columns: list[str], params: tuple[Any, ...]
         return pd.DataFrame(columns=columns)
 
 
-def _persist_lead(first_name: str, whatsapp: str) -> int | None:
-    from lotoia.database.database import get_session
-
-    if not first_name.strip() or not whatsapp.strip():
-        return None
-    connection, current_cursor = _sqlite_ensure_runtime_connection()
-    if connection is None or current_cursor is None:
-        SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "first_name": first_name, "whatsapp": whatsapp})
-        return None
-    try:
-        current_cursor.execute(
-            """
-            INSERT INTO leads (
-                first_name,
-                whatsapp
-            )
-            VALUES (?, ?)
-            """,
-            (first_name.strip(), whatsapp.strip()),
-        )
-        connection.commit()
-        return int(current_cursor.lastrowid or 0) or None
-    except sqlite3.Error as exc:
-        SQLITE_MEMORY_LOGS.append({"event_type": "leads", "status": "failed", "error": str(exc), "first_name": first_name, "whatsapp": whatsapp})
-        if _sqlite_maybe_recover_connection(exc):
-            recovered_conn, recovered_cursor = _sqlite_ensure_runtime_connection()
-            if recovered_conn is not None and recovered_cursor is not None:
-                try:
-                    recovered_cursor.execute(
-                        """
-                        INSERT INTO leads (
-                            first_name,
-                            whatsapp
-                        )
-                        VALUES (?, ?)
-                        """,
-                        (first_name.strip(), whatsapp.strip()),
-                    )
-                    recovered_conn.commit()
-                    return int(recovered_cursor.lastrowid or 0) or None
-                except sqlite3.Error:
-                    pass
-    _invalidate_runtime_cache()
-    return None
-
-
 def _persist_generation_events(
     *,
     first_name: str,
@@ -5451,21 +5785,6 @@ def _persist_generation_events(
     return generation_event_id
 
 
-def _capture_generation_lead(first_name: str, whatsapp: str) -> tuple[int, str, str]:
-    lead_service = LeadCaptureService(DB_PATH)
-    lead_payload = LeadCaptureRequest(
-        first_name=first_name,
-        whatsapp=whatsapp,
-        source="dashboard_user_panel",
-    )
-    lead_capture = lead_service.capture(
-        lead_payload,
-        ip_address="",
-        user_agent="dashboard_user_panel",
-    )
-    return int(lead_capture.lead["id"]), str(lead_capture.lead["first_name"]), str(lead_capture.normalized_whatsapp)
-
-
 @st.cache_data(show_spinner=False, ttl=USAGE_CACHE_TTL_SECONDS, max_entries=STREAMLIT_CACHE_MAX_ENTRIES)
 def _file_signature(path: Path) -> tuple[int, int]:
     try:
@@ -5484,7 +5803,7 @@ def _institutional_db_signature() -> tuple[tuple[int, int], tuple[int, int], tup
     snapshot = adapter.fetch_latest_usage_snapshot()
     return (
         (hash(snapshot.get("database_url", "")), int(snapshot.get("generation_events", 0))),
-        (int(snapshot.get("leads", 0)), int(snapshot.get("check_events", 0))),
+        (int(snapshot.get("workflow_events", 0)), int(snapshot.get("check_events", 0))),
         (int(snapshot.get("ml_usage_events", 0)), int(snapshot.get("report_events", 0))),
     )
 
@@ -5493,20 +5812,6 @@ def _institutional_db_signature() -> tuple[tuple[int, int], tuple[int, int], tup
 def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
     del db_signature
     try:
-        leads_df = _read_sql_query_safe(
-            """
-            SELECT
-                id,
-                first_name,
-                whatsapp,
-                created_at
-            FROM leads
-            ORDER BY created_at DESC, id DESC
-            LIMIT ?
-            """,
-            ["id", "first_name", "whatsapp", "created_at"],
-            params=(LEAD_HISTORY_LIMIT,),
-        )
         gen_df = _read_sql_query_safe(
             """
             SELECT
@@ -5567,9 +5872,10 @@ def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
                 "recurrence_score",
             ]
         )
-    if leads_df.empty:
+    if gen_df.empty and ml_df.empty and check_df.empty:
         return pd.DataFrame(
             columns=[
+                "lead_id",
                 "lead",
                 "first_name",
                 "whatsapp",
@@ -5585,8 +5891,38 @@ def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
             ]
         )
 
-    base = leads_df.drop_duplicates(subset=["id"], keep="first").copy()
-    base = base.rename(columns={"id": "lead_id"})
+    if gen_df.empty:
+        base = pd.concat(
+            [
+                df[["lead_id", "created_at"]]
+                for df in (ml_df, check_df)
+                if not df.empty and "lead_id" in df.columns
+            ],
+            ignore_index=True,
+        ) if any(not df.empty for df in (ml_df, check_df)) else pd.DataFrame(columns=["lead_id", "created_at"])
+        if base.empty:
+            return pd.DataFrame(
+                columns=[
+                    "lead_id",
+                    "lead",
+                    "first_name",
+                    "whatsapp",
+                    "created_at",
+                    "origin",
+                    "generations",
+                    "checks",
+                    "ml_activations",
+                    "last_generation_at",
+                    "last_ml_at",
+                    "last_check_at",
+                    "recurrence_score",
+                ]
+            )
+        base = base.drop_duplicates(subset=["lead_id"], keep="first").copy()
+        base["first_name"] = ""
+        base["whatsapp"] = ""
+    else:
+        base = gen_df.drop_duplicates(subset=["lead_id"], keep="first").copy()
     if gen_df.empty:
         gen_summary = pd.DataFrame(columns=["lead_id", "generations", "last_generation_at"])
     else:
@@ -5610,9 +5946,14 @@ def _lead_history_dataframe(db_signature: object) -> pd.DataFrame:
     dataframe = base.merge(gen_summary, on=["lead_id"], how="left").merge(ml_summary, on=["lead_id"], how="left").merge(check_summary, on=["lead_id"], how="left")
     for column in ("generations", "checks", "ml_activations"):
         dataframe[column] = pd.to_numeric(dataframe[column], errors="coerce").fillna(0).astype(int)
-    dataframe["lead"] = dataframe.apply(lambda row: _lead_identifier(str(row["first_name"]), str(row["whatsapp"])), axis=1)
+    dataframe["lead"] = dataframe.apply(
+        lambda row: _lead_identifier(str(row.get("first_name", "")), str(row.get("whatsapp", "")))
+        if str(row.get("first_name", "")).strip() or str(row.get("whatsapp", "")).strip()
+        else f"operacao-{int(row.get('lead_id', 0) or 0)}",
+        axis=1,
+    )
     dataframe["origin"] = "dashboard_admin"
-    dataframe["recurrence_score"] = dataframe["generations"] + dataframe["checks"]
+    dataframe["recurrence_score"] = dataframe["generations"] + dataframe["checks"] + dataframe["ml_activations"]
     dataframe = dataframe[
         [
             "lead_id",
@@ -5650,12 +5991,12 @@ def _lead_analytics_cached(db_signature: object, cache_token: tuple[int, int]) -
     except Exception:
         history = pd.DataFrame()
     if history.empty:
-        total_leads = _safe_count("leads")
+        total_leads = 0
         volume_generations = _safe_count("generation_events")
         volume_checks = _safe_count("check_events")
     else:
         snapshot = _institutional_runtime_snapshot(_institutional_db_signature())
-        total_leads = max(int(len(history)), int(snapshot.get("leads", 0)))
+        total_leads = max(int(len(history)), int(snapshot.get("generation_events", 0)))
         volume_generations = max(int(history["generations"].sum()), int(snapshot.get("generation_events", 0)))
         volume_checks = max(int(history["checks"].sum()), int(snapshot.get("check_events", 0)))
     recurring_leads = int((history["recurrence_score"] > 1).sum()) if not history.empty else 0
@@ -5826,6 +6167,16 @@ def _get_latest_contest_result() -> dict[str, Any] | None:
     }
 
 
+def _sync_latest_official_result_now() -> dict[str, Any]:
+    from lotoia.ingestion.result_sync_service import ResultSyncService
+
+    service = ResultSyncService(db_path=DB_PATH)
+    summary = service.sync_latest()
+    payload = summary.to_dict()
+    payload["database_url_masked"] = _mask_database_url(str(payload.get("engine_url", "")))
+    return payload
+
+
 def _safe_total_games() -> str:
     try:
         gen_row = _sqlite_execute_safe("SELECT COUNT(*) FROM generated_games")
@@ -5851,7 +6202,6 @@ def _institutional_runtime_snapshot(db_signature: object) -> dict[str, Any]:
                 "workflow_events": int(snapshot.get("workflow_events", 0)),
                 "last_contest": str(snapshot.get("last_contest", "-")),
                 "total_games": int(snapshot.get("generated_games", 0)),
-                "leads": int(snapshot.get("leads", 0)),
                 "backend": str(snapshot.get("backend", "unknown")),
                 "database_source": str(snapshot.get("database_source", "sqlite_fallback")),
             }
@@ -5866,7 +6216,6 @@ def _institutional_runtime_snapshot(db_signature: object) -> dict[str, Any]:
                 "workflow_events": 0,
                 "last_contest": "-",
                 "total_games": 0,
-                "leads": 0,
                 "backend": adapter.backend,
                 "database_source": adapter.database_source,
             }
@@ -5879,7 +6228,6 @@ def _institutional_runtime_snapshot(db_signature: object) -> dict[str, Any]:
         "workflow_events": _safe_count("workflow_events"),
         "last_contest": _safe_last_contest(),
         "total_games": int(total_games_value) if (total_games_value := _safe_total_games()).isdigit() else 0,
-        "leads": _safe_count("leads"),
         "backend": adapter.backend,
         "database_source": adapter.database_source,
     }
@@ -6006,7 +6354,7 @@ def _render_lead_intelligence() -> None:
         analytics = _lead_analytics(db_signature)
         history = _lead_history_dataframe(db_signature)
     except Exception as exc:
-        st.warning("Leitura Institucional indisponível no momento. O runtime permaneceu ativo.")
+        st.warning("Leitura operacional indisponível no momento. O runtime permaneceu ativo.")
         st.caption(f"Contexto técnico: {exc}")
         analytics = {
             "total_leads": 0,
@@ -6033,14 +6381,14 @@ def _render_lead_intelligence() -> None:
             ]
         )
     st.markdown("---")
-    _section_header("Leitura Institucional", "Uso institucional por usuário, recorrência e padrão de uso.")
+    _section_header("Uso Operacional", "Uso operacional por recorrência, conferência e padrão de execução.")
     a, b, c, d, e = st.columns(5)
-    a.metric("Total leads", analytics["total_leads"])
-    b.metric("Leads recorrentes", analytics["recurring_leads"])
+    a.metric("Total registros", analytics["total_leads"])
+    b.metric("Registros recorrentes", analytics["recurring_leads"])
     c.metric("Ativações ML", analytics["ml_activations"])
     d.metric("Gerações", analytics["volume_generations"])
     e.metric("Conferências", analytics["volume_checks"])
-    st.subheader("Histórico")
+    st.subheader("Histórico operacional")
     st.dataframe(
         _presentational_dataframe(history),
         hide_index=True,
@@ -6111,6 +6459,8 @@ def _sidebar_navigation() -> str:
     )
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    debug_default = bool(st.session_state.get("_admin_debug", UI_DEBUG_DEFAULT))
+    st.sidebar.checkbox("Diagnóstico de interação", value=debug_default, key="_admin_debug")
     modes = ("operacional", "analitico")
     selected_mode = st.sidebar.radio(
         "Modo",
@@ -6175,7 +6525,6 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
         "ml_intelligence": render_ml_intelligence_page,
         "ml_governance": render_ml_governance_page,
         "observability": render_observability_page,
-        "leitura_uso": _render_lead_intelligence,
         "workflows": render_workflows_page,
         "reports_engine": render_reports_engine_page,
     }
@@ -6503,16 +6852,16 @@ def render_generation_page() -> None:
             st.info("Contexto institucional recolhido para acelerar o primeiro paint.")
         _runtime_audit("generate.form.ready")
         lead_col1, lead_col2 = st.columns(2)
-        first_name = lead_col1.text_input("Primeiro nome do lead", key="admin_first_name")
-        whatsapp = lead_col2.text_input("WhatsApp do lead", key="admin_whatsapp")
+        first_name = lead_col1.text_input("Identificador operacional", key="admin_first_name")
+        whatsapp = lead_col2.text_input("Contato operacional", key="admin_whatsapp")
         first_name = _safe_text(first_name, max_length=80)
         whatsapp = _safe_text(whatsapp, max_length=40)
         lead_ready = bool(first_name.strip() and whatsapp.strip())
         if lead_ready:
-            st.info("Lead institucional detectado. A geracao sera rastreavel no ADM.")
+            st.info("Identificador operacional detectado. A geracao seguira com rastreio interno.")
         else:
-            st.info("Lead opcional no ADM. A geracao pode seguir sem captura comercial.")
-        st.markdown('<div class="lotoia-lead-hint">Campos opcionais no ADM para acelerar operacao interna.</div>', unsafe_allow_html=True)
+            st.info("Identificador opcional no ADM. A geracao pode seguir sem captura comercial.")
+        st.markdown('<div class="lotoia-operational-hint">Campos opcionais no ADM para rastreio operacional interno.</div>', unsafe_allow_html=True)
         selected_size = int(
             st.selectbox(
                 "Quantidade de dezenas",
@@ -6525,7 +6874,7 @@ def render_generation_page() -> None:
         package_summary: dict[str, Any] = {}
         premium_generation_package: dict[str, Any] | None = None
         _runtime_audit("generate.form.inputs")
-        generation_mode_options = ["HB", "IA", "HBIA"]
+        generation_mode_options = ["HB", "IA"]
         generation_mode = st.session_state.get("admin_generation_mode", "HB")
         if generation_mode not in generation_mode_options:
             generation_mode = generation_mode_options[0]
@@ -6572,20 +6921,20 @@ def render_generation_page() -> None:
             st.caption("O seletor de modo permanece ao lado do botao para manter o fluxo visivel em qualquer tamanho.")
             st.caption("Modo 15 dezenas preserva o comportamento atual do gerador principal.")
         if generate_clicked:
+            st.session_state["_admin_last_ui_event"] = f"generation:{generation_mode}:{selected_size}"
             _runtime_audit("generate.submit")
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
                 try:
-                    if lead_ready:
-                        lead_id, first_name, whatsapp = _capture_generation_lead(first_name, whatsapp)
-                    else:
-                        lead_id = None
+                    lead_id = None
                 except Exception as exc:
                     st.warning(str(exc))
                     return
+                candidate_pool: list[dict[str, Any]] = []
                 if premium_mode:
                     premium_generation_package = _build_premium_generation_package(selected_size, generation_mode)
                     games = premium_generation_package["premium_games"]
+                    candidate_pool = list(games)
                     payload = {
                         "games": games,
                         "profile_counts": dict(premium_generation_package["summary"].get("profile_distribution", {})),
@@ -6597,8 +6946,10 @@ def render_generation_page() -> None:
                     if generation_mode == "HB":
                         payload = _cached_generate_best_games(int(count), int(pool_size))
                         games = payload["games"]
+                        candidate_pool = list(games)
                     elif generation_mode == "IA":
                         games = _cached_generate_multiple_games(int(count), int(max_repeated))
+                        candidate_pool = list(games)
                         payload = {
                             "games": games,
                             "profile_counts": {
@@ -6610,6 +6961,7 @@ def render_generation_page() -> None:
                         hb_payload = _cached_generate_best_games(int(count), int(pool_size))
                         ia_games = _cached_generate_multiple_games(int(count), int(max_repeated))
                         games = _merge_unique_games(hb_payload["games"], ia_games, int(count))
+                        candidate_pool = list(hb_payload["games"]) + list(ia_games)
                         payload = {
                             "games": games,
                             "profile_counts": {
@@ -6623,9 +6975,18 @@ def render_generation_page() -> None:
                             },
                         }
                     strategy = generation_mode
+                requested_games = len(games)
                 games, dedup_report = _deduplicate_structural_games(
                     games,
                     source_mode=strategy,
+                    package_size=selected_size if premium_mode else None,
+                    generation_cycle="operational_generation",
+                )
+                games, output_gate_report = _apply_output_gate(
+                    games,
+                    requested_games=requested_games,
+                    candidate_pool=candidate_pool,
+                    generation_mode=strategy,
                     package_size=selected_size if premium_mode else None,
                     generation_cycle="operational_generation",
                 )
@@ -6644,6 +7005,7 @@ def render_generation_page() -> None:
                 ]
                 payload = dict(payload)
                 payload["deduplication"] = dict(dedup_report)
+                payload["output_gate"] = dict(output_gate_report)
                 if premium_generation_package is not None:
                     premium_generation_package["summary"].update(
                         {
@@ -6652,6 +7014,17 @@ def render_generation_page() -> None:
                             "collision_details": list(dedup_report.get("collision_details", [])),
                             "duplicate_rate": float(dedup_report.get("duplicate_rate", 0.0)),
                             "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
+                        }
+                    )
+                    premium_generation_package["summary"].update(
+                        {
+                            "requested_games": int(output_gate_report.get("requested_games", requested_games)),
+                            "delivered_games": int(output_gate_report.get("delivered_games", len(games))),
+                            "duplicate_blocked": int(output_gate_report.get("duplicate_blocked", 0)),
+                            "duplicate_hashes": list(output_gate_report.get("duplicate_hashes", [])),
+                            "replacement_attempts": int(output_gate_report.get("replacement_attempts", 0)),
+                            "output_gate_status": str(output_gate_report.get("output_gate_status", "passed")),
+                            "final_gate_count": int(output_gate_report.get("delivered_games", len(games))),
                         }
                     )
                 games = [
@@ -6671,6 +7044,8 @@ def render_generation_page() -> None:
             }
             if dedup_report:
                 persistence_context["deduplication"] = dict(dedup_report)
+            if output_gate_report:
+                persistence_context["output_gate"] = dict(output_gate_report)
             if premium_generation_package is not None:
                 persistence_context.update(
                     {
@@ -6719,6 +7094,12 @@ def render_generation_page() -> None:
                     "Origem das colisoes: "
                     + ", ".join(str(item) for item in dedup_report.get("duplicate_source", []) or ["indefinido"])
                 )
+            persist_trace["OUTPUT_GATE"] = dict(output_gate_report)
+            if int(output_gate_report.get("duplicate_blocked", 0)) or int(output_gate_report.get("delivered_games", len(games))) != int(output_gate_report.get("requested_games", len(games))):
+                st.warning(
+                    f"Foram solicitados {int(output_gate_report.get('requested_games', len(games)))} jogos, "
+                    f"mas apenas {int(output_gate_report.get('delivered_games', len(games)))} jogos únicos passaram no gate estrutural."
+                )
             persist_trace["OBSERVABILITY"] = {
                 "decision_trace": [game.get("decision_trace", {}) for game in games],
                 "generation_lineage": [game.get("generation_lineage", {}) for game in games],
@@ -6765,6 +7146,34 @@ def render_generation_page() -> None:
                     f"{package_summary['operational_bets']} apostas operacionais | "
                     f"score estrutural {package_summary['structural_diversity_score']:.4f}"
                 )
+                compression_keys = (
+                    "candidate_space_size",
+                    "initial_candidate_count",
+                    "post_filter_count",
+                    "post_rerank_count",
+                    "final_gate_count",
+                    "unique_hash_count_before_gate",
+                    "unique_hash_count_after_gate",
+                    "unique_ratio_before_gate",
+                    "unique_ratio_after_gate",
+                    "structural_collision_rate",
+                    "rerank_compression_ratio",
+                    "dominant_hash_frequency",
+                    "pool_entropy_score",
+                )
+                if any(key in package_summary.get("runtime_metrics", {}) for key in compression_keys):
+                    with st.expander("Auditoria da compressao do candidate pool", expanded=False):
+                        compression_cols = st.columns(4)
+                        compression_metrics = dict(package_summary.get("runtime_metrics", {}))
+                        compression_cols[0].metric("Pool", int(compression_metrics.get("candidate_space_size", 0)))
+                        compression_cols[1].metric("Filtrados", int(compression_metrics.get("post_filter_count", 0)))
+                        compression_cols[2].metric("Unicos pre-gate", int(compression_metrics.get("unique_hash_count_before_gate", 0)))
+                        compression_cols[3].metric("Unicos pos-gate", int(compression_metrics.get("unique_hash_count_after_gate", 0)))
+                        compression_cols_2 = st.columns(4)
+                        compression_cols_2[0].metric("Collision rate", f"{float(compression_metrics.get('structural_collision_rate', 0.0)):.4f}")
+                        compression_cols_2[1].metric("Compression ratio", f"{float(compression_metrics.get('rerank_compression_ratio', 0.0)):.4f}")
+                        compression_cols_2[2].metric("Dominant hash freq.", int(compression_metrics.get("dominant_hash_frequency", 0)))
+                        compression_cols_2[3].metric("Pool entropy", f"{float(compression_metrics.get('pool_entropy_score', 0.0)):.4f}")
             st.session_state["last_generation_games"] = games
             st.session_state["last_generation_context"] = persistence_context
             if premium_generation_package is not None:
@@ -6863,12 +7272,49 @@ def render_check_page() -> None:
             )
             load_result_col2.code(latest_official_result["numbers_text"], language="text")
         lead_col1, lead_col2 = st.columns(2)
-        first_name = _safe_text(lead_col1.text_input("Primeiro nome do lead", key="check_first_name"), max_length=80)
-        whatsapp = _safe_text(lead_col2.text_input("WhatsApp do lead", key="check_whatsapp"), max_length=40)
+        first_name = _safe_text(lead_col1.text_input("Identificador operacional", key="check_first_name"), max_length=80)
+        whatsapp = _safe_text(lead_col2.text_input("Contato operacional", key="check_whatsapp"), max_length=40)
         if first_name.strip() and whatsapp.strip():
-            st.info("Lead opcional preenchido. A conferencia sera rastreavel no ADM.")
+            st.info("Identificador operacional preenchido. A conferencia sera rastreavel no ADM.")
         else:
-            st.info("Lead opcional no ADM. A conferencia pode seguir sem captura comercial.")
+            st.info("Identificador opcional no ADM. A conferencia pode seguir sem captura comercial.")
+        runtime_snapshot = _sqlite_runtime_audit_snapshot()
+        imported_contests_count = int(runtime_snapshot["counts"].get("imported_contests", 0))
+        latest_contest = int(runtime_snapshot["latest_by_table"].get("imported_contests") or 0) or None
+        last_sync_summary = st.session_state.get("admin_last_official_sync_summary", {})
+        diag_cols = st.columns(3)
+        diag_cols[0].metric("imported_contests_count", imported_contests_count)
+        diag_cols[1].metric("latest_contest", latest_contest or "-")
+        diag_cols[2].metric("commit_state", str(last_sync_summary.get("commit_state", "-")))
+        st.caption(
+            "backend: "
+            f"{runtime_snapshot['backend']} | "
+            f"database_url: {_mask_database_url(str(runtime_snapshot['engine_url']))} | "
+            f"last_sync_error: {str(last_sync_summary.get('error_message') or '-')}"
+        )
+        if imported_contests_count == 0:
+            st.warning("imported_contests ainda está vazio. Sincronize o resultado oficial para habilitar a conferência automática.")
+        action_cols = st.columns([1, 1, 2])
+        if action_cols[0].button("Sincronizar resultado oficial agora", use_container_width=True):
+            with st.spinner("Importando resultado oficial da Caixa..."):
+                sync_payload = _sync_latest_official_result_now()
+            st.session_state["admin_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["admin_latest_official_contest_result"] = _get_latest_contest_result()
+            st.success(
+                f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}"
+            )
+            st.json(sync_payload)
+            st.rerun()
+        if action_cols[1].button("Importar último resultado oficial", use_container_width=True):
+            with st.spinner("Sincronizando o último resultado oficial..."):
+                sync_payload = _sync_latest_official_result_now()
+            st.session_state["admin_last_official_sync_summary"] = dict(sync_payload)
+            st.session_state["admin_latest_official_contest_result"] = _get_latest_contest_result()
+            st.success(
+                f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}"
+            )
+            st.json(sync_payload)
+            st.rerun()
         col1, col2 = st.columns([1, 3])
         if "admin_check_contest_id" not in st.session_state:
             default_contest = int(latest_official_result["contest_number"]) if latest_official_result else max(1, int(_safe_last_contest()) if _safe_last_contest().isdigit() else 1)
@@ -6879,12 +7325,12 @@ def render_check_page() -> None:
         numbers_text = col2.text_area("Jogos", placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15", height=220, key="admin_check_numbers_text")
         _runtime_audit("check.form.inputs")
         if st.button("Conferir jogo", type="primary"):
+            st.session_state["_admin_last_ui_event"] = "check:submit"
             _runtime_audit("check.submit")
             start_time = time.monotonic()
             try:
                 games = _parse_check_games(numbers_text)
                 contest_id_int = int(contest_id)
-                _persist_lead(first_name, whatsapp)
                 results = []
                 for index, numbers in enumerate(games, start=1):
                     game_start = time.monotonic()
@@ -7499,6 +7945,99 @@ def render_benchmark_page() -> None:
             )
             st.info(f"Relatórios salvos em: {result.report_paths.get('json', 'reports/temporal_longitudinal')}")
 
+    with st.container(border=True):
+        _section_header(
+            "Auditoria geométrica HB",
+            "Benchmark incremental da geometria do pool HB com batches de 5, checkpoint e retomada.",
+        )
+        hb_state = _hb_geometry_job_state()
+        hb_files = _hb_geometry_read_state()
+        progress = hb_files.get("progress", {})
+        summary = hb_files.get("summary", {})
+        hb_completed = bool(progress.get("completed", False) or hb_state.get("completed", False))
+        hb_contests_processed = int(hb_state.get("contests_processed", 0))
+        hb_processed_batches = int(progress.get("processed_batches", hb_state.get("processed_batches", 0)) or 0)
+        hb_current_scenario = str(hb_state.get("current_scenario", progress.get("current_scenario", "")) or "-")
+        hb_elapsed_time = float(hb_state.get("elapsed_time", progress.get("elapsed_seconds", 0.0)) or 0.0)
+        hb_error = str(hb_state.get("error", "") or progress.get("error", "") or "")
+        hb_resume_available = bool(progress) and not hb_completed
+
+        action_col1, action_col2, action_col3 = st.columns(3)
+        start_disabled = hb_state.get("running", False)
+        if action_col1.button("Iniciar auditoria", type="primary", disabled=start_disabled):
+            st.session_state["_admin_last_ui_event"] = "hb_geometry:start"
+            _hb_geometry_start_job(resume=hb_resume_available)
+            st.rerun()
+        if action_col2.button("Continuar auditoria", disabled=start_disabled or not hb_resume_available):
+            st.session_state["_admin_last_ui_event"] = "hb_geometry:continue"
+            _hb_geometry_start_job(resume=True)
+            st.rerun()
+        if action_col3.button("Resetar auditoria", disabled=hb_state.get("running", False)):
+            st.session_state["_admin_last_ui_event"] = "hb_geometry:reset"
+            _hb_geometry_reset_job()
+            st.rerun()
+
+        status_col1, status_col2, status_col3, status_col4 = st.columns(4)
+        status_col1.metric("contests_processed", hb_contests_processed)
+        status_col2.metric("processed_batches", hb_processed_batches)
+        status_col3.metric("completed", "sim" if hb_completed else "não")
+        status_col4.metric("elapsed_time", f"{hb_elapsed_time:.1f}s")
+
+        st.caption(f"current_scenario: {hb_current_scenario}")
+        if hb_error:
+            st.error(f"Runner HB Geometry: {hb_error}")
+
+        _render_ui_diagnostics(page="benchmark_cientifico", dashboard_mode=str(st.session_state.get("_admin_mode", "operacional")))
+
+        if progress:
+            st.info(
+                " | ".join(
+                    [
+                        f"checkpoint={Path(hb_files['paths']['progress']).name}",
+                        f"resume={'true' if hb_resume_available else 'false'}",
+                        f"last_contest={progress.get('last_contest', '-')}",
+                        f"current_batch={progress.get('current_batch', '-')}",
+                    ]
+                )
+            )
+
+        if summary:
+            st.subheader("Resumo HB Geometry")
+            summary_rows = []
+            baseline = summary.get("hb_baseline", {})
+            summary_rows.extend(
+                [
+                    {"Métrica": "avg_hits", "Valor": round(float(baseline.get("average_hits", 0.0)), 4)},
+                    {"Métrica": "11+", "Valor": int(baseline.get("hits_11_plus", 0))},
+                    {"Métrica": "12+", "Valor": int(baseline.get("hits_12_plus", 0))},
+                    {"Métrica": "overlap", "Valor": round(float(baseline.get("average_overlap", 0.0)), 4)},
+                    {"Métrica": "entropy", "Valor": round(float(baseline.get("entropy", 0.0)), 4)},
+                ]
+            )
+            dominant = baseline.get("dominant_numbers", [])
+            if dominant:
+                summary_rows.append(
+                    {
+                        "Métrica": "dominant_numbers",
+                        "Valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in dominant[:5]),
+                    }
+                )
+            st.dataframe(pd.DataFrame(summary_rows), hide_index=True, use_container_width=True)
+
+            if isinstance(hb_files.get("csv_frame"), pd.DataFrame) and not hb_files["csv_frame"].empty:
+                with st.expander("CSV consolidado parcial", expanded=False):
+                    st.dataframe(hb_files["csv_frame"].tail(20), hide_index=True, use_container_width=True)
+
+        st.info(
+            " | ".join(
+                [
+                    f"json={hb_files['paths'].get('json', '-')}",
+                    f"csv={hb_files['paths'].get('csv', '-')}",
+                    f"progress={hb_files['paths'].get('progress', '-')}",
+                ]
+            )
+        )
+
 
 def render_expansion_experimental_page() -> None:
     page_start = time.monotonic()
@@ -7518,7 +8057,7 @@ def render_expansion_experimental_page() -> None:
     payload_size_bytes = 0
     with st.container(border=True):
         _section_header(
-            "Cobertura probabilística",
+            "Gerador Premium",
             "Validação operacional interna do motor combinatório, governada por perfil de acesso.",
         )
         st.warning("Modos avançados aumentam significativamente o processamento operacional.")
@@ -7754,6 +8293,26 @@ def render_expansion_experimental_page() -> None:
 
         ranked_candidates = list(result.get("ranked_candidates", []))
         premium_candidates = list(result.get("premium_games", []))
+        ranked_candidates, ranked_gate_report = _apply_output_gate(
+            ranked_candidates,
+            requested_games=len(ranked_candidates),
+            candidate_pool=list(ranked_candidates),
+            generation_mode="expansion_ranked",
+            generation_cycle="expansion_page",
+        )
+        premium_candidates, premium_gate_report = _apply_output_gate(
+            premium_candidates,
+            requested_games=len(premium_candidates),
+            candidate_pool=list(premium_candidates),
+            generation_mode="expansion_premium",
+            generation_cycle="expansion_page",
+        )
+        st.session_state["admin_last_expansion_output_gate"] = {
+            "ranked": dict(ranked_gate_report),
+            "premium": dict(premium_gate_report),
+        }
+        if int(ranked_gate_report.get("duplicate_blocked", 0)) or int(premium_gate_report.get("duplicate_blocked", 0)):
+            st.warning("Jogos duplicados foram bloqueados antes da renderizacao, exportacao e persistencia da pagina de expansao.")
         official_result = st.session_state.get("admin_latest_official_contest_result") or {}
         official_numbers = [int(number) for number in official_result.get("numbers", []) if str(number).isdigit()] if isinstance(official_result, dict) else []
         lifecycle = evaluate_expansion_lifecycle(result, official_numbers=official_numbers)
@@ -7779,7 +8338,7 @@ def render_expansion_experimental_page() -> None:
             premium_scores = [float(row["scientific_score"]) for row in ranked_candidates]
             diversity_scores = [float(row["diversity_score"]) for row in ranked_candidates]
             rerank_metrics = _expansion_rerank_metrics(premium_candidates)
-            st.subheader("Pipeline científico do expansivo")
+            st.subheader("Pipeline científico premium")
             pipeline_cols = st.columns(6)
             pipeline_cols[0].metric("Candidatos", len(ranked_candidates))
             pipeline_cols[1].metric("Score médio", f"{(sum(premium_scores) / len(premium_scores)):.2f}")
@@ -7788,7 +8347,7 @@ def render_expansion_experimental_page() -> None:
             pipeline_cols[4].metric("Overlap médio", f"{rerank_metrics['overlap_mean']:.4f}")
             pipeline_cols[5].metric("Unique ratio", f"{rerank_metrics['unique_ratio']:.4f}")
             st.caption(
-                "Fluxo: geração combinatória → filtros estruturais → score estatístico → análise histórica → classificação estratégica → rerank híbrido → seleção premium final."
+                "Fluxo: geração combinatória → filtros estruturais → score estatístico → análise histórica → classificação estratégica → rerank premium → seleção final."
             )
             st.subheader("Métricas de rerank premium")
             rerank_cols = st.columns(3)
@@ -7801,7 +8360,7 @@ def render_expansion_experimental_page() -> None:
                     f"{profile}={count}" for profile, count in sorted(rerank_metrics["profile_distribution"].items())
                 )
             )
-            st.subheader("Ciclo de vida do expansivo")
+            st.subheader("Ciclo de vida institucional")
             lifecycle_cols = st.columns(5)
             lifecycle_badges = {row["status"]: row for row in lifecycle.get("badges", [])}
             lifecycle_cols[0].metric("aguardando validação", lifecycle_badges.get("PENDING", {}).get("count", 0))
@@ -8359,7 +8918,7 @@ def main() -> None:
             font-size: 0.8rem;
             line-height: 1.4;
         }
-        .lotoia-lead-hint {
+        .lotoia-operational-hint {
             color: #6d7f92;
             font-size: 0.86rem;
             margin-top: -0.15rem;

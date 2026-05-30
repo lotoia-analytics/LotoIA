@@ -17,7 +17,6 @@ from lotoia.database.database import (
     CheckEvent,
     ExpansionEvent,
     GenerationEvent,
-    Lead,
     MlUsageEvent,
     ReportEvent,
     ReconciliationEvent,
@@ -352,7 +351,6 @@ class InstitutionalDatabaseAdapter:
     def fetch_usage_metrics(self) -> dict[str, int]:
         with get_session(self.sqlite_path) as session:
             return {
-                "leads": int(session.query(Lead).count()),
                 "institutional_users": int(session.query(InstitutionalUser).count()),
                 "auth_events": int(session.query(AuthEvent).count()),
                 "auth_sessions": int(session.query(AuthSession).count()),

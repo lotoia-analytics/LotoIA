@@ -935,6 +935,7 @@ def _force_subset_from_universe(
     odd_max: int,
     even_min: int,
     even_max: int,
+    offset: int = 0,
 ) -> list[int]:
     target_size = max(1, min(int(target_size or 1), 25))
     universe = list(range(1, 26))
@@ -946,6 +947,9 @@ def _force_subset_from_universe(
             int(number),
         ),
     )
+    if scoring:
+        offset = int(offset or 0) % len(scoring)
+        scoring = scoring[offset:] + scoring[:offset]
     odd_target = min(max((target_size + 1) // 2, odd_min), odd_max)
     even_target = target_size - odd_target
     if even_target < even_min:
@@ -979,6 +983,78 @@ def _force_subset_from_universe(
             if len(selected) >= target_size:
                 break
     return sorted(selected[:target_size])
+
+
+def _build_institutional_game_record(
+    *,
+    selected_numbers: list[int],
+    candidate: dict[str, Any] | None = None,
+    history_frequency: dict[int, int] | None = None,
+    dezenas_per_game: int,
+) -> dict[str, Any]:
+    candidate = candidate or {}
+    history_frequency = history_frequency or {}
+    sequence_stats = _sequence_metrics(selected_numbers)
+    coverage_stats = _coverage_metrics(selected_numbers)
+    entropy_value = _entropy_score(selected_numbers)
+    odd_count = sum(1 for number in selected_numbers if number % 2 != 0)
+    even_count = len(selected_numbers) - odd_count
+    structural_score = round(
+        max(
+            0.0,
+            min(
+                100.0,
+                float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0)
+                * 0.45
+                + float(candidate.get("final_score", {}).get("final_score", 0.0) or 0.0) * 0.30
+                + coverage_stats["coverage_score"] * 25.0
+                + entropy_value * 20.0
+                - abs(odd_count - even_count) * 1.5,
+            ),
+        ),
+        2,
+    )
+    return {
+        "numbers": selected_numbers,
+        "odd": odd_count,
+        "even": even_count,
+        "sum": sum(selected_numbers),
+        "frame": len({((number - 1) // 5) for number in selected_numbers}),
+        "center": sum(1 for number in selected_numbers if 8 <= number <= 18),
+        "quadra_score": {
+            "found_quadras": int(candidate.get("quadra_score", {}).get("found_quadras", 0) or 0),
+            "average_rank": float(candidate.get("quadra_score", {}).get("average_rank", 0.0) or 0.0),
+        },
+        "final_score": {
+            "final_score": structural_score,
+            "components": {
+                "structural_score": structural_score,
+                "coverage_score": coverage_stats["coverage_score"],
+                "entropy_score": entropy_value,
+                "sequence_score": max(0.0, 1.0 - (sequence_stats["largest_sequence"] / max(1, dezenas_per_game))),
+            },
+        },
+        "historical_intelligence": {
+            "profile_type": str(candidate.get("profile_type", "")),
+            "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
+            "coverage_score": coverage_stats["coverage_score"],
+            "entropy_score": entropy_value,
+            "sequence_max": sequence_stats["largest_sequence"],
+            "dominant_numbers": [
+                {"number": int(number), "frequency": int(history_frequency.get(int(number), 0))}
+                for number in selected_numbers
+            ],
+        },
+        "profile_type": str(candidate.get("profile_type", "")),
+        "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
+        "ml_enabled": False,
+        "structural_metrics": {
+            "coverage_score": coverage_stats["coverage_score"],
+            "entropy_score": entropy_value,
+            "sequence_max": sequence_stats["largest_sequence"],
+            "block_distribution": coverage_stats["block_distribution"],
+        },
+    }
 
 
 def _build_simulated_draw(size: int = 15) -> list[int]:
@@ -1070,125 +1146,49 @@ def _run_institutional_generation(
                 odd_max=odd_max,
                 even_min=even_min,
                 even_max=even_max,
+                offset=len(games),
             )
         signature = tuple(selected_numbers)
         if signature in used_signatures:
             continue
-        sequence_stats = _sequence_metrics(selected_numbers)
-        coverage_stats = _coverage_metrics(selected_numbers)
-        entropy_value = _entropy_score(selected_numbers)
-        odd_count = sum(1 for number in selected_numbers if number % 2 != 0)
-        even_count = len(selected_numbers) - odd_count
-        structural_score = round(
-            max(
-                0.0,
-                min(
-                    100.0,
-                    float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0)
-                    * 0.45
-                    + float(candidate.get("final_score", {}).get("final_score", 0.0) or 0.0) * 0.30
-                    + coverage_stats["coverage_score"] * 25.0
-                    + entropy_value * 20.0
-                    - abs(odd_count - even_count) * 1.5,
-                ),
-            ),
-            2,
-        )
         games.append(
-            {
-                "numbers": selected_numbers,
-                "odd": odd_count,
-                "even": even_count,
-                "sum": sum(selected_numbers),
-                "frame": len({((number - 1) // 5) for number in selected_numbers}),
-                "center": sum(1 for number in selected_numbers if 8 <= number <= 18),
-                "quadra_score": {
-                    "found_quadras": int(candidate.get("quadra_score", {}).get("found_quadras", 0) or 0),
-                    "average_rank": float(candidate.get("quadra_score", {}).get("average_rank", 0.0) or 0.0),
-                },
-                "final_score": {
-                    "final_score": structural_score,
-                    "components": {
-                        "structural_score": structural_score,
-                        "coverage_score": coverage_stats["coverage_score"],
-                        "entropy_score": entropy_value,
-                        "sequence_score": max(0.0, 1.0 - (sequence_stats["largest_sequence"] / max(1, dezenas_per_game))),
-                    },
-                },
-                "historical_intelligence": {
-                    "profile_type": str(candidate.get("profile_type", "")),
-                    "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
-                    "coverage_score": coverage_stats["coverage_score"],
-                    "entropy_score": entropy_value,
-                    "sequence_max": sequence_stats["largest_sequence"],
-                    "dominant_numbers": [
-                        {"number": int(number), "frequency": int(history_frequency.get(int(number), 0))}
-                        for number in selected_numbers
-                    ],
-                },
-                "profile_type": str(candidate.get("profile_type", "")),
-                "profile_score": float(candidate.get("historical_intelligence", {}).get("profile_score", 0.0) or 0.0),
-                "ml_enabled": False,
-                "structural_metrics": {
-                    "coverage_score": coverage_stats["coverage_score"],
-                    "entropy_score": entropy_value,
-                    "sequence_max": sequence_stats["largest_sequence"],
-                    "block_distribution": coverage_stats["block_distribution"],
-                },
-            }
+            _build_institutional_game_record(
+                selected_numbers=selected_numbers,
+                candidate=dict(candidate),
+                history_frequency=history_frequency,
+                dezenas_per_game=dezenas_per_game,
+            )
         )
         used_signatures.add(signature)
         if len(games) >= total_games:
             break
 
-    if not games:
-        games = []
-        for candidate in ranked_candidates[:total_games]:
-            fallback_numbers = _select_subset_from_candidate(
-                list(candidate.get("numbers", [])),
-                target_size=dezenas_per_game,
-                frequency_map=history_frequency,
-                latest_numbers=latest_numbers,
-                odd_min=odd_min,
-                odd_max=odd_max,
-                even_min=even_min,
-                even_max=even_max,
-                sequence_max=sequence_max,
-                coverage_min=coverage_min,
-                entropy_min=entropy_min,
-                repeat_limit=repeat_limit,
+    fallback_attempt = 0
+    while len(games) < total_games and fallback_attempt < max(total_games * 25, 50):
+        candidate = ranked_candidates[fallback_attempt % len(ranked_candidates)] if ranked_candidates else {}
+        fallback_numbers = _force_subset_from_universe(
+            target_size=dezenas_per_game,
+            frequency_map=history_frequency,
+            latest_numbers=latest_numbers,
+            odd_min=odd_min,
+            odd_max=odd_max,
+            even_min=even_min,
+            even_max=even_max,
+            offset=seed + fallback_attempt,
+        )
+        fallback_attempt += 1
+        signature = tuple(fallback_numbers)
+        if signature in used_signatures:
+            continue
+        games.append(
+            _build_institutional_game_record(
+                selected_numbers=fallback_numbers,
+                candidate=dict(candidate),
+                history_frequency=history_frequency,
+                dezenas_per_game=dezenas_per_game,
             )
-            if not fallback_numbers:
-                fallback_numbers = _force_subset_from_universe(
-                    target_size=dezenas_per_game,
-                    frequency_map=history_frequency,
-                    latest_numbers=latest_numbers,
-                    odd_min=odd_min,
-                    odd_max=odd_max,
-                    even_min=even_min,
-                    even_max=even_max,
-                )
-            if not fallback_numbers:
-                continue
-            odd_count = sum(1 for number in fallback_numbers if number % 2 != 0)
-            even_count = len(fallback_numbers) - odd_count
-            games.append(
-                {
-                    "numbers": fallback_numbers,
-                    "odd": odd_count,
-                    "even": even_count,
-                    "sum": sum(fallback_numbers),
-                    "frame": len({((number - 1) // 5) for number in fallback_numbers}),
-                    "center": sum(1 for number in fallback_numbers if 8 <= number <= 18),
-                    "quadra_score": dict(candidate.get("quadra_score", {})),
-                    "final_score": dict(candidate.get("final_score", {})),
-                    "historical_intelligence": dict(candidate.get("historical_intelligence", {})),
-                    "profile_type": str(candidate.get("profile_type", "")),
-                    "profile_score": float(candidate.get("profile_score", 0.0) or 0.0),
-                    "ml_enabled": False,
-                    "structural_metrics": {},
-                }
-            )
+        )
+        used_signatures.add(signature)
     generation_snapshot = _persist_generation_snapshot(
         games=games,
         seed=seed,
@@ -1222,8 +1222,11 @@ def _run_institutional_generation(
         "generation_event_id": generation_snapshot["generation_event_id"],
         "seed": seed,
         "jogos": games,
-        "quantidade_solicitada": dezenas_per_game,
-        "quantidade_real_gerada": len(games),
+        "quantidade_jogos_solicitada": total_games,
+        "quantidade_dezenas_solicitada": dezenas_per_game,
+        "quantidade_jogos_real_gerada": len(games),
+        "quantidade_jogos_persistida": int(generation_snapshot.get("games_count", 0) or 0),
+        "len_todos_os_jogos": [len(game.get("numbers", [])) for game in games],
         "primeiro_jogo": games[0]["numbers"] if games else [],
         "len_primeiro_jogo": len(games[0]["numbers"]) if games else 0,
     }
@@ -2714,11 +2717,13 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.caption(
             " | ".join(
                 [
-                    f"quantidade_solicitada={generation_result.get('quantidade_solicitada', '-')}",
-                    f"quantidade_real_gerada={generation_result.get('quantidade_real_gerada', '-')}",
-                    f"quantidade_persistida={persisted_count}",
+                    f"quantidade_jogos_solicitada={generation_result.get('quantidade_jogos_solicitada', '-')}",
+                    f"quantidade_dezenas_solicitada={generation_result.get('quantidade_dezenas_solicitada', '-')}",
+                    f"quantidade_jogos_real_gerada={generation_result.get('quantidade_jogos_real_gerada', '-')}",
+                    f"quantidade_jogos_persistida={persisted_count}",
                     f"generation_event_id={generation_event_id or '-'}",
                     f"len(generated_games)={len(generation_result.get('jogos') or [])}",
+                    f"len_todos_os_jogos={generation_result.get('len_todos_os_jogos', [])}",
                     f"len_primeiro_jogo={generation_result.get('len_primeiro_jogo', '-')}",
                     f"primeiro_jogo={' '.join(f'{number:02d}' for number in generation_result.get('primeiro_jogo', [])) or '-'}",
                 ]

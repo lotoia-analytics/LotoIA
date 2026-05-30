@@ -1,0 +1,30 @@
+{
+  "successful_dates": [
+    "2026-05-21",
+    "2026-05-22",
+    "2026-05-23"
+  ],
+  "attempted_windows_by_date": {
+    "2026-05-21": [
+      "21:15"
+    ],
+    "2026-05-22": [
+      "21:15",
+      "21:30",
+      "21:55"
+    ],
+    "2026-05-23": [
+      "21:15"
+    ]
+  },
+  "last_synced_window": "21:15",
+  "last_summary": {
+    "latest_contest": 3693,
+    "synced_contests": [
+      3693
+    ],
+    "persisted_contests": 1,
+    "source": "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil",
+    "fallback_used": false
+  }
+}

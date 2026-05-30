@@ -1,0 +1,1716 @@
+{
+  "benchmark_version": "0.1.0",
+  "geometry_version": "hb_geometry_audit_v1",
+  "created_at": "2026-05-27T23:36:06+00:00",
+  "updated_at": "2026-05-27T23:36:29+00:00",
+  "seed": 7,
+  "contests_analyzed": [
+    3662,
+    3663,
+    3664,
+    3665,
+    3666,
+    3667,
+    3668,
+    3669,
+    3670,
+    3671,
+    3672,
+    3673,
+    3674,
+    3675,
+    3676,
+    3677,
+    3678,
+    3679,
+    3680,
+    3681,
+    3682,
+    3683,
+    3684,
+    3685,
+    3686,
+    3687,
+    3688,
+    3690,
+    3691,
+    3692
+  ],
+  "games_count": 5,
+  "pool_size": 18,
+  "history_window": 200,
+  "batch_size": 5,
+  "lightweight": true,
+  "elapsed_seconds": 23.69,
+  "current_scenario": "hb_less_conservative_rerank",
+  "last_contest": 3666,
+  "completed": false,
+  "processed_batches": 1,
+  "summary": {
+    "hb_baseline": {
+      "average_hits": 9.36,
+      "hits_11_plus": 6,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.644,
+      "entropy": 1.0,
+      "stability_sd": 0.9577,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 21
+        },
+        {
+          "number": 7,
+          "frequency": 18
+        },
+        {
+          "number": 19,
+          "frequency": 14
+        },
+        {
+          "number": 23,
+          "frequency": 14
+        },
+        {
+          "number": 11,
+          "frequency": 13
+        },
+        {
+          "number": 18,
+          "frequency": 13
+        },
+        {
+          "number": 5,
+          "frequency": 12
+        },
+        {
+          "number": 10,
+          "frequency": 12
+        },
+        {
+          "number": 13,
+          "frequency": 12
+        },
+        {
+          "number": 3,
+          "frequency": 11
+        }
+      ]
+    },
+    "hb_reduced_hot": {
+      "average_hits": 9.24,
+      "hits_11_plus": 4,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.612,
+      "entropy": 1.0,
+      "stability_sd": 0.9756,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 18
+        },
+        {
+          "number": 6,
+          "frequency": 17
+        },
+        {
+          "number": 23,
+          "frequency": 14
+        },
+        {
+          "number": 14,
+          "frequency": 13
+        },
+        {
+          "number": 20,
+          "frequency": 12
+        },
+        {
+          "number": 3,
+          "frequency": 10
+        },
+        {
+          "number": 18,
+          "frequency": 9
+        },
+        {
+          "number": 19,
+          "frequency": 9
+        },
+        {
+          "number": 2,
+          "frequency": 8
+        },
+        {
+          "number": 5,
+          "frequency": 8
+        }
+      ]
+    },
+    "hb_flexible_bounds": {
+      "average_hits": 9.2,
+      "hits_11_plus": 4,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.632,
+      "entropy": 1.0,
+      "stability_sd": 0.9294,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 18
+        },
+        {
+          "number": 6,
+          "frequency": 17
+        },
+        {
+          "number": 19,
+          "frequency": 14
+        },
+        {
+          "number": 14,
+          "frequency": 13
+        },
+        {
+          "number": 20,
+          "frequency": 13
+        },
+        {
+          "number": 5,
+          "frequency": 12
+        },
+        {
+          "number": 12,
+          "frequency": 12
+        },
+        {
+          "number": 13,
+          "frequency": 12
+        },
+        {
+          "number": 11,
+          "frequency": 10
+        },
+        {
+          "number": 23,
+          "frequency": 10
+        }
+      ]
+    },
+    "hb_exploration_active": {
+      "average_hits": 9.16,
+      "hits_11_plus": 3,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.632,
+      "entropy": 1.0,
+      "stability_sd": 0.9272,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 21
+        },
+        {
+          "number": 5,
+          "frequency": 16
+        },
+        {
+          "number": 3,
+          "frequency": 15
+        },
+        {
+          "number": 7,
+          "frequency": 14
+        },
+        {
+          "number": 23,
+          "frequency": 14
+        },
+        {
+          "number": 14,
+          "frequency": 13
+        },
+        {
+          "number": 20,
+          "frequency": 12
+        },
+        {
+          "number": 16,
+          "frequency": 10
+        },
+        {
+          "number": 19,
+          "frequency": 10
+        },
+        {
+          "number": 12,
+          "frequency": 9
+        }
+      ]
+    },
+    "hb_less_conservative_rerank": {
+      "average_hits": 9.28,
+      "hits_11_plus": 7,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.6773,
+      "entropy": 1.0,
+      "stability_sd": 1.0013,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 13,
+          "frequency": 24
+        },
+        {
+          "number": 6,
+          "frequency": 18
+        },
+        {
+          "number": 20,
+          "frequency": 18
+        },
+        {
+          "number": 4,
+          "frequency": 17
+        },
+        {
+          "number": 5,
+          "frequency": 17
+        },
+        {
+          "number": 3,
+          "frequency": 15
+        },
+        {
+          "number": 7,
+          "frequency": 15
+        },
+        {
+          "number": 10,
+          "frequency": 14
+        },
+        {
+          "number": 11,
+          "frequency": 13
+        },
+        {
+          "number": 1,
+          "frequency": 12
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "batch_id": 1,
+      "scenario": "hb_baseline",
+      "contest": 3662,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 9,
+      "average_overlap": 0.6867,
+      "entropy": 1.0,
+      "stability_sd": 0.4899,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 14,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 21,
+          "frequency": 5
+        },
+        {
+          "number": 24,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_reduced_hot",
+      "contest": 3662,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 9,
+      "average_overlap": 0.6867,
+      "entropy": 1.0,
+      "stability_sd": 0.4899,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 14,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 21,
+          "frequency": 5
+        },
+        {
+          "number": 24,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_flexible_bounds",
+      "contest": 3662,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 9,
+      "average_overlap": 0.6867,
+      "entropy": 1.0,
+      "stability_sd": 0.4899,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 14,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 21,
+          "frequency": 5
+        },
+        {
+          "number": 24,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_exploration_active",
+      "contest": 3662,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 9,
+      "average_overlap": 0.6867,
+      "entropy": 1.0,
+      "stability_sd": 0.4899,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 14,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 21,
+          "frequency": 5
+        },
+        {
+          "number": 24,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_less_conservative_rerank",
+      "contest": 3662,
+      "average_hits": 9.4,
+      "hits_11_plus": 2,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.66,
+      "entropy": 1.0,
+      "stability_sd": 1.4967,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 4,
+          "frequency": 5
+        },
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 15,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        },
+        {
+          "number": 21,
+          "frequency": 4
+        },
+        {
+          "number": 23,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_baseline",
+      "contest": 3663,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.62,
+      "entropy": 1.0,
+      "stability_sd": 0.8,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 18,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 4,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 25,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_reduced_hot",
+      "contest": 3663,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.62,
+      "entropy": 1.0,
+      "stability_sd": 0.8,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 18,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 4,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 25,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_flexible_bounds",
+      "contest": 3663,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.62,
+      "entropy": 1.0,
+      "stability_sd": 0.8,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 18,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 4,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 25,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_exploration_active",
+      "contest": 3663,
+      "average_hits": 8.6,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.62,
+      "entropy": 1.0,
+      "stability_sd": 0.8,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 18,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 4,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 25,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_less_conservative_rerank",
+      "contest": 3663,
+      "average_hits": 9.2,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.6333,
+      "entropy": 1.0,
+      "stability_sd": 0.4,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 13,
+          "frequency": 5
+        },
+        {
+          "number": 20,
+          "frequency": 5
+        },
+        {
+          "number": 25,
+          "frequency": 5
+        },
+        {
+          "number": 8,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        },
+        {
+          "number": 4,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_baseline",
+      "contest": 3664,
+      "average_hits": 10.2,
+      "hits_11_plus": 2,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.6333,
+      "entropy": 1.0,
+      "stability_sd": 1.1662,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 11,
+          "frequency": 5
+        },
+        {
+          "number": 12,
+          "frequency": 5
+        },
+        {
+          "number": 20,
+          "frequency": 5
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 18,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_reduced_hot",
+      "contest": 3664,
+      "average_hits": 9.8,
+      "hits_11_plus": 1,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.56,
+      "entropy": 1.0,
+      "stability_sd": 1.3266,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 1,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 18,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_flexible_bounds",
+      "contest": 3664,
+      "average_hits": 10.0,
+      "hits_11_plus": 1,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.6067,
+      "entropy": 1.0,
+      "stability_sd": 1.0954,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 11,
+          "frequency": 5
+        },
+        {
+          "number": 20,
+          "frequency": 5
+        },
+        {
+          "number": 1,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 18,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_exploration_active",
+      "contest": 3664,
+      "average_hits": 9.6,
+      "hits_11_plus": 1,
+      "hits_12_plus": 1,
+      "best_hits": 12,
+      "average_overlap": 0.6,
+      "entropy": 1.0,
+      "stability_sd": 1.3565,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 12,
+          "frequency": 5
+        },
+        {
+          "number": 1,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 14,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_less_conservative_rerank",
+      "contest": 3664,
+      "average_hits": 9.4,
+      "hits_11_plus": 1,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.64,
+      "entropy": 1.0,
+      "stability_sd": 1.0198,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 4,
+          "frequency": 5
+        },
+        {
+          "number": 10,
+          "frequency": 5
+        },
+        {
+          "number": 13,
+          "frequency": 5
+        },
+        {
+          "number": 14,
+          "frequency": 5
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 1,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_baseline",
+      "contest": 3665,
+      "average_hits": 10.2,
+      "hits_11_plus": 3,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.6733,
+      "entropy": 1.0,
+      "stability_sd": 1.1662,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 16,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 18,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_reduced_hot",
+      "contest": 3665,
+      "average_hits": 10.0,
+      "hits_11_plus": 2,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.5867,
+      "entropy": 1.0,
+      "stability_sd": 1.0954,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 16,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 1,
+          "frequency": 3
+        },
+        {
+          "number": 4,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_flexible_bounds",
+      "contest": 3665,
+      "average_hits": 10.0,
+      "hits_11_plus": 2,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.64,
+      "entropy": 1.0,
+      "stability_sd": 1.0954,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 16,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 1,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_exploration_active",
+      "contest": 3665,
+      "average_hits": 10.0,
+      "hits_11_plus": 2,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.64,
+      "entropy": 1.0,
+      "stability_sd": 1.0954,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 16,
+          "frequency": 5
+        },
+        {
+          "number": 19,
+          "frequency": 5
+        },
+        {
+          "number": 23,
+          "frequency": 5
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 1,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_less_conservative_rerank",
+      "contest": 3665,
+      "average_hits": 10.6,
+      "hits_11_plus": 3,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.7067,
+      "entropy": 1.0,
+      "stability_sd": 0.4899,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 1,
+          "frequency": 5
+        },
+        {
+          "number": 5,
+          "frequency": 5
+        },
+        {
+          "number": 6,
+          "frequency": 5
+        },
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 13,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 19,
+          "frequency": 4
+        },
+        {
+          "number": 20,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_baseline",
+      "contest": 3666,
+      "average_hits": 9.2,
+      "hits_11_plus": 1,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.6067,
+      "entropy": 1.0,
+      "stability_sd": 1.1662,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 9,
+          "frequency": 5
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        },
+        {
+          "number": 16,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 23,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_reduced_hot",
+      "contest": 3666,
+      "average_hits": 9.2,
+      "hits_11_plus": 1,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.6067,
+      "entropy": 1.0,
+      "stability_sd": 1.1662,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 9,
+          "frequency": 5
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 11,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 15,
+          "frequency": 4
+        },
+        {
+          "number": 16,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 23,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_flexible_bounds",
+      "contest": 3666,
+      "average_hits": 8.8,
+      "hits_11_plus": 1,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.6067,
+      "entropy": 1.0,
+      "stability_sd": 1.1662,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 9,
+          "frequency": 5
+        },
+        {
+          "number": 11,
+          "frequency": 5
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 7,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 12,
+          "frequency": 4
+        },
+        {
+          "number": 13,
+          "frequency": 4
+        },
+        {
+          "number": 16,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 2,
+          "frequency": 3
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_exploration_active",
+      "contest": 3666,
+      "average_hits": 9.0,
+      "hits_11_plus": 0,
+      "hits_12_plus": 0,
+      "best_hits": 10,
+      "average_overlap": 0.6133,
+      "entropy": 1.0,
+      "stability_sd": 0.8944,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 16,
+          "frequency": 5
+        },
+        {
+          "number": 2,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        },
+        {
+          "number": 9,
+          "frequency": 4
+        },
+        {
+          "number": 10,
+          "frequency": 4
+        },
+        {
+          "number": 21,
+          "frequency": 4
+        },
+        {
+          "number": 22,
+          "frequency": 4
+        },
+        {
+          "number": 23,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    },
+    {
+      "batch_id": 1,
+      "scenario": "hb_less_conservative_rerank",
+      "contest": 3666,
+      "average_hits": 7.8,
+      "hits_11_plus": 1,
+      "hits_12_plus": 0,
+      "best_hits": 11,
+      "average_overlap": 0.7467,
+      "entropy": 1.0,
+      "stability_sd": 1.6,
+      "unique_ratio_real": 1.0,
+      "dominant_numbers": [
+        {
+          "number": 7,
+          "frequency": 5
+        },
+        {
+          "number": 10,
+          "frequency": 5
+        },
+        {
+          "number": 11,
+          "frequency": 5
+        },
+        {
+          "number": 13,
+          "frequency": 5
+        },
+        {
+          "number": 20,
+          "frequency": 5
+        },
+        {
+          "number": 1,
+          "frequency": 4
+        },
+        {
+          "number": 3,
+          "frequency": 4
+        },
+        {
+          "number": 4,
+          "frequency": 4
+        },
+        {
+          "number": 5,
+          "frequency": 4
+        },
+        {
+          "number": 6,
+          "frequency": 4
+        }
+      ],
+      "trace_snapshot": null
+    }
+  ],
+  "progress_path": "C:\\Projetos\\LotoIA\\tmp_artifacts_smoke\\hb_geometry_dashboard\\hb_geometry_audit.progress.json",
+  "recovered_from_checkpoint": false,
+  "progress_signature": "05bc29afe0351532fb96282df463e9269ab500ef677985e5e4e47d7e204ea0a0"
+}

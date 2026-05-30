@@ -241,6 +241,79 @@ def _scientific_sequence_limit(expansion_size: int) -> int:
     return max(8, min(12, expansion_size - 6))
 
 
+def _hash_signature(numbers: Sequence[int]) -> tuple[int, ...]:
+    return tuple(sorted(int(number) for number in numbers))
+
+
+def _signature_source(row: Any) -> Sequence[int]:
+    if isinstance(row, dict):
+        numbers = row.get("numbers", [])
+        if isinstance(numbers, Sequence) and not isinstance(numbers, (str, bytes)):
+            return numbers  # type: ignore[return-value]
+        return []
+    if isinstance(row, Sequence) and not isinstance(row, (str, bytes)):
+        return row
+    return []
+
+
+def _pool_entropy_score(rows: Sequence[Sequence[int]]) -> float:
+    if not rows:
+        return 0.0
+    distribution: dict[tuple[int, ...], int] = {}
+    for numbers in rows:
+        signature = _hash_signature(_signature_source(numbers))
+        distribution[signature] = distribution.get(signature, 0) + 1
+    total = len(rows)
+    entropy = 0.0
+    for count in distribution.values():
+        share = count / total
+        if share:
+            entropy -= share * log2(share)
+    max_entropy = log2(len(distribution)) if len(distribution) > 1 else 1.0
+    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
+
+
+def _pool_compression_metrics(
+    initial_rows: Sequence[Sequence[int]],
+    filtered_rows: Sequence[Sequence[int]],
+    premium_rows: Sequence[Sequence[int]],
+) -> dict[str, Any]:
+    initial_count = len(initial_rows)
+    filtered_count = len(filtered_rows)
+    premium_count = len(premium_rows)
+    initial_hashes = [_hash_signature(numbers) for numbers in initial_rows]
+    filtered_hashes = [_hash_signature(_signature_source(numbers)) for numbers in filtered_rows]
+    premium_hashes = [_hash_signature(_signature_source(numbers)) for numbers in premium_rows]
+    initial_unique = len(set(initial_hashes))
+    filtered_unique = len(set(filtered_hashes))
+    premium_unique = len(set(premium_hashes))
+    dominant_hash_frequency = 0
+    if filtered_hashes:
+        distribution: dict[tuple[int, ...], int] = {}
+        for signature in filtered_hashes:
+            distribution[signature] = distribution.get(signature, 0) + 1
+        dominant_hash_frequency = max(distribution.values())
+    unique_ratio_before_gate = round(filtered_unique / filtered_count, 4) if filtered_count else 0.0
+    unique_ratio_after_gate = round(premium_unique / premium_count, 4) if premium_count else 0.0
+    structural_collision_rate = round(1.0 - unique_ratio_before_gate, 4) if filtered_count else 0.0
+    rerank_compression_ratio = round(premium_count / filtered_count, 4) if filtered_count else 0.0
+    return {
+        "candidate_space_size": initial_count,
+        "initial_candidate_count": initial_count,
+        "post_filter_count": filtered_count,
+        "post_rerank_count": filtered_count,
+        "final_gate_count": premium_count,
+        "unique_hash_count_before_gate": filtered_unique,
+        "unique_hash_count_after_gate": premium_unique,
+        "unique_ratio_before_gate": unique_ratio_before_gate,
+        "unique_ratio_after_gate": unique_ratio_after_gate,
+        "structural_collision_rate": structural_collision_rate,
+        "rerank_compression_ratio": rerank_compression_ratio,
+        "dominant_hash_frequency": dominant_hash_frequency,
+        "pool_entropy_score": _pool_entropy_score(filtered_rows or initial_rows),
+    }
+
+
 def select_premium_expansive_games(
     numbers: Sequence[int],
     *,
@@ -342,6 +415,8 @@ def select_premium_expansive_games(
     if not premium_games and ranked_candidates:
         premium_games = ranked_candidates[: min(premium_limit, len(ranked_candidates))]
 
+    compression_metrics = _pool_compression_metrics(candidate_pool, ranked_candidates, premium_games)
+
     if premium_games:
         premium_overlaps: list[float] = []
         premium_distances: list[float] = []
@@ -416,6 +491,7 @@ def select_premium_expansive_games(
         "sequence_limit": _scientific_sequence_limit(len(selected)),
         "candidate_pool_count": candidate_pool_count,
         "filtered_count": filtered_count,
+        **compression_metrics,
     }
 
     estimated_cost = round(total * 3.5, 2)
