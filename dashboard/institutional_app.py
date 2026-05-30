@@ -1588,7 +1588,7 @@ def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
                 "title": f"Geração #{entry['generation_event_id']}",
                 "details": (
                     f"concurso={entry.get('target_contest', '-') or '-'} | jogos={entry['total_games']} | "
-                    f"seed={entry['seed']} | perfil_medio={entry.get('avg_score', 0.0):.4f} | status=persistido"
+                    f"seed={entry['seed']} | status=persistido"
                 ),
             }
         )
@@ -1600,7 +1600,7 @@ def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
                 "title": f"Conferência #{entry['id']}",
                 "details": (
                     f"concurso={entry['contest_id']} | jogos_conferidos={entry['games_count']} | "
-                    f"melhor_acerto={entry['best_hits']} | premios={entry['prize_count']} | total_hits={entry['total_hits']}"
+                    f"status={entry['status']} | generation_event_id={entry['generation_event_id']}"
                 ),
             }
         )
@@ -1792,7 +1792,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Fontes institucionais")
     st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_contest = _load_latest_contest_summary() or {}
     top_cols = st.columns(5)
     top_cols[0].metric("total_execucoes", int(live_counts.get("generation_events", 0)))
@@ -1832,6 +1831,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
     )
     st.markdown("##### ?ltima reconcilia??o persistida")
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
     if latest_reconciliation:
         st.caption(
             f"reconciliation_id={latest_reconciliation.get('id', '-')}"
@@ -1839,11 +1839,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
             f" | status={latest_reconciliation.get('status', '-')}"
         )
-        recon_cols = st.columns(4)
+        recon_cols = st.columns(3)
         recon_cols[0].metric("Concurso", latest_reconciliation.get("contest_id", "-"))
         recon_cols[1].metric("Total jogos conferidos", latest_reconciliation.get("games_count", 0))
         recon_cols[2].metric("Status", latest_reconciliation.get("status", "-"))
-        recon_cols[3].metric("Reconcilia??o", latest_reconciliation.get("id", "-"))
     else:
         st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
     st.divider()
@@ -1865,7 +1864,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
-
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
@@ -3243,32 +3241,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Histórico Analítico")
-    st.write("Snapshot institucional do banco atual via DATABASE_URL.")
-    st.markdown("##### Fontes institucionais")
-    st.dataframe(pd.DataFrame(_institutional_source_map(snapshot)), hide_index=True, use_container_width=True)
-    diag_cols = st.columns(4)
-    diag_cols[0].metric("backend", snapshot["backend"])
-    diag_cols[1].metric("database_source", snapshot["database_source"])
-    diag_cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    diag_cols[3].metric("generation_events", int(snapshot["counts"].get("generation_events", 0)))
-    st.caption(f"database_url: {_mask_database_url(snapshot['database_url'])}")
-    last_sync_summary = st.session_state.get("institutional_last_official_sync_summary", {})
-    if last_sync_summary:
-        sync_cols = st.columns(4)
-        sync_cols[0].metric("latest_contest", last_sync_summary.get("latest_contest", "-"))
-        sync_cols[1].metric("synced_contests", len(last_sync_summary.get("synced_contests", []) or []))
-        sync_cols[2].metric("commit_state", last_sync_summary.get("commit_state", "-"))
-        sync_cols[3].metric("fallback", "sim" if last_sync_summary.get("fallback_used") else "não")
+    st.subheader("Hist?rico Anal?tico")
+    st.write("Vis?o de desempenho dos jogos persistidos no PostgreSQL Institucional.")
 
     generations = _load_generation_history(limit=12)
     if generations:
-        st.markdown("##### Gerações persistidas")
+        st.markdown("##### Gera??es persistidas")
         generation_options = {
-            f"Geração #{item['generation_event_id']} | jogos={item['total_games']} | seed={item['seed']} | concurso={item.get('target_contest', '-') or '-'} | score_medio={item['avg_score']:.4f}": item
+            f"Gera??o #{item['generation_event_id']} | jogos={item['total_games']} | seed={item['seed']} | concurso={item.get('target_contest', '-') or '-'} | score_medio={item['avg_score']:.4f}": item
             for item in generations
         }
-        selected_label = st.selectbox("Escolha uma geração", list(generation_options.keys()), index=0)
+        selected_label = st.selectbox("Escolha uma gera??o", list(generation_options.keys()), index=0)
         selected_generation = generation_options[selected_label]
         selected_cols = st.columns(5)
         selected_cols[0].metric("timestamp", selected_generation.get("created_at", "-"))
@@ -3277,10 +3260,10 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         selected_cols[3].metric("total_games", selected_generation.get("total_games", 0))
         selected_cols[4].metric("perfil HB", selected_generation.get("strategy", "-") or "-")
         summary_cols = st.columns(4)
-        summary_cols[0].metric("score médio", f"{selected_generation.get('avg_score', 0.0):.4f}")
-        summary_cols[1].metric("entropia média", f"{selected_generation.get('avg_entropy', 0.0):.4f}")
-        summary_cols[2].metric("cobertura média", f"{selected_generation.get('avg_coverage', 0.0):.4f}")
-        summary_cols[3].metric("overlap médio", f"{selected_generation.get('average_overlap', 0.0):.4f}")
+        summary_cols[0].metric("score m?dio", f"{selected_generation.get('avg_score', 0.0):.4f}")
+        summary_cols[1].metric("entropia m?dia", f"{selected_generation.get('avg_entropy', 0.0):.4f}")
+        summary_cols[2].metric("cobertura m?dia", f"{selected_generation.get('avg_coverage', 0.0):.4f}")
+        summary_cols[3].metric("overlap m?dio", f"{selected_generation.get('average_overlap', 0.0):.4f}")
         if selected_generation.get("dominant_numbers"):
             st.caption(
                 "dominantes: "
@@ -3289,7 +3272,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                     for item in selected_generation.get("dominant_numbers", [])[:8]
                 )
             )
-        st.markdown("###### Jogos completos da geração selecionada")
+        st.markdown("###### Jogos completos da gera??o selecionada")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -3312,7 +3295,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             hide_index=True,
             use_container_width=True,
         )
-        st.markdown("###### Top jogos da geração")
+        st.markdown("###### Top jogos da gera??o")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -3333,14 +3316,14 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             use_container_width=True,
         )
     else:
-        st.info("Ainda não há gerações persistidas para reconstrução analítica.")
+        st.info("Ainda n?o h? gera??es persistidas para reconstru??o anal?tica.")
     st.divider()
-    st.markdown("##### Timeline analítica")
+    st.markdown("##### Timeline anal?tica")
     timeline = _load_analytical_timeline(limit=30)
     if timeline:
         st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
     else:
-        st.info("Ainda não há eventos suficientes para montar a timeline analítica.")
+        st.info("Ainda n?o h? eventos suficientes para montar a timeline anal?tica.")
 
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
