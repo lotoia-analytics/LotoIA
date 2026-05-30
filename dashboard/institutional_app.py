@@ -926,6 +926,61 @@ def _select_subset_from_candidate(
     return selected
 
 
+def _force_subset_from_universe(
+    *,
+    target_size: int,
+    frequency_map: dict[int, int],
+    latest_numbers: set[int],
+    odd_min: int,
+    odd_max: int,
+    even_min: int,
+    even_max: int,
+) -> list[int]:
+    target_size = max(1, min(int(target_size or 1), 25))
+    universe = list(range(1, 26))
+    scoring = sorted(
+        universe,
+        key=lambda number: (
+            -int(frequency_map.get(int(number), 0)),
+            int(number in latest_numbers),
+            int(number),
+        ),
+    )
+    odd_target = min(max((target_size + 1) // 2, odd_min), odd_max)
+    even_target = target_size - odd_target
+    if even_target < even_min:
+        even_target = even_min
+        odd_target = target_size - even_target
+    if odd_target < odd_min:
+        odd_target = odd_min
+        even_target = target_size - odd_target
+    if odd_target > odd_max:
+        odd_target = odd_max
+        even_target = target_size - odd_target
+    if even_target > even_max:
+        even_target = even_max
+        odd_target = target_size - even_target
+    if odd_target < 0 or even_target < 0 or odd_target + even_target != target_size:
+        odd_target = min(max(odd_target, 0), target_size)
+        even_target = target_size - odd_target
+    selected: list[int] = []
+    odd_pool = [number for number in scoring if number % 2 != 0]
+    even_pool = [number for number in scoring if number % 2 == 0]
+    for pool, quota in ((odd_pool, odd_target), (even_pool, even_target)):
+        for number in pool:
+            if number not in selected:
+                selected.append(number)
+            if sum(1 for item in selected if item % 2 == pool[0] % 2) >= quota:
+                break
+    if len(selected) < target_size:
+        for number in scoring:
+            if number not in selected:
+                selected.append(number)
+            if len(selected) >= target_size:
+                break
+    return sorted(selected[:target_size])
+
+
 def _build_simulated_draw(size: int = 15) -> list[int]:
     return sorted(random.sample(range(1, 26), k=max(1, min(size, 25))))
 
@@ -1007,7 +1062,15 @@ def _run_institutional_generation(
             repeat_limit=repeat_limit,
         )
         if not selected_numbers:
-            continue
+            selected_numbers = _force_subset_from_universe(
+                target_size=dezenas_per_game,
+                frequency_map=history_frequency,
+                latest_numbers=latest_numbers,
+                odd_min=odd_min,
+                odd_max=odd_max,
+                even_min=even_min,
+                even_max=even_max,
+            )
         signature = tuple(selected_numbers)
         if signature in used_signatures:
             continue
@@ -1096,8 +1159,7 @@ def _run_institutional_generation(
                 repeat_limit=repeat_limit,
             )
             if not fallback_numbers:
-                fallback_numbers = _select_subset_from_candidate(
-                    list(range(1, 26)),
+                fallback_numbers = _force_subset_from_universe(
                     target_size=dezenas_per_game,
                     frequency_map=history_frequency,
                     latest_numbers=latest_numbers,
@@ -1105,10 +1167,6 @@ def _run_institutional_generation(
                     odd_max=odd_max,
                     even_min=even_min,
                     even_max=even_max,
-                    sequence_max=sequence_max,
-                    coverage_min=coverage_min,
-                    entropy_min=entropy_min,
-                    repeat_limit=repeat_limit,
                 )
             if not fallback_numbers:
                 continue
@@ -1164,6 +1222,10 @@ def _run_institutional_generation(
         "generation_event_id": generation_snapshot["generation_event_id"],
         "seed": seed,
         "jogos": games,
+        "quantidade_solicitada": dezenas_per_game,
+        "quantidade_real_gerada": len(games),
+        "primeiro_jogo": games[0]["numbers"] if games else [],
+        "len_primeiro_jogo": len(games[0]["numbers"]) if games else 0,
     }
 
 
@@ -2630,6 +2692,16 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     if generation_result:
         st.success(
             f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
+        )
+        st.caption(
+            " | ".join(
+                [
+                    f"quantidade_solicitada={generation_result.get('quantidade_solicitada', '-')}",
+                    f"quantidade_real_gerada={generation_result.get('quantidade_real_gerada', '-')}",
+                    f"len_primeiro_jogo={generation_result.get('len_primeiro_jogo', '-')}",
+                    f"primeiro_jogo={' '.join(f'{number:02d}' for number in generation_result.get('primeiro_jogo', [])) or '-'}",
+                ]
+            )
         )
         st.dataframe(
             pd.DataFrame(
