@@ -1611,6 +1611,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                         "profile_type": str(row.profile_type or ""),
                         "origin": str(getattr(row, "origin", "") or "institutional"),
                         "generation_mode": str(getattr(row, "generation_mode", "") or ""),
+                        "generation_context": dict(context_json),
                         "score": score_value,
                         "final_score": final_score,
                         "quadra_score": quadra_score,
@@ -1914,6 +1915,68 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
             )
     return rows
 
+
+def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for generation in _load_generation_history(limit=None):
+        games = list(generation.get("games", []) or [])
+        reconciliation = dict(generation.get("reconciliation") or {})
+        generated_count = int(generation.get("total_games", 0) or 0)
+        persisted_count = _count_generated_games_for_event(int(generation.get("generation_event_id", 0) or 0))
+        recovered_count = len(games)
+        first_context = dict((games[0] or {}).get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
+        requested_count = int(first_context.get("total_games", generated_count) or generated_count)
+        generated_requested = generated_count
+        strategy = str(generation.get("strategy", "") or "")
+        latest_game = max(games, key=lambda item: float(item.get("score", 0.0) or 0.0), default={})
+        top_score = float(latest_game.get("score", 0.0) or 0.0) if latest_game else 0.0
+        highest_hits = max((int(game.get("hits", 0) or 0) for game in games), default=0)
+        average_hits = round(sum(int(game.get("hits", 0) or 0) for game in games) / len(games), 4) if games and any(game.get("hits") is not None for game in games) else 0.0
+        conference_status = "Conferido" if reconciliation.get("id") else "Nao conferido"
+        persistence_status = "OK" if persisted_count >= recovered_count and recovered_count >= generated_count else "ALERTA"
+        generation_status = "OK" if requested_count == generated_count else "ALERTA"
+        integrity_alerts: list[str] = []
+        if requested_count != generated_count:
+            integrity_alerts.append("solicitado_!=_gerado")
+        if generated_count != persisted_count:
+            integrity_alerts.append("gerado_!=_persistido")
+        if persisted_count != recovered_count:
+            integrity_alerts.append("persistido_!=_recuperado")
+        if not games:
+            integrity_alerts.append("sem_jogos_associados")
+        if not reconciliation.get("contest_id"):
+            integrity_alerts.append("sem_conferencia")
+        rows.append(
+            {
+                "geração": f"Geração {generation.get('generation_event_id', '-')}",
+                "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
+                "data/hora": str(generation.get("created_at", "") or ""),
+                "usuário/session_id": str(generation.get("first_name", "") or "-"),
+                "estratégia/modelo": strategy or "-",
+                "quantidade solicitada": requested_count,
+                "quantidade real gerada": generated_requested,
+                "quantidade persistida": persisted_count,
+                "total de jogos recuperados": recovered_count,
+                "status da geração": generation_status,
+                "status de persistência": persistence_status,
+                "status de conferência": conference_status,
+                "concurso conferido": int(reconciliation.get("contest_id", 0) or 0) if reconciliation.get("contest_id") else None,
+                "maior acerto": highest_hits,
+                "média de acertos": average_hits,
+                "melhor score": round(top_score, 4),
+                "score médio": round(float(generation.get("avg_score", 0.0) or 0.0), 4),
+                "origem da geração": str(generation.get("strategy", "") or "institutional"),
+                "observações/alertas": ", ".join(integrity_alerts) if integrity_alerts else "OK",
+                "total_games": generated_count,
+                "reconciliation_id": reconciliation.get("id"),
+                "reconciliation_best_hits": reconciliation.get("best_hits"),
+                "reconciliation_prize_count": reconciliation.get("prize_count"),
+                "reconciliation_total_hits": reconciliation.get("total_hits"),
+                "generated_games": games,
+            }
+        )
+    return rows
+
 def _clear_institutional_history_state() -> None:
     for key in (
         "institutional_generation",
@@ -1986,35 +2049,14 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
     st.subheader("Hist?rico Institucional")
-    st.write("Vis?o consolidada do runtime institucional limpo.")
+    st.write("Visão macro acumulativa de gerações, conferências e integridade operacional.")
+
     source_map = _institutional_source_map(snapshot)
-    st.markdown("##### Fontes institucionais")
-    st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
     latest_contest = _load_latest_contest_summary() or {}
-    top_cols = st.columns(5)
-    top_cols[0].metric("total_execucoes", int(live_counts.get("generation_events", 0)))
-    top_cols[1].metric("total_jogos", int(live_counts.get("generated_games", 0)))
-    top_cols[2].metric("ultimo_concurso", latest_contest.get("contest_number", "-"))
-    top_cols[3].metric("ultimo_sync", latest_sync.get("latest_contest", latest_contest.get("contest_number", "-")))
-    top_cols[4].metric("status_postgresql", snapshot["backend"])
-    sync_cols = st.columns(4)
-    sync_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
-    sync_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
-    sync_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
-    sync_cols[3].metric("reconciliation_games", int(live_counts.get("reconciliation_games", 0)))
-    if latest_sync:
-        st.caption(
-            " | ".join(
-                [
-                    f"latest_contest={latest_sync.get('latest_contest', '-')}",
-                    f"synced_contests={len(latest_sync.get('synced_contests', []) or [])}",
-                    f"commit_state={latest_sync.get('commit_state', '-')}",
-                    f"fallback={'sim' if latest_sync.get('fallback_used') else 'n?o'}",
-                ]
-            )
-        )
-    st.markdown("##### Status da Fonte Oficial")
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    generation_rows = _load_accumulated_institutional_rows()
+    generation_df = pd.DataFrame(generation_rows)
     source_cols = st.columns(4)
     source_cols[0].metric("backend", snapshot["backend"])
     source_cols[1].metric("database_source", snapshot["database_source"])
@@ -2026,31 +2068,237 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 f"build={BUILD_MARKER}",
                 f"commit={_resolve_active_commit()}",
                 f"last_imported_contest={latest_contest.get('contest_number', '-')}",
+                f"last_sync={latest_sync.get('sync_timestamp', '-')}",
             ]
         )
     )
-    st.markdown("##### ?ltima reconcilia??o persistida")
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    if latest_reconciliation:
-        st.caption(
-            f"reconciliation_id={latest_reconciliation.get('id', '-')}"
-            f" | generation_event_id={latest_reconciliation.get('generation_event_id', '-')}"
-            f" | contest_id={latest_reconciliation.get('contest_id', '-')}"
-            f" | status={latest_reconciliation.get('status', '-')}"
-        )
-        recon_cols = st.columns(3)
-        recon_cols[0].metric("Concurso", latest_reconciliation.get("contest_id", "-"))
-        recon_cols[1].metric("Total jogos conferidos", latest_reconciliation.get("games_count", 0))
-        recon_cols[2].metric("Status", latest_reconciliation.get("status", "-"))
+    st.markdown("##### Resumo institucional")
+    summary_cols = st.columns(10)
+    total_generation_events = len(generation_df)
+    total_requested = int(generation_df["quantidade solicitada"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
+    total_generated = int(generation_df["quantidade real gerada"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
+    total_persisted = int(generation_df["quantidade persistida"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
+    total_recovered = int(generation_df["total de jogos recuperados"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
+    total_contests_reconciled = int(generation_df["concurso conferido"].fillna(0).astype(int).ne(0).sum()) if not generation_df.empty else 0
+    highest_hits = int(generation_df["maior acerto"].fillna(0).astype(int).max()) if not generation_df.empty else 0
+    best_score = float(generation_df["melhor score"].fillna(0.0).astype(float).max()) if not generation_df.empty else 0.0
+    latest_generation_label = generation_df.iloc[0]["geração"] if not generation_df.empty else "-"
+    first_generation_label = generation_df.iloc[-1]["geração"] if not generation_df.empty else "-"
+    summary_cols[0].metric("total gerações", total_generation_events)
+    summary_cols[1].metric("jogos solicitados", total_requested)
+    summary_cols[2].metric("jogos gerados", total_generated)
+    summary_cols[3].metric("jogos persistidos", total_persisted)
+    summary_cols[4].metric("jogos recuperados", total_recovered)
+    summary_cols[5].metric("concursos conferidos", total_contests_reconciled)
+    summary_cols[6].metric("maior acerto", highest_hits)
+    summary_cols[7].metric("melhor score", f"{best_score:.4f}")
+    summary_cols[8].metric("última geração", latest_generation_label)
+    summary_cols[9].metric("primeira geração", first_generation_label)
+
+    if not generation_df.empty:
+        filter_row_1 = st.columns([1, 1, 1, 1, 1])
+        generation_options = sorted(int(value) for value in generation_df["generation_event_id"].dropna().astype(int).unique().tolist())
+        strategy_options = sorted(str(value) for value in generation_df["estratégia/modelo"].dropna().astype(str).unique().tolist())
+        status_generation_options = sorted(str(value) for value in generation_df["status da geração"].dropna().astype(str).unique().tolist())
+        status_persistence_options = sorted(str(value) for value in generation_df["status de persistência"].dropna().astype(str).unique().tolist())
+        status_conference_options = sorted(str(value) for value in generation_df["status de conferência"].dropna().astype(str).unique().tolist())
+        selected_generations = filter_row_1[0].multiselect("geração", generation_options, default=generation_options)
+        selected_strategies = filter_row_1[1].multiselect("estratégia/modelo", strategy_options, default=strategy_options)
+        selected_generation_status = filter_row_1[2].multiselect("status da geração", status_generation_options, default=status_generation_options)
+        selected_persistence_status = filter_row_1[3].multiselect("status de persistência", status_persistence_options, default=status_persistence_options)
+        selected_conference_status = filter_row_1[4].multiselect("status de conferência", status_conference_options, default=status_conference_options)
+
+        filter_row_2 = st.columns([1, 1, 1, 1, 1])
+        contest_options = sorted(int(value) for value in generation_df["concurso conferido"].dropna().astype(int).unique().tolist() if int(value) > 0)
+        alert_only = filter_row_2[0].checkbox("somente gerações com alerta", value=False)
+        conference_only = filter_row_2[1].checkbox("somente gerações conferidas", value=False)
+        not_conference_only = filter_row_2[2].checkbox("somente gerações não conferidas", value=False)
+        min_score = filter_row_2[3].number_input("score mínimo", min_value=0.0, value=0.0, step=0.1)
+        min_hits = filter_row_2[4].number_input("maior acerto mínimo", min_value=0, value=0, step=1)
+
+        date_values = pd.to_datetime(generation_df["data/hora"], errors="coerce").dropna()
+        if not date_values.empty:
+            start_date = date_values.min().date()
+            end_date = date_values.max().date()
+            date_range = st.date_input("data inicial/final", value=(start_date, end_date))
+        else:
+            date_range = ()
+
+        filtered_df = generation_df.copy()
+        filtered_df["data/hora_dt"] = pd.to_datetime(filtered_df["data/hora"], errors="coerce")
+        filtered_df["score_medio_num"] = pd.to_numeric(filtered_df["score médio"], errors="coerce").fillna(0.0)
+        if selected_generations:
+            filtered_df = filtered_df[filtered_df["generation_event_id"].isin(selected_generations)]
+        if selected_strategies:
+            filtered_df = filtered_df[filtered_df["estratégia/modelo"].isin(selected_strategies)]
+        if selected_generation_status:
+            filtered_df = filtered_df[filtered_df["status da geração"].isin(selected_generation_status)]
+        if selected_persistence_status:
+            filtered_df = filtered_df[filtered_df["status de persistência"].isin(selected_persistence_status)]
+        if selected_conference_status:
+            filtered_df = filtered_df[filtered_df["status de conferência"].isin(selected_conference_status)]
+        if contest_options:
+            filtered_df = filtered_df[filtered_df["concurso conferido"].fillna(0).astype(int).isin(contest_options)]
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+            filtered_df = filtered_df[filtered_df["data/hora_dt"].dt.date.between(start_date, end_date)]
+        if alert_only:
+            filtered_df = filtered_df[filtered_df["observações/alertas"].astype(str) != "OK"]
+        if conference_only:
+            filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) == "Conferido"]
+        if not_conference_only:
+            filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) != "Conferido"]
+        filtered_df = filtered_df[filtered_df["score médio"].astype(float) >= float(min_score)]
+        filtered_df = filtered_df[filtered_df["maior acerto"].astype(int) >= int(min_hits)]
+
+        order_by = st.selectbox("ordenar por", ["data", "maior acerto", "score"], index=0)
+        if order_by == "maior acerto":
+            filtered_df = filtered_df.sort_values(
+                by=["maior acerto", "melhor score", "data/hora_dt", "generation_event_id"],
+                ascending=[False, False, False, False],
+            )
+        elif order_by == "score":
+            filtered_df = filtered_df.sort_values(
+                by=["score médio", "melhor score", "data/hora_dt", "generation_event_id"],
+                ascending=[False, False, False, False],
+            )
+        else:
+            filtered_df = filtered_df.sort_values(
+                by=["data/hora_dt", "generation_event_id"],
+                ascending=[False, False],
+            )
+
+        display_df = filtered_df.copy()
+        display_df["concurso conferido"] = display_df["concurso conferido"].apply(lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—")
+        display_df["quantidade solicitada"] = display_df["quantidade solicitada"].fillna(0).astype(int)
+        display_df["quantidade real gerada"] = display_df["quantidade real gerada"].fillna(0).astype(int)
+        display_df["quantidade persistida"] = display_df["quantidade persistida"].fillna(0).astype(int)
+        display_df["total de jogos recuperados"] = display_df["total de jogos recuperados"].fillna(0).astype(int)
+        display_df["maior acerto"] = display_df["maior acerto"].fillna(0).astype(int)
+        display_df["média de acertos"] = display_df["média de acertos"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
+        display_df["melhor score"] = display_df["melhor score"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
+        display_df["score médio"] = display_df["score médio"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
+        display_df["observações/alertas"] = display_df["observações/alertas"].astype(str)
+        display_df["data/hora"] = display_df["data/hora"].fillna("—")
+        display_df = display_df[
+            [
+                "geração",
+                "generation_event_id",
+                "data/hora",
+                "usuário/session_id",
+                "estratégia/modelo",
+                "quantidade solicitada",
+                "quantidade real gerada",
+                "quantidade persistida",
+                "total de jogos recuperados",
+                "status da geração",
+                "status de persistência",
+                "status de conferência",
+                "concurso conferido",
+                "maior acerto",
+                "média de acertos",
+                "melhor score",
+                "score médio",
+                "origem da geração",
+                "observações/alertas",
+            ]
+        ]
+        st.markdown("##### Gerações institucionais")
+        st.dataframe(display_df, hide_index=True, use_container_width=True, height=540)
+
+        if filtered_df.empty:
+            st.info("Nenhuma geração encontrada com os filtros atuais.")
+        else:
+            selected_generation_label = st.selectbox(
+                "Detalhe da geração selecionada",
+                list(display_df["generation_event_id"].astype(int).tolist()),
+                index=0,
+            )
+            selected_generation_id = int(selected_generation_label)
+            selected_generation = next((item for item in generation_rows if int(item.get("generation_event_id", 0) or 0) == selected_generation_id), {})
+            detail_cols = st.columns(6)
+            detail_cols[0].metric("generation_event_id", selected_generation.get("generation_event_id", "-"))
+            detail_cols[1].metric("data/hora", selected_generation.get("data/hora", "-"))
+            detail_cols[2].metric("solicitados", selected_generation.get("quantidade solicitada", 0))
+            detail_cols[3].metric("gerados", selected_generation.get("quantidade real gerada", 0))
+            detail_cols[4].metric("persistidos", selected_generation.get("quantidade persistida", 0))
+            detail_cols[5].metric("recuperados", selected_generation.get("total de jogos recuperados", 0))
+            st.caption(
+                " | ".join(
+                    [
+                        f"estratégia/modelo={selected_generation.get('estratégia/modelo', '-')}",
+                        f"status_conferência={selected_generation.get('status de conferência', '-')}",
+                        f"concurso={selected_generation.get('concurso conferido', '-') or '-'}",
+                        f"maior_acerto={selected_generation.get('maior acerto', '-')}",
+                        f"melhor_score={selected_generation.get('melhor score', '-')}",
+                    ]
+                )
+            )
+            if selected_generation.get("observações/alertas") and selected_generation.get("observações/alertas") != "OK":
+                st.warning(f"Alerta: {selected_generation.get('observações/alertas')}")
+            selected_history = next((item for item in _load_generation_history(limit=None) if int(item.get("generation_event_id", 0) or 0) == selected_generation_id), {})
+            if selected_history:
+                st.markdown("###### Top jogos da geração selecionada")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "jogo": game.get("game_index", "-"),
+                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                                "perfil": game.get("profile_type", "-"),
+                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                                "pares": int(game.get("even", 0) or 0),
+                                "?mpares": int(game.get("odd", 0) or 0),
+                                "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
+                                "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
+                                "concurso conferido": game.get("contest_id", "-") or "-",
+                                "acertos": game.get("hits", "-") if game.get("hits") is not None else "-",
+                                "status": game.get("prize_status", "nao_premiado") or "nao_premiado",
+                            }
+                            for game in (selected_history.get("top_games") or [])
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        st.markdown("##### Auditoria de integridade")
+        issues = display_df[display_df["observações/alertas"].astype(str) != "OK"]
+        if issues.empty:
+            st.success("Nenhuma inconsistência detectada na visão institucional atual.")
+        else:
+            st.dataframe(
+                issues[
+                    [
+                        "geração",
+                        "generation_event_id",
+                        "quantidade solicitada",
+                        "quantidade real gerada",
+                        "quantidade persistida",
+                        "total de jogos recuperados",
+                        "status da geração",
+                        "status de persistência",
+                        "status de conferência",
+                        "observações/alertas",
+                    ]
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+        diag_cols = st.columns(10)
+        diag_cols[0].metric("total_generation_events_carregados", len(generation_rows))
+        diag_cols[1].metric("total_generation_events_exibidos", len(display_df))
+        diag_cols[2].metric("total_jogos_solicitados", total_requested)
+        diag_cols[3].metric("total_jogos_gerados", total_generated)
+        diag_cols[4].metric("total_jogos_persistidos", total_persisted)
+        diag_cols[5].metric("total_jogos_recuperados", total_recovered)
+        diag_cols[6].metric("generation_event_id_mais_antigo", int(generation_df["generation_event_id"].min()) if not generation_df.empty else "-")
+        diag_cols[7].metric("generation_event_id_mais_recente", int(generation_df["generation_event_id"].max()) if not generation_df.empty else "-")
+        diag_cols[8].metric("total_eventos_com_alerta", int((generation_df["observações/alertas"].astype(str) != "OK").sum()) if not generation_df.empty else 0)
+        diag_cols[9].metric("total_eventos_ok", int((generation_df["observações/alertas"].astype(str) == "OK").sum()) if not generation_df.empty else 0)
     else:
-        st.info("Ainda n?o h? reconcilia??o persistida nesta inst?ncia.")
-    st.divider()
-    st.markdown("##### Timeline Institucional")
-    timeline = _load_institutional_timeline(limit=30)
-    if timeline:
-        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
-    else:
-        st.info("Ainda n?o h? eventos suficientes para montar a timeline institucional.")
+        st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+
     st.divider()
     st.markdown("##### Tabelas Institucionais")
     table_rows = []
@@ -2063,6 +2311,13 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             }
         )
     st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+
+    with st.expander("Timeline secundária", expanded=False):
+        timeline = _load_institutional_timeline(limit=30)
+        if timeline:
+            st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
+        else:
+            st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
