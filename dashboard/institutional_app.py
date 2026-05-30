@@ -14,6 +14,7 @@ import random
 import subprocess
 import threading
 import time
+import uuid
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,12 +24,18 @@ from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
-from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
+from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
+from lotoia.governance.output_commander import (
+    game_signature as _game_signature,
+    load_batch_output_signatures,
+    output_commander_validate_games,
+)
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
@@ -56,6 +63,7 @@ HISTORICAL_TEST_TABLES = (
     "operational_logs",
     "reset_events",
 )
+PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 
 PAGE_TARGETS = {
     "Auditoria Runtime": "audit",
@@ -1165,6 +1173,7 @@ def _run_institutional_generation(
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     started = time.monotonic()
     seed = int(time.time()) % 1_000_000
+    batch_id = _institutional_output_batch_id()
     latest_contest = _load_latest_contest_summary()
     target_contest = int(latest_contest["contest_number"]) if latest_contest else None
     history_frequency = _history_number_frequency()
@@ -1172,7 +1181,7 @@ def _run_institutional_generation(
     candidate_count = max(total_games * 5, 50 if use_top50 else 30)
     ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
     games: list[dict[str, Any]] = []
-    used_signatures: set[tuple[int, ...]] = set()
+    used_signatures: set[str] = set(load_batch_output_signatures(batch_id))
     repeat_limit = max(0, min(repeat_limit, dezenas_per_game))
     for candidate in ranked_candidates:
         selected_numbers = _select_subset_from_candidate(
@@ -1200,7 +1209,7 @@ def _run_institutional_generation(
                 even_max=even_max,
                 offset=len(games),
             )
-        signature = tuple(selected_numbers)
+        signature = _game_signature(selected_numbers)
         if signature in used_signatures:
             continue
         games.append(
@@ -1229,7 +1238,7 @@ def _run_institutional_generation(
             offset=seed + fallback_attempt,
         )
         fallback_attempt += 1
-        signature = tuple(fallback_numbers)
+        signature = _game_signature(fallback_numbers)
         if signature in used_signatures:
             continue
         games.append(
@@ -1241,10 +1250,53 @@ def _run_institutional_generation(
             )
         )
         used_signatures.add(signature)
+    commander_report = output_commander_validate_games(
+        games,
+        batch_id=batch_id,
+        generation_event_id=None,
+        target_size=dezenas_per_game,
+        persisted_signatures=set(load_batch_output_signatures(batch_id)),
+    )
+    if commander_report.get("status_comandante_saida") != "APROVADO" or int(commander_report.get("quantidade_jogos_unicos", 0) or 0) != int(total_games):
+        st.session_state["institutional_generation"] = {
+            "seed": seed,
+            "games": [],
+            "total_games": total_games,
+            "dezenas_per_game": dezenas_per_game,
+            "use_top50": use_top50,
+            "generation_event_id": None,
+            "created_at": datetime.now(UTC).isoformat(),
+            "runtime_status": "critical_error",
+            "elapsed_time": round(time.monotonic() - started, 3),
+            "batch_id": batch_id,
+            "output_commander": commander_report,
+        }
+        st.session_state["institutional_generation_result"] = {
+            "generation_event_id": None,
+            "seed": seed,
+            "jogos": [],
+            "quantidade_jogos_solicitada": total_games,
+            "quantidade_dezenas_solicitada": dezenas_per_game,
+            "quantidade_jogos_real_gerada": 0,
+            "quantidade_jogos_persistida": 0,
+            "len_todos_os_jogos": [],
+            "primeiro_jogo": [],
+            "len_primeiro_jogo": 0,
+            "batch_id": batch_id,
+            "status_comandante_saida": commander_report.get("status_comandante_saida", "ERRO_CRITICO"),
+            "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", 0) or 0),
+            "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
+            "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
+            "error_message": str(commander_report.get("error_message", "ERRO_CRITICO")),
+            "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
+            "invalid_games": list(commander_report.get("invalid_games", []) or []),
+        }
+        return
     generation_snapshot = _persist_generation_snapshot(
         games=games,
         seed=seed,
         target_contest=target_contest,
+        batch_id=batch_id,
         generation_context={
             "dezenas_per_game": dezenas_per_game,
             "total_games": total_games,
@@ -1257,6 +1309,12 @@ def _run_institutional_generation(
             "coverage_min": coverage_min,
             "entropy_min": entropy_min,
             "repeat_limit": repeat_limit,
+            "batch_id": batch_id,
+            "game_signatures": [game.get("game_signature", "") for game in commander_report.get("accepted_games", [])],
+            "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
+            "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
+            "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
+            "status_comandante_saida": str(commander_report.get("status_comandante_saida", "APROVADO") or "APROVADO"),
         },
     )
     st.session_state["institutional_generation"] = {
@@ -1269,6 +1327,8 @@ def _run_institutional_generation(
         "created_at": datetime.now(UTC).isoformat(),
         "runtime_status": "generated",
         "elapsed_time": round(time.monotonic() - started, 3),
+        "batch_id": batch_id,
+        "output_commander": commander_report,
     }
     st.session_state["institutional_generation_result"] = {
         "generation_event_id": generation_snapshot["generation_event_id"],
@@ -1281,6 +1341,13 @@ def _run_institutional_generation(
         "len_todos_os_jogos": [len(game.get("numbers", [])) for game in games],
         "primeiro_jogo": games[0]["numbers"] if games else [],
         "len_primeiro_jogo": len(games[0]["numbers"]) if games else 0,
+        "batch_id": batch_id,
+        "status_comandante_saida": commander_report.get("status_comandante_saida", "APROVADO"),
+        "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
+        "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
+        "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
+        "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
+        "invalid_games": list(commander_report.get("invalid_games", []) or []),
     }
 
 
@@ -1704,6 +1771,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     target_contests.append(int(row.target_contest))
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
             top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
+            first_context = dict(games[0].get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
             history.append(
                 {
                     "generation_event_id": int(event.id or 0),
@@ -1720,6 +1788,11 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "avg_coverage": _mean_or_zero(coverages),
                     "average_overlap": float(structural_summary.get("average_overlap", 0.0) or 0.0),
                     "dominant_numbers": list(structural_summary.get("dominant_numbers", [])),
+                    "batch_id": str(first_context.get("batch_id", "") or ""),
+                    "status_comandante_saida": str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                    "total_jogos_unicos": int(first_context.get("total_jogos_unicos", len(games)) or len(games)),
+                    "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
+                    "taxa_duplicidade": float(first_context.get("taxa_duplicidade", 0.0) or 0.0),
                     "reconciliation": reconciliation_summary or {},
                     "games": games,
                     "top_games": sorted(
@@ -2010,6 +2083,9 @@ def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
             integrity_alerts.append("sem_jogos_associados")
         if not reconciliation.get("contest_id"):
             integrity_alerts.append("sem_conferencia")
+        commander_status = str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO")
+        total_unique = int(first_context.get("total_jogos_unicos", recovered_count) or recovered_count)
+        total_duplicates = int(first_context.get("total_jogos_duplicados", 0) or 0)
         rows.append(
             {
                 "geração": f"Geração {generation.get('generation_event_id', '-')}",
@@ -2024,6 +2100,7 @@ def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
                 "status da geração": generation_status,
                 "status de persistência": persistence_status,
                 "status de conferência": conference_status,
+                "status comandante saída": commander_status,
                 "concurso conferido": int(reconciliation.get("contest_id", 0) or 0) if reconciliation.get("contest_id") else None,
                 "maior acerto": highest_hits,
                 "média de acertos": average_hits,
@@ -2032,6 +2109,10 @@ def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
                 "origem da geração": str(generation.get("strategy", "") or "institutional"),
                 "observações/alertas": ", ".join(integrity_alerts) if integrity_alerts else "OK",
                 "total_games": generated_count,
+                "batch_id": str(first_context.get("batch_id", "") or ""),
+                "total jogos únicos": total_unique,
+                "total jogos duplicados": total_duplicates,
+                "taxa duplicidade": float(first_context.get("taxa_duplicidade", 0.0) or 0.0),
                 "reconciliation_id": reconciliation.get("id"),
                 "reconciliation_best_hits": reconciliation.get("best_hits"),
                 "reconciliation_prize_count": reconciliation.get("prize_count"),
@@ -2050,6 +2131,7 @@ def _clear_institutional_history_state() -> None:
         "institutional_simulation",
         "institutional_simulation_result",
         "institutional_last_official_sync_summary",
+        "institutional_output_batch_id",
     ):
         st.session_state.pop(key, None)
 
@@ -2081,6 +2163,7 @@ def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None
         "institutional_simulation_error",
         "institutional_check_result",
         "institutional_check",
+        "institutional_output_batch_id",
     ):
         st.session_state.pop(key, None)
 
@@ -2090,7 +2173,8 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
     deleted: dict[str, int] = {}
     errors: dict[str, str] = {}
     engine = get_engine(DB_PATH)
-    for table in HISTORICAL_TEST_TABLES:
+    tables_to_purge = list(HISTORICAL_TEST_TABLES) + list(PURGE_ONLY_TABLES)
+    for table in tables_to_purge:
         try:
             with engine.begin() as connection:
                 result = connection.execute(text(f'DELETE FROM "{table}"'))
@@ -2258,6 +2342,20 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         display_df["score médio"] = display_df["score médio"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
         display_df["observações/alertas"] = display_df["observações/alertas"].astype(str)
         display_df["data/hora"] = display_df["data/hora"].fillna("—")
+        for column, default in (
+            ("status comandante saída", "APROVADO"),
+            ("batch_id", "-"),
+            ("total jogos únicos", 0),
+            ("total jogos duplicados", 0),
+            ("taxa duplicidade", 0.0),
+        ):
+            if column not in display_df.columns:
+                display_df[column] = default
+        display_df["status comandante saída"] = display_df["status comandante saída"].astype(str)
+        display_df["batch_id"] = display_df["batch_id"].astype(str)
+        display_df["total jogos únicos"] = display_df["total jogos únicos"].fillna(0).astype(int)
+        display_df["total jogos duplicados"] = display_df["total jogos duplicados"].fillna(0).astype(int)
+        display_df["taxa duplicidade"] = display_df["taxa duplicidade"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
         display_df = display_df[
             [
                 "geração",
@@ -2272,12 +2370,17 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 "status da geração",
                 "status de persistência",
                 "status de conferência",
+                "status comandante saída",
                 "concurso conferido",
                 "maior acerto",
                 "média de acertos",
                 "melhor score",
                 "score médio",
                 "origem da geração",
+                "batch_id",
+                "total jogos únicos",
+                "total jogos duplicados",
+                "taxa duplicidade",
                 "observações/alertas",
             ]
         ]
@@ -2724,6 +2827,7 @@ def _persist_generation_snapshot(
     games: list[dict[str, Any]],
     seed: int,
     target_contest: int | None,
+    batch_id: str | None = None,
     generation_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started_at = time.monotonic()
@@ -2731,6 +2835,7 @@ def _persist_generation_snapshot(
         "source": "institutional_app",
         "target_contest": target_contest,
         "build_marker": BUILD_MARKER,
+        "batch_id": batch_id,
     }
     if generation_context:
         context_payload.update({str(key): value for key, value in generation_context.items()})
@@ -2750,6 +2855,8 @@ def _persist_generation_snapshot(
         session.flush()
         generation_event_id = int(event.id)
         for index, game in enumerate(games, start=1):
+            numbers = list(game.get("numbers", []))
+            signature = _game_signature(numbers)
             session.add(
                 GeneratedGame(
                     generation_event_id=generation_event_id,
@@ -2758,22 +2865,44 @@ def _persist_generation_snapshot(
                     origin="institutional",
                     generation_mode="hb_baseline",
                     game_index=index,
-                    numbers=list(game.get("numbers", [])),
+                    numbers=numbers,
                     profile_type=str(game.get("profile_type", "")),
                     final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
                     quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
                     context_json={
                         **context_payload,
+                        "game_signature": signature,
+                        "game_index": index,
+                    },
+                )
+            )
+            session.add(
+                InstitutionalOutputSignature(
+                    batch_id=str(batch_id or "").strip() or "global",
+                    generation_event_id=generation_event_id,
+                    game_signature=signature,
+                    payload={
+                        "game_index": index,
+                        "numbers": numbers,
+                        "source": "institutional_app",
+                        "build_marker": BUILD_MARKER,
                     },
                 )
             )
         event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise RuntimeError(
+                f"Comandante de Saída bloqueou a persistência por assinatura duplicada na bateria {batch_id or 'global'}."
+            ) from exc
         return {
             "generation_event_id": generation_event_id,
             "seed": seed,
             "games_count": len(games),
             "target_contest": target_contest,
+            "batch_id": batch_id,
         }
 
 
@@ -2817,6 +2946,14 @@ def _safe_int(value: Any, default: int | None = None) -> int | None:
         return int(float(value))
     except Exception:
         return default
+
+
+def _institutional_output_batch_id() -> str:
+    batch_id = str(st.session_state.get("institutional_output_batch_id", "") or "").strip()
+    if not batch_id:
+        batch_id = f"calibration-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        st.session_state["institutional_output_batch_id"] = batch_id
+    return batch_id
 
 
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
@@ -3181,12 +3318,19 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     if generation_result:
         generation_event_id = int(generation_result.get("generation_event_id") or 0)
         persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
-        st.success(
-            f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
-        )
-        if generation_event_id:
-            st.code(_generated_games_count_sql(generation_event_id), language="sql")
-            st.caption(f"SQL_COUNT_RESULT={persisted_count}")
+        generation_runtime_status = str(generation_result.get("status_comandante_saida") or generation_state.get("runtime_status") or "")
+        if generation_runtime_status == "ERRO_CRITICO" or not generation_result.get("jogos"):
+            st.error(
+                f"Comandante de Saída bloqueou a bateria. status={generation_runtime_status or '-'} | "
+                f"erro={generation_result.get('error_message', 'diversidade insuficiente')}"
+            )
+        else:
+            st.success(
+                f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
+            )
+            if generation_event_id:
+                st.code(_generated_games_count_sql(generation_event_id), language="sql")
+                st.caption(f"SQL_COUNT_RESULT={persisted_count}")
         st.caption(
             " | ".join(
                 [
@@ -3202,26 +3346,38 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
-        st.dataframe(
-            pd.DataFrame(
+        st.caption(
+            " | ".join(
                 [
-                    {
-                        "rank": index + 1,
-                        "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                        "perfil": game.get("profile_type", "-"),
-                        "pares": int(game.get("even", 0) or 0),
-                        "ímpares": int(game.get("odd", 0) or 0),
-                        "seq_max": int(game.get("structural_metrics", {}).get("sequence_max", 0) or 0),
-                        "cobertura": round(float(game.get("structural_metrics", {}).get("coverage_score", 0.0) or 0.0), 4),
-                        "entropia": round(float(game.get("structural_metrics", {}).get("entropy_score", 0.0) or 0.0), 4),
-                        "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
-                    }
-                    for index, game in enumerate(generation_result.get("jogos") or [])
+                    f"status_comandante_saida={generation_result.get('status_comandante_saida', '-')}",
+                    f"total_jogos_unicos={generation_result.get('total_jogos_unicos', '-')}",
+                    f"total_jogos_duplicados={generation_result.get('total_jogos_duplicados', '-')}",
+                    f"taxa_duplicidade={generation_result.get('taxa_duplicidade', 0.0):.4f}" if isinstance(generation_result.get("taxa_duplicidade"), (int, float)) else f"taxa_duplicidade={generation_result.get('taxa_duplicidade', '-')}",
+                    f"batch_id={generation_result.get('batch_id', '-')}",
                 ]
-            ),
-            hide_index=True,
-            use_container_width=True,
+            )
         )
+        if generation_result.get("jogos"):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "rank": index + 1,
+                            "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                            "perfil": game.get("profile_type", "-"),
+                            "pares": int(game.get("even", 0) or 0),
+                            "ímpares": int(game.get("odd", 0) or 0),
+                            "seq_max": int(game.get("structural_metrics", {}).get("sequence_max", 0) or 0),
+                            "cobertura": round(float(game.get("structural_metrics", {}).get("coverage_score", 0.0) or 0.0), 4),
+                            "entropia": round(float(game.get("structural_metrics", {}).get("entropy_score", 0.0) or 0.0), 4),
+                            "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                        }
+                        for index, game in enumerate(generation_result.get("jogos") or [])
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
     elif generation_state.get("games"):
         st.info("Última geração carregada. Use o menu lateral para conferir ou simular novamente.")
         st.dataframe(

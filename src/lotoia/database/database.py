@@ -507,6 +507,27 @@ class GeneratedGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class InstitutionalOutputSignature(Base):
+    __tablename__ = "institutional_output_signatures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(String, nullable=False)
+    generation_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    game_signature: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("ix_institutional_output_signatures_batch_id", "batch_id"),
+        Index("ix_institutional_output_signatures_generation_event_id", "generation_event_id"),
+        Index("ux_institutional_output_signatures_batch_signature", "batch_id", "game_signature", unique=True),
+    )
+
+
 class ReconciliationRun(Base):
     __tablename__ = "reconciliation_runs"
 
