@@ -870,6 +870,11 @@ def _institutional_generation_policy(size: int) -> dict[str, Any]:
             "sequence_max": 6,
             "coverage_min": 0.40,
             "entropy_min": 0.45,
+            "core_numbers": [7, 12, 16, 23],
+            "discouraged_numbers": [2, 4, 11, 15, 24, 25],
+            "max_frequency_ratio": 0.70,
+            "min_frequency_ratio": 0.20,
+            "preferred_profile_ratios": {(7, 8): 0.52, (8, 7): 0.48},
         }
     profile = _hb_geometry_profile_for_size(size)
     return {
@@ -880,6 +885,11 @@ def _institutional_generation_policy(size: int) -> dict[str, Any]:
         "sequence_max": int(profile["sequence_max"]),
         "coverage_min": float(profile["coverage_min"]),
         "entropy_min": float(profile["entropy_min"]),
+        "core_numbers": [],
+        "discouraged_numbers": [],
+        "max_frequency_ratio": 1.0,
+        "min_frequency_ratio": 0.0,
+        "preferred_profile_ratios": {},
     }
 
 
@@ -941,12 +951,49 @@ def _parity_pair_is_allowed(
     return (odd_count, even_count) in set(tuple(pair) for pair in allowed_parity_pairs)
 
 
+def _order_parity_pairs_for_batch(
+    pairs: Sequence[tuple[int, int]] | None,
+    *,
+    batch_profile_usage: dict[tuple[int, int], int] | None = None,
+    preferred_profile_ratios: dict[tuple[int, int], float] | None = None,
+) -> list[tuple[int, int]]:
+    ordered_pairs: list[tuple[int, int]] = []
+    for pair in pairs or []:
+        normalized_pair = (int(pair[0]), int(pair[1]))
+        if normalized_pair not in ordered_pairs:
+            ordered_pairs.append(normalized_pair)
+    if not ordered_pairs:
+        return []
+    if not batch_profile_usage:
+        return ordered_pairs
+    total_usage = sum(int(amount or 0) for amount in batch_profile_usage.values()) or 1
+    preferred_profile_ratios = preferred_profile_ratios or {}
+    return sorted(
+        ordered_pairs,
+        key=lambda pair: (
+            float(batch_profile_usage.get(pair, 0)) / max(1.0, float(preferred_profile_ratios.get(pair, 0.0) or 0.0) * total_usage)
+            if preferred_profile_ratios.get(pair, 0.0)
+            else float(batch_profile_usage.get(pair, 0)),
+            int(pair[0]),
+            int(pair[1]),
+        ),
+    )
+
+
 def _select_subset_from_candidate(
     numbers: list[int],
     *,
     target_size: int,
     frequency_map: dict[int, int],
     latest_numbers: set[int],
+    batch_number_usage: dict[int, int] | None = None,
+    batch_total_games: int | None = None,
+    batch_profile_usage: dict[tuple[int, int], int] | None = None,
+    core_numbers: Sequence[int] | None = None,
+    discouraged_numbers: Sequence[int] | None = None,
+    max_frequency_ratio: float = 1.0,
+    min_frequency_ratio: float = 0.0,
+    preferred_profile_ratios: dict[tuple[int, int], float] | None = None,
     odd_min: int,
     odd_max: int,
     even_min: int,
@@ -966,12 +1013,25 @@ def _select_subset_from_candidate(
         return None
     universe = list(range(1, 26))
     candidate_set = set(candidate_numbers)
+    batch_number_usage = dict(batch_number_usage or {})
+    batch_total_games = max(1, int(batch_total_games or 1))
+    core_numbers_set = {int(number) for number in (core_numbers or [])}
+    discouraged_numbers_set = {int(number) for number in (discouraged_numbers or [])}
+    max_count = max(1, int(math.ceil(batch_total_games * float(max_frequency_ratio or 1.0))))
+    min_count = max(0, int(math.ceil(batch_total_games * float(min_frequency_ratio or 0.0))))
+    preferred_profile_ratios = {
+        (int(pair[0]), int(pair[1])): float(ratio)
+        for pair, ratio in (preferred_profile_ratios or {}).items()
+    }
     scoring = sorted(
         universe,
         key=lambda number: (
             -int(number in candidate_set),
             -int(frequency_map.get(int(number), 0)),
+            int(batch_number_usage.get(int(number), 0)),
+            -int(number in core_numbers_set and int(batch_number_usage.get(int(number), 0)) < min_count),
             int(number in latest_numbers),
+            int(number in discouraged_numbers_set),
             int(number),
         ),
     )
@@ -989,6 +1049,12 @@ def _select_subset_from_candidate(
         odd_target = min(max((target_size + 1) // 2, odd_min), odd_max)
         even_target = target_size - odd_target
         candidate_pairs = [(odd_target, even_target)]
+    if batch_profile_usage and preferred_profile_ratios:
+        candidate_pairs = _order_parity_pairs_for_batch(
+            candidate_pairs,
+            batch_profile_usage=batch_profile_usage,
+            preferred_profile_ratios=preferred_profile_ratios,
+        )
 
     for odd_target, even_target in candidate_pairs:
         if odd_target < odd_min or odd_target > odd_max:
@@ -1032,6 +1098,16 @@ def _select_subset_from_candidate(
             continue
         if _entropy_score(selected) < entropy_min:
             continue
+        if batch_number_usage:
+            projected = dict(batch_number_usage)
+            for number in selected:
+                projected[int(number)] = int(projected.get(int(number), 0) or 0) + 1
+            if any(int(projected.get(number, 0) or 0) > max_count for number in selected):
+                continue
+            if core_numbers_set:
+                if any(int(projected.get(number, 0) or 0) < min_count for number in core_numbers_set if number in selected):
+                    # do not reject here; just prefer candidates that keep core numbers growing
+                    pass
         if not _parity_pair_is_allowed(
             odd_count,
             even_count,
@@ -1048,11 +1124,19 @@ def _force_subset_from_universe(
     target_size: int,
     frequency_map: dict[int, int],
     latest_numbers: set[int],
+    batch_number_usage: dict[int, int] | None = None,
+    batch_total_games: int | None = None,
+    batch_profile_usage: dict[tuple[int, int], int] | None = None,
+    core_numbers: Sequence[int] | None = None,
+    discouraged_numbers: Sequence[int] | None = None,
+    max_frequency_ratio: float = 1.0,
+    min_frequency_ratio: float = 0.0,
     odd_min: int,
     odd_max: int,
     even_min: int,
     even_max: int,
     preferred_parity_pairs: Sequence[tuple[int, int]] | None = None,
+    preferred_profile_ratios: dict[tuple[int, int], float] | None = None,
     repeat_min: int = 0,
     repeat_max: int | None = None,
     sequence_max: int | None = None,
@@ -1063,12 +1147,26 @@ def _force_subset_from_universe(
 ) -> list[int]:
     target_size = max(1, min(int(target_size or 1), 25))
     universe = list(range(1, 26))
+    batch_number_usage = dict(batch_number_usage or {})
+    batch_total_games = max(1, int(batch_total_games or 1))
+    batch_profile_usage = dict(batch_profile_usage or {})
+    core_numbers_set = {int(number) for number in (core_numbers or [])}
+    discouraged_numbers_set = {int(number) for number in (discouraged_numbers or [])}
+    max_count = max(1, int(math.ceil(batch_total_games * float(max_frequency_ratio or 1.0))))
+    min_count = max(0, int(math.ceil(batch_total_games * float(min_frequency_ratio or 0.0))))
+    preferred_profile_ratios = {
+        (int(pair[0]), int(pair[1])): float(ratio)
+        for pair, ratio in (preferred_profile_ratios or {}).items()
+    }
     scoring = sorted(
         universe,
         key=lambda number: (
             -int(frequency_map.get(int(number), 0)),
-        int(number in latest_numbers),
-        int(number),
+            int(batch_number_usage.get(int(number), 0)),
+            -int(number in core_numbers_set and int(batch_number_usage.get(int(number), 0)) < min_count),
+            int(number in discouraged_numbers_set),
+            int(number in latest_numbers),
+            int(number),
         ),
     )
     if scoring:
@@ -1103,6 +1201,12 @@ def _force_subset_from_universe(
             ordered_pairs.append(normalized_pair)
     if ordered_pairs:
         parity_pairs = ordered_pairs
+    if batch_profile_usage and preferred_profile_ratios:
+        parity_pairs = _order_parity_pairs_for_batch(
+            parity_pairs,
+            batch_profile_usage=batch_profile_usage,
+            preferred_profile_ratios=preferred_profile_ratios,
+        )
     latest_numbers = set(latest_numbers or set())
     repeat_max = target_size if repeat_max is None else max(0, min(int(repeat_max), target_size))
     repeat_min = max(0, min(int(repeat_min), repeat_max))
@@ -1145,6 +1249,14 @@ def _force_subset_from_universe(
             continue
         if entropy_min is not None and _entropy_score(selected) < entropy_min:
             continue
+        if batch_number_usage:
+            projected = dict(batch_number_usage)
+            for number in selected:
+                projected[int(number)] = int(projected.get(int(number), 0) or 0) + 1
+            if any(int(projected.get(number, 0) or 0) > max_count for number in selected):
+                continue
+            if core_numbers_set and any(int(projected.get(number, 0) or 0) < min_count for number in core_numbers_set if number in selected):
+                continue
         return selected
     return []
 
@@ -1284,6 +1396,11 @@ def _run_institutional_generation(
     repeat_max = int(policy.get("repeat_max", repeat_limit) or repeat_limit)
     preferred_parity_pairs = list(policy.get("preferred_parity_pairs", []) or [])
     allowed_parity_pairs = list(policy.get("allowed_parity_pairs", []) or [])
+    preferred_profile_ratios = dict(policy.get("preferred_profile_ratios", {}) or {})
+    core_numbers = [int(number) for number in (policy.get("core_numbers", []) or [])]
+    discouraged_numbers = [int(number) for number in (policy.get("discouraged_numbers", []) or [])]
+    max_frequency_ratio = float(policy.get("max_frequency_ratio", 1.0) or 1.0)
+    min_frequency_ratio = float(policy.get("min_frequency_ratio", 0.0) or 0.0)
     effective_sequence_max = int(min(sequence_max, int(policy.get("sequence_max", sequence_max) or sequence_max)))
     effective_coverage_min = max(float(coverage_min), float(policy.get("coverage_min", coverage_min) or coverage_min))
     effective_entropy_min = max(float(entropy_min), float(policy.get("entropy_min", entropy_min) or entropy_min))
@@ -1295,12 +1412,23 @@ def _run_institutional_generation(
     ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(load_batch_output_signatures(batch_id))
+    batch_number_usage = batch_number_usage if batch_number_usage is not None else {}
+    batch_profile_usage = batch_profile_usage if batch_profile_usage is not None else {}
+    batch_total_games = max(1, int(batch_total_games or total_games))
     for candidate in ranked_candidates:
         selected_numbers = _select_subset_from_candidate(
             list(candidate.get("numbers", [])),
             target_size=dezenas_per_game,
             frequency_map=history_frequency,
             latest_numbers=latest_numbers,
+            batch_number_usage=batch_number_usage,
+            batch_total_games=batch_total_games,
+            batch_profile_usage=batch_profile_usage,
+            core_numbers=core_numbers,
+            discouraged_numbers=discouraged_numbers,
+            max_frequency_ratio=max_frequency_ratio,
+            min_frequency_ratio=min_frequency_ratio,
+            preferred_profile_ratios=preferred_profile_ratios,
             odd_min=odd_min,
             odd_max=odd_max,
             even_min=even_min,
@@ -1318,6 +1446,14 @@ def _run_institutional_generation(
                 target_size=dezenas_per_game,
                 frequency_map=history_frequency,
                 latest_numbers=latest_numbers,
+                batch_number_usage=batch_number_usage,
+                batch_total_games=batch_total_games,
+                batch_profile_usage=batch_profile_usage,
+                core_numbers=core_numbers,
+                discouraged_numbers=discouraged_numbers,
+                max_frequency_ratio=max_frequency_ratio,
+                min_frequency_ratio=min_frequency_ratio,
+                preferred_profile_ratios=preferred_profile_ratios,
                 odd_min=odd_min,
                 odd_max=odd_max,
                 even_min=even_min,
@@ -1344,6 +1480,13 @@ def _run_institutional_generation(
                 dezenas_per_game=dezenas_per_game,
             )
         )
+        profile_pair = (
+            sum(1 for number in selected_numbers if number % 2 != 0),
+            sum(1 for number in selected_numbers if number % 2 == 0),
+        )
+        batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+        for number in selected_numbers:
+            batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
         used_signatures.add(signature)
         if len(games) >= total_games:
             break
@@ -1355,6 +1498,14 @@ def _run_institutional_generation(
             target_size=dezenas_per_game,
             frequency_map=history_frequency,
             latest_numbers=latest_numbers,
+            batch_number_usage=batch_number_usage,
+            batch_total_games=batch_total_games,
+            batch_profile_usage=batch_profile_usage,
+            core_numbers=core_numbers,
+            discouraged_numbers=discouraged_numbers,
+            max_frequency_ratio=max_frequency_ratio,
+            min_frequency_ratio=min_frequency_ratio,
+            preferred_profile_ratios=preferred_profile_ratios,
             odd_min=odd_min,
             odd_max=odd_max,
             even_min=even_min,
@@ -1382,6 +1533,13 @@ def _run_institutional_generation(
                 dezenas_per_game=dezenas_per_game,
             )
         )
+        profile_pair = (
+            sum(1 for number in fallback_numbers if number % 2 != 0),
+            sum(1 for number in fallback_numbers if number % 2 == 0),
+        )
+        batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+        for number in fallback_numbers:
+            batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
         used_signatures.add(signature)
     commander_report = output_commander_validate_games(
         games,
@@ -1406,6 +1564,10 @@ def _run_institutional_generation(
             "total_games": total_games,
             "dezenas_per_game": dezenas_per_game,
             "use_top50": use_top50,
+            "core_numbers": core_numbers,
+            "discouraged_numbers": discouraged_numbers,
+            "max_frequency_ratio": max_frequency_ratio,
+            "min_frequency_ratio": min_frequency_ratio,
             "repeticao_ultimo_concurso_min": repeat_min,
             "repeticao_ultimo_concurso_max": repeat_max,
             "perfis_paridade_preferenciais": preferred_parity_pairs,
@@ -1458,6 +1620,10 @@ def _run_institutional_generation(
             "dezenas_per_game": dezenas_per_game,
             "total_games": total_games,
             "use_top50": use_top50,
+            "core_numbers": core_numbers,
+            "discouraged_numbers": discouraged_numbers,
+            "max_frequency_ratio": max_frequency_ratio,
+            "min_frequency_ratio": min_frequency_ratio,
             "odd_min": odd_min,
             "odd_max": odd_max,
             "even_min": even_min,
@@ -1485,6 +1651,10 @@ def _run_institutional_generation(
         "total_games": total_games,
         "dezenas_per_game": dezenas_per_game,
         "use_top50": use_top50,
+        "core_numbers": core_numbers,
+        "discouraged_numbers": discouraged_numbers,
+        "max_frequency_ratio": max_frequency_ratio,
+        "min_frequency_ratio": min_frequency_ratio,
         "repeticao_ultimo_concurso_min": repeat_min,
         "repeticao_ultimo_concurso_max": repeat_max,
         "perfis_paridade_preferenciais": preferred_parity_pairs,
@@ -1543,6 +1713,9 @@ def _run_institutional_generation_batch(
     entropy_min: float,
     repeat_limit: int,
     snapshot: dict[str, Any],
+    batch_number_usage: dict[int, int] | None = None,
+    batch_profile_usage: dict[tuple[int, int], int] | None = None,
+    batch_total_games: int | None = None,
 ) -> None:
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
@@ -1551,8 +1724,16 @@ def _run_institutional_generation_batch(
     repeat_max = int(policy.get("repeat_max", repeat_limit) or repeat_limit)
     preferred_parity_pairs = list(policy.get("preferred_parity_pairs", []) or [])
     allowed_parity_pairs = list(policy.get("allowed_parity_pairs", []) or [])
+    preferred_profile_ratios = dict(policy.get("preferred_profile_ratios", {}) or {})
+    core_numbers = [int(number) for number in (policy.get("core_numbers", []) or [])]
+    discouraged_numbers = [int(number) for number in (policy.get("discouraged_numbers", []) or [])]
+    max_frequency_ratio = float(policy.get("max_frequency_ratio", 1.0) or 1.0)
+    min_frequency_ratio = float(policy.get("min_frequency_ratio", 0.0) or 0.0)
     effective_sequence_max = int(min(sequence_max, int(policy.get("sequence_max", sequence_max) or sequence_max)))
     st.session_state["institutional_generation_batch_result"] = {}
+    batch_number_usage: dict[int, int] = {}
+    batch_profile_usage: dict[tuple[int, int], int] = {}
+    batch_total_games = int(total_games) * batch_runs
     run_summaries: list[dict[str, Any]] = []
     for run_index in range(batch_runs):
         _run_institutional_generation(
@@ -1568,6 +1749,9 @@ def _run_institutional_generation_batch(
             entropy_min=entropy_min,
             repeat_limit=repeat_limit,
             snapshot=snapshot,
+            batch_number_usage=batch_number_usage,
+            batch_profile_usage=batch_profile_usage,
+            batch_total_games=batch_total_games,
         )
         generation_result = dict(st.session_state.get("institutional_generation_result") or {})
         run_summaries.append(generation_result)
@@ -1598,6 +1782,10 @@ def _run_institutional_generation_batch(
         "perfis_paridade_preferenciais": preferred_parity_pairs,
         "perfis_paridade_permitidos": allowed_parity_pairs,
         "limite_sequencia_max": effective_sequence_max,
+        "core_numbers": core_numbers,
+        "discouraged_numbers": discouraged_numbers,
+        "max_frequency_ratio": max_frequency_ratio,
+        "min_frequency_ratio": min_frequency_ratio,
         "total_gens_solicitadas": batch_runs,
         "total_jogos_solicitados": batch_total_requested,
         "total_jogos_candidatos": batch_total_candidates,
@@ -3609,6 +3797,10 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     f"perfis_paridade_preferenciais={official_generation_policy.get('preferred_parity_pairs', [])}",
                     f"perfis_paridade_permitidos={official_generation_policy.get('allowed_parity_pairs', [])}",
                     f"limite_sequencia_max={official_generation_policy.get('sequence_max', 6)}",
+                    f"core_numbers={official_generation_policy.get('core_numbers', [])}",
+                    f"discouraged_numbers={official_generation_policy.get('discouraged_numbers', [])}",
+                    f"max_frequency_ratio={official_generation_policy.get('max_frequency_ratio', 1.0)}",
+                    f"min_frequency_ratio={official_generation_policy.get('min_frequency_ratio', 0.0)}",
                 ]
             )
         )
@@ -3668,6 +3860,10 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     f"perfis_paridade_preferenciais={batch_result.get('perfis_paridade_preferenciais', '-')}",
                     f"perfis_paridade_permitidos={batch_result.get('perfis_paridade_permitidos', '-')}",
                     f"limite_sequencia_max={batch_result.get('limite_sequencia_max', '-')}",
+                    f"core_numbers={batch_result.get('core_numbers', '-')}",
+                    f"discouraged_numbers={batch_result.get('discouraged_numbers', '-')}",
+                    f"max_frequency_ratio={batch_result.get('max_frequency_ratio', '-')}",
+                    f"min_frequency_ratio={batch_result.get('min_frequency_ratio', '-')}",
                     f"total_gens_solicitadas={batch_result.get('total_gens_solicitadas', '-')}",
                     f"total_jogos_solicitados={batch_result.get('total_jogos_solicitados', '-')}",
                     f"total_jogos_gerados={batch_result.get('total_jogos_gerados', '-')}",
@@ -3716,6 +3912,10 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     f"perfis_paridade_preferenciais={summary_result.get('perfis_paridade_preferenciais', '-')}",
                     f"perfis_paridade_permitidos={summary_result.get('perfis_paridade_permitidos', '-')}",
                     f"limite_sequencia_max={summary_result.get('limite_sequencia_max', '-')}",
+                    f"core_numbers={summary_result.get('core_numbers', '-')}",
+                    f"discouraged_numbers={summary_result.get('discouraged_numbers', '-')}",
+                    f"max_frequency_ratio={summary_result.get('max_frequency_ratio', '-')}",
+                    f"min_frequency_ratio={summary_result.get('min_frequency_ratio', '-')}",
                     f"total_jogos_solicitados={batch_solicitados}",
                     f"total_jogos_candidatos={summary_result.get('total_jogos_candidatos', '-')}",
                     f"total_jogos_aprovados={batch_aprovados}",
