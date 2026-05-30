@@ -118,6 +118,10 @@ from .scientific_nuclei_registry import (
     build_scientific_nuclei_registry,
     validate_scientific_nuclei_registry,
 )
+from .scientific_commander import (
+    ScientificBatchValidationReport,
+    validate_scientific_batch,
+)
 
 __all__ = [
     "AdaptiveChangeControl",
@@ -182,6 +186,7 @@ __all__ = [
     "ScientificNucleiValidationReport",
     "ScientificNucleus",
     "ScientificNucleusSection",
+    "ScientificBatchValidationReport",
     "build_anti_leakage_policy",
     "build_scientific_benchmark_registry",
     "build_scientific_dataset_registry",
@@ -202,6 +207,7 @@ __all__ = [
     "validate_scientific_runtime_contract",
     "validate_scientific_score_ml_contract",
     "build_scientific_nuclei_registry",
+    "validate_scientific_batch",
     "validate_scientific_nuclei_registry",
     "SignalApprovalDecision",
     "SignalApprovalWorkflow",

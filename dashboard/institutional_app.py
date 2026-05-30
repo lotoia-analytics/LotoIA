@@ -31,6 +31,8 @@ from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
+from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore, analyze_lotofacil_history, get_scientific_generation_policy
+from lotoia.governance.scientific_commander import validate_scientific_batch
 from lotoia.governance.output_commander import (
     game_signature as _game_signature,
     load_batch_output_signatures,
@@ -891,6 +893,76 @@ def _institutional_generation_policy(size: int) -> dict[str, Any]:
         "min_frequency_ratio": 0.0,
         "preferred_profile_ratios": {},
     }
+
+
+def _load_scientific_batch_games(batch_id: str | None) -> list[dict[str, Any]]:
+    resolved_batch_id = str(batch_id or "").strip()
+    if not resolved_batch_id:
+        return []
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(InstitutionalOutputSignature)
+            .filter(InstitutionalOutputSignature.batch_id == resolved_batch_id)
+            .order_by(InstitutionalOutputSignature.created_at.asc(), InstitutionalOutputSignature.id.asc())
+            .all()
+        )
+    games: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(getattr(row, "payload", {}) or {})
+        numbers = _extract_int_numbers(payload.get("numbers", []))
+        games.append(
+            {
+                "game_index": int(payload.get("game_index", len(games) + 1) or len(games) + 1),
+                "numbers": numbers,
+                "game_signature": str(getattr(row, "game_signature", "") or ""),
+                "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+                "source": str(payload.get("source", "institutional_app") or "institutional_app"),
+                "batch_id": resolved_batch_id,
+            }
+        )
+    return games
+
+
+def _scientific_batch_diagnostics(
+    *,
+    batch_id: str | None,
+    games: list[dict[str, Any]],
+    game_size: int,
+) -> dict[str, Any]:
+    resolved_batch_id = str(batch_id or "").strip()
+    if not resolved_batch_id:
+        return {}
+    scientific_games = games or _load_scientific_batch_games(resolved_batch_id)
+    if not scientific_games:
+        return {}
+    resolved_game_size = int(game_size or 0)
+    if resolved_game_size <= 0:
+        first_game_numbers = scientific_games[0].get("numbers", []) if scientific_games else []
+        resolved_game_size = len(first_game_numbers) if first_game_numbers else 15
+    core = LotofacilScientificCore()
+    reference_contests = core.contests[-10:] if core.contests else []
+    policy = (
+        get_scientific_generation_policy(resolved_game_size, contests=core.contests)
+        if core.contests
+        else get_scientific_generation_policy(resolved_game_size)
+    )
+    report = validate_scientific_batch(
+        scientific_games,
+        reference_contests,
+        resolved_game_size,
+        policy,
+        batch_id=resolved_batch_id,
+    )
+    report["reference_window"] = [int(item.get("contest_number", 0) or 0) for item in reference_contests]
+    report["game_size"] = resolved_game_size
+    report["status_comandante_cientifico"] = str(report.get("status_comandante_cientifico", "REPROVADO") or "REPROVADO")
+    report["classificacao_cientifica"] = str(report.get("classificacao_cientifica", "REPROVADA") or "REPROVADA")
+    report["status_visual"] = (
+        "APROVADO"
+        if str(report["status_comandante_cientifico"]).upper() == "APROVADO"
+        else "REPROVADO"
+    )
+    return report
 
 
 def _sync_hb_geometry_controls(size: int) -> dict[str, float | int]:
@@ -2725,6 +2797,46 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             f"generation_event_id={int(latest_commander.get('generation_event_id', 0) or 0)}"
         )
 
+        scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
+        scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) if scientific_batch_id else {}
+        if scientific_batch:
+            st.markdown("##### Núcleo Científico Lotofácil")
+            sci_cols = st.columns(6)
+            sci_cols[0].metric("status_cientifico", scientific_batch.get("status_comandante_cientifico", "-"))
+            sci_cols[1].metric("classificacao_cientifica", scientific_batch.get("classificacao_cientifica", "-"))
+            sci_cols[2].metric("maior_acerto", int(scientific_batch.get("best_hits", 0) or 0))
+            sci_cols[3].metric("11+", int(scientific_batch.get("count_11_plus", 0) or 0))
+            sci_cols[4].metric("12+", int(scientific_batch.get("count_12_plus", 0) or 0))
+            sci_cols[5].metric("13+", int(scientific_batch.get("count_13_plus", 0) or 0))
+            sci_cols_2 = st.columns(4)
+            sci_cols_2[0].metric("media_best_hits", f"{float(scientific_batch.get('average_best_hits', 0.0) or 0.0):.4f}")
+            sci_cols_2[1].metric("media_hits", f"{float(scientific_batch.get('average_hits', 0.0) or 0.0):.4f}")
+            sci_cols_2[2].metric("freq_max", f"{float(scientific_batch.get('frequency_maxima_dezena_percentual', 0.0) or 0.0):.2f}%")
+            sci_cols_2[3].metric("freq_min_nucleo", f"{float(scientific_batch.get('frequency_minima_dezena_candidata_percentual', 0.0) or 0.0):.2f}%")
+            st.caption(
+                " | ".join(
+                    [
+                        f"status_estrutural={latest_commander.get('status comandante saída', 'APROVADO')}",
+                        f"status_cientifico={scientific_batch.get('status_comandante_cientifico', '-')}",
+                        f"classificacao_cientifica={scientific_batch.get('classificacao_cientifica', '-')}",
+                        f"reference_window={scientific_batch.get('reference_window', [])}",
+                        f"repeticao_media={scientific_batch.get('average_repetition', '-')}",
+                        f"sequencia_media={scientific_batch.get('average_sequence_max', '-')}",
+                    ]
+                )
+            )
+            if scientific_batch.get("motivo_cientifico"):
+                if scientific_batch.get("status_comandante_cientifico") == "APROVADO":
+                    st.success(
+                        f"Núcleo Científico Lotofácil aprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
+                    )
+                else:
+                    st.warning(
+                        f"Núcleo Científico Lotofácil reprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
+                    )
+            with st.expander("Diagnóstico científico completo", expanded=False):
+                st.json(scientific_batch)
+
     if not generation_df.empty:
         filter_row_1 = st.columns([1, 1, 1, 1, 1])
         generation_options = sorted(int(value) for value in generation_df["generation_event_id"].dropna().astype(int).unique().tolist())
@@ -3930,6 +4042,68 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+    scientific_batch = {}
+    scientific_batch_id = str(
+        summary_result.get("batch_id")
+        or generation_result.get("batch_id")
+        or generation_state.get("batch_id")
+        or ""
+    ).strip()
+    scientific_game_size = int(
+        summary_result.get("quantidade_dezenas_por_jogo")
+        or generation_result.get("quantidade_dezenas_solicitada")
+        or generation_state.get("dezenas_per_game")
+        or dezenas_per_game
+    )
+    if scientific_batch_id:
+        scientific_batch = _scientific_batch_diagnostics(
+            batch_id=scientific_batch_id,
+            games=[] if batch_result else list(generation_result.get("jogos") or generation_state.get("games") or []),
+            game_size=scientific_game_size,
+        )
+    if scientific_batch:
+        st.markdown("##### Núcleo Científico Lotofácil")
+        sci_cols = st.columns(6)
+        sci_cols[0].metric("status_cientifico", scientific_batch.get("status_comandante_cientifico", "-"))
+        sci_cols[1].metric("classificacao_cientifica", scientific_batch.get("classificacao_cientifica", "-"))
+        sci_cols[2].metric("maior_acerto", int(scientific_batch.get("best_hits", 0) or 0))
+        sci_cols[3].metric("11+", int(scientific_batch.get("count_11_plus", 0) or 0))
+        sci_cols[4].metric("12+", int(scientific_batch.get("count_12_plus", 0) or 0))
+        sci_cols[5].metric("13+", int(scientific_batch.get("count_13_plus", 0) or 0))
+        sci_cols_2 = st.columns(4)
+        sci_cols_2[0].metric("media_best_hits", f"{float(scientific_batch.get('average_best_hits', 0.0) or 0.0):.4f}")
+        sci_cols_2[1].metric("media_hits", f"{float(scientific_batch.get('average_hits', 0.0) or 0.0):.4f}")
+        sci_cols_2[2].metric(
+            "freq_max",
+            f"{float(scientific_batch.get('frequency_maxima_dezena_percentual', 0.0) or 0.0):.2f}%",
+        )
+        sci_cols_2[3].metric(
+            "freq_min_nucleo",
+            f"{float(scientific_batch.get('frequency_minima_dezena_candidata_percentual', 0.0) or 0.0):.2f}%",
+        )
+        st.caption(
+            " | ".join(
+                [
+                    f"status_estrutural={batch_status if batch_result else generation_result.get('status_comandante_saida', '-') if generation_result else '-'}",
+                    f"status_cientifico={scientific_batch.get('status_comandante_cientifico', '-')}",
+                    f"classificacao_cientifica={scientific_batch.get('classificacao_cientifica', '-')}",
+                    f"reference_window={scientific_batch.get('reference_window', [])}",
+                    f"repeticao_media={scientific_batch.get('average_repetition', '-')} ",
+                    f"sequencia_media={scientific_batch.get('average_sequence_max', '-')}",
+                ]
+            )
+        )
+        if scientific_batch.get("motivo_cientifico"):
+            if scientific_batch.get("status_comandante_cientifico") == "APROVADO":
+                st.success(
+                    f"Núcleo Científico Lotofácil aprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
+                )
+            else:
+                st.warning(
+                    f"Núcleo Científico Lotofácil reprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
+                )
+        with st.expander("Diagnóstico científico completo", expanded=False):
+            st.json(scientific_batch)
     if generation_result and not batch_result:
         generation_event_id = int(generation_result.get("generation_event_id") or 0)
         persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
