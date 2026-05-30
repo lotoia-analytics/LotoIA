@@ -68,6 +68,8 @@ def output_commander_validate_games(
     generation_event_id: int | None = None,
     *,
     target_size: int | None = None,
+    required_total: int | None = None,
+    candidate_total: int | None = None,
     db_path: Any = DEFAULT_DATABASE_PATH,
     persisted_signatures: Iterable[str] | None = None,
 ) -> dict[str, Any]:
@@ -112,24 +114,38 @@ def output_commander_validate_games(
     total_unique = len(accepted_signatures)
     total_duplicates = total_requested - total_unique
     total_size = int(target_size or 0)
-    status = "APROVADO" if not invalid_games and total_duplicates == 0 else "ERRO_CRITICO"
-    error_message = ""
+    requested_total = int(required_total if required_total is not None else total_requested)
+    candidate_total_value = int(candidate_total if candidate_total is not None else total_requested)
+    approved_total = len(accepted_games)
+    rejected_total = max(0, candidate_total_value - approved_total)
+    blocked_reasons: list[str] = []
     if invalid_games:
-        error_message = "Jogos invalidos ou duplicados detectados na bateria."
-    elif total_duplicates:
-        error_message = "Diversidade insuficiente na bateria."
+        blocked_reasons.append("jogos_invalidos_ou_duplicados")
+    if total_duplicates:
+        blocked_reasons.append("duplicidade_na_bateria")
+    if approved_total < requested_total:
+        blocked_reasons.append("nao_atingiu_quantidade_solicitada")
+    status = "APROVADO" if not blocked_reasons and approved_total == requested_total else "BLOQUEADO"
+    error_message = ""
+    if blocked_reasons:
+        error_message = " / ".join(blocked_reasons)
 
     return {
         "batch_id": resolved_batch_id,
         "generation_event_id": generation_event_id,
-        "quantidade_jogos_solicitada": total_requested,
-        "quantidade_jogos_gerada": total_requested,
+        "quantidade_jogos_solicitada": requested_total,
+        "quantidade_jogos_candidatos": candidate_total_value,
+        "quantidade_jogos_gerada": candidate_total_value,
+        "quantidade_jogos_aprovados": approved_total,
+        "quantidade_jogos_persistidos": 0,
         "quantidade_jogos_unicos": total_unique,
         "quantidade_jogos_duplicados": total_duplicates,
+        "quantidade_jogos_rejeitados": rejected_total,
         "quantidade_dezenas_por_jogo": total_size,
         "taxa_duplicidade": round(total_duplicates / max(1, total_requested), 4),
         "status_comandante_saida": status,
         "error_message": error_message,
+        "motivo_bloqueio": error_message,
         "duplicate_hashes": duplicate_hashes,
         "invalid_games": invalid_games,
         "accepted_games": accepted_games,

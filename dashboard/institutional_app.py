@@ -1259,9 +1259,18 @@ def _run_institutional_generation(
         batch_id=batch_id,
         generation_event_id=None,
         target_size=dezenas_per_game,
+        required_total=total_games,
+        candidate_total=total_games,
         persisted_signatures=set(load_batch_output_signatures(batch_id)),
     )
     if commander_report.get("status_comandante_saida") != "APROVADO" or int(commander_report.get("quantidade_jogos_unicos", 0) or 0) != int(total_games):
+        approved_total = int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games))
+        rejected_total = int(commander_report.get("quantidade_jogos_rejeitados", max(0, total_games - approved_total)) or max(0, total_games - approved_total))
+        blocked_reason = str(
+            commander_report.get("motivo_bloqueio")
+            or commander_report.get("error_message")
+            or "nao foi possivel gerar a quantidade solicitada de jogos unicos"
+        )
         st.session_state["institutional_generation"] = {
             "seed": seed,
             "games": [],
@@ -1281,17 +1290,21 @@ def _run_institutional_generation(
             "jogos": [],
             "quantidade_jogos_solicitada": total_games,
             "quantidade_dezenas_solicitada": dezenas_per_game,
-            "quantidade_jogos_real_gerada": 0,
+            "quantidade_jogos_candidatos": int(commander_report.get("quantidade_jogos_candidatos", total_games) or total_games),
+            "quantidade_jogos_aprovados": approved_total,
+            "quantidade_jogos_real_gerada": approved_total,
             "quantidade_jogos_persistida": 0,
             "len_todos_os_jogos": [],
             "primeiro_jogo": [],
             "len_primeiro_jogo": 0,
             "batch_id": batch_id,
-            "status_comandante_saida": commander_report.get("status_comandante_saida", "ERRO_CRITICO"),
+            "status_comandante_saida": "BLOQUEADO",
             "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", 0) or 0),
             "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
+            "total_jogos_rejeitados": rejected_total,
+            "motivo_bloqueio": blocked_reason,
             "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
-            "error_message": str(commander_report.get("error_message", "ERRO_CRITICO")),
+            "error_message": blocked_reason,
             "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
             "invalid_games": list(commander_report.get("invalid_games", []) or []),
         }
@@ -1340,6 +1353,8 @@ def _run_institutional_generation(
         "jogos": games,
         "quantidade_jogos_solicitada": total_games,
         "quantidade_dezenas_solicitada": dezenas_per_game,
+        "quantidade_jogos_candidatos": int(commander_report.get("quantidade_jogos_candidatos", total_games) or total_games),
+        "quantidade_jogos_aprovados": int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games)),
         "quantidade_jogos_real_gerada": len(games),
         "quantidade_jogos_persistida": int(generation_snapshot.get("games_count", 0) or 0),
         "len_todos_os_jogos": [len(game.get("numbers", [])) for game in games],
@@ -1349,6 +1364,8 @@ def _run_institutional_generation(
         "status_comandante_saida": commander_report.get("status_comandante_saida", "APROVADO"),
         "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
         "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
+        "total_jogos_rejeitados": int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0),
+        "motivo_bloqueio": str(commander_report.get("motivo_bloqueio", "") or ""),
         "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
         "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
         "invalid_games": list(commander_report.get("invalid_games", []) or []),
@@ -1374,6 +1391,7 @@ def _run_institutional_generation_batch(
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
     st.session_state["institutional_generation_batch_result"] = {}
+    run_summaries: list[dict[str, Any]] = []
     for run_index in range(batch_runs):
         _run_institutional_generation(
             total_games=total_games,
@@ -1390,22 +1408,22 @@ def _run_institutional_generation_batch(
             snapshot=snapshot,
         )
         generation_result = dict(st.session_state.get("institutional_generation_result") or {})
-        if str(generation_result.get("status_comandante_saida", "APROVADO") or "APROVADO") == "ERRO_CRITICO":
+        run_summaries.append(generation_result)
+        if str(generation_result.get("status_comandante_saida", "APROVADO") or "APROVADO") != "APROVADO":
             break
         if run_index + 1 < batch_runs:
             continue
 
-    batch_generations = [
-        item
-        for item in _load_generation_history(limit=None)
-        if str(item.get("batch_id", "") or "") == batch_id
-    ]
     batch_signatures = load_batch_output_signatures(batch_id)
-    batch_total_requested = sum(int(item.get("total_games", 0) or 0) for item in batch_generations)
-    batch_total_generated = sum(len(item.get("games") or []) for item in batch_generations)
+    batch_total_requested = sum(int(item.get("quantidade_jogos_solicitada", 0) or 0) for item in run_summaries)
+    batch_total_candidates = sum(int(item.get("quantidade_jogos_candidatos", 0) or 0) for item in run_summaries)
+    batch_total_approved = sum(int(item.get("quantidade_jogos_aprovados", 0) or 0) for item in run_summaries)
+    batch_total_generated = sum(int(item.get("quantidade_jogos_real_gerada", 0) or 0) for item in run_summaries)
     batch_total_unique = len(batch_signatures)
     batch_total_duplicates = max(0, batch_total_generated - batch_total_unique)
-    batch_status = "APROVADO" if batch_total_generated == batch_total_unique and batch_total_duplicates == 0 else "ERRO_CRITICO"
+    batch_total_rejected = max(0, batch_total_requested - batch_total_approved)
+    batch_status = "APROVADO" if batch_total_requested == batch_total_approved == batch_total_generated == batch_total_unique and batch_total_duplicates == 0 else "BLOQUEADO"
+    batch_reason = "OK" if batch_status == "APROVADO" else "não foi possível gerar a quantidade solicitada de jogos únicos"
     st.session_state["institutional_generation_batch_result"] = {
         "batch_id": batch_id,
         "quantidade_jogos_por_geracao": int(total_games),
@@ -1414,11 +1432,15 @@ def _run_institutional_generation_batch(
         "total_jogos_esperados": int(total_games) * batch_runs,
         "total_gens_solicitadas": batch_runs,
         "total_jogos_solicitados": batch_total_requested,
+        "total_jogos_candidatos": batch_total_candidates,
+        "total_jogos_aprovados": batch_total_approved,
         "total_jogos_gerados": batch_total_generated,
         "total_jogos_unicos": batch_total_unique,
         "total_jogos_duplicados": batch_total_duplicates,
+        "total_jogos_rejeitados": batch_total_rejected,
         "taxa_duplicidade": round(batch_total_duplicates / max(1, batch_total_generated), 4),
         "status_comandante_saida": batch_status,
+        "motivo_bloqueio": batch_reason,
         "institutional_output_signatures": batch_total_unique,
     }
 
@@ -3466,7 +3488,53 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             )
         )
         st.caption(f"institutional_output_signatures={batch_result.get('institutional_output_signatures', '-')}")
-    if generation_result:
+    summary_result = batch_result or generation_result
+    if batch_result:
+        batch_status = str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO")
+        batch_solicitados = int(summary_result.get("total_jogos_solicitados", 0) or 0)
+        batch_aprovados = int(summary_result.get("total_jogos_aprovados", summary_result.get("total_jogos_unicos", 0)) or 0)
+        batch_gerados = int(summary_result.get("total_jogos_gerados", batch_aprovados) or batch_aprovados)
+        batch_unicos = int(summary_result.get("total_jogos_unicos", batch_aprovados) or batch_aprovados)
+        batch_rejeitados = int(summary_result.get("total_jogos_rejeitados", max(0, batch_solicitados - batch_aprovados)) or 0)
+        batch_motivo = str(summary_result.get("motivo_bloqueio", "não foi possível gerar a quantidade solicitada de jogos únicos") or "não foi possível gerar a quantidade solicitada de jogos únicos")
+        if batch_status != "APROVADO":
+            st.error(
+                "Comandante de Saída bloqueou a bateria. "
+                f"status = {batch_status} | "
+                f"motivo = {batch_motivo} | "
+                f"solicitados = {batch_solicitados} | "
+                f"aprovados = {batch_aprovados} | "
+                f"faltantes = {max(0, batch_solicitados - batch_aprovados)}"
+            )
+        else:
+            st.success(
+                "Bateria aprovada. "
+                f"jogos por geração={summary_result.get('quantidade_jogos_por_geracao', '-')} | "
+                f"gerações na bateria={summary_result.get('quantidade_geracoes_na_bateria', '-')} | "
+                f"jogos gerados={batch_gerados}"
+            )
+        st.caption(
+            " | ".join(
+                [
+                    f"quantidade_jogos_por_geracao={summary_result.get('quantidade_jogos_por_geracao', '-')}",
+                    f"quantidade_geracoes_na_bateria={summary_result.get('quantidade_geracoes_na_bateria', '-')}",
+                    f"quantidade_dezenas_por_jogo={summary_result.get('quantidade_dezenas_por_jogo', '-')}",
+                    f"total_jogos_esperados={summary_result.get('total_jogos_esperados', '-')}",
+                    f"total_jogos_solicitados={batch_solicitados}",
+                    f"total_jogos_candidatos={summary_result.get('total_jogos_candidatos', '-')}",
+                    f"total_jogos_aprovados={batch_aprovados}",
+                    f"total_jogos_gerados={batch_gerados}",
+                    f"total_jogos_persistidos={int(summary_result.get('institutional_output_signatures', 0) or 0)}",
+                    f"total_jogos_unicos={batch_unicos}",
+                    f"total_jogos_duplicados={int(summary_result.get('total_jogos_duplicados', 0) or 0)}",
+                    f"total_jogos_rejeitados={batch_rejeitados}",
+                    f"motivo_bloqueio={batch_motivo}",
+                    f"status_comandante_saida={batch_status}",
+                    f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}",
+                ]
+            )
+        )
+    if generation_result and not batch_result:
         generation_event_id = int(generation_result.get("generation_event_id") or 0)
         persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
         generation_runtime_status = str(generation_result.get("status_comandante_saida") or generation_state.get("runtime_status") or "")

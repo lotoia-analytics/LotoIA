@@ -16,12 +16,14 @@ def test_output_commander_blocks_duplicate_games_and_duplicate_numbers() -> None
         ],
         batch_id="batch-a",
         target_size=15,
+        required_total=2,
         persisted_signatures=set(),
     )
-    assert report["status_comandante_saida"] == "ERRO_CRITICO"
+    assert report["status_comandante_saida"] == "BLOQUEADO"
     assert report["quantidade_jogos_unicos"] == 1
     assert report["quantidade_jogos_duplicados"] == 1
     assert report["duplicate_hashes"] == ["01-02-03-04-05-06-07-08-09-10-11-12-13-14-15"]
+    assert report["motivo_bloqueio"]
 
 
 def test_output_commander_rejects_internal_duplicate_numbers() -> None:
@@ -31,7 +33,25 @@ def test_output_commander_rejects_internal_duplicate_numbers() -> None:
         ],
         batch_id="batch-b",
         target_size=15,
+        required_total=1,
         persisted_signatures=set(),
     )
-    assert report["status_comandante_saida"] == "ERRO_CRITICO"
+    assert report["status_comandante_saida"] == "BLOQUEADO"
     assert report["invalid_games"][0]["errors"] == ["dezenas_duplicadas"]
+
+
+def test_output_commander_blocks_when_not_enough_games_are_produced() -> None:
+    report = output_commander_validate_games(
+        [
+            {"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]},
+        ],
+        batch_id="batch-c",
+        target_size=15,
+        required_total=2,
+        candidate_total=2,
+        persisted_signatures=set(),
+    )
+    assert report["status_comandante_saida"] == "BLOQUEADO"
+    assert report["quantidade_jogos_solicitada"] == 2
+    assert report["quantidade_jogos_aprovados"] == 1
+    assert report["quantidade_jogos_rejeitados"] == 1
