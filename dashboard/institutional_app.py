@@ -1576,7 +1576,7 @@ def _load_generation_history(limit: int = 12) -> list[dict[str, Any]]:
                 if getattr(row, "target_contest", None) is not None:
                     target_contests.append(int(row.target_contest))
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
-            top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))[:5]
+            top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
             history.append(
                 {
                     "generation_event_id": int(event.id or 0),
@@ -1784,7 +1784,7 @@ def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
                 ),
             }
         )
-        for game in (entry.get("games") or [])[:3]:
+        for game in (entry.get("games") or []):
             items.append(
                 {
                     "kind": "game",
@@ -2312,6 +2312,19 @@ def _persist_generation_snapshot(
         }
 
 
+def _count_generated_games_for_event(generation_event_id: int) -> int:
+    with get_session(DB_PATH) as session:
+        return int(
+            session.query(GeneratedGame)
+            .filter(GeneratedGame.generation_event_id == int(generation_event_id))
+            .count()
+        )
+
+
+def _generated_games_count_sql(generation_event_id: int) -> str:
+    return f"SELECT COUNT(*) FROM generated_games WHERE generation_event_id = {int(generation_event_id)};"
+
+
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
     official_numbers = _extract_int_numbers(contest.get("dezenas", []))
     results: list[dict[str, Any]] = []
@@ -2690,14 +2703,22 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     generation_state = st.session_state.get("institutional_generation") or {}
     generation_result = st.session_state.get("institutional_generation_result") or {}
     if generation_result:
+        generation_event_id = int(generation_result.get("generation_event_id") or 0)
+        persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
         st.success(
             f"Geração concluída. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
         )
+        if generation_event_id:
+            st.code(_generated_games_count_sql(generation_event_id), language="sql")
+            st.caption(f"SQL_COUNT_RESULT={persisted_count}")
         st.caption(
             " | ".join(
                 [
                     f"quantidade_solicitada={generation_result.get('quantidade_solicitada', '-')}",
                     f"quantidade_real_gerada={generation_result.get('quantidade_real_gerada', '-')}",
+                    f"quantidade_persistida={persisted_count}",
+                    f"generation_event_id={generation_event_id or '-'}",
+                    f"len(generated_games)={len(generation_result.get('jogos') or [])}",
                     f"len_primeiro_jogo={generation_result.get('len_primeiro_jogo', '-')}",
                     f"primeiro_jogo={' '.join(f'{number:02d}' for number in generation_result.get('primeiro_jogo', [])) or '-'}",
                 ]
@@ -3367,6 +3388,21 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         selected_cols[2].metric("target_contest", selected_generation.get("target_contest", "-"))
         selected_cols[3].metric("total_games", selected_generation.get("total_games", 0))
         selected_cols[4].metric("perfil HB", selected_generation.get("strategy", "-") or "-")
+        selected_generation_id = int(selected_generation.get("generation_event_id") or 0)
+        loaded_games_count = len(selected_generation.get("games") or [])
+        top_games_count = len(selected_generation.get("top_games") or [])
+        persisted_games_count = _count_generated_games_for_event(selected_generation_id) if selected_generation_id else 0
+        st.caption(
+            " | ".join(
+                [
+                    f"generation_event_id_selecionado={selected_generation_id or '-'}",
+                    f"total_games_do_evento={int(selected_generation.get('total_games', 0) or 0)}",
+                    f"total_linhas_carregadas_generated_games={persisted_games_count}",
+                    f"total_linhas_exibidas_jogos_completos={loaded_games_count}",
+                    f"total_linhas_exibidas_top_jogos={top_games_count}",
+                ]
+            )
+        )
         summary_cols = st.columns(4)
         summary_cols[0].metric("score m?dio", f"{selected_generation.get('avg_score', 0.0):.4f}")
         summary_cols[1].metric("entropia m?dia", f"{selected_generation.get('avg_entropy', 0.0):.4f}")
