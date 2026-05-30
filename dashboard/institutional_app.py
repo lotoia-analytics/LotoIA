@@ -386,6 +386,7 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_games",
         "reconciliation_events",
         "imported_contests",
+        "institutional_output_signatures",
         "expansion_events",
         "operational_logs",
     ]
@@ -396,6 +397,7 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_games": "created_at",
         "reconciliation_events": "created_at",
         "imported_contests": "contest_number",
+        "institutional_output_signatures": "created_at",
         "expansion_events": "created_at",
         "operational_logs": "created_at",
     }
@@ -546,6 +548,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
             "SELECT COUNT(*) FROM reconciliation_runs;",
             "SELECT COUNT(*) FROM reconciliation_games;",
             "SELECT COUNT(*) FROM imported_contests;",
+            "SELECT COUNT(*) FROM institutional_output_signatures;",
         ):
             row: dict[str, Any] = {"query": query, "count": None, "status": "ok", "error": ""}
             try:
@@ -2258,6 +2261,21 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     summary_cols[9].metric("primeira geração", first_generation_label)
 
     if not generation_df.empty:
+        latest_commander = generation_df.iloc[0]
+        st.markdown("##### Comandante de Saída")
+        commander_cols = st.columns(6)
+        commander_cols[0].metric("total_jogos_solicitados", int(latest_commander.get("quantidade solicitada", 0) or 0))
+        commander_cols[1].metric("total_jogos_gerados", int(latest_commander.get("quantidade real gerada", 0) or 0))
+        commander_cols[2].metric("total_jogos_unicos", int(latest_commander.get("total jogos únicos", 0) or 0))
+        commander_cols[3].metric("total_jogos_duplicados", int(latest_commander.get("total jogos duplicados", 0) or 0))
+        commander_cols[4].metric("taxa_duplicidade", f"{float(latest_commander.get('taxa duplicidade', 0.0) or 0.0):.4f}")
+        commander_cols[5].metric("status_comandante_saida", str(latest_commander.get("status comandante saída", "APROVADO") or "APROVADO"))
+        st.caption(
+            f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
+            f"generation_event_id={int(latest_commander.get('generation_event_id', 0) or 0)}"
+        )
+
+    if not generation_df.empty:
         filter_row_1 = st.columns([1, 1, 1, 1, 1])
         generation_options = sorted(int(value) for value in generation_df["generation_event_id"].dropna().astype(int).unique().tolist())
         strategy_options = sorted(str(value) for value in generation_df["estratégia/modelo"].dropna().astype(str).unique().tolist())
@@ -3357,6 +3375,40 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+        commander_cols = st.columns(6)
+        commander_cols[0].metric("total_jogos_solicitados", int(generation_result.get("quantidade_jogos_solicitada", 0) or 0))
+        commander_cols[1].metric("total_jogos_gerados", int(generation_result.get("quantidade_jogos_real_gerada", 0) or 0))
+        commander_cols[2].metric("total_jogos_unicos", int(generation_result.get("total_jogos_unicos", 0) or 0))
+        commander_cols[3].metric("total_jogos_duplicados", int(generation_result.get("total_jogos_duplicados", 0) or 0))
+        commander_cols[4].metric(
+            "taxa_duplicidade",
+            f"{float(generation_result.get('taxa_duplicidade', 0.0) or 0.0):.4f}"
+            if isinstance(generation_result.get("taxa_duplicidade"), (int, float))
+            else generation_result.get("taxa_duplicidade", "-"),
+        )
+        commander_cols[5].metric(
+            "status_comandante_saida",
+            str(generation_result.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+        )
+        st.caption(
+            f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
+            f"batch_id={generation_result.get('batch_id', '-')}"
+        )
+        with st.expander("Diagnóstico do Comandante de Saída", expanded=True):
+            commander_diag = pd.DataFrame(
+                [
+                    {
+                        "total_jogos_solicitados": int(generation_result.get("quantidade_jogos_solicitada", 0) or 0),
+                        "total_jogos_gerados": int(generation_result.get("quantidade_jogos_real_gerada", 0) or 0),
+                        "total_jogos_unicos": int(generation_result.get("total_jogos_unicos", 0) or 0),
+                        "total_jogos_duplicados": int(generation_result.get("total_jogos_duplicados", 0) or 0),
+                        "taxa_duplicidade": float(generation_result.get("taxa_duplicidade", 0.0) or 0.0),
+                        "status_comandante_saida": str(generation_result.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                        "institutional_output_signatures": int(live_counts.get("institutional_output_signatures", 0)),
+                    }
+                ]
+            )
+            st.dataframe(commander_diag, hide_index=True, use_container_width=True)
         if generation_result.get("jogos"):
             st.dataframe(
                 pd.DataFrame(
