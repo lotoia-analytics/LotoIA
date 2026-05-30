@@ -1174,6 +1174,7 @@ def _run_institutional_generation(
     snapshot: dict[str, Any],
 ) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
+    st.session_state.pop("institutional_generation_batch_result", None)
     started = time.monotonic()
     seed = int(time.time()) % 1_000_000
     batch_id = _institutional_output_batch_id()
@@ -1351,6 +1352,70 @@ def _run_institutional_generation(
         "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
         "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
         "invalid_games": list(commander_report.get("invalid_games", []) or []),
+    }
+
+
+def _run_institutional_generation_batch(
+    *,
+    generation_runs: int,
+    total_games: int,
+    dezenas_per_game: int,
+    use_top50: bool,
+    odd_min: int,
+    odd_max: int,
+    even_min: int,
+    even_max: int,
+    sequence_max: int,
+    coverage_min: float,
+    entropy_min: float,
+    repeat_limit: int,
+    snapshot: dict[str, Any],
+) -> None:
+    batch_runs = max(1, int(generation_runs))
+    batch_id = _institutional_output_batch_id()
+    st.session_state["institutional_generation_batch_result"] = {}
+    for run_index in range(batch_runs):
+        _run_institutional_generation(
+            total_games=total_games,
+            dezenas_per_game=dezenas_per_game,
+            use_top50=use_top50,
+            odd_min=odd_min,
+            odd_max=odd_max,
+            even_min=even_min,
+            even_max=even_max,
+            sequence_max=sequence_max,
+            coverage_min=coverage_min,
+            entropy_min=entropy_min,
+            repeat_limit=repeat_limit,
+            snapshot=snapshot,
+        )
+        generation_result = dict(st.session_state.get("institutional_generation_result") or {})
+        if str(generation_result.get("status_comandante_saida", "APROVADO") or "APROVADO") == "ERRO_CRITICO":
+            break
+        if run_index + 1 < batch_runs:
+            continue
+
+    batch_generations = [
+        item
+        for item in _load_generation_history(limit=None)
+        if str(item.get("batch_id", "") or "") == batch_id
+    ]
+    batch_signatures = load_batch_output_signatures(batch_id)
+    batch_total_requested = sum(int(item.get("total_games", 0) or 0) for item in batch_generations)
+    batch_total_generated = sum(len(item.get("games") or []) for item in batch_generations)
+    batch_total_unique = len(batch_signatures)
+    batch_total_duplicates = max(0, batch_total_generated - batch_total_unique)
+    batch_status = "APROVADO" if batch_total_generated == batch_total_unique and batch_total_duplicates == 0 else "ERRO_CRITICO"
+    st.session_state["institutional_generation_batch_result"] = {
+        "batch_id": batch_id,
+        "total_gens_solicitadas": batch_runs,
+        "total_jogos_solicitados": batch_total_requested,
+        "total_jogos_gerados": batch_total_generated,
+        "total_jogos_unicos": batch_total_unique,
+        "total_jogos_duplicados": batch_total_duplicates,
+        "taxa_duplicidade": round(batch_total_duplicates / max(1, batch_total_generated), 4),
+        "status_comandante_saida": batch_status,
+        "institutional_output_signatures": batch_total_unique,
     }
 
 
@@ -2129,6 +2194,7 @@ def _clear_institutional_history_state() -> None:
     for key in (
         "institutional_generation",
         "institutional_generation_result",
+        "institutional_generation_batch_result",
         "institutional_check",
         "institutional_check_result",
         "institutional_simulation",
@@ -2161,6 +2227,7 @@ def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None
         "institutional_sync_request_url",
         "institutional_imported_contest",
         "institutional_imported_numbers",
+        "institutional_generation_batch_result",
         "institutional_simulation",
         "institutional_simulation_result",
         "institutional_simulation_error",
@@ -3200,7 +3267,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
     total_games = int(
         controls_cols[0].number_input(
-            "Quantidade de jogos",
+            "Quantidade de jogos por geração",
             min_value=1,
             max_value=100,
             value=int(st.session_state.get("institutional_total_games", 15) or 15),
@@ -3208,8 +3275,18 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             key="institutional_total_games",
         )
     )
-    dezenas_per_game = int(
+    generation_runs = int(
         controls_cols[1].number_input(
+            "Quantidade de gerações na bateria",
+            min_value=1,
+            max_value=60,
+            value=int(st.session_state.get("institutional_generation_runs", 1) or 1),
+            step=1,
+            key="institutional_generation_runs",
+        )
+    )
+    dezenas_per_game = int(
+        controls_cols[2].number_input(
             "Quantidade de dezenas por jogo",
             min_value=2,
             max_value=MAX_INSTITUTIONAL_DEZENAS_PER_GAME,
@@ -3225,7 +3302,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     )
     geometry_profile = _sync_hb_geometry_controls(dezenas_per_game)
     use_top50 = bool(
-        controls_cols[2].checkbox(
+        controls_cols[3].checkbox(
             "Usar TOP50 estrutural HB",
             value=bool(st.session_state.get("institutional_use_top50", True)),
             key="institutional_use_top50",
@@ -3314,25 +3391,58 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
 
     button_cols = st.columns([0.28, 1.72])
     if button_cols[0].button("LotoIA", type="primary"):
-        _run_institutional_generation(
-            total_games=total_games,
-            dezenas_per_game=dezenas_per_game,
-            use_top50=use_top50,
-            odd_min=odd_min,
-            odd_max=odd_max,
-            even_min=even_min,
-            even_max=even_max,
-            sequence_max=sequence_max,
-            coverage_min=coverage_min,
-            entropy_min=entropy_min,
-            repeat_limit=repeat_limit,
-            snapshot=snapshot,
-        )
+        if generation_runs > 1:
+            _run_institutional_generation_batch(
+                generation_runs=generation_runs,
+                total_games=total_games,
+                dezenas_per_game=dezenas_per_game,
+                use_top50=use_top50,
+                odd_min=odd_min,
+                odd_max=odd_max,
+                even_min=even_min,
+                even_max=even_max,
+                sequence_max=sequence_max,
+                coverage_min=coverage_min,
+                entropy_min=entropy_min,
+                repeat_limit=repeat_limit,
+                snapshot=snapshot,
+            )
+        else:
+            _run_institutional_generation(
+                total_games=total_games,
+                dezenas_per_game=dezenas_per_game,
+                use_top50=use_top50,
+                odd_min=odd_min,
+                odd_max=odd_max,
+                even_min=even_min,
+                even_max=even_max,
+                sequence_max=sequence_max,
+                coverage_min=coverage_min,
+                entropy_min=entropy_min,
+                repeat_limit=repeat_limit,
+                snapshot=snapshot,
+            )
         st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
 
+    batch_result = st.session_state.get("institutional_generation_batch_result") or {}
     generation_state = st.session_state.get("institutional_generation") or {}
     generation_result = st.session_state.get("institutional_generation_result") or {}
+    if batch_result:
+        st.info(
+            " | ".join(
+                [
+                    f"total_gens_solicitadas={batch_result.get('total_gens_solicitadas', '-')}",
+                    f"total_jogos_solicitados={batch_result.get('total_jogos_solicitados', '-')}",
+                    f"total_jogos_gerados={batch_result.get('total_jogos_gerados', '-')}",
+                    f"total_jogos_unicos={batch_result.get('total_jogos_unicos', '-')}",
+                    f"total_jogos_duplicados={batch_result.get('total_jogos_duplicados', '-')}",
+                    f"taxa_duplicidade={batch_result.get('taxa_duplicidade', '-')}",
+                    f"status_comandante_saida={batch_result.get('status_comandante_saida', '-')}",
+                ]
+            )
+        )
+        st.caption(f"institutional_output_signatures={batch_result.get('institutional_output_signatures', '-')}")
     if generation_result:
         generation_event_id = int(generation_result.get("generation_event_id") or 0)
         persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
