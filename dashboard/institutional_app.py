@@ -360,7 +360,6 @@ def _sidebar_nav_button(label: str, target_page: str, current_page: str) -> None
     if st.sidebar.button(label, key=f"nav_{target_page}"):
         page_id = _canonical_page_id(target_page)
         st.session_state["institutional_page_id"] = page_id
-        st.session_state["institutional_page"] = _canonical_page_label(page_id)
         st.rerun()
 
 
@@ -2965,11 +2964,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _sidebar_nav_button("Benchmark resumido", "Benchmark resumido", page)
     _sidebar_nav_button("Estatísticas operacionais", "Estatísticas operacionais", page)
     _sidebar_nav_button("HB Geometry", "HB Geometry", page)
-    choice = _canonical_page_id(st.session_state.get("institutional_page_id") or st.session_state.get("institutional_page") or page)
+    choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     if choice not in pages:
         choice = _canonical_page_id(page)
     st.session_state["institutional_page_id"] = choice
-    st.session_state["institutional_page"] = _canonical_page_label(choice)
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
     return choice
@@ -4045,11 +4043,10 @@ def main() -> None:
     snapshot = _database_snapshot()
     _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(
-        st.session_state.get("institutional_page_id") or st.session_state.get("institutional_page", "Gerar Jogos"),
+        st.session_state.get("institutional_page_id", "generation"),
         snapshot,
     )
     st.session_state["institutional_page_id"] = page
-    st.session_state["institutional_page"] = _canonical_page_label(page)
     st.success(BUILD_MARKER)
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
     if page == "audit":
