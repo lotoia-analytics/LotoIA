@@ -1089,6 +1089,151 @@ def _render_scientific_memory_block() -> None:
             st.dataframe(pd.DataFrame(scientific_memory), hide_index=True, use_container_width=True)
 
 
+def _format_scientific_number_list(values: Sequence[int] | None) -> str:
+    formatted: list[str] = []
+    for value in values or []:
+        try:
+            formatted.append(f"{int(value):02d}")
+        except Exception:
+            continue
+    return ", ".join(formatted) if formatted else "-"
+
+
+def _format_scientific_parity_pairs(pairs: Sequence[tuple[int, int]] | None) -> str:
+    formatted: list[str] = []
+    for pair in pairs or []:
+        try:
+            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+        except Exception:
+            continue
+    return ", ".join(formatted) if formatted else "-"
+
+
+def _render_scientific_policy_panel(
+    *,
+    policy: dict[str, Any],
+    strategy_size: int,
+    total_expected_games: int,
+    games_per_generation: int,
+    generations_in_batch: int,
+) -> None:
+    st.markdown("##### Política Científica Aplicada")
+    top_cols = st.columns(4)
+    top_cols[0].metric("Estratégia", f"{int(strategy_size)} dezenas")
+    top_cols[1].metric("Total esperado", int(total_expected_games))
+    top_cols[2].metric("Jogos por geração", int(games_per_generation))
+    top_cols[3].metric("Gerações na bateria", int(generations_in_batch))
+
+    detail_cols = st.columns(3)
+    repeat_min = int(policy.get("repeat_min", 0) or 0)
+    repeat_max = int(policy.get("repeat_max", 0) or 0)
+    detail_cols[0].markdown(
+        f"**Repetição do último concurso**  \n{repeat_min} a {repeat_max} dezenas"
+    )
+    detail_cols[1].markdown(
+        "**Paridade preferencial**  \n"
+        "7 ímpares / 8 pares  \n"
+        "8 ímpares / 7 pares"
+    )
+    detail_cols[2].markdown(
+        "**Paridade permitida**  \n"
+        "7/8  \n"
+        "8/7  \n"
+        "6/9  \n"
+        "9/6"
+    )
+
+    detail_cols_2 = st.columns(3)
+    detail_cols_2[0].markdown(
+        f"**Limite de sequência**  \nMáximo {int(policy.get('sequence_max', 0) or 0)} dezenas consecutivas"
+    )
+    detail_cols_2[1].markdown(
+        f"**Núcleo reforçado**  \n{_format_scientific_number_list(policy.get('core_numbers', []))}"
+    )
+    detail_cols_2[2].markdown(
+        f"**Dezenas com redução de peso**  \n{_format_scientific_number_list(policy.get('discouraged_numbers', []))}"
+    )
+
+    freq_cols = st.columns(2)
+    freq_cols[0].metric(
+        "Controle de frequência (máx.)",
+        f"{float(policy.get('max_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
+    )
+    freq_cols[1].metric(
+        "Controle de frequência (mín. candidata)",
+        f"{float(policy.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
+    )
+    with st.expander("Ver payload técnico completo", expanded=False):
+        st.json(policy)
+
+
+def _render_scientific_calibration_panel(
+    *,
+    strategy_size: int,
+    scientific_state: dict[str, Any] | None,
+    scientific_recommendation: dict[str, Any] | None,
+    technical_payload: dict[str, Any] | None = None,
+) -> None:
+    scientific_state = scientific_state or {
+        "mode": "OBSERVAÇÃO",
+        "structural_status": "aguardando geração",
+        "scientific_status": "aguardando avaliação",
+        "classification": "aguardando",
+        "main_reason": "aguardando primeira bateria",
+        "status_visual": "aguardando",
+    }
+    scientific_recommendation = scientific_recommendation or {
+        "action_suggested": "recalibrar distribuição de frequência",
+        "status_visual": "OBSERVAÇÃO",
+    }
+    st.markdown("##### Motor Científico de Calibração")
+    top_cols = st.columns(4)
+    top_cols[0].metric("Modo", str(scientific_state.get("mode", "-") or "-"))
+    top_cols[1].metric("Estratégia", f"{int(strategy_size)} dezenas")
+    top_cols[2].metric("Status estrutural", str(scientific_state.get("structural_status", "-") or "-"))
+    top_cols[3].metric("Status científico", str(scientific_state.get("scientific_status", "-") or "-"))
+
+    detail_cols = st.columns(3)
+    detail_cols[0].markdown(
+        f"**Classificação**  \n{scientific_state.get('classification', '-') or '-'}"
+    )
+    detail_cols[1].markdown(
+        f"**Motivo**  \n{scientific_state.get('main_reason', '-') or '-'}"
+    )
+    detail_cols[2].markdown(
+        f"**Ação sugerida pela LotoIA**  \n{scientific_recommendation.get('action_suggested', '-') or '-'}"
+    )
+
+    detail_cols_2 = st.columns(2)
+    detail_cols_2[0].metric(
+        "Status visual",
+        str(scientific_recommendation.get("status_visual", scientific_state.get("status_visual", "-")) or "-"),
+    )
+    detail_cols_2[1].metric(
+        "Última decisão científica",
+        str(scientific_state.get("scientific_status", "-") or "-"),
+    )
+
+    summary_bits: list[str] = []
+    if scientific_state.get("reference_window"):
+        summary_bits.append(f"reference_window={scientific_state.get('reference_window')}")
+    if scientific_state.get("source_batch_id"):
+        summary_bits.append(f"source_batch_id={scientific_state.get('source_batch_id')}")
+    if scientific_recommendation.get("status_visual"):
+        summary_bits.append(f"status_visual={scientific_recommendation.get('status_visual')}")
+    if scientific_state.get("main_reason"):
+        summary_bits.append(f"main_reason={scientific_state.get('main_reason')}")
+    if summary_bits:
+        st.caption(" | ".join(summary_bits))
+    with st.expander("Ver diagnóstico científico completo", expanded=False):
+        payload: dict[str, Any] = {}
+        if technical_payload:
+            payload.update(technical_payload)
+        payload.setdefault("scientific_state", scientific_state)
+        payload.setdefault("scientific_recommendation", scientific_recommendation)
+        st.json(payload)
+
+
 @st.cache_data(show_spinner=False)
 
 def _history_number_frequency() -> dict[int, int]:
@@ -3127,47 +3272,57 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
         scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) if scientific_batch_id else {}
+        history_policy = {
+            "repeat_min": int(latest_commander.get("repeticao_ultimo_concurso_min", 7) or 7),
+            "repeat_max": int(latest_commander.get("repeticao_ultimo_concurso_max", 10) or 10),
+            "preferred_parity_pairs": list(latest_commander.get("perfis_paridade_preferenciais", [(7, 8), (8, 7)]) or [(7, 8), (8, 7)]),
+            "allowed_parity_pairs": list(latest_commander.get("perfis_paridade_permitidos", [(7, 8), (8, 7), (6, 9), (9, 6)]) or [(7, 8), (8, 7), (6, 9), (9, 6)]),
+            "sequence_max": int(latest_commander.get("limite_sequencia_max", 6) or 6),
+            "core_numbers": list(latest_commander.get("core_numbers", [7, 12, 16, 23]) or [7, 12, 16, 23]),
+            "discouraged_numbers": list(latest_commander.get("discouraged_numbers", [2, 4, 11, 15, 24, 25]) or [2, 4, 11, 15, 24, 25]),
+            "max_frequency_ratio": float(latest_commander.get("max_frequency_ratio", 0.7) or 0.7),
+            "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
+        }
+        _render_scientific_policy_panel(
+            policy=history_policy,
+            strategy_size=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            generations_in_batch=1,
+        )
         if scientific_batch:
-            st.markdown("##### Núcleo Científico Lotofácil")
-            sci_cols = st.columns(6)
-            sci_cols[0].metric("status_cientifico", scientific_batch.get("status_comandante_cientifico", "-"))
-            sci_cols[1].metric("classificacao_cientifica", scientific_batch.get("classificacao_cientifica", "-"))
-            sci_cols[2].metric("maior_acerto", int(scientific_batch.get("best_hits", 0) or 0))
-            sci_cols[3].metric("11+", int(scientific_batch.get("count_11_plus", 0) or 0))
-            sci_cols[4].metric("12+", int(scientific_batch.get("count_12_plus", 0) or 0))
-            sci_cols[5].metric("13+", int(scientific_batch.get("count_13_plus", 0) or 0))
-            sci_cols_2 = st.columns(4)
-            sci_cols_2[0].metric("media_best_hits", f"{float(scientific_batch.get('average_best_hits', 0.0) or 0.0):.4f}")
-            sci_cols_2[1].metric("media_hits", f"{float(scientific_batch.get('average_hits', 0.0) or 0.0):.4f}")
-            sci_cols_2[2].metric("freq_max", f"{float(scientific_batch.get('frequency_maxima_dezena_percentual', 0.0) or 0.0):.2f}%")
-            sci_cols_2[3].metric("freq_min_nucleo", f"{float(scientific_batch.get('frequency_minima_dezena_candidata_percentual', 0.0) or 0.0):.2f}%")
-            st.caption(
-                " | ".join(
-                    [
-                        f"status_estrutural={latest_commander.get('status comandante saída', 'APROVADO')}",
-                        f"status_cientifico={scientific_batch.get('status_comandante_cientifico', '-')}",
-                        f"classificacao_cientifica={scientific_batch.get('classificacao_cientifica', '-')}",
-                        f"reference_window={scientific_batch.get('reference_window', [])}",
-                        f"repeticao_media={scientific_batch.get('average_repetition', '-')}",
-                        f"sequencia_media={scientific_batch.get('average_sequence_max', '-')}",
-                    ]
-                )
-            )
-            if scientific_batch.get("motivo_cientifico"):
-                if scientific_batch.get("status_comandante_cientifico") == "APROVADO":
-                    st.success(
-                        f"Núcleo Científico Lotofácil aprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
-                    )
-                else:
-                    st.warning(
-                        f"Núcleo Científico Lotofácil reprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
-                    )
-            with st.expander("Diagnóstico científico completo", expanded=False):
-                st.json(scientific_batch)
-            latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
-            if latest_scientific_decisions:
-                st.markdown("##### Memória científica de calibração")
-                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+            scientific_state = {
+                "mode": "AUTONOMIA SUPERVISIONADA"
+                if str(scientific_batch.get("status_comandante_cientifico", "")).upper() == "APROVADO"
+                else "OBSERVA??O",
+                "structural_status": str(latest_commander.get("status comandante sa?da", "BLOQUEADO") or "BLOQUEADO"),
+                "scientific_status": str(scientific_batch.get("status_comandante_cientifico", "-") or "-"),
+                "classification": str(scientific_batch.get("classificacao_cientifica", "-") or "-"),
+                "main_reason": str(scientific_batch.get("main_reason", scientific_batch.get("motivo_cientifico", "-")) or "-"),
+                "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
+                "reference_window": scientific_batch.get("reference_window", []),
+                "source_batch_id": scientific_batch_id,
+            }
+            scientific_recommendation = {
+                "action_suggested": str(
+                    scientific_batch.get("action_suggested", scientific_batch.get("recommended_action", "-") ) or "-"
+                ),
+                "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
+            }
+        else:
+            scientific_state = None
+            scientific_recommendation = None
+        _render_scientific_calibration_panel(
+            strategy_size=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            scientific_state=scientific_state,
+            scientific_recommendation=scientific_recommendation,
+            technical_payload=scientific_batch if scientific_batch else None,
+        )
+        latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
+        if latest_scientific_decisions:
+            st.markdown("##### Mem?ria cient?fica de calibra??o")
+            st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+
 
 
     if not generation_df.empty:
@@ -4234,22 +4389,101 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     resume_cols[3].metric("total esperado de jogos", total_jogos_esperados)
     if generation_runs > 1 and dezenas_per_game != 15:
         st.error("Nesta fase, a bateria oficial precisa usar 15 dezenas por jogo para manter a calibração institucional.")
-    if dezenas_per_game == 15:
-        st.info(
-            " | ".join(
-                [
-                    f"repeticao_ultimo_concurso_min={official_generation_policy.get('repeat_min', 7)}",
-                    f"repeticao_ultimo_concurso_max={official_generation_policy.get('repeat_max', 10)}",
-                    f"perfis_paridade_preferenciais={official_generation_policy.get('preferred_parity_pairs', [])}",
-                    f"perfis_paridade_permitidos={official_generation_policy.get('allowed_parity_pairs', [])}",
-                    f"limite_sequencia_max={official_generation_policy.get('sequence_max', 6)}",
-                    f"core_numbers={official_generation_policy.get('core_numbers', [])}",
-                    f"discouraged_numbers={official_generation_policy.get('discouraged_numbers', [])}",
-                    f"max_frequency_ratio={official_generation_policy.get('max_frequency_ratio', 1.0)}",
-                    f"min_frequency_ratio={official_generation_policy.get('min_frequency_ratio', 0.0)}",
-                ]
-            )
+    batch_result = st.session_state.get("institutional_generation_batch_result") or {}
+    generation_state = st.session_state.get("institutional_generation") or {}
+    generation_result = st.session_state.get("institutional_generation_result") or {}
+    summary_result = batch_result or generation_result
+    scientific_batch_id = str(
+        summary_result.get("batch_id")
+        or generation_result.get("batch_id")
+        or generation_state.get("batch_id")
+        or ""
+    ).strip()
+    scientific_game_size = int(
+        summary_result.get("quantidade_dezenas_por_jogo")
+        or generation_result.get("quantidade_dezenas_solicitada")
+        or generation_state.get("dezenas_per_game")
+        or dezenas_per_game
+    )
+    scientific_batch = {}
+    if scientific_batch_id:
+        scientific_batch = _scientific_batch_diagnostics(
+            batch_id=scientific_batch_id,
+            games=[] if batch_result else list(generation_result.get("jogos") or generation_state.get("games") or []),
+            game_size=scientific_game_size,
         )
+    _render_scientific_policy_panel(
+        policy=official_generation_policy,
+        strategy_size=int(dezenas_per_game),
+        total_expected_games=int(total_jogos_esperados),
+        games_per_generation=int(total_games),
+        generations_in_batch=int(generation_runs),
+    )
+    if scientific_batch:
+        scientific_state = {
+            "mode": "AUTONOMIA SUPERVISIONADA"
+            if str(scientific_batch.get("status_comandante_cientifico", "")).upper() == "APROVADO"
+            else "OBSERVAÇÃO",
+            "structural_status": str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO"),
+            "scientific_status": str(scientific_batch.get("status_comandante_cientifico", "-") or "-"),
+            "classification": str(scientific_batch.get("classificacao_cientifica", "-") or "-"),
+            "main_reason": str(scientific_batch.get("main_reason", scientific_batch.get("motivo_cientifico", "-")) or "-"),
+            "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
+            "reference_window": scientific_batch.get("reference_window", []),
+            "source_batch_id": scientific_batch_id,
+        }
+        scientific_recommendation = {
+            "action_suggested": str(
+                scientific_batch.get("action_suggested", scientific_batch.get("recommended_action", "-")) or "-"
+            ),
+            "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
+        }
+    else:
+        scientific_state = None
+        scientific_recommendation = None
+    _render_scientific_calibration_panel(
+        strategy_size=int(dezenas_per_game),
+        scientific_state=scientific_state,
+        scientific_recommendation=scientific_recommendation,
+        technical_payload=scientific_batch if scientific_batch else None,
+    )
+    if summary_result:
+        st.markdown("##### Diagnóstico da bateria")
+        batch_status = str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO")
+        batch_solicitados = int(summary_result.get("total_jogos_solicitados", 0) or 0)
+        batch_aprovados = int(summary_result.get("total_jogos_aprovados", summary_result.get("total_jogos_unicos", 0)) or 0)
+        batch_gerados = int(summary_result.get("total_jogos_gerados", batch_aprovados) or batch_aprovados)
+        batch_unicos = int(summary_result.get("total_jogos_unicos", batch_aprovados) or batch_aprovados)
+        batch_duplicados = int(summary_result.get("total_jogos_duplicados", 0) or 0)
+        batch_rejeitados = int(summary_result.get("total_jogos_rejeitados", max(0, batch_solicitados - batch_aprovados)) or 0)
+        batch_taxa = float(summary_result.get("taxa_duplicidade", 0.0) or 0.0)
+        outcome_cols = st.columns(6)
+        outcome_cols[0].metric("total_jogos_solicitados", batch_solicitados)
+        outcome_cols[1].metric("total_jogos_gerados", batch_gerados)
+        outcome_cols[2].metric("total_jogos_unicos", batch_unicos)
+        outcome_cols[3].metric("total_jogos_duplicados", batch_duplicados)
+        outcome_cols[4].metric("taxa_duplicidade", f"{batch_taxa:.4f}")
+        outcome_cols[5].metric("status_comandante_saida", batch_status)
+        st.caption(
+            f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
+            f"batch_id={summary_result.get('batch_id', '-')}"
+        )
+        if batch_status != "APROVADO":
+            st.error(
+                "Comandante de Saída bloqueou a bateria. "
+                f"status = {batch_status} | "
+                f"motivo = {summary_result.get('motivo_bloqueio', 'não foi possível gerar a quantidade solicitada de jogos únicos')} | "
+                f"solicitados = {batch_solicitados} | "
+                f"aprovados = {batch_aprovados} | "
+                f"faltantes = {max(0, batch_solicitados - batch_aprovados)}"
+            )
+        else:
+            st.success(
+                "Bateria aprovada. "
+                f"jogos por geração={summary_result.get('quantidade_jogos_por_geracao', '-')} | "
+                f"gerações na bateria={summary_result.get('quantidade_geracoes_na_bateria', '-')} | "
+                f"jogos gerados={batch_gerados}"
+            )
 
     button_cols = st.columns([0.28, 1.72])
     if button_cols[0].button("LotoIA", type="primary"):
@@ -4290,154 +4524,6 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
 
-    batch_result = st.session_state.get("institutional_generation_batch_result") or {}
-    generation_state = st.session_state.get("institutional_generation") or {}
-    generation_result = st.session_state.get("institutional_generation_result") or {}
-    if batch_result:
-        st.info(
-            " | ".join(
-                [
-                    f"quantidade_jogos_por_geracao={batch_result.get('quantidade_jogos_por_geracao', '-')}",
-                    f"quantidade_geracoes_na_bateria={batch_result.get('quantidade_geracoes_na_bateria', '-')}",
-                    f"quantidade_dezenas_por_jogo={batch_result.get('quantidade_dezenas_por_jogo', '-')}",
-                    f"total_jogos_esperados={batch_result.get('total_jogos_esperados', '-')}",
-                    f"repeticao_ultimo_concurso_min={batch_result.get('repeticao_ultimo_concurso_min', '-')}",
-                    f"repeticao_ultimo_concurso_max={batch_result.get('repeticao_ultimo_concurso_max', '-')}",
-                    f"perfis_paridade_preferenciais={batch_result.get('perfis_paridade_preferenciais', '-')}",
-                    f"perfis_paridade_permitidos={batch_result.get('perfis_paridade_permitidos', '-')}",
-                    f"limite_sequencia_max={batch_result.get('limite_sequencia_max', '-')}",
-                    f"core_numbers={batch_result.get('core_numbers', '-')}",
-                    f"discouraged_numbers={batch_result.get('discouraged_numbers', '-')}",
-                    f"max_frequency_ratio={batch_result.get('max_frequency_ratio', '-')}",
-                    f"min_frequency_ratio={batch_result.get('min_frequency_ratio', '-')}",
-                    f"total_gens_solicitadas={batch_result.get('total_gens_solicitadas', '-')}",
-                    f"total_jogos_solicitados={batch_result.get('total_jogos_solicitados', '-')}",
-                    f"total_jogos_gerados={batch_result.get('total_jogos_gerados', '-')}",
-                    f"total_jogos_unicos={batch_result.get('total_jogos_unicos', '-')}",
-                    f"total_jogos_duplicados={batch_result.get('total_jogos_duplicados', '-')}",
-                    f"taxa_duplicidade={batch_result.get('taxa_duplicidade', '-')}",
-                    f"status_comandante_saida={batch_result.get('status_comandante_saida', '-')}",
-                ]
-            )
-        )
-        st.caption(f"institutional_output_signatures={batch_result.get('institutional_output_signatures', '-')}")
-    summary_result = batch_result or generation_result
-    if batch_result:
-        batch_status = str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO")
-        batch_solicitados = int(summary_result.get("total_jogos_solicitados", 0) or 0)
-        batch_aprovados = int(summary_result.get("total_jogos_aprovados", summary_result.get("total_jogos_unicos", 0)) or 0)
-        batch_gerados = int(summary_result.get("total_jogos_gerados", batch_aprovados) or batch_aprovados)
-        batch_unicos = int(summary_result.get("total_jogos_unicos", batch_aprovados) or batch_aprovados)
-        batch_rejeitados = int(summary_result.get("total_jogos_rejeitados", max(0, batch_solicitados - batch_aprovados)) or 0)
-        batch_motivo = str(summary_result.get("motivo_bloqueio", "não foi possível gerar a quantidade solicitada de jogos únicos") or "não foi possível gerar a quantidade solicitada de jogos únicos")
-        if batch_status != "APROVADO":
-            st.error(
-                "Comandante de Saída bloqueou a bateria. "
-                f"status = {batch_status} | "
-                f"motivo = {batch_motivo} | "
-                f"solicitados = {batch_solicitados} | "
-                f"aprovados = {batch_aprovados} | "
-                f"faltantes = {max(0, batch_solicitados - batch_aprovados)}"
-            )
-        else:
-            st.success(
-                "Bateria aprovada. "
-                f"jogos por geração={summary_result.get('quantidade_jogos_por_geracao', '-')} | "
-                f"gerações na bateria={summary_result.get('quantidade_geracoes_na_bateria', '-')} | "
-                f"jogos gerados={batch_gerados}"
-            )
-        st.caption(
-            " | ".join(
-                [
-                    f"quantidade_jogos_por_geracao={summary_result.get('quantidade_jogos_por_geracao', '-')}",
-                    f"quantidade_geracoes_na_bateria={summary_result.get('quantidade_geracoes_na_bateria', '-')}",
-                    f"quantidade_dezenas_por_jogo={summary_result.get('quantidade_dezenas_por_jogo', '-')}",
-                    f"total_jogos_esperados={summary_result.get('total_jogos_esperados', '-')}",
-                    f"repeticao_ultimo_concurso_min={summary_result.get('repeticao_ultimo_concurso_min', '-')}",
-                    f"repeticao_ultimo_concurso_max={summary_result.get('repeticao_ultimo_concurso_max', '-')}",
-                    f"perfis_paridade_preferenciais={summary_result.get('perfis_paridade_preferenciais', '-')}",
-                    f"perfis_paridade_permitidos={summary_result.get('perfis_paridade_permitidos', '-')}",
-                    f"limite_sequencia_max={summary_result.get('limite_sequencia_max', '-')}",
-                    f"core_numbers={summary_result.get('core_numbers', '-')}",
-                    f"discouraged_numbers={summary_result.get('discouraged_numbers', '-')}",
-                    f"max_frequency_ratio={summary_result.get('max_frequency_ratio', '-')}",
-                    f"min_frequency_ratio={summary_result.get('min_frequency_ratio', '-')}",
-                    f"total_jogos_solicitados={batch_solicitados}",
-                    f"total_jogos_candidatos={summary_result.get('total_jogos_candidatos', '-')}",
-                    f"total_jogos_aprovados={batch_aprovados}",
-                    f"total_jogos_gerados={batch_gerados}",
-                    f"total_jogos_persistidos={int(summary_result.get('institutional_output_signatures', 0) or 0)}",
-                    f"total_jogos_unicos={batch_unicos}",
-                    f"total_jogos_duplicados={int(summary_result.get('total_jogos_duplicados', 0) or 0)}",
-                    f"total_jogos_rejeitados={batch_rejeitados}",
-                    f"motivo_bloqueio={batch_motivo}",
-                    f"status_comandante_saida={batch_status}",
-                    f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}",
-                ]
-            )
-        )
-    scientific_batch = {}
-    scientific_batch_id = str(
-        summary_result.get("batch_id")
-        or generation_result.get("batch_id")
-        or generation_state.get("batch_id")
-        or ""
-    ).strip()
-    scientific_game_size = int(
-        summary_result.get("quantidade_dezenas_por_jogo")
-        or generation_result.get("quantidade_dezenas_solicitada")
-        or generation_state.get("dezenas_per_game")
-        or dezenas_per_game
-    )
-    if scientific_batch_id:
-        scientific_batch = _scientific_batch_diagnostics(
-            batch_id=scientific_batch_id,
-            games=[] if batch_result else list(generation_result.get("jogos") or generation_state.get("games") or []),
-            game_size=scientific_game_size,
-        )
-    if scientific_batch:
-        st.markdown("##### Núcleo Científico Lotofácil")
-        sci_cols = st.columns(6)
-        sci_cols[0].metric("status_cientifico", scientific_batch.get("status_comandante_cientifico", "-"))
-        sci_cols[1].metric("classificacao_cientifica", scientific_batch.get("classificacao_cientifica", "-"))
-        sci_cols[2].metric("maior_acerto", int(scientific_batch.get("best_hits", 0) or 0))
-        sci_cols[3].metric("11+", int(scientific_batch.get("count_11_plus", 0) or 0))
-        sci_cols[4].metric("12+", int(scientific_batch.get("count_12_plus", 0) or 0))
-        sci_cols[5].metric("13+", int(scientific_batch.get("count_13_plus", 0) or 0))
-        sci_cols_2 = st.columns(4)
-        sci_cols_2[0].metric("media_best_hits", f"{float(scientific_batch.get('average_best_hits', 0.0) or 0.0):.4f}")
-        sci_cols_2[1].metric("media_hits", f"{float(scientific_batch.get('average_hits', 0.0) or 0.0):.4f}")
-        sci_cols_2[2].metric(
-            "freq_max",
-            f"{float(scientific_batch.get('frequency_maxima_dezena_percentual', 0.0) or 0.0):.2f}%",
-        )
-        sci_cols_2[3].metric(
-            "freq_min_nucleo",
-            f"{float(scientific_batch.get('frequency_minima_dezena_candidata_percentual', 0.0) or 0.0):.2f}%",
-        )
-        st.caption(
-            " | ".join(
-                [
-                    f"status_estrutural={batch_status if batch_result else generation_result.get('status_comandante_saida', '-') if generation_result else '-'}",
-                    f"status_cientifico={scientific_batch.get('status_comandante_cientifico', '-')}",
-                    f"classificacao_cientifica={scientific_batch.get('classificacao_cientifica', '-')}",
-                    f"reference_window={scientific_batch.get('reference_window', [])}",
-                    f"repeticao_media={scientific_batch.get('average_repetition', '-')} ",
-                    f"sequencia_media={scientific_batch.get('average_sequence_max', '-')}",
-                ]
-            )
-        )
-        if scientific_batch.get("motivo_cientifico"):
-            if scientific_batch.get("status_comandante_cientifico") == "APROVADO":
-                st.success(
-                    f"Núcleo Científico Lotofácil aprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
-                )
-            else:
-                st.warning(
-                    f"Núcleo Científico Lotofácil reprovou a bateria. motivo={scientific_batch.get('motivo_cientifico', '-')}"
-                )
-        with st.expander("Diagnóstico científico completo", expanded=False):
-            st.json(scientific_batch)
     if scientific_batch_id:
         scientific_calibration_games = _load_scientific_batch_games(scientific_batch_id)
         scientific_calibration_mode = st.selectbox(
@@ -4455,24 +4541,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         )
         scientific_calibration_policy = generate_recalibration_policy(scientific_calibration_context)
         scientific_calibration_recommendation = recommend_next_strategy(scientific_calibration_context)
-        st.markdown("##### Motor Científico de Calibração")
-        calibration_cols = st.columns(6)
-        calibration_cols[0].metric("modo", scientific_calibration_context.get("mode", "-"))
-        calibration_cols[1].metric("status_estrutural", scientific_calibration_context.get("structural_status", "-"))
-        calibration_cols[2].metric("status_cientifico", scientific_calibration_context.get("scientific_status", "-"))
-        calibration_cols[3].metric("classificacao", scientific_calibration_context.get("classification", "-"))
-        calibration_cols[4].metric("acao_sugerida", scientific_calibration_recommendation.get("action_suggested", "-"))
-        calibration_cols[5].metric("status_visual", scientific_calibration_recommendation.get("status_visual", "-"))
-        st.caption(
-            " | ".join(
-                [
-                    f"source_batch_id={scientific_calibration_context.get('source_batch_id', '-')}",
-                    f"main_reason={scientific_calibration_context.get('main_reason', '-') or '-'}",
-                    f"policy_before={scientific_calibration_context.get('policy_before', {})}",
-                    f"policy_after={scientific_calibration_policy}",
-                ]
-            )
-        )
+        st.caption("Ajuste supervisionado da ?ltima bateria.")
         if st.button(
             "Registrar decisão científica",
             key=f"register_scientific_calibration_{scientific_batch_id}",
