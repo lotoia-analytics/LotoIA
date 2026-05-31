@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from collections import Counter
 from dataclasses import dataclass
 from math import log2, sqrt
@@ -946,6 +947,7 @@ class LotofacilScientificCore:
             "policy_after": dict(selected_policy),
             "policy_id": selected_policy["policy_signature"],
             "policy_origin": "automatic_scientific_discovery",
+            "policies_tested": len(candidate_policies),
             "validation_window": int(profile_window or len(self.contests)),
             "official_history_count": history_count,
             "official_history_first_contest": int(self.contests[0].get("contest_number", 0) or 0) if self.contests else None,
@@ -959,6 +961,8 @@ class LotofacilScientificCore:
             "selection_variant": str(selected_candidate["variant"]),
             "selection_reason": selection_reason,
             "candidate_count": len(candidate_policies),
+            "selection_score": float(selected_candidate["score"]),
+            "selected_at": datetime.now(timezone.utc).isoformat(),
             "candidates_tested": scored_candidates,
             "approved_candidates": [item for item in scored_candidates if item["accepted"]],
             "history_profile": {

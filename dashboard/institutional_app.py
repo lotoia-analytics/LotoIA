@@ -1114,6 +1114,19 @@ def _format_scientific_parity_pairs(pairs: Sequence[tuple[int, int]] | None) -> 
     return ", ".join(formatted) if formatted else "-"
 
 
+def _scientific_policy_is_ready(policy_discovery: dict[str, Any] | None) -> bool:
+    if not isinstance(policy_discovery, dict):
+        return False
+    if str(policy_discovery.get("policy_origin", "") or "").strip() != "automatic_scientific_discovery":
+        return False
+    if int(policy_discovery.get("candidate_count", policy_discovery.get("policies_tested", 0)) or 0) <= 0:
+        return False
+    if not str(policy_discovery.get("selection_reason", "") or "").strip():
+        return False
+    policy = policy_discovery.get("policy")
+    return isinstance(policy, dict) and bool(policy)
+
+
 def _render_scientific_policy_panel(
     *,
     policy: dict[str, Any],
@@ -1123,71 +1136,74 @@ def _render_scientific_policy_panel(
     generations_in_batch: int,
     policy_discovery: dict[str, Any] | None = None,
 ) -> None:
-    st.markdown("##### Política Científica Aplicada")
-    if policy_discovery:
-        discovery_cols = st.columns(4)
-        discovery_cols[0].metric(
-            "Origem",
-            str(policy_discovery.get("policy_origin", "automatic_scientific_discovery") or "automatic_scientific_discovery"),
-        )
-        discovery_cols[1].metric("PolÃ­tica ID", str(policy_discovery.get("policy_id", "-") or "-"))
-        discovery_cols[2].metric(
-            "Testadas",
-            int(policy_discovery.get("candidate_count", len(policy_discovery.get("candidates_tested", []) or [])) or 0),
-        )
-        discovery_cols[3].metric("Janela", int(policy_discovery.get("validation_window", 0) or 0))
-        st.caption(
-            " | ".join(
-                [
-                    f"selecionada={policy_discovery.get('selection_variant', '-')}",
-                    f"rank={policy_discovery.get('selection_rank', '-')}",
-                    f"razao={policy_discovery.get('selection_reason', '-')}",
-                ]
-            )
-        )
+    st.markdown("##### Pol?tica Cient?fica Aplicada")
+    discovery_ready = _scientific_policy_is_ready(policy_discovery)
+    policy_payload = dict(policy_discovery.get("policy") or {}) if discovery_ready else {}
+    discovery_origin = str(policy_discovery.get("policy_origin", "-") or "-") if isinstance(policy_discovery, dict) else "-"
+    discovery_status = "POL?TICA DESCOBERTA E SELECIONADA" if discovery_ready else "AGUARDANDO DESCOBERTA AUTOM?TICA"
+    selected_policy_id = str(policy_discovery.get("policy_id", "-") or "-") if discovery_ready else "-"
+    selected_policy_name = str(policy_discovery.get("selection_variant", "-") or "-") if discovery_ready else "-"
+    selected_reason = str(policy_discovery.get("selection_reason", "-") or "-") if discovery_ready else "-"
+    selected_window = str(policy_discovery.get("validation_window", "-") or "-") if discovery_ready else "-"
+    selected_score = str(policy_discovery.get("selection_score", "-") or "-") if discovery_ready else "-"
+    selected_at = str(policy_discovery.get("selected_at", "-") or "-") if discovery_ready else "-"
+    tested_count = int(policy_discovery.get("policies_tested", policy_discovery.get("candidate_count", 0)) or 0) if discovery_ready else 0
+
     top_cols = st.columns(4)
-    top_cols[0].metric("Estratégia", f"{int(strategy_size)} dezenas")
-    top_cols[1].metric("Total esperado", int(total_expected_games))
-    top_cols[2].metric("Jogos por geração", int(games_per_generation))
-    top_cols[3].metric("Gerações na bateria", int(generations_in_batch))
+    top_cols[0].metric("Estrat?gia", f"{int(strategy_size)} dezenas")
+    top_cols[1].metric("Origem", discovery_origin if discovery_ready else "aguardando descoberta autom?tica")
+    top_cols[2].metric("Status", discovery_status if discovery_ready else "AGUARDANDO VARREDURA CIENT?FICA")
+    top_cols[3].metric("Pol?ticas testadas", tested_count if discovery_ready else 0)
+
+    meta_cols = st.columns(4)
+    meta_cols[0].metric("Pol?tica selecionada", selected_policy_name)
+    meta_cols[1].metric("Janela analisada", selected_window)
+    meta_cols[2].metric("Crit?rio vencedor", selected_reason)
+    meta_cols[3].metric("Pol?tica ID", selected_policy_id)
+
+    score_cols = st.columns(2)
+    score_cols[0].metric("Selection score", selected_score)
+    score_cols[1].metric("Selected at", selected_at)
+
+    if not discovery_ready:
+        st.info("Par?metros: aguardando a LotoIA descobrir a pol?tica.")
+        with st.expander("Ver payload t?cnico completo", expanded=False):
+            st.json({"status": "aguardando descoberta autom?tica", "policy_discovery": policy_discovery or {}})
+        return
 
     detail_cols = st.columns(3)
-    repeat_min = int(policy.get("repeat_min", 0) or 0)
-    repeat_max = int(policy.get("repeat_max", 0) or 0)
-    detail_cols[0].markdown(
-        f"**Repetição do último concurso**  \n{repeat_min} a {repeat_max} dezenas"
-    )
+    repeat_min = int(policy_payload.get("repeat_min", 0) or 0)
+    repeat_max = int(policy_payload.get("repeat_max", 0) or 0)
+    detail_cols[0].markdown(f"**Repeti??o do ?ltimo concurso**  \\n{repeat_min} a {repeat_max} dezenas")
     detail_cols[1].markdown(
-        f"**Paridade preferencial**  \n{_format_scientific_parity_pairs(policy.get('preferred_parity_pairs', []))}"
+        f"**Paridade preferencial**  \\n{_format_scientific_parity_pairs(policy_payload.get('preferred_parity_pairs', []))}"
     )
     detail_cols[2].markdown(
-        f"**Paridade permitida**  \n{_format_scientific_parity_pairs(policy.get('allowed_parity_pairs', []))}"
+        f"**Paridade permitida**  \\n{_format_scientific_parity_pairs(policy_payload.get('allowed_parity_pairs', []))}"
     )
 
     detail_cols_2 = st.columns(3)
     detail_cols_2[0].markdown(
-        f"**Limite de sequência**  \nMáximo {int(policy.get('sequence_max', 0) or 0)} dezenas consecutivas"
+        f"**Limite de sequ?ncia**  \\nM?ximo {int(policy_payload.get('sequence_max', 0) or 0)} dezenas consecutivas"
     )
     detail_cols_2[1].markdown(
-        f"**Núcleo reforçado**  \n{_format_scientific_number_list(policy.get('core_numbers', []))}"
+        f"**N?cleo refor?ado**  \\n{_format_scientific_number_list(policy_payload.get('core_numbers', []))}"
     )
     detail_cols_2[2].markdown(
-        f"**Dezenas com redução de peso**  \n{_format_scientific_number_list(policy.get('discouraged_numbers', []))}"
+        f"**Dezenas com redu??o de peso**  \\n{_format_scientific_number_list(policy_payload.get('discouraged_numbers', []))}"
     )
 
     freq_cols = st.columns(2)
     freq_cols[0].metric(
-        "Controle de frequência (máx.)",
-        f"{float(policy.get('max_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
+        "Controle de frequ?ncia (m?x.)",
+        f"{float(policy_payload.get('max_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
     freq_cols[1].metric(
-        "Controle de frequência (mín. candidata)",
-        f"{float(policy.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
+        "Controle de frequ?ncia (m?n. candidata)",
+        f"{float(policy_payload.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
-    with st.expander("Ver payload técnico completo", expanded=False):
+    with st.expander("Ver payload t?cnico completo", expanded=False):
         st.json({"policy": policy, "policy_discovery": policy_discovery})
-
-
 def _render_scientific_calibration_panel(
     *,
     strategy_size: int,
@@ -3313,7 +3329,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
             games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
             generations_in_batch=1,
-            policy_discovery=scientific_policy_discovery,
+            policy_discovery=scientific_policy_discovery if latest_commander else None,
         )
         if scientific_batch:
             scientific_state = {
