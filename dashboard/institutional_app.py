@@ -28,10 +28,18 @@ from sqlalchemy.exc import IntegrityError
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
-from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, ReconciliationGame, ReconciliationRun, create_database, get_engine, get_session
+from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, create_database, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore, analyze_lotofacil_history, get_scientific_generation_policy
+from lotoia.analytics.scientific_calibration_engine import (
+    apply_supervised_calibration,
+    build_calibration_context,
+    evaluate_last_batch,
+    generate_recalibration_policy,
+    register_calibration_decision,
+    recommend_next_strategy,
+)
 from lotoia.governance.scientific_commander import validate_scientific_batch
 from lotoia.governance.output_commander import (
     game_signature as _game_signature,
@@ -389,6 +397,7 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_events",
         "imported_contests",
         "institutional_output_signatures",
+        "scientific_calibration_decisions",
         "expansion_events",
         "operational_logs",
     ]
@@ -400,6 +409,7 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_events": "created_at",
         "imported_contests": "contest_number",
         "institutional_output_signatures": "created_at",
+        "scientific_calibration_decisions": "created_at",
         "expansion_events": "created_at",
         "operational_logs": "created_at",
     }
@@ -764,6 +774,44 @@ def _get_latest_contest() -> dict[str, Any] | None:
             "metadata_json": "{}",
         }
     return None
+
+
+def _load_latest_scientific_calibration_decision(limit: int = 1) -> list[dict[str, Any]]:
+    resolved_limit = max(1, int(limit or 1))
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(ScientificCalibrationDecision)
+            .order_by(
+                ScientificCalibrationDecision.created_at.desc(),
+                ScientificCalibrationDecision.id.desc(),
+            )
+            .limit(resolved_limit)
+            .all()
+        )
+    decisions: list[dict[str, Any]] = []
+    for row in rows:
+        decisions.append(
+            {
+                "id": int(getattr(row, "id", 0) or 0),
+                "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+                "strategy": str(getattr(row, "strategy", "") or ""),
+                "game_size": int(getattr(row, "game_size", 0) or 0),
+                "source_batch_id": str(getattr(row, "source_batch_id", "") or ""),
+                "source_generation_range": dict(getattr(row, "source_generation_range", {}) or {}),
+                "structural_status": str(getattr(row, "structural_status", "") or ""),
+                "scientific_status": str(getattr(row, "scientific_status", "") or ""),
+                "classification": str(getattr(row, "classification", "") or ""),
+                "main_reason": str(getattr(row, "main_reason", "") or ""),
+                "recommended_action": str(getattr(row, "recommended_action", "") or ""),
+                "policy_before": dict(getattr(row, "policy_before", {}) or {}),
+                "policy_after": dict(getattr(row, "policy_after", {}) or {}),
+                "mode": str(getattr(row, "mode", "") or "OBSERVACAO"),
+                "applied": bool(getattr(row, "applied", 0) or 0),
+                "approved_by": str(getattr(row, "approved_by", "") or ""),
+                "notes": str(getattr(row, "notes", "") or ""),
+            }
+        )
+    return decisions
 
 
 @st.cache_data(show_spinner=False)
@@ -2743,12 +2791,13 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
-    source_cols = st.columns(5)
+    source_cols = st.columns(6)
     source_cols[0].metric("backend", snapshot["backend"])
     source_cols[1].metric("database_source", snapshot["database_source"])
     source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
     source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
     source_cols[4].metric("institutional_output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
+    source_cols[5].metric("scientific_calibration_decisions", int(live_counts.get("scientific_calibration_decisions", 0)))
     st.caption(
         " | ".join(
             [
@@ -2836,6 +2885,11 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                     )
             with st.expander("Diagnóstico científico completo", expanded=False):
                 st.json(scientific_batch)
+            latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
+            if latest_scientific_decisions:
+                st.markdown("##### Memória científica de calibração")
+                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+
 
     if not generation_df.empty:
         filter_row_1 = st.columns([1, 1, 1, 1, 1])
@@ -4104,6 +4158,65 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 )
         with st.expander("Diagnóstico científico completo", expanded=False):
             st.json(scientific_batch)
+    if scientific_batch_id:
+        scientific_calibration_games = _load_scientific_batch_games(scientific_batch_id)
+        scientific_calibration_mode = st.selectbox(
+            "modo de calibração",
+            ["OBSERVAÇÃO", "AUTONOMIA SUPERVISIONADA"],
+            index=0 if str(scientific_batch.get("status_comandante_cientifico", "")).upper() != "APROVADO" else 1,
+            key=f"scientific_calibration_mode_{scientific_batch_id}",
+        )
+        scientific_calibration_context = evaluate_last_batch(
+            game_size=scientific_game_size,
+            batch_id=scientific_batch_id,
+            mode=scientific_calibration_mode,
+            games=scientific_calibration_games,
+            db_path=DB_PATH,
+        )
+        scientific_calibration_policy = generate_recalibration_policy(scientific_calibration_context)
+        scientific_calibration_recommendation = recommend_next_strategy(scientific_calibration_context)
+        st.markdown("##### Motor Científico de Calibração")
+        calibration_cols = st.columns(6)
+        calibration_cols[0].metric("modo", scientific_calibration_context.get("mode", "-"))
+        calibration_cols[1].metric("status_estrutural", scientific_calibration_context.get("structural_status", "-"))
+        calibration_cols[2].metric("status_cientifico", scientific_calibration_context.get("scientific_status", "-"))
+        calibration_cols[3].metric("classificacao", scientific_calibration_context.get("classification", "-"))
+        calibration_cols[4].metric("acao_sugerida", scientific_calibration_recommendation.get("action_suggested", "-"))
+        calibration_cols[5].metric("status_visual", scientific_calibration_recommendation.get("status_visual", "-"))
+        st.caption(
+            " | ".join(
+                [
+                    f"source_batch_id={scientific_calibration_context.get('source_batch_id', '-')}",
+                    f"main_reason={scientific_calibration_context.get('main_reason', '-') or '-'}",
+                    f"policy_before={scientific_calibration_context.get('policy_before', {})}",
+                    f"policy_after={scientific_calibration_policy}",
+                ]
+            )
+        )
+        if st.button(
+            "Registrar decisão científica",
+            key=f"register_scientific_calibration_{scientific_batch_id}",
+            use_container_width=False,
+        ):
+            calibration_decision = apply_supervised_calibration(
+                scientific_calibration_context,
+                auto_apply=str(scientific_calibration_mode).upper() == "AUTONOMIA SUPERVISIONADA",
+            )
+            registered_decision = register_calibration_decision(
+                scientific_calibration_context,
+                decision=calibration_decision,
+                db_path=DB_PATH,
+            )
+            st.success(
+                f"Decisão científica registrada. classification={registered_decision.get('classification', '-')} | "
+                f"mode={registered_decision.get('mode', '-')} | applied={registered_decision.get('applied', False)}"
+            )
+            with st.expander("Memória científica registrada", expanded=False):
+                st.json(registered_decision)
+        latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
+        if latest_scientific_decisions:
+            st.markdown("###### Últimas decisões científicas")
+            st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
     if generation_result and not batch_result:
         generation_event_id = int(generation_result.get("generation_event_id") or 0)
         persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0

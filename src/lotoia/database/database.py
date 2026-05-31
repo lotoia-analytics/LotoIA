@@ -88,6 +88,39 @@ class CalibrationRun(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class ScientificCalibrationDecision(Base):
+    __tablename__ = "scientific_calibration_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    strategy: Mapped[str] = mapped_column(String, nullable=False)
+    game_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_batch_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_generation_range: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    structural_status: Mapped[str] = mapped_column(String, default="", nullable=False)
+    scientific_status: Mapped[str] = mapped_column(String, default="", nullable=False)
+    classification: Mapped[str] = mapped_column(String, default="", nullable=False)
+    main_reason: Mapped[str] = mapped_column(String, default="", nullable=False)
+    recommended_action: Mapped[str] = mapped_column(String, default="", nullable=False)
+    policy_before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    policy_after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    mode: Mapped[str] = mapped_column(String, default="OBSERVACAO", nullable=False)
+    applied: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    approved_by: Mapped[str] = mapped_column(String, default="", nullable=False)
+    notes: Mapped[str] = mapped_column(String, default="", nullable=False)
+
+    __table_args__ = (
+        Index("ix_scientific_calibration_decisions_created_at", "created_at"),
+        Index("ix_scientific_calibration_decisions_strategy", "strategy"),
+        Index("ix_scientific_calibration_decisions_source_batch_id", "source_batch_id"),
+        Index("ix_scientific_calibration_decisions_mode", "mode"),
+    )
+
+
 class Lead(Base):
     __tablename__ = "leads"
 
