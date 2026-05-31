@@ -1108,10 +1108,38 @@ def _format_scientific_parity_pairs(pairs: Sequence[tuple[int, int]] | None) -> 
     formatted: list[str] = []
     for pair in pairs or []:
         try:
-            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+            normalized_pair = _normalize_scientific_parity_pair(pair)
+            if normalized_pair is None:
+                continue
+            formatted.append(f"{normalized_pair[0]}/{normalized_pair[1]}")
         except Exception:
             continue
     return ", ".join(formatted) if formatted else "-"
+
+
+def _normalize_scientific_parity_pair(value: Any) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        for separator in ("/", "-"):
+            if separator in text:
+                left, right = text.split(separator, 1)
+                left_value = _safe_int(left.strip(), default=None)
+                right_value = _safe_int(right.strip(), default=None)
+                if left_value is None or right_value is None:
+                    return None
+                return int(left_value), int(right_value)
+        return None
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        left_value = _safe_int(value[0], default=None)
+        right_value = _safe_int(value[1], default=None)
+        if left_value is None or right_value is None:
+            return None
+        return int(left_value), int(right_value)
+    return None
 
 
 def _scientific_policy_is_ready(policy_discovery: dict[str, Any] | None) -> bool:
@@ -1525,7 +1553,9 @@ def _order_parity_pairs_for_batch(
 ) -> list[tuple[int, int]]:
     ordered_pairs: list[tuple[int, int]] = []
     for pair in pairs or []:
-        normalized_pair = (int(pair[0]), int(pair[1]))
+        normalized_pair = _normalize_scientific_parity_pair(pair)
+        if normalized_pair is None:
+            continue
         if normalized_pair not in ordered_pairs:
             ordered_pairs.append(normalized_pair)
     if not ordered_pairs:
@@ -1586,8 +1616,9 @@ def _select_subset_from_candidate(
     max_count = max(1, int(math.ceil(batch_total_games * float(max_frequency_ratio or 1.0))))
     min_count = max(0, int(math.ceil(batch_total_games * float(min_frequency_ratio or 0.0))))
     preferred_profile_ratios = {
-        (int(pair[0]), int(pair[1])): float(ratio)
+        normalized_pair: float(ratio)
         for pair, ratio in (preferred_profile_ratios or {}).items()
+        if (normalized_pair := _normalize_scientific_parity_pair(pair)) is not None
     }
     scoring = sorted(
         universe,
@@ -1604,11 +1635,15 @@ def _select_subset_from_candidate(
 
     candidate_pairs: list[tuple[int, int]] = []
     for pair in preferred_parity_pairs or []:
-        normalized_pair = (int(pair[0]), int(pair[1]))
+        normalized_pair = _normalize_scientific_parity_pair(pair)
+        if normalized_pair is None:
+            continue
         if sum(normalized_pair) == target_size and normalized_pair not in candidate_pairs:
             candidate_pairs.append(normalized_pair)
     for pair in allowed_parity_pairs or []:
-        normalized_pair = (int(pair[0]), int(pair[1]))
+        normalized_pair = _normalize_scientific_parity_pair(pair)
+        if normalized_pair is None:
+            continue
         if sum(normalized_pair) == target_size and normalized_pair not in candidate_pairs:
             candidate_pairs.append(normalized_pair)
     if not candidate_pairs:
@@ -1721,8 +1756,9 @@ def _force_subset_from_universe(
     max_count = max(1, int(math.ceil(batch_total_games * float(max_frequency_ratio or 1.0))))
     min_count = max(0, int(math.ceil(batch_total_games * float(min_frequency_ratio or 0.0))))
     preferred_profile_ratios = {
-        (int(pair[0]), int(pair[1])): float(ratio)
+        normalized_pair: float(ratio)
         for pair, ratio in (preferred_profile_ratios or {}).items()
+        if (normalized_pair := _normalize_scientific_parity_pair(pair)) is not None
     }
     scoring = sorted(
         universe,
@@ -1758,11 +1794,15 @@ def _force_subset_from_universe(
     parity_pairs = [(odd_target, even_target)]
     ordered_pairs: list[tuple[int, int]] = []
     for pair in preferred_parity_pairs or []:
-        normalized_pair = (int(pair[0]), int(pair[1]))
+        normalized_pair = _normalize_scientific_parity_pair(pair)
+        if normalized_pair is None:
+            continue
         if sum(normalized_pair) == target_size and normalized_pair not in ordered_pairs:
             ordered_pairs.append(normalized_pair)
     for pair in allowed_parity_pairs or []:
-        normalized_pair = (int(pair[0]), int(pair[1]))
+        normalized_pair = _normalize_scientific_parity_pair(pair)
+        if normalized_pair is None:
+            continue
         if sum(normalized_pair) == target_size and normalized_pair not in ordered_pairs:
             ordered_pairs.append(normalized_pair)
     if ordered_pairs:
