@@ -588,6 +588,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Diferenças entre módulos")
     source_map = _institutional_source_map(snapshot)
     st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
+    _render_scientific_memory_block()
     st.markdown("##### Papel do session_state")
     st.info(
         "session_state é apenas estado temporário de interface: página ativa, seleção de botões, "
@@ -903,40 +904,129 @@ def _load_official_history_summary() -> dict[str, Any]:
     }
 
 
+def _load_imported_contests_summary() -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(ImportedContest)
+            .order_by(ImportedContest.contest_number.asc())
+            .all()
+        )
+    contest_numbers = [int(getattr(row, "contest_number", 0) or 0) for row in rows if int(getattr(row, "contest_number", 0) or 0) > 0]
+    latest = rows[-1] if rows else None
+    return {
+        "count": len(rows),
+        "first_contest": contest_numbers[0] if contest_numbers else None,
+        "last_contest": contest_numbers[-1] if contest_numbers else None,
+        "latest_contest": {
+            "contest_number": int(getattr(latest, "contest_number", 0) or 0) if latest is not None else 0,
+            "draw_date": str(getattr(latest, "data", "") or "") if latest is not None else "",
+            "numbers": [int(value) for value in str(getattr(latest, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()] if latest is not None else [],
+            "source": "imported_contests" if latest is not None else "",
+        }
+        if latest is not None
+        else {},
+        "window": contest_numbers[-10:],
+        "rows": [
+            {
+                "contest_number": int(getattr(row, "contest_number", 0) or 0),
+                "draw_date": str(getattr(row, "data", "") or ""),
+                "numbers": [int(value) for value in str(getattr(row, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()],
+                "source": "imported_contests",
+            }
+            for row in rows[-10:]
+        ],
+        "source": "imported_contests",
+    }
+
+
+def _load_official_history_diagnostics() -> dict[str, Any]:
+    official_summary = _load_official_history_summary()
+    imported_summary = _load_imported_contests_summary()
+    with get_session(DB_PATH) as session:
+        official_numbers = [
+            int(row[0] or 0)
+            for row in session.query(LotofacilOfficialHistory.contest_number)
+            .order_by(LotofacilOfficialHistory.contest_number.asc())
+            .all()
+            if int(row[0] or 0) > 0
+        ]
+    official_set = set(official_numbers)
+    if official_numbers:
+        min_contest = official_numbers[0]
+        max_contest = official_numbers[-1]
+        missing = [contest for contest in range(min_contest, max_contest + 1) if contest not in official_set]
+    else:
+        min_contest = None
+        max_contest = None
+        missing = []
+    imported_last = imported_summary.get("last_contest")
+    status = "OK"
+    if not official_numbers:
+        status = "INCOMPLETA"
+    elif missing:
+        status = "INCOMPLETA"
+    elif imported_last is not None and max_contest is not None and int(imported_last) > int(max_contest):
+        status = "INCOMPLETA"
+    return {
+        "total_lotofacil_official_history": int(official_summary.get("count", 0) or 0),
+        "contest_number_min": min_contest,
+        "contest_number_max": max_contest,
+        "concursos_faltantes": missing,
+        "total_concursos_faltantes": len(missing),
+        "ultimo_concurso_imported_contests": imported_last,
+        "ultimo_concurso_lotofacil_official_history": max_contest,
+        "status_base_oficial": status,
+        "imported_contests_count": int(imported_summary.get("count", 0) or 0),
+        "imported_contests_window": list(imported_summary.get("window") or []),
+    }
+
+
 def _ensure_official_history_seeded() -> dict[str, Any]:
-    summary = _load_official_history_summary()
-    if int(summary.get("count", 0) or 0) > 0:
-        return {"status": "ok", "count": int(summary.get("count", 0) or 0), "seeded": 0}
+    diagnostics = _load_official_history_diagnostics()
+    if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) > 0 and int(diagnostics.get("total_concursos_faltantes", 0) or 0) == 0:
+        return {"status": "ok", "seeded": 0, **diagnostics}
     try:
         repository = ContestRepository(DB_PATH)
-        inserted = int(repository.bootstrap_official_history_from_csv())
-        if inserted <= 0:
-            inserted = int(repository.sync_official_history_from_imported_contests())
-        summary = _load_official_history_summary()
+        inserted = 0
+        if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) <= 0:
+            inserted += int(repository.bootstrap_official_history_from_csv())
+        inserted += int(repository.sync_official_history_from_imported_contests())
+        diagnostics = _load_official_history_diagnostics()
         return {
-            "status": "ok" if int(summary.get("count", 0) or 0) > 0 else "partial",
+            "status": "ok" if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) > 0 and int(diagnostics.get("total_concursos_faltantes", 0) or 0) == 0 else "partial",
             "seeded": inserted,
-            "count": int(summary.get("count", 0) or 0),
-            "first_contest": summary.get("first_contest"),
-            "last_contest": summary.get("last_contest"),
+            **diagnostics,
         }
     except Exception as exc:
-        return {"status": "error", "seeded": 0, "error": str(exc)}
+        return {"status": "error", "seeded": 0, "error": str(exc), **diagnostics}
 
 
 def _render_scientific_memory_block() -> None:
-    _ensure_official_history_seeded()
-    official_history = _load_official_history_summary()
+    seed_report = _ensure_official_history_seeded()
+    official_diagnostics = _load_official_history_diagnostics()
     scientific_memory = _load_latest_scientific_memory(limit=5)
     latest_memory = scientific_memory[0] if scientific_memory else {}
-    st.markdown("##### Memória Científica da LotoIA")
+    st.markdown("##### Mem?ria Cient?fica da LotoIA")
     memory_cols = st.columns(6)
-    memory_cols[0].metric("oficial_history", int(official_history.get("count", 0) or 0))
-    memory_cols[1].metric("primeiro_concurso", official_history.get("first_contest", "-") or "-")
-    memory_cols[2].metric("ultimo_concurso", official_history.get("last_contest", "-") or "-")
-    memory_cols[3].metric("memoria_cientifica", len(scientific_memory))
-    memory_cols[4].metric("classificacao", latest_memory.get("scientific_classification", "-") or "-")
-    memory_cols[5].metric("acao", latest_memory.get("recommended_action", "-") or "-")
+    memory_cols[0].metric("lotofacil_official_history_total", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
+    memory_cols[1].metric("primeiro_concurso", official_diagnostics.get("contest_number_min", "-") or "-")
+    memory_cols[2].metric("ultimo_concurso", official_diagnostics.get("contest_number_max", "-") or "-")
+    memory_cols[3].metric("concursos_faltantes", int(official_diagnostics.get("total_concursos_faltantes", 0) or 0))
+    memory_cols[4].metric("status_base_oficial", official_diagnostics.get("status_base_oficial", "-") or "-")
+    memory_cols[5].metric("imported_ult", official_diagnostics.get("ultimo_concurso_imported_contests", "-") or "-")
+    st.caption(
+        " | ".join(
+            [
+                f"seed_status={seed_report.get('status', '-')}",
+                f"seeded={seed_report.get('seeded', 0)}",
+                f"faltantes={official_diagnostics.get('concursos_faltantes', [])}",
+            ]
+        )
+    )
+    scientific_cols = st.columns(3)
+    scientific_cols[0].metric("memoria_cientifica", len(scientific_memory))
+    scientific_cols[1].metric("classificacao", latest_memory.get("scientific_classification", "-") or "-")
+    scientific_cols[2].metric("acao", latest_memory.get("recommended_action", "-") or "-")
     st.caption(
         " | ".join(
             [
@@ -949,7 +1039,7 @@ def _render_scientific_memory_block() -> None:
         )
     )
     if scientific_memory:
-        with st.expander("Memória científica completa", expanded=False):
+        with st.expander("Mem?ria cient?fica completa", expanded=False):
             st.dataframe(pd.DataFrame(scientific_memory), hide_index=True, use_container_width=True)
 
 

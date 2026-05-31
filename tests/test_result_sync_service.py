@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lotoia.database.contest_repository import ContestRepository
+from lotoia.database.database import LotofacilOfficialHistory, get_session
 from lotoia.ingestion.caixa_api_client import CaixaApiClient, CaixaContestResult
 from lotoia.ingestion.result_sync_service import ResultSyncService
 
@@ -13,6 +14,9 @@ def test_caixa_api_client_normalizes_payload_and_retries(monkeypatch) -> None:
     class FakeResponse:
         def __init__(self, payload: dict[str, object]) -> None:
             self._payload = payload
+            self.status_code = 200
+            self.headers: dict[str, str] = {}
+            self.text = str(payload)
 
         def raise_for_status(self) -> None:
             return None
@@ -121,3 +125,44 @@ def test_result_sync_service_syncs_small_missing_gap(tmp_path: Path) -> None:
 
     assert summary.synced_contests == [3690]
     assert repository.get_contest(3690) is not None
+
+
+def test_contest_repository_restores_missing_official_history_row(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    repository = ContestRepository(db_path)
+    repository.create_table()
+    repository.save_contest(
+        {
+            "concurso": 3697,
+            "data": "29/05/2026",
+            "dezenas": [f"{n:02d}" for n in range(1, 16)],
+            "metadata_json": {"numero": 3697, "dataApuracao": "29/05/2026"},
+        }
+    )
+    repository.save_contest(
+        {
+            "concurso": 3698,
+            "data": "30/05/2026",
+            "dezenas": [f"{n:02d}" for n in range(1, 16)],
+            "metadata_json": {"numero": 3698, "dataApuracao": "30/05/2026"},
+        }
+    )
+
+    with get_session(db_path) as session:
+        session.query(LotofacilOfficialHistory).filter(LotofacilOfficialHistory.contest_number == 3698).delete()
+        session.commit()
+        before_count = session.query(LotofacilOfficialHistory).count()
+
+    repository.sync_official_history_from_imported_contests()
+
+    with get_session(db_path) as session:
+        after_count = session.query(LotofacilOfficialHistory).count()
+        latest = (
+            session.query(LotofacilOfficialHistory)
+            .order_by(LotofacilOfficialHistory.contest_number.desc())
+            .first()
+        )
+
+    assert after_count == before_count + 1
+    assert latest is not None
+    assert latest.contest_number == 3698
