@@ -60,6 +60,16 @@ def _safe_int(value: Any, default: int | None = None) -> int | None:
         return default
 
 
+def _safe_str(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    try:
+        text = str(value).strip()
+    except Exception:
+        return default
+    return text or default
+
+
 def _normalize_numbers(raw_numbers: Any) -> list[int]:
     numbers: list[int] = []
     if raw_numbers is None:
