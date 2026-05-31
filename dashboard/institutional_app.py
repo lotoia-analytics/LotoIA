@@ -1926,6 +1926,9 @@ def _run_institutional_generation(
     entropy_min: float,
     repeat_limit: int,
     snapshot: dict[str, Any],
+    batch_number_usage: dict[int, int] | None = None,
+    batch_profile_usage: dict[tuple[int, int], int] | None = None,
+    batch_total_games: int | None = None,
 ) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     st.session_state.pop("institutional_generation_batch_result", None)
