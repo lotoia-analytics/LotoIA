@@ -28,7 +28,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
-from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, create_database, get_engine, get_session
+from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore, analyze_lotofacil_history, get_scientific_generation_policy
@@ -396,8 +396,10 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_games",
         "reconciliation_events",
         "imported_contests",
+        "lotofacil_official_history",
         "institutional_output_signatures",
         "scientific_calibration_decisions",
+        "scientific_institutional_memory",
         "expansion_events",
         "operational_logs",
     ]
@@ -408,8 +410,10 @@ def _database_snapshot() -> dict[str, Any]:
         "reconciliation_games": "created_at",
         "reconciliation_events": "created_at",
         "imported_contests": "contest_number",
+        "lotofacil_official_history": "contest_number",
         "institutional_output_signatures": "created_at",
         "scientific_calibration_decisions": "created_at",
+        "scientific_institutional_memory": "created_at",
         "expansion_events": "created_at",
         "operational_logs": "created_at",
     }
@@ -812,6 +816,141 @@ def _load_latest_scientific_calibration_decision(limit: int = 1) -> list[dict[st
             }
         )
     return decisions
+
+
+def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
+    resolved_limit = max(1, int(limit or 1))
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(ScientificInstitutionalMemory)
+            .order_by(
+                ScientificInstitutionalMemory.created_at.desc(),
+                ScientificInstitutionalMemory.id.desc(),
+            )
+            .limit(resolved_limit)
+            .all()
+        )
+    memories: list[dict[str, Any]] = []
+    for row in rows:
+        memories.append(
+            {
+                "id": int(getattr(row, "id", 0) or 0),
+                "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+                "memory_kind": str(getattr(row, "memory_kind", "") or ""),
+                "strategy_name": str(getattr(row, "strategy_name", "") or ""),
+                "game_size": int(getattr(row, "game_size", 0) or 0),
+                "batch_id": str(getattr(row, "batch_id", "") or ""),
+                "generation_range": dict(getattr(row, "generation_range", {}) or {}),
+                "total_games": int(getattr(row, "total_games", 0) or 0),
+                "unique_games": int(getattr(row, "unique_games", 0) or 0),
+                "duplicate_games": int(getattr(row, "duplicate_games", 0) or 0),
+                "structural_status": str(getattr(row, "structural_status", "") or ""),
+                "scientific_status": str(getattr(row, "scientific_status", "") or ""),
+                "scientific_classification": str(getattr(row, "scientific_classification", "") or ""),
+                "main_reason": str(getattr(row, "main_reason", "") or ""),
+                "recommended_action": str(getattr(row, "recommended_action", "") or ""),
+                "best_hit": int(getattr(row, "best_hit", 0) or 0),
+                "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
+                "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
+                "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
+                "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
+                "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
+                "count_15": int(getattr(row, "count_15", 0) or 0),
+                "decision_mode": str(getattr(row, "decision_mode", "OBSERVACAO") or "OBSERVACAO"),
+                "approved_for_use": bool(getattr(row, "approved_for_use", 0) or 0),
+                "official_history_count": int(getattr(row, "official_history_count", 0) or 0),
+                "official_history_first_contest": getattr(row, "official_history_first_contest", None),
+                "official_history_last_contest": getattr(row, "official_history_last_contest", None),
+                "official_history_window": list(getattr(row, "official_history_window", []) or []),
+                "source": str(getattr(row, "source", "") or ""),
+            }
+        )
+    return memories
+
+
+def _load_official_history_summary() -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(LotofacilOfficialHistory)
+            .order_by(LotofacilOfficialHistory.contest_number.asc())
+            .all()
+        )
+    contest_numbers = [int(getattr(row, "contest_number", 0) or 0) for row in rows if int(getattr(row, "contest_number", 0) or 0) > 0]
+    latest = rows[-1] if rows else None
+    return {
+        "count": len(rows),
+        "first_contest": contest_numbers[0] if contest_numbers else None,
+        "last_contest": contest_numbers[-1] if contest_numbers else None,
+        "latest_contest": {
+            "contest_number": int(getattr(latest, "contest_number", 0) or 0) if latest is not None else 0,
+            "draw_date": str(getattr(latest, "draw_date", "") or "") if latest is not None else "",
+            "numbers": [int(value) for value in str(getattr(latest, "numbers", "") or "").replace(",", " ").split() if str(value).isdigit()] if latest is not None else [],
+            "source": str(getattr(latest, "source", "") or "") if latest is not None else "",
+        }
+        if latest is not None
+        else {},
+        "window": contest_numbers[-10:],
+        "rows": [
+            {
+                "contest_number": int(getattr(row, "contest_number", 0) or 0),
+                "draw_date": str(getattr(row, "draw_date", "") or ""),
+                "numbers": [int(value) for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split() if str(value).isdigit()],
+                "source": str(getattr(row, "source", "") or ""),
+            }
+            for row in rows[-10:]
+        ],
+        "source": "lotofacil_official_history",
+    }
+
+
+def _ensure_official_history_seeded() -> dict[str, Any]:
+    summary = _load_official_history_summary()
+    if int(summary.get("count", 0) or 0) > 0:
+        return {"status": "ok", "count": int(summary.get("count", 0) or 0), "seeded": 0}
+    try:
+        repository = ContestRepository(DB_PATH)
+        inserted = int(repository.bootstrap_official_history_from_csv())
+        if inserted <= 0:
+            inserted = int(repository.sync_official_history_from_imported_contests())
+        summary = _load_official_history_summary()
+        return {
+            "status": "ok" if int(summary.get("count", 0) or 0) > 0 else "partial",
+            "seeded": inserted,
+            "count": int(summary.get("count", 0) or 0),
+            "first_contest": summary.get("first_contest"),
+            "last_contest": summary.get("last_contest"),
+        }
+    except Exception as exc:
+        return {"status": "error", "seeded": 0, "error": str(exc)}
+
+
+def _render_scientific_memory_block() -> None:
+    _ensure_official_history_seeded()
+    official_history = _load_official_history_summary()
+    scientific_memory = _load_latest_scientific_memory(limit=5)
+    latest_memory = scientific_memory[0] if scientific_memory else {}
+    st.markdown("##### Memória Científica da LotoIA")
+    memory_cols = st.columns(6)
+    memory_cols[0].metric("oficial_history", int(official_history.get("count", 0) or 0))
+    memory_cols[1].metric("primeiro_concurso", official_history.get("first_contest", "-") or "-")
+    memory_cols[2].metric("ultimo_concurso", official_history.get("last_contest", "-") or "-")
+    memory_cols[3].metric("memoria_cientifica", len(scientific_memory))
+    memory_cols[4].metric("classificacao", latest_memory.get("scientific_classification", "-") or "-")
+    memory_cols[5].metric("acao", latest_memory.get("recommended_action", "-") or "-")
+    st.caption(
+        " | ".join(
+            [
+                f"memory_kind={latest_memory.get('memory_kind', '-')} ",
+                f"strategy={latest_memory.get('strategy_name', '-')} ",
+                f"batch_id={latest_memory.get('batch_id', '-')} ",
+                f"decision_mode={latest_memory.get('decision_mode', '-')} ",
+                f"approved_for_use={latest_memory.get('approved_for_use', False)}",
+            ]
+        )
+    )
+    if scientific_memory:
+        with st.expander("Memória científica completa", expanded=False):
+            st.dataframe(pd.DataFrame(scientific_memory), hide_index=True, use_container_width=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -2791,13 +2930,15 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
-    source_cols = st.columns(6)
+    source_cols = st.columns(8)
     source_cols[0].metric("backend", snapshot["backend"])
     source_cols[1].metric("database_source", snapshot["database_source"])
     source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
     source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
     source_cols[4].metric("institutional_output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
     source_cols[5].metric("scientific_calibration_decisions", int(live_counts.get("scientific_calibration_decisions", 0)))
+    source_cols[6].metric("lotofacil_official_history", int(live_counts.get("lotofacil_official_history", 0)))
+    source_cols[7].metric("scientific_institutional_memory", int(live_counts.get("scientific_institutional_memory", 0)))
     st.caption(
         " | ".join(
             [
@@ -2830,6 +2971,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     summary_cols[7].metric("melhor score", f"{best_score:.4f}")
     summary_cols[8].metric("última geração", latest_generation_label)
     summary_cols[9].metric("primeira geração", first_generation_label)
+    _render_scientific_memory_block()
 
     if not generation_df.empty:
         latest_commander = generation_df.iloc[0]
@@ -3792,6 +3934,7 @@ def _ensure_institutional_schema() -> None:
 
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    _ensure_official_history_seeded()
     live_counts = _database_snapshot()["counts"]
     st.subheader("Gerar Jogos")
     st.write("Fluxo principal limpo, sem legado visual ou CRM.")

@@ -9,7 +9,12 @@ from typing import Any, Iterable, Sequence
 from sqlalchemy import select
 
 from lotoia.data.loader import load_draws_csv
-from lotoia.database.database import DEFAULT_DATABASE_PATH, ImportedContest, get_session
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    ImportedContest,
+    LotofacilOfficialHistory,
+    get_session,
+)
 from lotoia.statistics.advanced import (
     calculate_column_distribution,
     calculate_delays,
@@ -315,6 +320,27 @@ def _contest_record_from_db(row: Any) -> OfficialContestRecord:
     )
 
 
+def _contest_record_from_official_history(row: Any) -> OfficialContestRecord:
+    numbers = _normalize_numbers(str(getattr(row, "numbers", "") or "").replace(",", " ").split())
+    metadata = {}
+    metadata_json = str(getattr(row, "metadata_json", "{}") or "{}")
+    try:
+        import json
+
+        parsed = json.loads(metadata_json)
+        if isinstance(parsed, dict):
+            metadata = parsed
+    except Exception:
+        metadata = {}
+    return OfficialContestRecord(
+        contest_number=int(getattr(row, "contest_number", 0) or 0),
+        draw_date=str(getattr(row, "draw_date", "") or ""),
+        numbers=tuple(numbers),
+        source="lotofacil_official_history",
+        metadata=metadata,
+    )
+
+
 def load_official_lotofacil_contests(
     db_path: Any = DEFAULT_DATABASE_PATH,
     *,
@@ -325,15 +351,29 @@ def load_official_lotofacil_contests(
     try:
         with get_session(db_path) as session:
             query = session.execute(
-                select(ImportedContest).order_by(ImportedContest.contest_number.asc())
+                select(LotofacilOfficialHistory).order_by(LotofacilOfficialHistory.contest_number.asc())
             )
-            rows = [row[0] for row in query.all()]
+            official_rows = [row[0] for row in query.all()]
     except Exception:
-        rows = []
+        official_rows = []
 
-    for row in rows:
-        record = _contest_record_from_db(row)
+    for row in official_rows:
+        record = _contest_record_from_official_history(row)
         contests.append(record.as_dict())
+
+    if not contests:
+        try:
+            with get_session(db_path) as session:
+                query = session.execute(
+                    select(ImportedContest).order_by(ImportedContest.contest_number.asc())
+                )
+                rows = [row[0] for row in query.all()]
+        except Exception:
+            rows = []
+
+        for row in rows:
+            record = _contest_record_from_db(row)
+            contests.append(record.as_dict())
 
     if not contests and use_csv_fallback:
         try:

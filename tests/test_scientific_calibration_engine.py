@@ -7,7 +7,8 @@ from lotoia.analytics.scientific_calibration_engine import (
     register_calibration_decision,
     recommend_next_strategy,
 )
-from lotoia.database.database import ScientificCalibrationDecision, create_database, get_session
+from lotoia.analytics.lotofacil_scientific_core import load_official_lotofacil_contests
+from lotoia.database.database import LotofacilOfficialHistory, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_session
 
 
 def _contest(contest_number: int, numbers: list[int]) -> dict[str, object]:
@@ -88,6 +89,7 @@ def test_register_scientific_calibration_decision_persists_memory(tmp_path) -> N
 
     with get_session(db_path) as session:
         stored = session.query(ScientificCalibrationDecision).all()
+        memory_rows = session.query(ScientificInstitutionalMemory).all()
 
     assert saved["source_batch_id"] == "batch-scientific-calibration"
     assert saved["mode"] == "AUTONOMIA SUPERVISIONADA"
@@ -96,3 +98,30 @@ def test_register_scientific_calibration_decision_persists_memory(tmp_path) -> N
     assert stored[0].source_batch_id == "batch-scientific-calibration"
     assert stored[0].mode == "AUTONOMIA SUPERVISIONADA"
     assert bool(stored[0].applied) is False
+    assert len(memory_rows) == 1
+    assert memory_rows[0].batch_id == "batch-scientific-calibration"
+    assert memory_rows[0].strategy_name == "15_dezenas"
+
+
+def test_official_history_is_preferred_over_imported_contests(tmp_path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+    with get_session(db_path) as session:
+        session.add(
+            LotofacilOfficialHistory(
+                contest_number=3697,
+                draw_date="2026-05-29",
+                numbers="01,02,03,04,05,06,07,08,09,10,11,12,13,14,15",
+                numbers_signature="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+                source="lotofacil_official_history",
+                is_valid=1,
+                metadata_json="{}",
+            )
+        )
+        session.commit()
+
+    contests = load_official_lotofacil_contests(db_path)
+
+    assert contests
+    assert contests[0]["contest_number"] == 3697
+    assert contests[0]["source"] == "lotofacil_official_history"

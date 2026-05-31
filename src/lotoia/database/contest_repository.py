@@ -10,7 +10,8 @@ from typing import Any
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from lotoia.database.adapter import resolve_institutional_adapter
-from lotoia.database.database import ImportedContest
+from lotoia.data.loader import load_draws_csv
+from lotoia.database.database import ImportedContest, LotofacilOfficialHistory
 from lotoia.database.database import create_database
 from lotoia.database.database import get_session
 
@@ -45,6 +46,21 @@ class ContestRepository:
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             data TEXT,
             dezenas TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}'
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lotofacil_official_history (
+            contest_number INTEGER PRIMARY KEY,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            draw_date TEXT NOT NULL DEFAULT '',
+            numbers TEXT NOT NULL DEFAULT '',
+            numbers_signature TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT 'imported_contests',
+            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            validated_at TEXT,
+            is_valid INTEGER NOT NULL DEFAULT 1,
             metadata_json TEXT NOT NULL DEFAULT '{}'
         )
         """)
@@ -90,6 +106,23 @@ class ContestRepository:
             ("ALTER TABLE generated_games ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'", "context_json"),
         ):
             if column_name not in generated_columns:
+                cursor.execute(column_sql)
+
+        official_columns = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(lotofacil_official_history)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN draw_date TEXT NOT NULL DEFAULT ''", "draw_date"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN numbers TEXT NOT NULL DEFAULT ''", "numbers"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN numbers_signature TEXT NOT NULL DEFAULT ''", "numbers_signature"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN source TEXT NOT NULL DEFAULT 'imported_contests'", "source"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", "imported_at"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN validated_at TEXT", "validated_at"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN is_valid INTEGER NOT NULL DEFAULT 1", "is_valid"),
+            ("ALTER TABLE lotofacil_official_history ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'", "metadata_json"),
+        ):
+            if column_name not in official_columns:
                 cursor.execute(column_sql)
 
         self.connection.commit()
@@ -152,10 +185,37 @@ class ContestRepository:
                     "metadata_json": stmt.excluded.metadata_json,
                 },
             )
+            official_stmt = pg_insert(LotofacilOfficialHistory).values(
+                contest_number=int(contest["concurso"]),
+                created_at=contest.get("created_at") or datetime.now(UTC),
+                draw_date=str(contest["data"]),
+                numbers=dezenas,
+                numbers_signature=" ".join(sorted(f"{int(number):02d}" for number in contest["dezenas"])),
+                source="imported_contests",
+                imported_at=contest.get("created_at") or datetime.now(UTC),
+                validated_at=contest.get("validated_at") or contest.get("created_at") or datetime.now(UTC),
+                is_valid=1,
+                metadata_json=metadata_json,
+            )
+            official_stmt = official_stmt.on_conflict_do_update(
+                index_elements=[LotofacilOfficialHistory.contest_number],
+                set_={
+                    "created_at": official_stmt.excluded.created_at,
+                    "draw_date": official_stmt.excluded.draw_date,
+                    "numbers": official_stmt.excluded.numbers,
+                    "numbers_signature": official_stmt.excluded.numbers_signature,
+                    "source": official_stmt.excluded.source,
+                    "imported_at": official_stmt.excluded.imported_at,
+                    "validated_at": official_stmt.excluded.validated_at,
+                    "is_valid": official_stmt.excluded.is_valid,
+                    "metadata_json": official_stmt.excluded.metadata_json,
+                },
+            )
             if session is None:
                 with get_session(self.db_path) as active_session:
                     try:
                         active_session.execute(stmt)
+                        active_session.execute(official_stmt)
                         if commit:
                             active_session.commit()
                     except Exception:
@@ -163,6 +223,7 @@ class ContestRepository:
                         raise
             else:
                 session.execute(stmt)
+                session.execute(official_stmt)
             return
 
         cursor = self.connection.cursor()
@@ -202,11 +263,192 @@ class ContestRepository:
                 ),
             )
 
+            cursor.execute(
+                """
+            INSERT OR REPLACE INTO lotofacil_official_history (
+                contest_number,
+                created_at,
+                draw_date,
+                numbers,
+                numbers_signature,
+                source,
+                imported_at,
+                validated_at,
+                is_valid,
+                metadata_json
+            )
+            VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, ?)
+            """,
+                (
+                    contest["concurso"],
+                    contest["data"],
+                    dezenas,
+                    " ".join(sorted(f"{int(number):02d}" for number in contest["dezenas"])),
+                    "imported_contests",
+                    metadata_json,
+                ),
+            )
+
             if commit:
                 self.connection.commit()
         except Exception:
             self.connection.rollback()
             raise
+
+    def _official_history_values(self, contest: dict[str, Any]) -> dict[str, Any]:
+        dezenas = ",".join(contest["dezenas"])
+        metadata = contest.get("metadata_json", contest.get("metadata", {}))
+        if isinstance(metadata, str):
+            metadata_json = metadata
+        else:
+            metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+        return {
+            "contest_number": int(contest["concurso"]),
+            "created_at": contest.get("created_at") or datetime.now(UTC),
+            "draw_date": str(contest["data"]),
+            "numbers": dezenas,
+            "numbers_signature": " ".join(sorted(f"{int(number):02d}" for number in contest["dezenas"])),
+            "source": str(contest.get("source", "imported_contests") or "imported_contests"),
+            "imported_at": contest.get("imported_at") or contest.get("created_at") or datetime.now(UTC),
+            "validated_at": contest.get("validated_at") or contest.get("created_at") or datetime.now(UTC),
+            "is_valid": int(contest.get("is_valid", 1) or 1),
+            "metadata_json": metadata_json,
+        }
+
+    def save_official_history_contest(self, contest: dict[str, Any], *, commit: bool = True, session: Any | None = None) -> None:
+        values = self._official_history_values(contest)
+        if self.backend != "sqlite":
+            stmt = pg_insert(LotofacilOfficialHistory).values(**values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[LotofacilOfficialHistory.contest_number],
+                set_={
+                    "created_at": stmt.excluded.created_at,
+                    "draw_date": stmt.excluded.draw_date,
+                    "numbers": stmt.excluded.numbers,
+                    "numbers_signature": stmt.excluded.numbers_signature,
+                    "source": stmt.excluded.source,
+                    "imported_at": stmt.excluded.imported_at,
+                    "validated_at": stmt.excluded.validated_at,
+                    "is_valid": stmt.excluded.is_valid,
+                    "metadata_json": stmt.excluded.metadata_json,
+                },
+            )
+            if session is None:
+                with get_session(self.db_path) as active_session:
+                    active_session.execute(stmt)
+                    if commit:
+                        active_session.commit()
+            else:
+                session.execute(stmt)
+            return
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+        INSERT OR REPLACE INTO lotofacil_official_history (
+            contest_number,
+            created_at,
+            draw_date,
+            numbers,
+            numbers_signature,
+            source,
+            imported_at,
+            validated_at,
+            is_valid,
+            metadata_json
+        )
+        VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)
+        """,
+            (
+                values["contest_number"],
+                values["draw_date"],
+                values["numbers"],
+                values["numbers_signature"],
+                values["source"],
+                int(values["is_valid"]),
+                values["metadata_json"],
+            ),
+        )
+        if commit:
+            self.connection.commit()
+
+    def bootstrap_official_history_from_csv(self, *, limit: int | None = None) -> int:
+        try:
+            draws = load_draws_csv()
+        except Exception:
+            draws = []
+        if limit is not None and int(limit) > 0:
+            draws = draws[: int(limit)]
+        inserted = 0
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                for draw in draws:
+                    contest = {
+                        "concurso": int(draw.contest),
+                        "data": str(draw.date),
+                        "dezenas": [f"{int(number):02d}" for number in draw.numbers],
+                        "metadata_json": json.dumps({"source": "historico_lotofacil.csv"}, ensure_ascii=False, sort_keys=True),
+                        "source": "historico_lotofacil.csv",
+                        "imported_at": datetime.now(UTC),
+                        "validated_at": datetime.now(UTC),
+                        "is_valid": 1,
+                    }
+                    self.save_official_history_contest(contest, commit=False, session=session)
+                    inserted += 1
+                session.commit()
+        else:
+            for draw in draws:
+                contest = {
+                    "concurso": int(draw.contest),
+                    "data": str(draw.date),
+                    "dezenas": [f"{int(number):02d}" for number in draw.numbers],
+                    "metadata_json": json.dumps({"source": "historico_lotofacil.csv"}, ensure_ascii=False, sort_keys=True),
+                    "source": "historico_lotofacil.csv",
+                    "imported_at": datetime.now(UTC),
+                    "validated_at": datetime.now(UTC),
+                    "is_valid": 1,
+                }
+                self.save_official_history_contest(contest, commit=False)
+                inserted += 1
+            if self.connection is not None:
+                self.connection.commit()
+        return inserted
+
+    def sync_official_history_from_imported_contests(self) -> int:
+        contests = self.get_all_contests()
+        inserted = 0
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                for contest in contests:
+                    official_contest = {
+                        "concurso": int(contest["concurso"]),
+                        "data": str(contest["data"]),
+                        "dezenas": list(contest["dezenas"]),
+                        "metadata_json": contest.get("metadata_json", "{}"),
+                        "source": "imported_contests",
+                        "imported_at": datetime.now(UTC),
+                        "validated_at": datetime.now(UTC),
+                        "is_valid": 1,
+                    }
+                    self.save_official_history_contest(official_contest, commit=False, session=session)
+                    inserted += 1
+                session.commit()
+        else:
+            for contest in contests:
+                official_contest = {
+                    "concurso": int(contest["concurso"]),
+                    "data": str(contest["data"]),
+                    "dezenas": list(contest["dezenas"]),
+                    "metadata_json": contest.get("metadata_json", "{}"),
+                    "source": "imported_contests",
+                    "imported_at": datetime.now(UTC),
+                    "validated_at": datetime.now(UTC),
+                    "is_valid": 1,
+                }
+                self.save_official_history_contest(official_contest, commit=False)
+                inserted += 1
+            if self.connection is not None:
+                self.connection.commit()
+        return inserted
 
     def save_generated_games(
         self,

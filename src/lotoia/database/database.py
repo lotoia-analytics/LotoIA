@@ -121,6 +121,64 @@ class ScientificCalibrationDecision(Base):
     )
 
 
+class ScientificInstitutionalMemory(Base):
+    __tablename__ = "scientific_institutional_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    memory_kind: Mapped[str] = mapped_column(String, default="calibration_decision", nullable=False)
+    strategy_name: Mapped[str] = mapped_column(String, default="", nullable=False)
+    game_size: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    batch_id: Mapped[str] = mapped_column(String, default="", nullable=False)
+    generation_range: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    total_games: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unique_games: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_games: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    structural_status: Mapped[str] = mapped_column(String, default="", nullable=False)
+    scientific_status: Mapped[str] = mapped_column(String, default="", nullable=False)
+    scientific_classification: Mapped[str] = mapped_column(String, default="", nullable=False)
+    main_reason: Mapped[str] = mapped_column(String, default="", nullable=False)
+    recommended_action: Mapped[str] = mapped_column(String, default="", nullable=False)
+    policy_applied: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    policy_before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    policy_after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    best_hit: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    average_hits: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    count_11_plus: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    count_12_plus: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    count_13_plus: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    count_14_plus: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    count_15: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    validation_contests: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    cross_validation_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    frequency_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    absence_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    parity_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    repetition_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    sequence_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    low_high_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    range_alerts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    decision_mode: Mapped[str] = mapped_column(String, default="OBSERVACAO", nullable=False)
+    approved_for_use: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notes: Mapped[str] = mapped_column(String, default="", nullable=False)
+    official_history_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    official_history_first_contest: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    official_history_last_contest: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    official_history_window: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    source: Mapped[str] = mapped_column(String, default="scientific_calibration", nullable=False)
+
+    __table_args__ = (
+        Index("ix_scientific_institutional_memory_created_at", "created_at"),
+        Index("ix_scientific_institutional_memory_strategy_name", "strategy_name"),
+        Index("ix_scientific_institutional_memory_batch_id", "batch_id"),
+        Index("ix_scientific_institutional_memory_memory_kind", "memory_kind"),
+    )
+
+
 class Lead(Base):
     __tablename__ = "leads"
 
@@ -516,6 +574,35 @@ class ImportedContest(Base):
     data: Mapped[str] = mapped_column(String, default="", nullable=False)
     dezenas: Mapped[str] = mapped_column(String, default="", nullable=False)
     metadata_json: Mapped[str] = mapped_column(String, default="{}", nullable=False)
+
+
+class LotofacilOfficialHistory(Base):
+    __tablename__ = "lotofacil_official_history"
+
+    contest_number: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    draw_date: Mapped[str] = mapped_column(String, default="", nullable=False)
+    numbers: Mapped[str] = mapped_column(String, default="", nullable=False)
+    numbers_signature: Mapped[str] = mapped_column(String, default="", nullable=False)
+    source: Mapped[str] = mapped_column(String, default="imported_contests", nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_valid: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(String, default="{}", nullable=False)
+
+    __table_args__ = (
+        Index("ix_lotofacil_official_history_created_at", "created_at"),
+        Index("ix_lotofacil_official_history_imported_at", "imported_at"),
+        Index("ix_lotofacil_official_history_source", "source"),
+    )
 
 
 class GeneratedGame(Base):
