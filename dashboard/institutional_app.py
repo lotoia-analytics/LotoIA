@@ -31,7 +31,12 @@ from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
-from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore, analyze_lotofacil_history, get_scientific_generation_policy
+from lotoia.analytics.lotofacil_scientific_core import (
+    LotofacilScientificCore,
+    analyze_lotofacil_history,
+    discover_scientific_generation_policy,
+    get_scientific_generation_policy,
+)
 from lotoia.analytics.scientific_calibration_engine import (
     apply_supervised_calibration,
     build_calibration_context,
@@ -1116,8 +1121,30 @@ def _render_scientific_policy_panel(
     total_expected_games: int,
     games_per_generation: int,
     generations_in_batch: int,
+    policy_discovery: dict[str, Any] | None = None,
 ) -> None:
     st.markdown("##### Política Científica Aplicada")
+    if policy_discovery:
+        discovery_cols = st.columns(4)
+        discovery_cols[0].metric(
+            "Origem",
+            str(policy_discovery.get("policy_origin", "automatic_scientific_discovery") or "automatic_scientific_discovery"),
+        )
+        discovery_cols[1].metric("PolÃ­tica ID", str(policy_discovery.get("policy_id", "-") or "-"))
+        discovery_cols[2].metric(
+            "Testadas",
+            int(policy_discovery.get("candidate_count", len(policy_discovery.get("candidates_tested", []) or [])) or 0),
+        )
+        discovery_cols[3].metric("Janela", int(policy_discovery.get("validation_window", 0) or 0))
+        st.caption(
+            " | ".join(
+                [
+                    f"selecionada={policy_discovery.get('selection_variant', '-')}",
+                    f"rank={policy_discovery.get('selection_rank', '-')}",
+                    f"razao={policy_discovery.get('selection_reason', '-')}",
+                ]
+            )
+        )
     top_cols = st.columns(4)
     top_cols[0].metric("Estratégia", f"{int(strategy_size)} dezenas")
     top_cols[1].metric("Total esperado", int(total_expected_games))
@@ -1131,16 +1158,10 @@ def _render_scientific_policy_panel(
         f"**Repetição do último concurso**  \n{repeat_min} a {repeat_max} dezenas"
     )
     detail_cols[1].markdown(
-        "**Paridade preferencial**  \n"
-        "7 ímpares / 8 pares  \n"
-        "8 ímpares / 7 pares"
+        f"**Paridade preferencial**  \n{_format_scientific_parity_pairs(policy.get('preferred_parity_pairs', []))}"
     )
     detail_cols[2].markdown(
-        "**Paridade permitida**  \n"
-        "7/8  \n"
-        "8/7  \n"
-        "6/9  \n"
-        "9/6"
+        f"**Paridade permitida**  \n{_format_scientific_parity_pairs(policy.get('allowed_parity_pairs', []))}"
     )
 
     detail_cols_2 = st.columns(3)
@@ -1164,7 +1185,7 @@ def _render_scientific_policy_panel(
         f"{float(policy.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
     with st.expander("Ver payload técnico completo", expanded=False):
-        st.json(policy)
+        st.json({"policy": policy, "policy_discovery": policy_discovery})
 
 
 def _render_scientific_calibration_panel(
@@ -1333,20 +1354,8 @@ def _hb_geometry_profile_for_size(size: int) -> dict[str, float | int]:
 def _institutional_generation_policy(size: int) -> dict[str, Any]:
     size = max(2, min(25, int(size or 15)))
     if size == 15:
-        return {
-            "repeat_min": 7,
-            "repeat_max": 10,
-            "preferred_parity_pairs": [(7, 8), (8, 7)],
-            "allowed_parity_pairs": [(7, 8), (8, 7), (6, 9), (9, 6)],
-            "sequence_max": 6,
-            "coverage_min": 0.40,
-            "entropy_min": 0.45,
-            "core_numbers": [7, 12, 16, 23],
-            "discouraged_numbers": [2, 4, 11, 15, 24, 25],
-            "max_frequency_ratio": 0.70,
-            "min_frequency_ratio": 0.20,
-            "preferred_profile_ratios": {(7, 8): 0.52, (8, 7): 0.48},
-        }
+        discovery = discover_scientific_generation_policy(size, db_path=DB_PATH)
+        return dict(discovery.get("policy") or discovery)
     profile = _hb_geometry_profile_for_size(size)
     return {
         "repeat_min": 0,
@@ -3275,23 +3284,36 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
         scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) if scientific_batch_id else {}
-        history_policy = {
-            "repeat_min": int(latest_commander.get("repeticao_ultimo_concurso_min", 7) or 7),
-            "repeat_max": int(latest_commander.get("repeticao_ultimo_concurso_max", 10) or 10),
-            "preferred_parity_pairs": list(latest_commander.get("perfis_paridade_preferenciais", [(7, 8), (8, 7)]) or [(7, 8), (8, 7)]),
-            "allowed_parity_pairs": list(latest_commander.get("perfis_paridade_permitidos", [(7, 8), (8, 7), (6, 9), (9, 6)]) or [(7, 8), (8, 7), (6, 9), (9, 6)]),
-            "sequence_max": int(latest_commander.get("limite_sequencia_max", 6) or 6),
-            "core_numbers": list(latest_commander.get("core_numbers", [7, 12, 16, 23]) or [7, 12, 16, 23]),
-            "discouraged_numbers": list(latest_commander.get("discouraged_numbers", [2, 4, 11, 15, 24, 25]) or [2, 4, 11, 15, 24, 25]),
-            "max_frequency_ratio": float(latest_commander.get("max_frequency_ratio", 0.7) or 0.7),
-            "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
-        }
+        latest_generated_games = list(latest_commander.get("generated_games", []) or [])
+        latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
+        scientific_game_size = int(
+            latest_generation_context.get("dezenas_per_game")
+            or latest_commander.get("quantidade_dezenas_por_jogo")
+            or latest_commander.get("quantidade solicitada", 15)
+            or 15
+        )
+        scientific_policy_discovery = discover_scientific_generation_policy(scientific_game_size, db_path=DB_PATH)
+        history_policy = dict(
+            scientific_policy_discovery.get("policy")
+            or {
+                "repeat_min": int(latest_commander.get("repeticao_ultimo_concurso_min", 7) or 7),
+                "repeat_max": int(latest_commander.get("repeticao_ultimo_concurso_max", 10) or 10),
+                "preferred_parity_pairs": list(latest_commander.get("perfis_paridade_preferenciais", [(7, 8), (8, 7)]) or [(7, 8), (8, 7)]),
+                "allowed_parity_pairs": list(latest_commander.get("perfis_paridade_permitidos", [(7, 8), (8, 7), (6, 9), (9, 6)]) or [(7, 8), (8, 7), (6, 9), (9, 6)]),
+                "sequence_max": int(latest_commander.get("limite_sequencia_max", 6) or 6),
+                "core_numbers": list(latest_commander.get("core_numbers", [7, 12, 16, 23]) or [7, 12, 16, 23]),
+                "discouraged_numbers": list(latest_commander.get("discouraged_numbers", [2, 4, 11, 15, 24, 25]) or [2, 4, 11, 15, 24, 25]),
+                "max_frequency_ratio": float(latest_commander.get("max_frequency_ratio", 0.7) or 0.7),
+                "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
+            }
+        )
         _render_scientific_policy_panel(
             policy=history_policy,
-            strategy_size=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            strategy_size=int(scientific_game_size),
             total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
             games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
             generations_in_batch=1,
+            policy_discovery=scientific_policy_discovery,
         )
         if scientific_batch:
             scientific_state = {
@@ -3316,7 +3338,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             scientific_state = None
             scientific_recommendation = None
         _render_scientific_calibration_panel(
-            strategy_size=int(latest_commander.get("quantidade solicitada", 0) or 0),
+            strategy_size=int(scientific_game_size),
             scientific_state=scientific_state,
             scientific_recommendation=scientific_recommendation,
             technical_payload=scientific_batch if scientific_batch else None,
@@ -4252,8 +4274,9 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         top_cols[0].caption("Último concurso: -")
         top_cols[1].caption("Fonte: banco vazio")
 
-    official_generation_policy = _institutional_generation_policy(int(st.session_state.get("institutional_dezenas_per_game", 15) or 15))
     current_dezenas_size = int(st.session_state.get("institutional_dezenas_per_game", 15) or 15)
+    scientific_policy_discovery = discover_scientific_generation_policy(current_dezenas_size, db_path=DB_PATH)
+    official_generation_policy = dict(scientific_policy_discovery.get("policy") or _institutional_generation_policy(current_dezenas_size))
     if current_dezenas_size == 15:
         st.session_state["institutional_total_games"] = 10
         st.session_state["institutional_generation_runs"] = 10
@@ -4421,6 +4444,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         total_expected_games=int(total_jogos_esperados),
         games_per_generation=int(total_games),
         generations_in_batch=int(generation_runs),
+        policy_discovery=scientific_policy_discovery,
     )
     if scientific_batch:
         scientific_state = {

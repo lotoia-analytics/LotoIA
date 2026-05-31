@@ -4,6 +4,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_contest_transition,
     build_scientific_profile,
+    discover_scientific_generation_policy,
     get_scientific_generation_policy,
 )
 
@@ -48,3 +49,22 @@ def test_lotofacil_scientific_core_builds_profile_with_frequency_windows_and_met
     assert len(policy["core_numbers"]) == 4
     assert all(isinstance(number, int) for number in policy["core_numbers"])
     assert len(policy["discouraged_numbers"]) == 6
+
+
+def test_lotofacil_scientific_core_discovers_policy_with_metadata() -> None:
+    contests = [
+        _contest(1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+        _contest(2, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 24, 25, 2]),
+        _contest(3, [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 23, 24, 25, 1]),
+        _contest(4, [1, 4, 5, 7, 8, 9, 10, 12, 14, 16, 18, 19, 21, 23, 25]),
+    ]
+
+    discovery = discover_scientific_generation_policy(15, contests=contests)
+
+    assert discovery["policy_origin"] == "automatic_scientific_discovery"
+    assert discovery["candidate_count"] >= 1
+    assert discovery["selection_reason"]
+    assert discovery["policy"]["repeat_min"] <= discovery["policy"]["repeat_max"]
+    assert discovery["policy"]["repeat_min"] == 7
+    assert discovery["policy"]["repeat_max"] == 10
+    assert len(discovery["candidates_tested"]) == discovery["candidate_count"]
