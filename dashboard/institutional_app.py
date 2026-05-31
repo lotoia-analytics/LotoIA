@@ -4291,8 +4291,8 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         top_cols[1].caption("Fonte: banco vazio")
 
     current_dezenas_size = int(st.session_state.get("institutional_dezenas_per_game", 15) or 15)
-    scientific_policy_discovery = discover_scientific_generation_policy(current_dezenas_size, db_path=DB_PATH)
-    official_generation_policy = dict(scientific_policy_discovery.get("policy") or _institutional_generation_policy(current_dezenas_size))
+    scientific_policy_discovery: dict[str, Any] | None = None
+    official_generation_policy: dict[str, Any] = {}
     if current_dezenas_size == 15:
         st.session_state["institutional_total_games"] = 10
         st.session_state["institutional_generation_runs"] = 10
@@ -4454,6 +4454,9 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             games=[] if batch_result else list(generation_result.get("jogos") or generation_state.get("games") or []),
             game_size=scientific_game_size,
         )
+    if scientific_batch_id and (batch_result or generation_result):
+        scientific_policy_discovery = discover_scientific_generation_policy(scientific_game_size, db_path=DB_PATH)
+        official_generation_policy = dict(scientific_policy_discovery.get("policy") or {})
     _render_scientific_policy_panel(
         policy=official_generation_policy,
         strategy_size=int(dezenas_per_game),
