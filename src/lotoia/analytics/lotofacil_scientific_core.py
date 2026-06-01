@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from collections import Counter
 from dataclasses import dataclass
 from math import log2, sqrt
+from itertools import product
 from statistics import mean, median
 from typing import Any, Iterable, Sequence
 
@@ -69,6 +70,32 @@ def _safe_str(value: Any, default: str = "") -> str:
     except Exception:
         return default
     return text or default
+
+
+def _unique_ints(values: Sequence[int | float | None], *, lower: int, upper: int) -> list[int]:
+    unique: list[int] = []
+    for value in values:
+        try:
+            number = int(round(float(value)))
+        except Exception:
+            continue
+        number = max(lower, min(upper, number))
+        if number not in unique:
+            unique.append(number)
+    return unique
+
+
+def _unique_float_values(values: Sequence[float | int | None], *, lower: float, upper: float) -> list[float]:
+    unique: list[float] = []
+    for value in values:
+        try:
+            number = round(float(value), 2)
+        except Exception:
+            continue
+        number = max(lower, min(upper, number))
+        if number not in unique:
+            unique.append(number)
+    return unique
 
 
 def _normalize_numbers(raw_numbers: Any) -> list[int]:
@@ -610,7 +637,7 @@ class LotofacilScientificCore:
         self,
         game_size: int,
         *,
-        candidate_limit: int = 6,
+        candidate_limit: int = 120,
     ) -> dict[str, Any]:
         resolved_game_size = max(2, min(int(game_size or 15), 25))
         profile_window = max(20, min(len(self.contests), max(60, resolved_game_size * 4))) if self.contests else 0
@@ -663,8 +690,17 @@ class LotofacilScientificCore:
                     allowed_pairs.append(pair)
         if not allowed_pairs:
             allowed_pairs = list(preferred_pairs)
-        preferred_pairs = sorted(dict.fromkeys(preferred_pairs), key=lambda pair: (int(pair[0]), int(pair[1])))
-        allowed_pairs = sorted(dict.fromkeys(allowed_pairs), key=lambda pair: (int(pair[0]), int(pair[1])))
+
+        def _unique_pairs(pairs: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+            unique: list[tuple[int, int]] = []
+            for pair in pairs:
+                normalized_pair = (int(pair[0]), int(pair[1]))
+                if normalized_pair not in unique:
+                    unique.append(normalized_pair)
+            return unique
+
+        preferred_pairs = _unique_pairs(preferred_pairs)
+        allowed_pairs = _unique_pairs(allowed_pairs)
 
         def _paired_profile_ratios(pairs: Sequence[tuple[int, int]]) -> dict[tuple[int, int], float]:
             if not pairs:
@@ -714,6 +750,99 @@ class LotofacilScientificCore:
             return policy
 
         base_repeat_center = int(round(repeat_mean or max(1.0, resolved_game_size / 2)))
+        observed_max_frequency = min(0.80, max(0.55, round((max(frequency_map.values()) / max(1, history_count)) + 0.05, 2))) if frequency_map else max_frequency_cap
+        observed_min_frequency = min(0.30, max(0.10, round((min((amount for amount in frequency_map.values() if amount > 0), default=0) / max(1, history_count)) or 0.20, 2))) if frequency_map else min_frequency_floor
+        repeat_min_candidates = _unique_ints(
+            [
+                repeat_floor - 1,
+                repeat_floor,
+                repeat_floor + 1,
+                max(0, base_repeat_center - 1),
+                base_repeat_center,
+            ],
+            lower=0,
+            upper=resolved_game_size,
+        )
+        repeat_max_candidates = _unique_ints(
+            [
+                repeat_ceiling - 1,
+                repeat_ceiling,
+                repeat_ceiling + 1,
+                max(0, base_repeat_center + 1),
+                min(resolved_game_size, base_repeat_center + 2),
+            ],
+            lower=0,
+            upper=resolved_game_size,
+        )
+        sequence_candidates = _unique_ints(
+            [
+                sequence_cap - 2,
+                sequence_cap - 1,
+                sequence_cap,
+                sequence_cap + 1,
+                sequence_cap + 2,
+            ],
+            lower=4,
+            upper=resolved_game_size,
+        )
+        coverage_candidates = _unique_float_values(
+            [
+                coverage_floor - 0.08,
+                coverage_floor - 0.04,
+                coverage_floor,
+                coverage_floor + 0.04,
+                coverage_floor + 0.08,
+                coverage_mean,
+                0.40,
+                0.45,
+                0.50,
+            ],
+            lower=0.30,
+            upper=0.85,
+        )
+        entropy_candidates = _unique_float_values(
+            [
+                entropy_floor - 0.08,
+                entropy_floor - 0.04,
+                entropy_floor,
+                entropy_floor + 0.04,
+                entropy_floor + 0.08,
+                entropy_mean,
+                0.35,
+                0.40,
+                0.45,
+            ],
+            lower=0.25,
+            upper=0.85,
+        )
+        max_frequency_candidates = _unique_float_values(
+            [
+                max_frequency_cap - 0.10,
+                max_frequency_cap - 0.05,
+                max_frequency_cap,
+                observed_max_frequency,
+                min(0.80, max(0.55, observed_max_frequency + 0.05)),
+            ],
+            lower=0.50,
+            upper=0.85,
+        )
+        min_frequency_candidates = _unique_float_values(
+            [
+                min_frequency_floor - 0.05,
+                min_frequency_floor,
+                min_frequency_floor + 0.05,
+                observed_min_frequency,
+                max(0.10, min(0.30, observed_min_frequency + 0.05)),
+            ],
+            lower=0.05,
+            upper=0.35,
+        )
+        parity_families = [preferred_pairs, allowed_pairs]
+        if not parity_families[0]:
+            parity_families[0] = [(resolved_game_size // 2, resolved_game_size - (resolved_game_size // 2))]
+        if not parity_families[1]:
+            parity_families[1] = list(parity_families[0])
+
         base_policy = _canonical_policy(
             repeat_min=repeat_floor,
             repeat_max=repeat_ceiling,
@@ -722,11 +851,39 @@ class LotofacilScientificCore:
             sequence_max=sequence_cap,
             coverage_min=coverage_floor,
             entropy_min=entropy_floor,
-            max_frequency_ratio=max_frequency_cap if not frequency_map else min(0.80, max(0.55, round((max(frequency_map.values()) / max(1, history_count)) + 0.05, 2))),
-            min_frequency_ratio=min_frequency_floor if not frequency_map else min(0.30, max(0.10, round((min((amount for amount in frequency_map.values() if amount > 0), default=0) / max(1, history_count)) or 0.20, 2))),
-            notes=("automatic_discovery_base", "derived_from_official_history"),
-            variant_name="base_history_profile",
+            max_frequency_ratio=observed_max_frequency if 'observed_max_frequency' in locals() else max_frequency_cap,
+            min_frequency_ratio=observed_min_frequency if 'observed_min_frequency' in locals() else min_frequency_floor,
+            notes=("automatic_discovery_seed", "derived_from_official_history"),
+            variant_name="history_profile_seed",
         )
+
+        def _policy_to_candidate_params(policy: dict[str, Any]) -> dict[str, Any]:
+            preferred_raw = policy.get("preferred_parity_pairs", []) or []
+            allowed_raw = policy.get("allowed_parity_pairs", []) or []
+            preferred_pairs_local: list[tuple[int, int]] = []
+            allowed_pairs_local: list[tuple[int, int]] = []
+            for pair in preferred_raw:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    preferred_pairs_local.append((int(pair[0]), int(pair[1])))
+            for pair in allowed_raw:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    allowed_pairs_local.append((int(pair[0]), int(pair[1])))
+            if not preferred_pairs_local:
+                preferred_pairs_local = list(preferred_pairs)
+            if not allowed_pairs_local:
+                allowed_pairs_local = list(allowed_pairs)
+            return {
+                "repeat_min": int(policy.get("repeat_min", repeat_floor) or repeat_floor),
+                "repeat_max": int(policy.get("repeat_max", repeat_ceiling) or repeat_ceiling),
+                "preferred": preferred_pairs_local,
+                "allowed": allowed_pairs_local,
+                "sequence_max": int(policy.get("sequence_max", sequence_cap) or sequence_cap),
+                "coverage_min": float(policy.get("coverage_min", coverage_floor) or coverage_floor),
+                "entropy_min": float(policy.get("entropy_min", entropy_floor) or entropy_floor),
+                "max_frequency_ratio": float(policy.get("max_frequency_ratio", observed_max_frequency) or observed_max_frequency),
+                "min_frequency_ratio": float(policy.get("min_frequency_ratio", observed_min_frequency) or observed_min_frequency),
+                "notes": tuple(str(note) for note in policy.get("notes", ()) or ()),
+            }
 
         memory_rows = self._load_scientific_memory_rows(limit=max(5, int(candidate_limit or 6)))
         decision_rows = self._load_scientific_calibration_decisions(limit=max(5, int(candidate_limit or 6)))
@@ -744,63 +901,110 @@ class LotofacilScientificCore:
         else:
             memory_policy = {}
 
-        candidate_policies: list[dict[str, Any]] = [base_policy]
+        candidate_policies: list[dict[str, Any]] = []
+        candidate_variants: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        candidate_variants.append(
+            (
+                "history_profile_seed",
+                _policy_to_candidate_params(base_policy),
+                {"seed": "official_history"},
+            )
+        )
         if memory_policy:
-            candidate_policies.append(memory_policy)
+            candidate_variants.append(
+                (
+                    "memory_blend",
+                    _policy_to_candidate_params(memory_policy),
+                    {"notes": ("scientific_memory_blend",)},
+                )
+            )
 
-        candidate_policies.append(
-            _canonical_policy(
-                repeat_min=base_policy["repeat_min"],
-                repeat_max=base_policy["repeat_max"],
-                preferred=preferred_pairs,
-                allowed=allowed_pairs,
-                sequence_max=max(4, min(resolved_game_size, int(base_policy["sequence_max"]) - 1)),
-                coverage_min=max(0.35, min(0.80, float(base_policy["coverage_min"]) + 0.03)),
-                entropy_min=max(0.30, min(0.80, float(base_policy["entropy_min"]) + 0.03)),
-                max_frequency_ratio=max(0.55, min(0.80, float(base_policy["max_frequency_ratio"]) - 0.05)),
-                min_frequency_ratio=min(0.30, max(0.10, float(base_policy["min_frequency_ratio"]) + 0.02)),
-                notes=("conservative_frequency",),
-                variant_name="conservative_frequency",
+        repeat_anchor = max(0, min(resolved_game_size, base_repeat_center))
+        for family_index, parity_family in enumerate(parity_families, start=1):
+            for repeat_min in repeat_min_candidates:
+                for repeat_max in repeat_max_candidates:
+                    if repeat_min > repeat_max:
+                        continue
+                    if repeat_max - repeat_min > max(3, resolved_game_size // 2):
+                        continue
+                    for sequence_max in sequence_candidates:
+                        for coverage_min in coverage_candidates:
+                            for entropy_min in entropy_candidates:
+                                for max_frequency_ratio in max_frequency_candidates:
+                                    for min_frequency_ratio in min_frequency_candidates:
+                                        if min_frequency_ratio > max_frequency_ratio:
+                                            continue
+                                        if sequence_max < max(4, resolved_game_size // 4):
+                                            continue
+                                        variant_name = (
+                                            "history_profile"
+                                            if family_index == 1 and repeat_min == repeat_floor and repeat_max == repeat_ceiling and sequence_max == sequence_cap
+                                            else f"auto_{family_index}_{repeat_min}_{repeat_max}_{sequence_max}"
+                                        )
+                                        candidate_variants.append(
+                                            (
+                                                variant_name,
+                                                {
+                                                    "repeat_min": repeat_min,
+                                                    "repeat_max": repeat_max,
+                                                    "preferred": parity_family,
+                                                    "allowed": allowed_pairs if family_index == 1 else parity_family,
+                                                    "sequence_max": sequence_max,
+                                                    "coverage_min": coverage_min,
+                                                    "entropy_min": entropy_min,
+                                                    "max_frequency_ratio": max_frequency_ratio,
+                                                    "min_frequency_ratio": min_frequency_ratio,
+                                                    "notes": (
+                                                        "automatic_scientific_search",
+                                                        f"parity_family_{family_index}",
+                                                    ),
+                                                },
+                                                {
+                                                    "repeat_center": repeat_anchor,
+                                                    "parity_family": family_index,
+                                                },
+                                            )
+                                        )
+                                        if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                                            break
+                                    if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                                        break
+                                if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                                    break
+                            if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                                break
+                        if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                            break
+                    if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                        break
+                if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
+                    break
+
+        candidate_variants = candidate_variants[: max(20, int(candidate_limit or 120))]
+        for variant_name, params, extra in candidate_variants:
+            candidate_policies.append(
+                _canonical_policy(
+                    repeat_min=int(params["repeat_min"]),
+                    repeat_max=int(params["repeat_max"]),
+                    preferred=list(params["preferred"]),
+                    allowed=list(params["allowed"]),
+                    sequence_max=int(params["sequence_max"]),
+                    coverage_min=float(params["coverage_min"]),
+                    entropy_min=float(params["entropy_min"]),
+                    max_frequency_ratio=float(params["max_frequency_ratio"]),
+                    min_frequency_ratio=float(params["min_frequency_ratio"]),
+                    notes=tuple(params.get("notes", ())) + tuple(f"{key}={value}" for key, value in extra.items()),
+                    variant_name=variant_name,
+                )
             )
-        )
-        candidate_policies.append(
-            _canonical_policy(
-                repeat_min=base_policy["repeat_min"],
-                repeat_max=base_policy["repeat_max"],
-                preferred=allowed_pairs,
-                allowed=allowed_pairs,
-                sequence_max=max(4, min(resolved_game_size, int(base_policy["sequence_max"]) + 1)),
-                coverage_min=max(0.35, min(0.80, float(base_policy["coverage_min"]) - 0.02)),
-                entropy_min=max(0.30, min(0.80, float(base_policy["entropy_min"]) - 0.02)),
-                max_frequency_ratio=min(0.80, float(base_policy["max_frequency_ratio"]) + 0.03),
-                min_frequency_ratio=max(0.10, float(base_policy["min_frequency_ratio"]) - 0.02),
-                notes=("diversified_frequency",),
-                variant_name="diversified_frequency",
-            )
-        )
-        candidate_policies.append(
-            _canonical_policy(
-                repeat_min=base_policy["repeat_min"],
-                repeat_max=base_policy["repeat_max"],
-                preferred=preferred_pairs,
-                allowed=allowed_pairs,
-                sequence_max=max(4, min(resolved_game_size, int(round(sequence_mean)))),
-                coverage_min=max(0.35, min(0.80, round(coverage_mean, 2))),
-                entropy_min=max(0.30, min(0.80, round(entropy_mean, 2))),
-                max_frequency_ratio=base_policy["max_frequency_ratio"],
-                min_frequency_ratio=base_policy["min_frequency_ratio"],
-                notes=("balanced_history_profile",),
-                variant_name="balanced_history_profile",
-            )
-        )
 
         scored_candidates: list[dict[str, Any]] = []
-        target_repeat = round(repeat_mean or 8.0, 2)
-        target_sequence = round(sequence_mean or 5.0, 2)
-        target_coverage = round(coverage_mean or 0.40, 2)
-        target_entropy = round(entropy_mean or 0.45, 2)
-        target_max_frequency_ratio = round(base_policy["max_frequency_ratio"], 2)
-        target_min_frequency_ratio = round(base_policy["min_frequency_ratio"], 2)
+        target_repeat = round(repeat_mean or max(1.0, resolved_game_size / 2), 2)
+        target_sequence = round(sequence_mean or max(4.0, resolved_game_size / 3), 2)
+        target_coverage = round(coverage_mean or 0.35, 2)
+        target_entropy = round(entropy_mean or 0.35, 2)
+        target_max_frequency_ratio = round(observed_max_frequency, 2)
+        target_min_frequency_ratio = round(observed_min_frequency, 2)
         target_pair = preferred_pairs[0]
         target_pair_set = {tuple(pair) for pair in preferred_pairs}
         dominant_set = {int(number) for number in core_numbers[:4]}
@@ -839,6 +1043,10 @@ class LotofacilScientificCore:
                 acceptance_errors.append("entropy_out_of_bounds")
             if sequence_max < 4:
                 acceptance_errors.append("sequence_limit_too_low")
+            if repeat_min < 0 or repeat_max > resolved_game_size:
+                acceptance_errors.append("repeat_out_of_bounds")
+            if sequence_max > resolved_game_size:
+                acceptance_errors.append("sequence_limit_too_high")
 
             preferred_pair_match = target_pair in candidate_preferred or tuple(reversed(target_pair)) in candidate_preferred
             parity_penalty = 0.0 if preferred_pair_match else 12.0
@@ -862,6 +1070,8 @@ class LotofacilScientificCore:
                 distance -= 1.5
             if candidate.get("policy_variant") == "conservative_frequency":
                 distance -= 0.5
+            if candidate.get("policy_variant") == "memory_blend":
+                distance -= 2.0
             if acceptance_errors:
                 distance += 1000.0 + len(acceptance_errors) * 50.0
 
@@ -946,6 +1156,17 @@ class LotofacilScientificCore:
             "selected_at": datetime.now(timezone.utc).isoformat(),
             "candidates_tested": scored_candidates,
             "approved_candidates": [item for item in scored_candidates if item["accepted"]],
+            "parameter_reasoning": {
+                "repeat": f"derived from average repetition {repeat_mean:.2f} and adjusted around official-history stability",
+                "parity": f"derived from average odd/even {average_odd:.2f}/{average_even:.2f} and validated parity families {preferred_pairs}",
+                "sequence": f"derived from average sequence max {sequence_mean:.2f} with controlled ceiling {sequence_cap}",
+                "coverage": f"derived from average coverage {coverage_mean:.2f} with floor {coverage_floor:.2f}",
+                "entropy": f"derived from average entropy {entropy_mean:.2f} with floor {entropy_floor:.2f}",
+                "core_numbers": f"top recurring numbers from official history: {list(core_numbers)}",
+                "discouraged_numbers": f"least frequent numbers from official history: {list(discouraged_numbers)}",
+                "frequency": f"observed history frequencies guided cap {observed_max_frequency:.2f} and floor {observed_min_frequency:.2f}",
+                "selection": selection_reason,
+            },
             "history_profile": {
                 "contest_count": history_count,
                 "window_size": int(profile.get("window_size", 0) or profile_window or 0),
@@ -1103,7 +1324,7 @@ def discover_scientific_generation_policy(
     *,
     contests: Sequence[dict[str, Any]] | None = None,
     db_path: Any = DEFAULT_DATABASE_PATH,
-    candidate_limit: int = 6,
+    candidate_limit: int = 120,
 ) -> dict[str, Any]:
     core = LotofacilScientificCore(contests=contests, db_path=db_path)
     return core.discover_scientific_generation_policy(game_size, candidate_limit=candidate_limit)

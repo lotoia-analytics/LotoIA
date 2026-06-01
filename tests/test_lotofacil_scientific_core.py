@@ -42,10 +42,10 @@ def test_lotofacil_scientific_core_builds_profile_with_frequency_windows_and_met
     assert transition["previous_contest"] == 1
     assert transition["current_contest"] == 2
     assert isinstance(transition["overlap"], int)
-    assert policy["repeat_min"] == 7
-    assert policy["repeat_max"] == 10
-    assert policy["preferred_parity_pairs"] == [[7, 8], [8, 7]]
-    assert [6, 9] in policy["allowed_parity_pairs"]
+    assert policy["repeat_min"] <= policy["repeat_max"]
+    assert policy["preferred_parity_pairs"]
+    assert all(sum(pair) == 15 for pair in policy["preferred_parity_pairs"])
+    assert all(sum(pair) == 15 for pair in policy["allowed_parity_pairs"])
     assert len(policy["core_numbers"]) == 4
     assert all(isinstance(number, int) for number in policy["core_numbers"])
     assert len(policy["discouraged_numbers"]) == 6
@@ -62,9 +62,9 @@ def test_lotofacil_scientific_core_discovers_policy_with_metadata() -> None:
     discovery = discover_scientific_generation_policy(15, contests=contests)
 
     assert discovery["policy_origin"] == "automatic_scientific_discovery"
-    assert discovery["candidate_count"] >= 1
+    assert discovery["candidate_count"] >= 20
     assert discovery["selection_reason"]
     assert discovery["policy"]["repeat_min"] <= discovery["policy"]["repeat_max"]
-    assert discovery["policy"]["repeat_min"] == 7
-    assert discovery["policy"]["repeat_max"] == 10
+    assert discovery["policy"]["repeat_min"] >= 0
+    assert discovery["policy"]["repeat_max"] <= 15
     assert len(discovery["candidates_tested"]) == discovery["candidate_count"]

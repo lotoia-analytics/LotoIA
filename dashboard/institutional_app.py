@@ -1176,6 +1176,7 @@ def _render_scientific_policy_panel(
     selected_score = str(policy_discovery.get("selection_score", "-") or "-") if discovery_ready else "-"
     selected_at = str(policy_discovery.get("selected_at", "-") or "-") if discovery_ready else "-"
     tested_count = int(policy_discovery.get("policies_tested", policy_discovery.get("candidate_count", 0)) or 0) if discovery_ready else 0
+    parameter_reasoning = dict(policy_discovery.get("parameter_reasoning") or {}) if discovery_ready else {}
 
     top_cols = st.columns(4)
     top_cols[0].metric("Estrat?gia", f"{int(strategy_size)} dezenas")
@@ -1230,6 +1231,27 @@ def _render_scientific_policy_panel(
         "Controle de frequ?ncia (m?n. candidata)",
         f"{float(policy_payload.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
+    if parameter_reasoning:
+        st.markdown("###### Motivo de cada parâmetro")
+        rationale_cols = st.columns(2)
+        rationale_left = [
+            ("Repetição", parameter_reasoning.get("repeat", "-")),
+            ("Paridade", parameter_reasoning.get("parity", "-")),
+            ("Sequência", parameter_reasoning.get("sequence", "-")),
+            ("Frequência", parameter_reasoning.get("frequency", "-")),
+        ]
+        rationale_right = [
+            ("Núcleo", parameter_reasoning.get("core_numbers", "-")),
+            ("Redução", parameter_reasoning.get("discouraged_numbers", "-")),
+            ("Cobertura", parameter_reasoning.get("coverage", "-")),
+            ("Entropia", parameter_reasoning.get("entropy", "-")),
+        ]
+        with rationale_cols[0]:
+            for label, text in rationale_left:
+                st.markdown(f"**{label}**  \n{text}")
+        with rationale_cols[1]:
+            for label, text in rationale_right:
+                st.markdown(f"**{label}**  \n{text}")
     with st.expander("Ver payload t?cnico completo", expanded=False):
         st.json({"policy": policy, "policy_discovery": policy_discovery})
 def _render_scientific_calibration_panel(
