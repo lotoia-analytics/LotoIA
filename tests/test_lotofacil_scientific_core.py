@@ -4,6 +4,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_contest_transition,
     build_scientific_profile,
+    build_batch_reconciliation_scientific_memory,
     build_post_reconciliation_scientific_memory,
     discover_scientific_generation_policy,
     get_scientific_generation_policy,
@@ -173,3 +174,41 @@ def test_lotofacil_scientific_core_builds_strong_near_miss_memory() -> None:
     assert memory["recommended_action"] == "recalibrate_from_strong_near_miss_towards_11_plus_and_15"
     assert memory["generation_range"]["best_generation_event_id"] in {351, 354}
     assert memory["generation_range"]["best_generation_count_10"] >= 8
+
+
+def test_lotofacil_scientific_core_builds_batch_reconciliation_memory() -> None:
+    contest = _contest(3699, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    generation_results = []
+    for generation_event_id in range(351, 361):
+        generation_results.append(
+            {
+                "generation_event_id": generation_event_id,
+                "batch_id": "calibration-20260601200630-98e210b",
+                "total_games": 10,
+                "best_hits": 10,
+                "total_hits": 95 + (generation_event_id % 3),
+                "prize_count": 0,
+                "results": [{"hits": 10} for _ in range(5)] + [{"hits": 9} for _ in range(5)],
+                "games": [{"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} for _ in range(10)],
+                "contest_number": 3699,
+                "contest_date": "2026-06-01",
+            }
+        )
+
+    memory = build_batch_reconciliation_scientific_memory(
+        batch_id="calibration-20260601200630-98e210b",
+        contest=contest,
+        generation_results=generation_results,
+    )
+
+    assert memory["memory_kind"] == "scientific_batch_reconciliation"
+    assert memory["scientific_classification"] == "STRONG_NEAR_MISS_BATCH"
+    assert memory["recommended_action"] == "recalibrate_from_strong_near_miss_towards_11_plus_and_15"
+    assert memory["generation_range"]["first_generation_event_id"] == 351
+    assert memory["generation_range"]["last_generation_event_id"] == 360
+    assert memory["generation_range"]["total_generations"] == 10
+    assert memory["generation_range"]["total_games_checked"] == 100
+    assert memory["generation_range"]["global_best_hits"] == 10
+    assert memory["generation_range"]["global_count_10"] == 50
+    assert memory["generation_range"]["global_count_11_plus"] == 0
+    assert len(memory["near_miss_generation_ranking"]) == 10
