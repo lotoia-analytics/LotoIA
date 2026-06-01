@@ -2429,6 +2429,14 @@ def _run_institutional_generation(
             "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
             "invalid_games": list(commander_report.get("invalid_games", []) or []),
         }
+        _store_active_batch_state(
+            batch_id=batch_id,
+            generation_event_ids=[],
+            policy_id=str(commander_report.get("policy_id", "") or ""),
+            generated_at=st.session_state["institutional_generation"]["created_at"],
+            game_size=dezenas_per_game,
+            total_games=total_games,
+        )
         return
     generation_snapshot = _persist_generation_snapshot(
         games=games,
@@ -2515,6 +2523,14 @@ def _run_institutional_generation(
         "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
         "invalid_games": list(commander_report.get("invalid_games", []) or []),
     }
+    _store_active_batch_state(
+        batch_id=batch_id,
+        generation_event_ids=[int(generation_snapshot["generation_event_id"])],
+        policy_id=str(commander_report.get("policy_id", "") or ""),
+        generated_at=st.session_state["institutional_generation"]["created_at"],
+        game_size=dezenas_per_game,
+        total_games=total_games,
+    )
 
 
 def _run_institutional_generation_batch(
@@ -2618,10 +2634,88 @@ def _run_institutional_generation_batch(
         "motivo_bloqueio": batch_reason,
         "institutional_output_signatures": batch_total_unique,
     }
+    _store_active_batch_state(
+        batch_id=batch_id,
+        generation_event_ids=[int(item.get("generation_event_id", 0) or 0) for item in run_summaries if int(item.get("generation_event_id", 0) or 0) > 0],
+        policy_id=str((run_summaries[-1] or {}).get("policy_id", "") or ""),
+        generated_at=(run_summaries[-1] or {}).get("created_at", datetime.now(UTC).isoformat()),
+        game_size=dezenas_per_game,
+        total_games=total_games,
+    )
 
 
-def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
+def _load_generation_batch_ids() -> list[str]:
+    batch_ids: list[str] = []
+    seen: set[str] = set()
+    for generation in _load_generation_history(limit=None):
+        batch_id = str(generation.get("batch_id", "") or "").strip()
+        if not batch_id or batch_id in seen:
+            continue
+        seen.add(batch_id)
+        batch_ids.append(batch_id)
+    return batch_ids
+
+
+def _resolve_active_batch_id() -> str:
+    session_keys = (
+        "institutional_active_batch_id",
+        "institutional_output_batch_id",
+    )
+    for key in session_keys:
+        batch_id = str(st.session_state.get(key, "") or "").strip()
+        if batch_id:
+            return batch_id
+    generation_result = dict(st.session_state.get("institutional_generation_result") or {})
+    batch_id = str(generation_result.get("batch_id", "") or "").strip()
+    if batch_id:
+        return batch_id
+    generation_state = dict(st.session_state.get("institutional_generation") or {})
+    batch_id = str(generation_state.get("batch_id", "") or "").strip()
+    if batch_id:
+        return batch_id
+    latest_generation = _load_latest_generated_games() or {}
+    batch_id = str(latest_generation.get("batch_id", "") or "").strip()
+    if batch_id:
+        return batch_id
+    batch_ids = _load_generation_batch_ids()
+    return batch_ids[0] if batch_ids else ""
+
+
+def _load_generation_event_ids_for_batch(batch_id: str | None) -> list[int]:
+    resolved_batch_id = str(batch_id or "").strip()
+    if not resolved_batch_id:
+        return []
+    event_ids: list[int] = []
+    seen: set[int] = set()
+    for generation in _load_generation_history(limit=None):
+        if str(generation.get("batch_id", "") or "").strip() != resolved_batch_id:
+            continue
+        generation_event_id = int(generation.get("generation_event_id", 0) or 0)
+        if generation_event_id > 0 and generation_event_id not in seen:
+            seen.add(generation_event_id)
+            event_ids.append(generation_event_id)
+    return sorted(event_ids)
+
+
+def _store_active_batch_state(*, batch_id: str | None = None, generation_event_ids: list[int] | None = None, policy_id: str | None = None, generated_at: str | None = None, game_size: int | None = None, total_games: int | None = None) -> None:
+    resolved_batch_id = str(batch_id or "").strip()
+    if resolved_batch_id:
+        st.session_state["institutional_active_batch_id"] = resolved_batch_id
+    if generation_event_ids is not None:
+        st.session_state["institutional_active_generation_event_ids"] = [int(value) for value in generation_event_ids if int(value) > 0]
+    if policy_id is not None:
+        st.session_state["institutional_active_policy_id"] = str(policy_id or "").strip()
+    if generated_at is not None:
+        st.session_state["institutional_active_generated_at"] = str(generated_at or "")
+    if game_size is not None:
+        st.session_state["institutional_active_game_size"] = int(game_size)
+    if total_games is not None:
+        st.session_state["institutional_active_total_games"] = int(total_games)
+
+
+def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
+    resolved_batch_id = str(batch_id or "").strip()
     with get_session(DB_PATH) as session:
         events = (
             session.query(GenerationEvent)
@@ -2635,6 +2729,14 @@ def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
                 .order_by(GeneratedGame.game_index.asc())
                 .all()
             )
+            if resolved_batch_id:
+                rows = [
+                    row
+                    for row in rows
+                    if str(dict(getattr(row, "context_json", {}) or {}).get("batch_id", "") or "").strip() == resolved_batch_id
+                ]
+                if not rows:
+                    continue
             games: list[dict[str, Any]] = []
             for row in rows:
                 numbers = [int(number) for number in (row.numbers or [])]
@@ -2676,6 +2778,7 @@ def _load_persisted_generation_event_groups() -> list[dict[str, Any]]:
 
 def _run_institutional_conference(contest_number: int | None = None) -> None:
     selected_contest = _safe_int(contest_number, default=None)
+    selected_batch_id = str(st.session_state.get("institutional_active_batch_id", "") or "").strip()
     latest_contest = _load_imported_contest(selected_contest) or _get_latest_contest()
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
@@ -2683,9 +2786,11 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             "warning": "imported_contests ainda est? vazio. Sincronize o resultado oficial para habilitar a confer?ncia autom?tica.",
         }
         return
-    grouped_generations = _load_persisted_generation_event_groups()
+    grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
     if not grouped_generations:
-        st.session_state["institutional_check_result"] = {"warning": "Gere jogos antes de conferir."}
+        st.session_state["institutional_check_result"] = {
+            "warning": "Gere jogos na bateria ativa antes de conferir."
+        }
         return
     generation_results: list[dict[str, Any]] = []
     total_prizes = 0
@@ -3525,6 +3630,12 @@ def _clear_institutional_history_state() -> None:
         "institutional_generation",
         "institutional_generation_result",
         "institutional_generation_batch_result",
+        "institutional_active_batch_id",
+        "institutional_active_generation_event_ids",
+        "institutional_active_policy_id",
+        "institutional_active_generated_at",
+        "institutional_active_game_size",
+        "institutional_active_total_games",
         "institutional_check",
         "institutional_check_result",
         "institutional_simulation",
@@ -3563,6 +3674,12 @@ def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None
         "institutional_simulation_error",
         "institutional_check_result",
         "institutional_check",
+        "institutional_active_batch_id",
+        "institutional_active_generation_event_ids",
+        "institutional_active_policy_id",
+        "institutional_active_generated_at",
+        "institutional_active_game_size",
+        "institutional_active_total_games",
         "institutional_output_batch_id",
     ):
         st.session_state.pop(key, None)
@@ -4836,6 +4953,14 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     if scientific_batch_id and (batch_result or generation_result):
         scientific_policy_discovery = discover_scientific_generation_policy(scientific_game_size, db_path=DB_PATH)
         official_generation_policy = dict(scientific_policy_discovery.get("policy") or {})
+        _store_active_batch_state(
+            batch_id=scientific_batch_id,
+            generation_event_ids=_load_generation_event_ids_for_batch(scientific_batch_id),
+            policy_id=str(official_generation_policy.get("policy_id") or official_generation_policy.get("policy_signature") or scientific_policy_discovery.get("policy_id") or ""),
+            generated_at=str((batch_result or {}).get("created_at") or (generation_result or {}).get("created_at") or datetime.now(UTC).isoformat()),
+            game_size=scientific_game_size,
+            total_games=int(summary_result.get("total_jogos_gerados", total_jogos_esperados) or total_jogos_esperados),
+        )
     _render_scientific_policy_panel(
         policy=official_generation_policy,
         strategy_size=int(dezenas_per_game),
@@ -5141,6 +5266,23 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
+
+    available_batches = _load_generation_batch_ids()
+    active_batch_id = _resolve_active_batch_id()
+    if active_batch_id and active_batch_id not in available_batches and available_batches:
+        active_batch_id = available_batches[0]
+    if available_batches:
+        selected_batch_index = available_batches.index(active_batch_id) if active_batch_id in available_batches else 0
+        selected_batch_id = st.selectbox(
+            "Selecionar bateria para conferência",
+            options=available_batches,
+            index=selected_batch_index,
+            help="Por padrão usamos a última bateria gerada. Baterias antigas entram apenas por seleção manual.",
+        )
+    else:
+        selected_batch_id = active_batch_id
+    st.session_state["institutional_active_batch_id"] = str(selected_batch_id or "").strip()
+    active_generation_event_ids = _load_generation_event_ids_for_batch(selected_batch_id)
 
     live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
     try:
@@ -5712,6 +5854,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
         st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
+
+    st.caption(
+        f"Bateria ativa: {selected_batch_id or '-'} | gerações ativas: "
+        f"{', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}"
+    )
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Hist?rico Anal?tico")
@@ -5736,6 +5883,17 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     games_df["jogo n°"] = pd.to_numeric(games_df["jogo n°"], errors="coerce")
     games_df["concurso conferido"] = pd.to_numeric(games_df["concurso conferido"], errors="coerce")
     games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
+
+    active_batch_id = _resolve_active_batch_id()
+    if active_batch_id and "batch_id" in games_df.columns:
+        active_mask = games_df["batch_id"].astype(str).fillna("").eq(str(active_batch_id))
+        if bool(active_mask.any()):
+            games_df = games_df[active_mask].copy()
+            st.caption(f"Bateria ativa: {active_batch_id}")
+        else:
+            st.caption(f"Bateria ativa: {active_batch_id} | sem jogos persistidos nessa bateria, exibindo histórico acumulado")
+    else:
+        st.caption("Bateria ativa: -")
 
     filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
