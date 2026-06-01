@@ -3305,27 +3305,27 @@ def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
 def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
-        generation_label = f"GeraÃ§Ã£o {generation.get('generation_event_id', '-')}"
+        generation_label = f"Geração {generation.get('generation_event_id', '-')}"
         created_at = str(generation.get("created_at", "") or "")
         strategy = str(generation.get("strategy", "") or "")
         for game in generation.get("games", []) or []:
             hits_value = game.get("hits")
             rows.append(
                 {
-                    "geraÃ§Ã£o": generation_label,
+                    "geração": generation_label,
                     "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
                     "batch_id": str(generation.get("batch_id", "") or ""),
                     "data/hora": created_at,
-                    "jogo nÂ°": int(game.get("game_index", 0) or 0),
+                    "jogo n°": int(game.get("game_index", 0) or 0),
                     "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                    "estratÃ©gia": strategy or "-",
+                    "estratégia": strategy or "-",
                     "score": round(float(game.get("score", 0.0) or 0.0), 4),
                     "origem/modelo": str(game.get("origin", "") or "institutional"),
-                    "status de conferÃªncia": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
+                    "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
                     "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
                     "acertos": int(hits_value) if hits_value is not None else None,
-                    "premiaÃ§Ã£o": str(game.get("prize_status", "") or "") or "â€”",
-                    "observaÃ§Ãµes": str(game.get("prize_tier", "") or "") or "-",
+                    "premiação": str(game.get("prize_status", "") or "") or "—",
+                    "observações": str(game.get("prize_tier", "") or "") or "-",
                     "generation_mode": str(game.get("generation_mode", "") or ""),
                     "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
                     "reconciled_at": str(game.get("reconciled_at", "") or ""),
@@ -3347,6 +3347,110 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
                 }
             )
     return rows
+
+
+def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(
+            columns=[
+                "geração",
+                "generation_event_id",
+                "batch_id",
+                "data/hora",
+                "jogo n°",
+                "dezenas",
+                "estratégia",
+                "score",
+                "origem/modelo",
+                "status de conferência",
+                "concurso conferido",
+                "acertos",
+                "premiação",
+                "observações",
+                "generation_mode",
+                "reconciliation_id",
+                "reconciled_at",
+                "status comandante saída",
+                "status científico",
+                "classificação científica",
+                "ação sugerida",
+                "tipo visual",
+                "motivo rejeição",
+                "policy_id",
+                "policy_origin",
+                "policy_variant",
+                "is_conferible",
+                "is_rejected_policy",
+                "is_candidate",
+                "is_guardian_rejected",
+                "is_scientific_rejected",
+                "is_calibration_only",
+            ]
+        )
+
+    df = df.copy()
+    alias_map = {
+        "strategy": "estratégia",
+        "strategy_name": "estratégia",
+        "nome_estrategia": "estratégia",
+        "game_strategy": "estratégia",
+        "estratÃ©gia": "estratégia",
+        "geraÃ§Ã£o": "geração",
+        "jogo nÂ°": "jogo n°",
+        "premiaÃ§Ã£o": "premiação",
+        "observaÃ§Ãµes": "observações",
+        "status de conferÃªncia": "status de conferência",
+    }
+    for source, target in alias_map.items():
+        if source in df.columns and target not in df.columns:
+            df[target] = df[source]
+    if "estratégia" not in df.columns:
+        df["estratégia"] = "não informado"
+    if "geração" not in df.columns and "generation_event_id" in df.columns:
+        df["geração"] = df["generation_event_id"].apply(lambda value: f"Geração {int(value)}" if pd.notna(value) else "Geração -")
+    if "jogo n°" not in df.columns:
+        df["jogo n°"] = 0
+    if "status de conferência" not in df.columns:
+        df["status de conferência"] = "Nao conferido"
+    if "premiação" not in df.columns:
+        df["premiação"] = "—"
+    if "observações" not in df.columns:
+        df["observações"] = "-"
+    if "batch_id" not in df.columns:
+        df["batch_id"] = ""
+    if "generation_mode" not in df.columns:
+        df["generation_mode"] = ""
+    if "reconciliation_id" not in df.columns:
+        df["reconciliation_id"] = None
+    if "reconciled_at" not in df.columns:
+        df["reconciled_at"] = ""
+    for column in (
+        "generation_event_id",
+        "jogo n°",
+        "concurso conferido",
+        "acertos",
+        "score",
+        "reconciliation_id",
+    ):
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+    for column in ("data/hora", "reconciled_at", "estratégia", "origem/modelo", "status de conferência", "premiação", "observações", "tipo visual", "motivo rejeição", "policy_id", "policy_origin", "policy_variant", "classificação científica", "ação sugerida", "status comandante saída", "status científico"):
+        if column in df.columns:
+            df[column] = df[column].fillna("").astype(str)
+    for column in ("is_conferible", "is_rejected_policy", "is_candidate", "is_guardian_rejected", "is_scientific_rejected", "is_calibration_only"):
+        if column in df.columns:
+            df[column] = df[column].fillna(False).astype(bool)
+    return df
+
+
+def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df.copy()
+    safe_df = df.copy()
+    for column in safe_df.columns:
+        if safe_df[column].dtype == "object":
+            safe_df[column] = safe_df[column].apply(lambda value: "" if value is None else str(value))
+    return safe_df
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
@@ -3873,10 +3977,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             {
                 "tabela": table,
                 "contagem": int(count),
-                "ultima_persistencia": snapshot["latest"].get(table, "-"),
+                "ultima_persistencia": str(snapshot["latest"].get(table, "-") or "-"),
             }
         )
-    st.dataframe(pd.DataFrame(table_rows), hide_index=True, use_container_width=True)
+    st.dataframe(_make_arrow_safe(pd.DataFrame(table_rows)), hide_index=True, use_container_width=True)
 
     with st.expander("Timeline secundária", expanded=False):
         timeline = _load_institutional_timeline(limit=30)
@@ -3912,12 +4016,12 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
         {
             "tabela": table,
             "contagem": int(snapshot["counts"].get(table, 0) or 0),
-            "ultima_persistencia": snapshot["latest"].get(table, "-"),
+            "ultima_persistencia": str(snapshot["latest"].get(table, "-") or "-"),
         }
         for table in HISTORICAL_TEST_TABLES
     ]
     st.markdown("##### Diagnostico antes da limpeza")
-    st.dataframe(pd.DataFrame(before_rows), hide_index=True, use_container_width=True)
+    st.dataframe(_make_arrow_safe(pd.DataFrame(before_rows)), hide_index=True, use_container_width=True)
     if st.button("Apagar historico persistido", type="primary"):
         result = _purge_institutional_history_tables()
         refreshed_snapshot = _database_snapshot()
@@ -3925,20 +4029,20 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
             {
                 "tabela": table,
                 "contagem": int(refreshed_snapshot["counts"].get(table, 0) or 0),
-                "ultima_persistencia": refreshed_snapshot["latest"].get(table, "-"),
+                "ultima_persistencia": str(refreshed_snapshot["latest"].get(table, "-") or "-"),
             }
             for table in HISTORICAL_TEST_TABLES
         ]
         preserved_row = {
             "tabela": "imported_contests",
             "contagem": int(refreshed_snapshot["counts"].get("imported_contests", 0) or 0),
-            "ultima_persistencia": refreshed_snapshot["latest"].get("imported_contests", "-"),
+            "ultima_persistencia": str(refreshed_snapshot["latest"].get("imported_contests", "-") or "-"),
         }
         st.success("Historico institucional apagado.")
         st.markdown("##### Resultado da limpeza")
         st.json(result)
         st.markdown("##### Diagnostico depois da limpeza")
-        st.dataframe(pd.DataFrame(after_rows + [preserved_row]), hide_index=True, use_container_width=True)
+        st.dataframe(_make_arrow_safe(pd.DataFrame(after_rows + [preserved_row])), hide_index=True, use_container_width=True)
 
 
 
@@ -5624,14 +5728,14 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         st.info("Ainda nao ha jogos persistidos para reconstruir o historico analitico.")
         return
 
-    if "is_conferible" not in games_df.columns:
-        games_df["is_conferible"] = True
-    if "tipo visual" not in games_df.columns:
-        games_df["tipo visual"] = "Conferível"
-    games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
+    games_df = _ensure_analytical_games_schema(games_df)
     games_df["data/hora_dt"] = pd.to_datetime(games_df["data/hora"], errors="coerce")
     games_df["acertos_num"] = pd.to_numeric(games_df["acertos"], errors="coerce")
     games_df["score_num"] = pd.to_numeric(games_df["score"], errors="coerce").fillna(0.0)
+    games_df["generation_event_id"] = pd.to_numeric(games_df["generation_event_id"], errors="coerce")
+    games_df["jogo n°"] = pd.to_numeric(games_df["jogo n°"], errors="coerce")
+    games_df["concurso conferido"] = pd.to_numeric(games_df["concurso conferido"], errors="coerce")
+    games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
 
     filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
