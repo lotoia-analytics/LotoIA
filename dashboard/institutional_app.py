@@ -1000,6 +1000,9 @@ def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[
             continue
         policy_before = dict(getattr(row, "policy_before", {}) or {})
         policy_after = dict(getattr(row, "policy_after", {}) or {})
+        generation_range = dict(getattr(row, "generation_range", {}) or {})
+        cross_validation_summary = dict(getattr(row, "cross_validation_summary", {}) or {})
+        scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
         memory_index[batch_id] = {
             "id": int(getattr(row, "id", 0) or 0),
             "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
@@ -1007,7 +1010,9 @@ def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[
             "strategy_name": str(getattr(row, "strategy_name", "") or ""),
             "game_size": int(getattr(row, "game_size", 0) or 0),
             "batch_id": batch_id,
-            "generation_range": dict(getattr(row, "generation_range", {}) or {}),
+            "generation_range": generation_range,
+            "generation_event_id": int(generation_range.get("generation_event_id", 0) or 0),
+            "contest_number": int(generation_range.get("contest_number", 0) or 0),
             "total_games": int(getattr(row, "total_games", 0) or 0),
             "unique_games": int(getattr(row, "unique_games", 0) or 0),
             "duplicate_games": int(getattr(row, "duplicate_games", 0) or 0),
@@ -1021,6 +1026,7 @@ def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[
             "policy_after": policy_after,
             "best_hit": int(getattr(row, "best_hit", 0) or 0),
             "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
+            "count_10": int(scientific_components.get("count_10", 0) or 0),
             "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
             "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
             "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
@@ -1265,11 +1271,25 @@ def _render_scientific_memory_block() -> None:
     seed_report = _ensure_official_history_seeded()
     official_diagnostics = _load_official_history_diagnostics()
     scientific_memory = _load_latest_scientific_memory(limit=5)
+    active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
     latest_memory = scientific_memory[0] if scientific_memory else {}
-    post_reconciliation_memory = next(
-        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
-        {},
-    )
+    if active_reconciliation_generation_event_id is not None:
+        post_reconciliation_memory = next(
+            (
+                row
+                for row in scientific_memory
+                if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"
+                and int(row.get("generation_event_id", 0) or 0) == int(active_reconciliation_generation_event_id or 0)
+            ),
+            {},
+        )
+    else:
+        post_reconciliation_memory = next(
+            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
+            {},
+        )
+    if not post_reconciliation_memory:
+        post_reconciliation_memory = dict(st.session_state.get("institutional_post_reconciliation_memory") or {})
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
