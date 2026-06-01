@@ -618,62 +618,53 @@ class LotofacilScientificCore:
         history_count = int(profile.get("contest_count", len(self.contests)) or len(self.contests))
         frequency_map = {int(number): int(amount) for number, amount in (profile.get("number_frequency", {}) or {}).items() if int(_safe_int(number, default=0) or 0) > 0}
         dominant_numbers = [int(item.get("number", 0) or 0) for item in profile.get("dominant_numbers", []) if int(item.get("number", 0) or 0) > 0]
-        core_numbers = tuple(dominant_numbers[:4]) if dominant_numbers else ()
-        if not core_numbers:
-            core_numbers = (7, 12, 16, 23) if resolved_game_size == 15 else tuple(range(1, min(4, resolved_game_size) + 1))
+        core_numbers = tuple(dominant_numbers[:4]) if dominant_numbers else tuple(range(1, min(4, resolved_game_size) + 1))
         discouraged_numbers = tuple(
             sorted(
                 {number for number in range(1, 26)} - set(core_numbers),
                 key=lambda number: (int(profile.get("number_frequency", {}).get(str(number), 0) or 0), number),
             )[:6]
         )
-        repeat_mean = float(profile.get("average_repetition", 8.0 if resolved_game_size == 15 else max(1.0, resolved_game_size / 2)) or (8.0 if resolved_game_size == 15 else max(1.0, resolved_game_size / 2)))
-        sequence_mean = float(profile.get("average_sequence_max", 5.0 if resolved_game_size == 15 else max(4.0, resolved_game_size / 3)) or (5.0 if resolved_game_size == 15 else max(4.0, resolved_game_size / 3)))
-        coverage_mean = float(profile.get("average_coverage", 0.40 if resolved_game_size == 15 else 0.35) or (0.40 if resolved_game_size == 15 else 0.35))
-        entropy_mean = float(profile.get("average_entropy", 0.45 if resolved_game_size == 15 else 0.35) or (0.45 if resolved_game_size == 15 else 0.35))
+        raw_repeat_mean = float(profile.get("average_repetition", max(1.0, resolved_game_size / 2)) or max(1.0, resolved_game_size / 2))
+        repeat_mean = min(raw_repeat_mean, max(1.0, resolved_game_size / 2))
+        raw_sequence_mean = float(profile.get("average_sequence_max", max(4.0, resolved_game_size / 3)) or max(4.0, resolved_game_size / 3))
+        sequence_mean = min(raw_sequence_mean, max(4.0, resolved_game_size / 3 + 1.0))
+        coverage_mean = float(profile.get("average_coverage", 0.35) or 0.35)
+        entropy_mean = float(profile.get("average_entropy", 0.35) or 0.35)
         average_odd = float(profile.get("average_parity_odd", (resolved_game_size + 1) / 2) or ((resolved_game_size + 1) / 2))
         average_even = float(profile.get("average_parity_even", resolved_game_size / 2) or (resolved_game_size / 2))
-        if resolved_game_size == 15:
-            repeat_floor = 7
-            repeat_ceiling = 10
-            sequence_cap = 6
-            coverage_floor = 0.40
-            entropy_floor = 0.45
-            max_frequency_cap = 0.70
-            min_frequency_floor = 0.20
-            preferred_pairs: list[tuple[int, int]] = [(7, 8), (8, 7)]
-            allowed_pairs: list[tuple[int, int]] = [(7, 8), (8, 7), (6, 9), (9, 6)]
-        else:
-            repeat_floor = max(0, int(round(repeat_mean)) - 1)
-            repeat_ceiling = min(resolved_game_size, int(round(repeat_mean)) + 2)
-            sequence_cap = max(4, int(round(sequence_mean + 1.0)))
-            coverage_floor = max(0.35, min(0.75, round(coverage_mean, 2)))
-            entropy_floor = max(0.30, min(0.75, round(entropy_mean, 2)))
-            max_frequency_cap = 0.70
-            min_frequency_floor = 0.20
-            odd_target = max(0, min(resolved_game_size, int(round(average_odd))))
-            even_target = resolved_game_size - odd_target
-            if even_target < 0:
-                even_target = max(0, min(resolved_game_size, int(round(average_even))))
-                odd_target = resolved_game_size - even_target
-            preferred_pairs = []
-            base_pair = (odd_target, even_target)
-            if sum(base_pair) == resolved_game_size:
-                preferred_pairs.append(base_pair)
-                if base_pair[0] != base_pair[1]:
-                    preferred_pairs.append((base_pair[1], base_pair[0]))
-            if not preferred_pairs:
-                preferred_pairs = [(resolved_game_size // 2, resolved_game_size - (resolved_game_size // 2))]
-            allowed_pairs = []
-            for odd_count, even_count in preferred_pairs:
-                for delta in (0, -1, 1):
-                    candidate_odd = max(0, min(resolved_game_size, odd_count + delta))
-                    candidate_even = resolved_game_size - candidate_odd
-                    pair = (candidate_odd, candidate_even)
-                    if sum(pair) == resolved_game_size and pair not in allowed_pairs:
-                        allowed_pairs.append(pair)
-            if not allowed_pairs:
-                allowed_pairs = list(preferred_pairs)
+        repeat_floor = max(0, int(round(repeat_mean)) - 1)
+        repeat_ceiling = min(resolved_game_size, int(round(repeat_mean)) + 2)
+        sequence_cap = max(4, int(round(sequence_mean + 1.0)))
+        coverage_floor = max(0.30, min(0.75, round(coverage_mean, 2)))
+        entropy_floor = max(0.25, min(0.75, round(entropy_mean, 2)))
+        max_frequency_cap = 0.70
+        min_frequency_floor = 0.20
+        odd_target = max(0, min(resolved_game_size, int(round(average_odd))))
+        even_target = resolved_game_size - odd_target
+        if even_target < 0:
+            even_target = max(0, min(resolved_game_size, int(round(average_even))))
+            odd_target = resolved_game_size - even_target
+        preferred_pairs = []
+        base_pair = (odd_target, even_target)
+        if sum(base_pair) == resolved_game_size:
+            preferred_pairs.append(base_pair)
+            if base_pair[0] != base_pair[1]:
+                preferred_pairs.append((base_pair[1], base_pair[0]))
+        if not preferred_pairs:
+            preferred_pairs = [(resolved_game_size // 2, resolved_game_size - (resolved_game_size // 2))]
+        allowed_pairs = []
+        for odd_count, even_count in preferred_pairs:
+            for delta in (0, -1, 1):
+                candidate_odd = max(0, min(resolved_game_size, odd_count + delta))
+                candidate_even = resolved_game_size - candidate_odd
+                pair = (candidate_odd, candidate_even)
+                if sum(pair) == resolved_game_size and pair not in allowed_pairs:
+                    allowed_pairs.append(pair)
+        if not allowed_pairs:
+            allowed_pairs = list(preferred_pairs)
+        preferred_pairs = sorted(dict.fromkeys(preferred_pairs), key=lambda pair: (int(pair[0]), int(pair[1])))
+        allowed_pairs = sorted(dict.fromkeys(allowed_pairs), key=lambda pair: (int(pair[0]), int(pair[1])))
 
         def _paired_profile_ratios(pairs: Sequence[tuple[int, int]]) -> dict[tuple[int, int], float]:
             if not pairs:
@@ -722,7 +713,7 @@ class LotofacilScientificCore:
             policy["policy_signature"] = hashlib.sha1(json.dumps(policy, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
             return policy
 
-        base_repeat_center = int(round(repeat_mean or (8.0 if resolved_game_size == 15 else max(1.0, resolved_game_size / 2))))
+        base_repeat_center = int(round(repeat_mean or max(1.0, resolved_game_size / 2)))
         base_policy = _canonical_policy(
             repeat_min=repeat_floor,
             repeat_max=repeat_ceiling,
@@ -901,17 +892,7 @@ class LotofacilScientificCore:
                     "core_overlap": len(core_numbers),
                 }
             ]
-        if resolved_game_size == 15:
-            selected_candidate = next(
-                (
-                    item
-                    for item in scored_candidates
-                    if item.get("variant") == "base_history_profile"
-                ),
-                None,
-            ) or min(accepted_candidates, key=lambda item: (float(item["score"]), int(item["rank"])))
-        else:
-            selected_candidate = min(accepted_candidates, key=lambda item: (float(item["score"]), int(item["rank"])))
+        selected_candidate = min(accepted_candidates, key=lambda item: (float(item["score"]), int(item["rank"])))
         selected_policy = dict(selected_candidate["policy"])
         selected_policy["policy_origin"] = "automatic_scientific_discovery"
         selected_policy["policy_variant"] = str(selected_candidate["variant"])
