@@ -110,3 +110,66 @@ def test_lotofacil_scientific_core_builds_post_reconciliation_memory_for_near_mi
     assert memory["generation_range"]["contest_number"] == 3699
     assert memory["policy_after"]["policy_origin"] == "scientific_reconciliation_memory"
     assert memory["policy_after"]["next_generation_policy_adjustments"]["max_frequency_ratio"] <= 0.7
+
+
+def test_lotofacil_scientific_core_uses_reconciliation_results_for_count_10() -> None:
+    contest = _contest(3699, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    games = [
+        {"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "game_index": 1},
+        {"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 11], "game_index": 2},
+    ]
+    reconciliation_results = [
+        {"game_index": 1, "hits": 10},
+        {"game_index": 2, "hits": 9},
+    ]
+
+    memory = build_post_reconciliation_scientific_memory(
+        generation_event_id=350,
+        batch_id="calibration-350",
+        contest=contest,
+        games=games,
+        reconciliation_results=reconciliation_results,
+        policy_before={},
+        policy_after={},
+    )
+
+    assert memory["count_10"] == 1
+    assert memory["cross_validation_summary"]["scientific_score_components"]["count_10"] == 1
+
+
+def test_lotofacil_scientific_core_builds_strong_near_miss_memory() -> None:
+    contest = _contest(3699, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    generation_results = [
+        {
+            "generation_event_id": 351,
+            "batch_id": "calibration-351",
+            "total_games": 10,
+            "best_hits": 10,
+            "total_hits": 98,
+            "prize_count": 0,
+            "results": [{"hits": 10} for _ in range(9)] + [{"hits": 9}],
+            "games": [{"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} for _ in range(10)],
+        },
+        {
+            "generation_event_id": 354,
+            "batch_id": "calibration-354",
+            "total_games": 10,
+            "best_hits": 10,
+            "total_hits": 97,
+            "prize_count": 0,
+            "results": [{"hits": 10} for _ in range(8)] + [{"hits": 9}, {"hits": 8}],
+            "games": [{"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} for _ in range(10)],
+        },
+    ]
+
+    memory = LotofacilScientificCore(contests=[]).build_strong_near_miss_scientific_memory(
+        batch_id="calibration",
+        contest=contest,
+        generation_results=generation_results,
+    )
+
+    assert memory["memory_kind"] == "scientific_strong_near_miss"
+    assert memory["scientific_classification"] == "NEAR_MISS_FORTE"
+    assert memory["recommended_action"] == "recalibrate_from_strong_near_miss_towards_11_plus_and_15"
+    assert memory["generation_range"]["best_generation_event_id"] in {351, 354}
+    assert memory["generation_range"]["best_generation_count_10"] >= 8

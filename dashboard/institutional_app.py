@@ -35,6 +35,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_lotofacil_history,
     build_post_reconciliation_scientific_memory,
+    build_strong_near_miss_scientific_memory,
     discover_scientific_generation_policy,
     get_scientific_generation_policy,
 )
@@ -839,6 +840,9 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
         )
     memories: list[dict[str, Any]] = []
     for row in rows:
+        generation_range = dict(getattr(row, "generation_range", {}) or {})
+        cross_validation_summary = dict(getattr(row, "cross_validation_summary", {}) or {})
+        scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
         memories.append(
             {
                 "id": int(getattr(row, "id", 0) or 0),
@@ -847,7 +851,11 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
                 "strategy_name": str(getattr(row, "strategy_name", "") or ""),
                 "game_size": int(getattr(row, "game_size", 0) or 0),
                 "batch_id": str(getattr(row, "batch_id", "") or ""),
-                "generation_range": dict(getattr(row, "generation_range", {}) or {}),
+                "generation_range": generation_range,
+                "generation_event_id": int(
+                    generation_range.get("generation_event_id", scientific_components.get("best_generation_event_id", 0) or 0) or 0
+                ),
+                "contest_number": int(generation_range.get("contest_number", scientific_components.get("contest_number", 0) or 0) or 0),
                 "total_games": int(getattr(row, "total_games", 0) or 0),
                 "unique_games": int(getattr(row, "unique_games", 0) or 0),
                 "duplicate_games": int(getattr(row, "duplicate_games", 0) or 0),
@@ -858,6 +866,7 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
                 "recommended_action": str(getattr(row, "recommended_action", "") or ""),
                 "best_hit": int(getattr(row, "best_hit", 0) or 0),
                 "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
+                "count_10": int(scientific_components.get("count_10", 0) or 0),
                 "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
                 "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
                 "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
@@ -870,6 +879,8 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
                 "official_history_last_contest": getattr(row, "official_history_last_contest", None),
                 "official_history_window": list(getattr(row, "official_history_window", []) or []),
                 "source": str(getattr(row, "source", "") or ""),
+                "cross_validation_summary": cross_validation_summary,
+                "scientific_score_components": scientific_components,
             }
         )
     return memories
@@ -1349,6 +1360,40 @@ def _render_scientific_memory_block() -> None:
                 )
             with st.expander("Ver memória pós-conferência completa", expanded=False):
                 st.json(post_reconciliation_memory)
+    strong_near_miss_memory = next(
+        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_strong_near_miss"),
+        {},
+    )
+    if strong_near_miss_memory:
+        st.markdown("###### Melhores near miss da última bateria")
+        near_miss_window = dict(strong_near_miss_memory.get("generation_range") or {})
+        near_miss_components = dict(strong_near_miss_memory.get("scientific_score_components") or {})
+        near_miss_cols = st.columns(6)
+        near_miss_cols[0].metric("Melhor geração", int(near_miss_window.get("best_generation_event_id", 0) or 0))
+        near_miss_cols[1].metric(
+            "Jogos com 10",
+            int(near_miss_window.get("best_generation_count_10", 0) or strong_near_miss_memory.get("count_10", 0) or 0),
+        )
+        near_miss_cols[2].metric(
+            "Jogos com 11+",
+            int(near_miss_window.get("best_generation_count_11_plus", 0) or strong_near_miss_memory.get("count_11_plus", 0) or 0),
+        )
+        near_miss_cols[3].metric("Melhor acerto", int(near_miss_window.get("best_generation_best_hits", 0) or strong_near_miss_memory.get("best_hit", 0) or 0))
+        near_miss_cols[4].metric("Classificação", str(strong_near_miss_memory.get("scientific_classification", "-") or "-"))
+        near_miss_cols[5].metric("Ação", str(strong_near_miss_memory.get("recommended_action", "-") or "-"))
+        st.caption(
+            " | ".join(
+                [
+                    f"batch_id={strong_near_miss_memory.get('batch_id', '-')}",
+                    f"candidate_generation_event_ids={near_miss_window.get('candidate_generation_event_ids', [])}",
+                    f"total_generations_analyzed={near_miss_window.get('total_generations_analyzed', 0)}",
+                    f"secondary_reference_generation_event_id={near_miss_window.get('secondary_reference_generation_event_id', '-')}",
+                    f"count_10={near_miss_components.get('count_10', strong_near_miss_memory.get('count_10', 0))}",
+                ]
+            )
+        )
+        with st.expander("Ver memória near miss forte completa", expanded=False):
+            st.json(strong_near_miss_memory)
     st.markdown("##### Hist?rico Oficial Lotof?cil")
     official_rows = _load_official_history_rows()
     if official_rows:
@@ -2993,6 +3038,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             batch_id=str(group.get("batch_id", "") or selected_batch_id or ""),
             contest=contest_payload,
             games=list(group.get("games") or []),
+            reconciliation_results=list(comparison.get("results", [])),
             policy_before=dict(scientific_policy_snapshot.get("policy_before") or scientific_policy_snapshot.get("policy") or {}),
             policy_after=dict(scientific_policy_snapshot.get("policy_after") or scientific_policy_snapshot.get("policy") or {}),
             db_path=DB_PATH,
@@ -3023,6 +3069,24 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         total_prizes += int(comparison.get("prize_count", 0) or 0)
         total_hits += int(comparison.get("total_hits", 0) or 0)
         best_hits_global = max(best_hits_global, int(comparison.get("best_hits", 0) or 0))
+    strong_near_miss_payload: dict[str, Any] = {}
+    if generation_results:
+        strong_near_miss_payload = build_strong_near_miss_scientific_memory(
+            batch_id=selected_batch_id or str(generation_results[0].get("batch_id", "") or ""),
+            contest=latest_contest,
+            generation_results=generation_results,
+            policy_before=dict((st.session_state.get("institutional_post_reconciliation_memory") or {}).get("policy_before") or {}),
+            policy_after=dict((st.session_state.get("institutional_post_reconciliation_memory") or {}).get("policy_after") or {}),
+            db_path=DB_PATH,
+        )
+        if strong_near_miss_payload:
+            persisted_strong_near_miss = _persist_scientific_reconciliation_memory(strong_near_miss_payload)
+            st.session_state["institutional_post_reconciliation_memory"] = dict(
+                persisted_strong_near_miss or strong_near_miss_payload
+            )
+            st.session_state["institutional_strong_near_miss_memory"] = dict(
+                persisted_strong_near_miss or strong_near_miss_payload
+            )
     st.session_state["institutional_check"] = {
         "runtime_status": "checked",
         "timestamp": datetime.now(UTC).isoformat(),
@@ -3039,6 +3103,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         "best_hits": best_hits_global,
         "total_hits": total_hits,
         "prize_count": total_prizes,
+        "strong_near_miss_memory": strong_near_miss_payload,
     }
 
 
