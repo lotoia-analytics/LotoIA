@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 try:
@@ -872,6 +872,170 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
             }
         )
     return memories
+
+
+def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    decision_index: dict[str, dict[str, Any]] = {}
+    memory_index: dict[str, dict[str, Any]] = {}
+    with get_session(DB_PATH) as session:
+        decision_rows = (
+            session.query(ScientificCalibrationDecision)
+            .order_by(
+                ScientificCalibrationDecision.created_at.desc(),
+                ScientificCalibrationDecision.id.desc(),
+            )
+            .all()
+        )
+        memory_rows = (
+            session.query(ScientificInstitutionalMemory)
+            .order_by(
+                ScientificInstitutionalMemory.created_at.desc(),
+                ScientificInstitutionalMemory.id.desc(),
+            )
+            .all()
+        )
+    for row in decision_rows:
+        batch_id = str(getattr(row, "source_batch_id", "") or "").strip()
+        if not batch_id or batch_id in decision_index:
+            continue
+        policy_before = dict(getattr(row, "policy_before", {}) or {})
+        policy_after = dict(getattr(row, "policy_after", {}) or {})
+        decision_index[batch_id] = {
+            "id": int(getattr(row, "id", 0) or 0),
+            "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+            "strategy": str(getattr(row, "strategy", "") or ""),
+            "game_size": int(getattr(row, "game_size", 0) or 0),
+            "source_batch_id": batch_id,
+            "source_generation_range": dict(getattr(row, "source_generation_range", {}) or {}),
+            "structural_status": str(getattr(row, "structural_status", "") or ""),
+            "scientific_status": str(getattr(row, "scientific_status", "") or ""),
+            "classification": str(getattr(row, "classification", "") or ""),
+            "main_reason": str(getattr(row, "main_reason", "") or ""),
+            "recommended_action": str(getattr(row, "recommended_action", "") or ""),
+            "policy_before": policy_before,
+            "policy_after": policy_after,
+            "policy_id": str(policy_after.get("policy_signature") or policy_after.get("policy_id") or ""),
+            "policy_origin": str(policy_after.get("policy_origin") or ""),
+            "policy_variant": str(policy_after.get("policy_variant") or ""),
+            "mode": str(getattr(row, "mode", "") or "OBSERVACAO"),
+            "applied": bool(getattr(row, "applied", 0) or 0),
+            "approved_by": str(getattr(row, "approved_by", "") or ""),
+            "notes": str(getattr(row, "notes", "") or ""),
+        }
+    for row in memory_rows:
+        batch_id = str(getattr(row, "batch_id", "") or "").strip()
+        if not batch_id or batch_id in memory_index:
+            continue
+        policy_before = dict(getattr(row, "policy_before", {}) or {})
+        policy_after = dict(getattr(row, "policy_after", {}) or {})
+        memory_index[batch_id] = {
+            "id": int(getattr(row, "id", 0) or 0),
+            "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+            "memory_kind": str(getattr(row, "memory_kind", "") or ""),
+            "strategy_name": str(getattr(row, "strategy_name", "") or ""),
+            "game_size": int(getattr(row, "game_size", 0) or 0),
+            "batch_id": batch_id,
+            "generation_range": dict(getattr(row, "generation_range", {}) or {}),
+            "total_games": int(getattr(row, "total_games", 0) or 0),
+            "unique_games": int(getattr(row, "unique_games", 0) or 0),
+            "duplicate_games": int(getattr(row, "duplicate_games", 0) or 0),
+            "structural_status": str(getattr(row, "structural_status", "") or ""),
+            "scientific_status": str(getattr(row, "scientific_status", "") or ""),
+            "scientific_classification": str(getattr(row, "scientific_classification", "") or ""),
+            "main_reason": str(getattr(row, "main_reason", "") or ""),
+            "recommended_action": str(getattr(row, "recommended_action", "") or ""),
+            "policy_applied": dict(getattr(row, "policy_applied", {}) or {}),
+            "policy_before": policy_before,
+            "policy_after": policy_after,
+            "best_hit": int(getattr(row, "best_hit", 0) or 0),
+            "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
+            "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
+            "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
+            "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
+            "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
+            "count_15": int(getattr(row, "count_15", 0) or 0),
+            "decision_mode": str(getattr(row, "decision_mode", "OBSERVACAO") or "OBSERVACAO"),
+            "approved_for_use": bool(getattr(row, "approved_for_use", 0) or 0),
+            "official_history_count": int(getattr(row, "official_history_count", 0) or 0),
+            "official_history_first_contest": getattr(row, "official_history_first_contest", None),
+            "official_history_last_contest": getattr(row, "official_history_last_contest", None),
+            "official_history_window": list(getattr(row, "official_history_window", []) or []),
+            "source": str(getattr(row, "source", "") or ""),
+            "policy_id": str(policy_after.get("policy_signature") or policy_after.get("policy_id") or ""),
+            "policy_origin": str(policy_after.get("policy_origin") or ""),
+            "policy_variant": str(policy_after.get("policy_variant") or ""),
+        }
+    return decision_index, memory_index
+
+
+def _classify_generation_visibility(
+    *,
+    generation: dict[str, Any],
+    scientific_decision: dict[str, Any] | None = None,
+    scientific_memory: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    decision = dict(scientific_decision or {})
+    memory = dict(scientific_memory or {})
+    commander_status = str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO").strip().upper()
+    total_duplicates = int(generation.get("total_jogos_duplicados", 0) or 0)
+    structural_status = "APROVADO" if commander_status == "APROVADO" and total_duplicates == 0 else "REPROVADO"
+    scientific_status = str(decision.get("scientific_status") or memory.get("scientific_status") or "").strip().upper()
+    scientific_classification = str(decision.get("classification") or memory.get("scientific_classification") or "").strip() or "-"
+    recommended_action = str(decision.get("recommended_action") or memory.get("recommended_action") or "").strip() or "-"
+    decision_mode = str(decision.get("mode") or memory.get("decision_mode") or "").strip().upper()
+    approved_for_use = bool(decision.get("applied") or memory.get("approved_for_use"))
+    policy_id = str(decision.get("policy_id") or memory.get("policy_id") or "")
+    policy_origin = str(decision.get("policy_origin") or memory.get("policy_origin") or "")
+    policy_variant = str(decision.get("policy_variant") or memory.get("policy_variant") or "")
+    source_batch_id = str(decision.get("source_batch_id") or memory.get("batch_id") or generation.get("batch_id", "") or "").strip()
+    is_guardian_rejected = commander_status != "APROVADO" or total_duplicates > 0
+    is_scientific_rejected = bool(scientific_status) and scientific_status != "APROVADO" and not approved_for_use
+    is_calibration_only = bool(decision_mode) and decision_mode == "OBSERVACAO" and bool(scientific_status) and not approved_for_use
+    if is_guardian_rejected:
+        visibility_label = "Rejeitado pelo Guardião"
+        visibility_kind = "rejected_guardian"
+        visibility_reason = "bateria bloqueada pelo comandante ou com duplicidade"
+        is_conferible = False
+    elif is_scientific_rejected:
+        visibility_label = "Reprovado pelo Motor Científico"
+        visibility_kind = "scientific_rejected"
+        visibility_reason = recommended_action if recommended_action != "-" else "bateria estruturalmente aprovada, mas cientificamente reprovada"
+        is_conferible = False
+    elif is_calibration_only:
+        visibility_label = "Calibração"
+        visibility_kind = "calibration"
+        visibility_reason = recommended_action if recommended_action != "-" else "bateria de calibração científica"
+        is_conferible = False
+    else:
+        visibility_label = "Conferível"
+        visibility_kind = "conferible"
+        visibility_reason = "bateria apta para conferência"
+        is_conferible = True
+    if commander_status == "APROVADO" and is_scientific_rejected:
+        visibility_reason = "Bateria estruturalmente aprovada, mas cientificamente reprovada. Disponível para diagnóstico/conferência supervisionada."
+    if is_guardian_rejected and total_duplicates > 0 and not str(visibility_reason).strip():
+        visibility_reason = "duplicidade acima do limite"
+    return {
+        "batch_id": source_batch_id,
+        "policy_id": policy_id,
+        "policy_origin": policy_origin,
+        "policy_variant": policy_variant,
+        "structural_status": structural_status,
+        "scientific_status": scientific_status or "-",
+        "scientific_classification": scientific_classification,
+        "recommended_action": recommended_action,
+        "decision_mode": decision_mode or "-",
+        "approved_for_use": approved_for_use,
+        "visibility_label": visibility_label,
+        "visibility_kind": visibility_kind,
+        "visibility_reason": visibility_reason,
+        "is_conferible": is_conferible,
+        "is_rejected_policy": is_scientific_rejected or is_guardian_rejected,
+        "is_candidate": bool(policy_id) or bool(policy_origin),
+        "is_guardian_rejected": is_guardian_rejected,
+        "is_scientific_rejected": is_scientific_rejected,
+        "is_calibration_only": is_calibration_only,
+    }
 
 
 def _load_official_history_summary() -> dict[str, Any]:
@@ -2804,6 +2968,7 @@ def _load_latest_reconciliation_for_generation(session: Any, generation_event_id
 
 def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
     history: list[dict[str, Any]] = []
+    scientific_decisions, scientific_memories = _load_scientific_context_indexes()
     with get_session(DB_PATH) as session:
         events_query = session.query(GenerationEvent).order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
         if limit is not None and int(limit) > 0:
@@ -2877,6 +3042,15 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
             top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
             first_context = dict(games[0].get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
+            visibility_context = _classify_generation_visibility(
+                generation={
+                    "batch_id": str(first_context.get("batch_id", "") or ""),
+                    "status_comandante_saida": str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                    "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
+                },
+                scientific_decision=scientific_decisions.get(str(first_context.get("batch_id", "") or "").strip(), {}),
+                scientific_memory=scientific_memories.get(str(first_context.get("batch_id", "") or "").strip(), {}),
+            )
             history.append(
                 {
                     "generation_event_id": int(event.id or 0),
@@ -2898,6 +3072,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "total_jogos_unicos": int(first_context.get("total_jogos_unicos", len(games)) or len(games)),
                     "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
                     "taxa_duplicidade": float(first_context.get("taxa_duplicidade", 0.0) or 0.0),
+                    **visibility_context,
                     "reconciliation": reconciliation_summary or {},
                     "games": games,
                     "top_games": sorted(
@@ -3130,34 +3305,48 @@ def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
 def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
-        generation_label = f"Geração {generation.get('generation_event_id', '-')}"
+        generation_label = f"GeraÃ§Ã£o {generation.get('generation_event_id', '-')}"
         created_at = str(generation.get("created_at", "") or "")
         strategy = str(generation.get("strategy", "") or "")
         for game in generation.get("games", []) or []:
             hits_value = game.get("hits")
             rows.append(
                 {
-                    "geração": generation_label,
+                    "geraÃ§Ã£o": generation_label,
                     "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
+                    "batch_id": str(generation.get("batch_id", "") or ""),
                     "data/hora": created_at,
-                    "jogo n°": int(game.get("game_index", 0) or 0),
+                    "jogo nÂ°": int(game.get("game_index", 0) or 0),
                     "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                    "estratégia": strategy or "-",
+                    "estratÃ©gia": strategy or "-",
                     "score": round(float(game.get("score", 0.0) or 0.0), 4),
                     "origem/modelo": str(game.get("origin", "") or "institutional"),
-                    "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
+                    "status de conferÃªncia": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
                     "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
                     "acertos": int(hits_value) if hits_value is not None else None,
-                    "premiação": str(game.get("prize_status", "") or "") or "—",
-                    "observações": str(game.get("prize_tier", "") or "") or "-",
+                    "premiaÃ§Ã£o": str(game.get("prize_status", "") or "") or "â€”",
+                    "observaÃ§Ãµes": str(game.get("prize_tier", "") or "") or "-",
                     "generation_mode": str(game.get("generation_mode", "") or ""),
                     "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
                     "reconciled_at": str(game.get("reconciled_at", "") or ""),
+                    "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                    "status científico": str(generation.get("scientific_status", "-") or "-"),
+                    "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
+                    "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
+                    "tipo visual": str(generation.get("visibility_label", "Conferível") or "Conferível"),
+                    "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
+                    "policy_id": str(generation.get("policy_id", "") or ""),
+                    "policy_origin": str(generation.get("policy_origin", "") or ""),
+                    "policy_variant": str(generation.get("policy_variant", "") or ""),
+                    "is_conferible": bool(generation.get("is_conferible", False)),
+                    "is_rejected_policy": bool(generation.get("is_rejected_policy", False)),
+                    "is_candidate": bool(generation.get("is_candidate", False)),
+                    "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
+                    "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
+                    "is_calibration_only": bool(generation.get("is_calibration_only", False)),
                 }
             )
     return rows
-
-
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
@@ -5435,6 +5624,11 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         st.info("Ainda nao ha jogos persistidos para reconstruir o historico analitico.")
         return
 
+    if "is_conferible" not in games_df.columns:
+        games_df["is_conferible"] = True
+    if "tipo visual" not in games_df.columns:
+        games_df["tipo visual"] = "Conferível"
+    games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
     games_df["data/hora_dt"] = pd.to_datetime(games_df["data/hora"], errors="coerce")
     games_df["acertos_num"] = pd.to_numeric(games_df["acertos"], errors="coerce")
     games_df["score_num"] = pd.to_numeric(games_df["score"], errors="coerce").fillna(0.0)
@@ -5497,86 +5691,163 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             ascending=[False, False, True],
         )
 
-    display_games = filtered_df.copy()
-    display_games["concurso conferido"] = display_games["concurso conferido"].apply(
-        lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
-    )
-    display_games["acertos"] = display_games["acertos"].apply(
-        lambda value: f"{int(value)}" if pd.notna(value) and int(value) >= 0 else "—"
-    )
-    display_games["score"] = display_games["score"].apply(lambda value: f"{float(value):.4f}")
-    display_games["data/hora"] = display_games["data/hora"].fillna("—")
-    display_games = display_games[
-        [
-            "geração",
-            "generation_event_id",
-            "data/hora",
-            "jogo n°",
-            "dezenas",
-            "estratégia",
-            "score",
-            "origem/modelo",
-            "status de conferência",
-            "concurso conferido",
-            "acertos",
-            "premiação",
-            "observações",
-        ]
-    ]
+    conferiveis_df = filtered_df[filtered_df["is_conferible"].fillna(False)].copy()
+    diagnostic_df = filtered_df[~filtered_df["is_conferible"].fillna(False)].copy()
 
-    top_df = filtered_df.sort_values(
+    display_games = conferiveis_df.copy()
+    if not display_games.empty:
+        display_games["concurso conferido"] = display_games["concurso conferido"].apply(
+            lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
+        )
+        display_games["acertos"] = display_games["acertos"].apply(
+            lambda value: f"{int(value)}" if pd.notna(value) and int(value) >= 0 else "—"
+        )
+        display_games["score"] = display_games["score"].apply(lambda value: f"{float(value):.4f}")
+        display_games["data/hora"] = display_games["data/hora"].fillna("—")
+        display_games = display_games[
+            [
+                "geração",
+                "generation_event_id",
+                "batch_id",
+                "data/hora",
+                "jogo n°",
+                "dezenas",
+                "estratégia",
+                "score",
+                "tipo visual",
+                "origem/modelo",
+                "status de conferência",
+                "concurso conferido",
+                "acertos",
+                "premiação",
+                "observações",
+            ]
+        ]
+
+    top_df = conferiveis_df.sort_values(
         by=["score_num", "acertos_num", "data/hora_dt", "generation_event_id", "jogo n°"],
         ascending=[False, False, False, False, True],
         na_position="last",
     ).copy()
     if not top_df.empty:
         top_df.insert(0, "rank", range(1, len(top_df) + 1))
-    top_df["concurso conferido"] = top_df["concurso conferido"].apply(
-        lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
-    )
-    top_df["acertos"] = top_df["acertos"].apply(
-        lambda value: f"{int(value)}" if pd.notna(value) and int(value) >= 0 else "—"
-    )
-    top_df["score"] = top_df["score"].apply(lambda value: f"{float(value):.4f}")
-    top_df["data/hora"] = top_df["data/hora"].fillna("—")
-    top_df = top_df[
-        [
-            "rank",
-            "geração",
-            "generation_event_id",
-            "data/hora",
-            "jogo n°",
-            "dezenas",
-            "estratégia",
-            "score",
-            "origem/modelo",
-            "status de conferência",
-            "concurso conferido",
-            "acertos",
-            "premiação",
-            "observações",
+        top_df["concurso conferido"] = top_df["concurso conferido"].apply(
+            lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
+        )
+        top_df["acertos"] = top_df["acertos"].apply(
+            lambda value: f"{int(value)}" if pd.notna(value) and int(value) >= 0 else "—"
+        )
+        top_df["score"] = top_df["score"].apply(lambda value: f"{float(value):.4f}")
+        top_df["data/hora"] = top_df["data/hora"].fillna("—")
+        top_df = top_df[
+            [
+                "rank",
+                "geração",
+                "generation_event_id",
+                "batch_id",
+                "data/hora",
+                "jogo n°",
+                "dezenas",
+                "estratégia",
+                "score",
+                "tipo visual",
+                "origem/modelo",
+                "status de conferência",
+                "concurso conferido",
+                "acertos",
+                "premiação",
+                "observações",
+            ]
         ]
-    ]
+
+    diagnostic_summary_rows: list[dict[str, Any]] = []
+    for generation in generation_history:
+        if bool(generation.get("is_conferible", False)):
+            continue
+        diagnostic_summary_rows.append(
+            {
+                "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
+                "batch_id": str(generation.get("batch_id", "") or ""),
+                "policy_id": str(generation.get("policy_id", "") or ""),
+                "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                "status científico": str(generation.get("scientific_status", "-") or "-"),
+                "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
+                "tipo visual": str(generation.get("visibility_label", "Diagnóstico") or "Diagnóstico"),
+                "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
+                "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
+                "total jogos": int(generation.get("total_games", 0) or 0),
+                "total jogos únicos": int(generation.get("total_jogos_unicos", 0) or 0),
+                "duplicados": int(generation.get("total_jogos_duplicados", 0) or 0),
+                "policy_origin": str(generation.get("policy_origin", "") or ""),
+                "policy_variant": str(generation.get("policy_variant", "") or ""),
+            }
+        )
+    diagnostic_summary_df = pd.DataFrame(diagnostic_summary_rows)
 
     diag_cols = st.columns(6)
     diag_cols[0].metric("total_generation_events_carregados", len(generation_history))
     diag_cols[1].metric("total_jogos_historicos_carregados", len(games_df))
-    diag_cols[2].metric("total_linhas_exibidas_jogos_completos_historicos", len(display_games))
-    diag_cols[3].metric("total_linhas_exibidas_top_jogos_historicos", len(top_df))
+    diag_cols[2].metric("jogos_conferiveis", len(conferiveis_df))
+    diag_cols[3].metric("jogos_diagnostico", len(diagnostic_df))
     diag_cols[4].metric("generation_event_id_mais_antigo", min(generation_options) if generation_options else "-")
     diag_cols[5].metric("generation_event_id_mais_recente", max(generation_options) if generation_options else "-")
 
-    st.markdown("##### Jogos completos historicos")
+    st.markdown("##### Jogos completos historicos conferiveis")
     if not display_games.empty:
         st.dataframe(display_games, hide_index=True, use_container_width=True, height=560)
     else:
-        st.info("Nenhum jogo historico encontrado com os filtros atuais.")
+        st.info("Nenhum jogo conferivel encontrado com os filtros atuais.")
 
-    st.markdown("##### Top jogos historicos")
+    st.markdown("##### Top jogos historicos conferiveis")
     if not top_df.empty:
         st.dataframe(top_df, hide_index=True, use_container_width=True, height=520)
     else:
-        st.info("Nenhum top jogo historico encontrado com os filtros atuais.")
+        st.info("Nenhum top jogo conferivel encontrado com os filtros atuais.")
+
+    if not diagnostic_summary_df.empty:
+        structural_alerts = int(
+            sum(
+                1
+                for generation in generation_history
+                if str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO") == "APROVADO"
+                and str(generation.get("scientific_status", "") or "").upper() == "REPROVADO"
+            )
+        )
+        if structural_alerts:
+            st.warning("Bateria estruturalmente aprovada, mas cientificamente reprovada. Disponível para diagnóstico/conferência supervisionada.")
+        st.markdown("##### Jogos rejeitados / Diagnóstico científico")
+        st.dataframe(diagnostic_summary_df, hide_index=True, use_container_width=True, height=260)
+        with st.expander("Detalhe dos jogos rejeitados / diagnóstico", expanded=False):
+            if not diagnostic_df.empty:
+                rejected_view = diagnostic_df[
+                    [
+                        "generation_event_id",
+                        "batch_id",
+                        "jogo n°",
+                        "dezenas",
+                        "tipo visual",
+                        "status comandante saída",
+                        "status científico",
+                        "classificação científica",
+                        "motivo rejeição",
+                        "ação sugerida",
+                        "policy_id",
+                        "policy_origin",
+                        "policy_variant",
+                        "concurso conferido",
+                        "acertos",
+                        "premiação",
+                    ]
+                ].copy()
+                rejected_view["concurso conferido"] = rejected_view["concurso conferido"].apply(
+                    lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
+                )
+                rejected_view["acertos"] = rejected_view["acertos"].apply(
+                    lambda value: f"{int(value)}" if pd.notna(value) and int(value) >= 0 else "—"
+                )
+                st.dataframe(rejected_view, hide_index=True, use_container_width=True, height=420)
+            else:
+                st.info("Nenhum jogo rejeitado com os filtros atuais.")
 
     with st.expander("Linha do tempo secundaria", expanded=False):
         timeline = _load_analytical_timeline(limit=30)
@@ -5584,7 +5855,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
             st.info("Ainda nao ha eventos suficientes para montar a timeline analitica.")
-
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
     st.write("Auditoria incremental isolada do motor oficial.")
