@@ -1336,6 +1336,342 @@ class LotofacilScientificCore:
         payload["policy_adjustment_reason"] = "recalibrate_from_strong_near_miss_towards_11_plus_and_15"
         return payload
 
+    def build_batch_reconciliation_scientific_memory(
+        self,
+        *,
+        batch_id: str,
+        contest: dict[str, Any],
+        generation_results: Sequence[dict[str, Any]],
+        policy_before: dict[str, Any] | None = None,
+        policy_after: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_batch_id = str(batch_id or "").strip()
+        contest_payload = dict(contest or {})
+        contest_numbers = _normalize_numbers(contest_payload.get("numbers", contest_payload.get("dezenas", [])))
+        contest_number = _safe_int(
+            contest_payload.get("contest_number", contest_payload.get("contest_id", contest_payload.get("concurso"))),
+            default=None,
+        )
+        generation_rows = [dict(row or {}) for row in generation_results or []]
+        analyzed_generations: list[dict[str, Any]] = []
+        all_hits: list[int] = []
+        for row in generation_rows:
+            result_rows = [dict(result or {}) for result in row.get("results", []) or []]
+            result_hits = [int(_safe_int(result.get("hits"), default=0) or 0) for result in result_rows]
+            if not result_hits and row.get("games"):
+                result_hits = [
+                    len(set(_normalize_numbers(game.get("numbers", []))) & set(contest_numbers))
+                    for game in row.get("games", []) or []
+                    if isinstance(game, dict)
+                ]
+            if not result_hits:
+                continue
+            all_hits.extend(result_hits)
+            best_hits = max(result_hits, default=0)
+            count_10 = sum(1 for hit in result_hits if hit == 10)
+            count_11_plus = sum(1 for hit in result_hits if hit >= 11)
+            count_12_plus = sum(1 for hit in result_hits if hit >= 12)
+            count_13_plus = sum(1 for hit in result_hits if hit >= 13)
+            count_14_plus = sum(1 for hit in result_hits if hit >= 14)
+            count_15 = sum(1 for hit in result_hits if hit >= 15)
+            avg_hits = _mean_or_zero([float(hit) for hit in result_hits])
+            dispersion = round(
+                sqrt(_mean_or_zero([(float(hit) - avg_hits) ** 2 for hit in result_hits])) if len(result_hits) > 1 else 0.0,
+                4,
+            )
+            below_9 = sum(1 for hit in result_hits if hit < 9)
+            scientific_score = round(
+                (
+                    best_hits * 100.0
+                    + count_10 * 25.0
+                    + count_11_plus * 120.0
+                    + count_12_plus * 160.0
+                    + count_13_plus * 220.0
+                    + count_14_plus * 300.0
+                    + count_15 * 400.0
+                    + avg_hits * 10.0
+                    - dispersion * 15.0
+                    - below_9 * 4.0
+                ),
+                4,
+            )
+            analyzed_generations.append(
+                {
+                    "generation_event_id": int(row.get("generation_event_id", 0) or 0),
+                    "batch_id": str(row.get("batch_id", resolved_batch_id) or resolved_batch_id),
+                    "total_games": int(row.get("total_games", len(result_rows)) or len(result_rows)),
+                    "best_hits": best_hits,
+                    "count_10": count_10,
+                    "count_11_plus": count_11_plus,
+                    "count_12_plus": count_12_plus,
+                    "count_13_plus": count_13_plus,
+                    "count_14_plus": count_14_plus,
+                    "count_15": count_15,
+                    "average_hits": avg_hits,
+                    "dispersion": dispersion,
+                    "games_below_9": below_9,
+                    "scientific_score": scientific_score,
+                    "results": result_rows,
+                    "games": list(row.get("games") or []),
+                    "contest_number": int(row.get("contest_number", contest_number or 0) or 0),
+                    "created_at": str(row.get("created_at", "") or ""),
+                }
+            )
+        if not analyzed_generations:
+            return {}
+        total_generations = len(analyzed_generations)
+        total_games_checked = sum(int(item.get("total_games", 0) or 0) for item in analyzed_generations)
+        global_best_hits = max((item.get("best_hits", 0) or 0 for item in analyzed_generations), default=0)
+        global_count_10 = sum(item.get("count_10", 0) or 0 for item in analyzed_generations)
+        global_count_11_plus = sum(item.get("count_11_plus", 0) or 0 for item in analyzed_generations)
+        global_count_12_plus = sum(item.get("count_12_plus", 0) or 0 for item in analyzed_generations)
+        global_count_13_plus = sum(item.get("count_13_plus", 0) or 0 for item in analyzed_generations)
+        global_count_14_plus = sum(item.get("count_14_plus", 0) or 0 for item in analyzed_generations)
+        global_count_15 = sum(item.get("count_15", 0) or 0 for item in analyzed_generations)
+        average_hits = _mean_or_zero([float(value) for value in all_hits])
+        dispersion = round(
+            sqrt(_mean_or_zero([(float(hit) - average_hits) ** 2 for hit in all_hits])) if len(all_hits) > 1 else 0.0,
+            4,
+        )
+        strong_batch = (
+            total_games_checked >= 100
+            and global_best_hits >= 10
+            and global_count_11_plus == 0
+            and global_count_10 > 0
+        )
+        batch_classification = "STRONG_NEAR_MISS_BATCH" if strong_batch else ("NEAR_MISS_GLOBAL" if global_best_hits >= 10 else "BATCH_REVIEW")
+        recommended_action = (
+            "recalibrate_from_strong_near_miss_towards_11_plus_and_15"
+            if batch_classification == "STRONG_NEAR_MISS_BATCH"
+            else "recalibrate_from_near_miss_towards_15"
+        )
+        analyzed_generations = sorted(
+            analyzed_generations,
+            key=lambda item: (
+                -int(item["best_hits"]),
+                -int(item["count_10"]),
+                -int(item["count_11_plus"]),
+                -int(item["count_12_plus"]),
+                -int(item["count_13_plus"]),
+                -float(item["average_hits"]),
+                float(item["dispersion"]),
+                int(item["games_below_9"]),
+                -float(item["scientific_score"]),
+                int(item["generation_event_id"]),
+            ),
+        )
+        best_generation = analyzed_generations[0]
+        secondary_generation_event_ids = [
+            int(item.get("generation_event_id", 0) or 0)
+            for item in analyzed_generations[1:4]
+            if int(item.get("generation_event_id", 0) or 0) > 0
+        ]
+        best_generation_games = [dict(game or {}) for game in best_generation.get("games", []) or []]
+        best_generation_results = [dict(result or {}) for result in best_generation.get("results", []) or []]
+        best_generation_result = max(
+            best_generation_results,
+            key=lambda result: int(_safe_int(result.get("hits"), default=0) or 0),
+            default={},
+        )
+        best_game_numbers = _normalize_numbers(best_generation_result.get("numbers", []))
+        if not best_game_numbers and best_generation_games:
+            best_game_numbers = _normalize_numbers(best_generation_games[0].get("numbers", []))
+        matched_numbers = sorted(set(best_game_numbers).intersection(contest_numbers))
+        missing_numbers = sorted(set(contest_numbers).difference(best_game_numbers))
+        extra_numbers = sorted(set(best_game_numbers).difference(contest_numbers))
+        base_memory = self.build_post_reconciliation_scientific_memory(
+            generation_event_id=int(best_generation.get("generation_event_id", 0) or 0),
+            batch_id=resolved_batch_id,
+            contest=contest_payload,
+            games=best_generation_games,
+            reconciliation_results=best_generation_results,
+            policy_before=policy_before,
+            policy_after=policy_after,
+        )
+        if not base_memory:
+            return {}
+        best_generation_event_id = int(best_generation.get("generation_event_id", 0) or 0)
+        generation_event_ids = [
+            int(item.get("generation_event_id", 0) or 0)
+            for item in analyzed_generations
+            if int(item.get("generation_event_id", 0) or 0) > 0
+        ]
+        historical_windows = dict(base_memory.get("historical_windows") or {})
+        if not historical_windows:
+            historical_windows = {
+                "10": {
+                    "contest_scope": "SINGLE_CONTEST",
+                    "window_size": 10,
+                    "contest_count": min(10, total_generations),
+                    "contest_numbers": generation_event_ids[-10:],
+                    "best_hits_average": average_hits,
+                    "best_hits_median": average_hits,
+                    "best_hits_min": global_best_hits,
+                    "best_hits_max": global_best_hits,
+                    "count_10": global_count_10,
+                    "count_11_plus": global_count_11_plus,
+                    "count_12_plus": global_count_12_plus,
+                    "count_13_plus": global_count_13_plus,
+                    "count_14_plus": global_count_14_plus,
+                    "count_15": global_count_15,
+                    "average_hits_per_contest": average_hits,
+                    "stability": 0.0,
+                    "overfit_risk": 0.0,
+                    "scientific_score": 0.0,
+                }
+            }
+        batch_generation_range = {
+            "batch_id": resolved_batch_id,
+            "contest_number": contest_number,
+            "generation_event_ids": generation_event_ids,
+            "first_generation_event_id": min(generation_event_ids) if generation_event_ids else None,
+            "last_generation_event_id": max(generation_event_ids) if generation_event_ids else None,
+            "total_generations": total_generations,
+            "total_games_checked": total_games_checked,
+            "global_best_hits": global_best_hits,
+            "global_count_10": global_count_10,
+            "global_count_11_plus": global_count_11_plus,
+            "global_count_12_plus": global_count_12_plus,
+            "global_count_13_plus": global_count_13_plus,
+            "global_count_14_plus": global_count_14_plus,
+            "global_count_15": global_count_15,
+            "best_generation_event_id": best_generation_event_id,
+            "best_generation_count_10": int(best_generation.get("count_10", 0) or 0),
+            "secondary_generation_event_ids": secondary_generation_event_ids,
+            "classification": batch_classification,
+            "confidence_level": "MEDIUM_HIGH" if strong_batch else "LOW_TO_MEDIUM",
+            "requires_cross_validation": True,
+            "overfit_risk": round(min(1.0, dispersion / 5.0), 4),
+            "recommended_action": recommended_action,
+        }
+        next_generation_policy_adjustments = dict(base_memory.get("next_generation_policy_adjustments") or {})
+        next_generation_policy_adjustments.update(
+            {
+                "policy_origin": "scientific_batch_reconciliation_memory",
+                "policy_variant": "batch_near_miss_consolidation",
+                "strengthen_11_plus": True,
+                "seek_12_plus": True,
+                "seek_13_plus": True,
+                "preserve_14_15_path": True,
+                "recalibrate_from_strong_near_miss_towards_11_plus_and_15": strong_batch,
+            }
+        )
+        adjusted_policy = dict(base_memory.get("policy_after") or policy_after or policy_before or {})
+        adjusted_policy["policy_origin"] = "scientific_batch_reconciliation_memory"
+        adjusted_policy["policy_variant"] = "batch_near_miss_consolidation"
+        adjusted_policy["policy_adjustment_reason"] = recommended_action
+        adjusted_policy["next_generation_policy_adjustments"] = next_generation_policy_adjustments
+        payload = dict(base_memory)
+        payload.update(
+            {
+                "event_type": "post_reconciliation_scientific_batch_expansion",
+                "memory_kind": "scientific_batch_reconciliation",
+                "generation_range": batch_generation_range,
+                "contest_scope": "BATCH_CONSOLIDATED",
+                "local_classification": batch_classification,
+                "scientific_classification": batch_classification,
+                "confidence_level": batch_generation_range["confidence_level"],
+                "requires_cross_validation": True,
+                "historical_windows": historical_windows,
+                "recommended_action": recommended_action,
+                "policy_adjustment_reason": recommended_action,
+                "next_generation_policy_adjustments": next_generation_policy_adjustments,
+                "scientific_score": _scientific_tier_weighted_score(
+                    count_10=global_count_10,
+                    count_11_plus=global_count_11_plus,
+                    count_12_plus=global_count_12_plus,
+                    count_13_plus=global_count_13_plus,
+                    count_14_plus=global_count_14_plus,
+                    count_15=global_count_15,
+                    best_hits=global_best_hits,
+                    average_hits=average_hits,
+                    stability=1.0 - min(1.0, dispersion / 5.0),
+                    overfit_risk=batch_generation_range["overfit_risk"],
+                    concentration_risk=0.0 if global_count_10 else 1.0,
+                ),
+                "scientific_score_components": {
+                    "count_10": global_count_10,
+                    "count_11_plus": global_count_11_plus,
+                    "count_12_plus": global_count_12_plus,
+                    "count_13_plus": global_count_13_plus,
+                    "count_14_plus": global_count_14_plus,
+                    "count_15": global_count_15,
+                    "best_hits": global_best_hits,
+                    "average_hits": average_hits,
+                    "dispersion": dispersion,
+                    "global_games_below_9": sum(1 for hit in all_hits if hit < 9),
+                    "generation_event_ids": generation_event_ids,
+                    "best_generation_event_id": best_generation_event_id,
+                    "secondary_generation_event_ids": secondary_generation_event_ids,
+                    "total_generations": total_generations,
+                    "total_games_checked": total_games_checked,
+                },
+                "policy_before": dict(policy_before or {}),
+                "policy_after": adjusted_policy,
+                "policy_id": str(
+                    adjusted_policy.get("policy_signature")
+                    or adjusted_policy.get("policy_id")
+                    or base_memory.get("policy_id")
+                    or ""
+                ),
+                "policy_origin": "scientific_batch_reconciliation_memory",
+                "policy_variant": "batch_near_miss_consolidation",
+                "policy_applied": dict(policy_after or policy_before or {}),
+                "best_hit": global_best_hits,
+                "average_hits": average_hits,
+                "count_10": global_count_10,
+                "count_11_plus": global_count_11_plus,
+                "count_12_plus": global_count_12_plus,
+                "count_13_plus": global_count_13_plus,
+                "count_14_plus": global_count_14_plus,
+                "count_15": global_count_15,
+                "main_reason": batch_classification.lower(),
+                "decision_mode": "OBSERVACAO",
+                "approved_for_use": 0,
+                "notes": (
+                    f"batch_reconciliation=batch_id={resolved_batch_id} | contest_number={contest_number} | "
+                    f"generation_event_ids={generation_event_ids} | best_generation_event_id={best_generation_event_id} | "
+                    f"global_count_10={global_count_10} | global_count_11_plus={global_count_11_plus}"
+                ),
+                "based_on_batch_id": resolved_batch_id,
+                "based_on_post_reconciliation_memory_id": base_memory.get("based_on_post_reconciliation_memory_id"),
+                "best_generation_event_id": best_generation_event_id,
+                "best_generation_count_10": int(best_generation.get("count_10", 0) or 0),
+                "secondary_generation_event_ids": secondary_generation_event_ids,
+                "generation_event_ids": generation_event_ids,
+                "total_generations": total_generations,
+                "total_games_checked": total_games_checked,
+                "matched_patterns_json": matched_numbers,
+                "missing_numbers_json": missing_numbers,
+                "extra_numbers_json": extra_numbers,
+                "near_miss_generation_ranking": analyzed_generations,
+                "historical_expansion_json": historical_windows,
+            }
+        )
+        payload["cross_validation_summary"] = {
+            "contest_scope": "BATCH_CONSOLIDATED",
+            "confidence_level": batch_generation_range["confidence_level"],
+            "requires_cross_validation": True,
+            "historical_windows": historical_windows,
+            "scientific_score": payload["scientific_score"],
+            "scientific_score_components": payload["scientific_score_components"],
+            "next_generation_policy_adjustments": next_generation_policy_adjustments,
+            "local_classification": batch_classification,
+            "recommended_action": recommended_action,
+            "ranking_summary": {
+                "best_generation_event_id": best_generation_event_id,
+                "secondary_generation_event_ids": secondary_generation_event_ids,
+                "total_generations": total_generations,
+                "total_games_checked": total_games_checked,
+            },
+            "near_miss_generation_ranking": analyzed_generations,
+            "matched_patterns_json": matched_numbers,
+            "missing_numbers_json": missing_numbers,
+            "extra_numbers_json": extra_numbers,
+        }
+        payload["policy_adjustment_reason"] = recommended_action
+        return payload
+
     def discover_scientific_generation_policy(
         self,
         game_size: int,
@@ -1608,6 +1944,10 @@ class LotofacilScientificCore:
         memory_rows = self._load_scientific_memory_rows(limit=max(5, int(candidate_limit or 6)))
         decision_rows = self._load_scientific_calibration_decisions(limit=max(5, int(candidate_limit or 6)))
         latest_memory = memory_rows[0] if memory_rows else {}
+        latest_batch_memory = next(
+            (row for row in memory_rows if str(row.get("memory_kind", "") or "").strip() == "scientific_batch_reconciliation"),
+            {},
+        )
         latest_strong_near_miss_memory = next(
             (row for row in memory_rows if str(row.get("memory_kind", "") or "").strip() == "scientific_strong_near_miss"),
             {},
@@ -1618,6 +1958,23 @@ class LotofacilScientificCore:
         )
         approved_memory = next((row for row in memory_rows if bool(row.get("approved_for_use")) and row.get("policy_after")), {})
         latest_decision = decision_rows[0] if decision_rows else {}
+        memory_policy = dict(
+            latest_batch_memory.get("policy_after")
+            or latest_strong_near_miss_memory.get("policy_after")
+            or latest_reconciliation_memory.get("policy_after")
+            or approved_memory.get("policy_after")
+            or latest_memory.get("policy_after")
+            or {}
+        )
+        if memory_policy:
+            memory_policy = {
+                **base_policy,
+                **{key: value for key, value in memory_policy.items() if key in base_policy},
+                "policy_variant": "memory_blend",
+                "policy_origin": "scientific_memory",
+            }
+        else:
+            memory_policy = {}
         memory_policy = dict(
             latest_strong_near_miss_memory.get("policy_after")
             or latest_reconciliation_memory.get("policy_after")
@@ -1875,6 +2232,7 @@ class LotofacilScientificCore:
                 "scientific_memory_count": len(memory_rows),
                 "scientific_decision_count": len(decision_rows),
                 "scientific_memory_latest": latest_memory,
+                "scientific_memory_latest_batch_reconciliation": latest_batch_memory,
                 "scientific_memory_latest_strong_near_miss": latest_strong_near_miss_memory,
                 "scientific_memory_latest_reconciliation": latest_reconciliation_memory,
                 "scientific_memory_latest_approved": approved_memory,
@@ -1959,6 +2317,7 @@ class LotofacilScientificCore:
             "scientific_memory_count": len(memory_rows),
             "scientific_decision_count": len(decision_rows),
             "scientific_memory_latest": latest_memory,
+            "scientific_memory_latest_batch_reconciliation": latest_batch_memory,
             "scientific_memory_latest_strong_near_miss": latest_strong_near_miss_memory,
             "scientific_memory_latest_reconciliation": latest_reconciliation_memory,
             "scientific_memory_latest_approved": approved_memory,
@@ -2194,6 +2553,26 @@ def build_strong_near_miss_scientific_memory(
 ) -> dict[str, Any]:
     core = LotofacilScientificCore(contests=contests, db_path=db_path)
     return core.build_strong_near_miss_scientific_memory(
+        batch_id=batch_id,
+        contest=contest,
+        generation_results=generation_results,
+        policy_before=policy_before,
+        policy_after=policy_after,
+    )
+
+
+def build_batch_reconciliation_scientific_memory(
+    *,
+    batch_id: str,
+    contest: dict[str, Any],
+    generation_results: Sequence[dict[str, Any]],
+    policy_before: dict[str, Any] | None = None,
+    policy_after: dict[str, Any] | None = None,
+    contests: Sequence[dict[str, Any]] | None = None,
+    db_path: Any = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    core = LotofacilScientificCore(contests=contests, db_path=db_path)
+    return core.build_batch_reconciliation_scientific_memory(
         batch_id=batch_id,
         contest=contest,
         generation_results=generation_results,

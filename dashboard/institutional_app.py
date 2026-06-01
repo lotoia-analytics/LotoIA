@@ -34,6 +34,7 @@ from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_lotofacil_history,
+    build_batch_reconciliation_scientific_memory,
     build_post_reconciliation_scientific_memory,
     build_strong_near_miss_scientific_memory,
     discover_scientific_generation_policy,
@@ -1360,6 +1361,61 @@ def _render_scientific_memory_block() -> None:
                 )
             with st.expander("Ver memória pós-conferência completa", expanded=False):
                 st.json(post_reconciliation_memory)
+    batch_reconciliation_memory = next(
+        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
+        {},
+    )
+    if batch_reconciliation_memory:
+        st.markdown("###### Memória consolidada da bateria conferida")
+        batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
+        batch_components = dict(batch_reconciliation_memory.get("scientific_score_components") or {})
+        batch_cols = st.columns(6)
+        batch_cols[0].metric(
+            "Última bateria conferida",
+            f"{batch_window.get('first_generation_event_id', '-') }–{batch_window.get('last_generation_event_id', '-') }".replace(" ", ""),
+        )
+        batch_cols[1].metric("Total de gerações", int(batch_window.get("total_generations", 0) or 0))
+        batch_cols[2].metric("Total de jogos", int(batch_window.get("total_games_checked", 0) or 0))
+        batch_cols[3].metric("Melhor acerto global", int(batch_window.get("global_best_hits", 0) or 0))
+        batch_cols[4].metric("Jogos com 10", int(batch_window.get("global_count_10", batch_reconciliation_memory.get("count_10", 0)) or 0))
+        batch_cols[5].metric("Jogos com 11+", int(batch_window.get("global_count_11_plus", batch_reconciliation_memory.get("count_11_plus", 0)) or 0))
+        batch_detail_cols = st.columns(4)
+        batch_detail_cols[0].markdown(f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
+        batch_detail_cols[1].markdown(f"**Ação recomendada**  \n{batch_reconciliation_memory.get('recommended_action', '-') or '-'}")
+        batch_detail_cols[2].markdown(
+            f"**Confiança**  \n{batch_reconciliation_memory.get('confidence_level', '-') or '-'}"
+        )
+        batch_detail_cols[3].markdown(
+            f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
+        )
+        ranking_payload = list(
+            dict(batch_reconciliation_memory.get("cross_validation_summary") or {}).get("near_miss_generation_ranking") or []
+        )
+        if ranking_payload:
+            ranking_rows = []
+            for item in ranking_payload[:10]:
+                ranking_rows.append(
+                    {
+                        "generation_event_id": int(item.get("generation_event_id", 0) or 0),
+                        "best_hits": int(item.get("best_hits", 0) or 0),
+                        "count_10": int(item.get("count_10", 0) or 0),
+                        "count_11_plus": int(item.get("count_11_plus", 0) or 0),
+                        "average_hits": float(item.get("average_hits", 0.0) or 0.0),
+                        "dispersion": float(item.get("dispersion", 0.0) or 0.0),
+                    }
+                )
+            st.dataframe(_make_streamlit_dataframe_safe(pd.DataFrame(ranking_rows)), hide_index=True, use_container_width=True)
+        st.caption(
+            " | ".join(
+                [
+                    f"batch_id={batch_reconciliation_memory.get('batch_id', '-')}",
+                    f"generation_event_ids={batch_window.get('generation_event_ids', [])}",
+                    f"classification={batch_reconciliation_memory.get('scientific_classification', '-')}",
+                ]
+            )
+        )
+        with st.expander("Ver memória consolidada da bateria completa", expanded=False):
+            st.json(batch_reconciliation_memory)
     strong_near_miss_memory = next(
         (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_strong_near_miss"),
         {},
@@ -3087,6 +3143,24 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             st.session_state["institutional_strong_near_miss_memory"] = dict(
                 persisted_strong_near_miss or strong_near_miss_payload
             )
+    batch_reconciliation_payload: dict[str, Any] = {}
+    if generation_results:
+        batch_reconciliation_payload = build_batch_reconciliation_scientific_memory(
+            batch_id=selected_batch_id or str(generation_results[0].get("batch_id", "") or ""),
+            contest=latest_contest,
+            generation_results=generation_results,
+            policy_before=dict((st.session_state.get("institutional_post_reconciliation_memory") or {}).get("policy_before") or {}),
+            policy_after=dict((st.session_state.get("institutional_post_reconciliation_memory") or {}).get("policy_after") or {}),
+            db_path=DB_PATH,
+        )
+        if batch_reconciliation_payload:
+            persisted_batch_reconciliation = _persist_scientific_reconciliation_memory(batch_reconciliation_payload)
+            st.session_state["institutional_post_reconciliation_memory"] = dict(
+                persisted_batch_reconciliation or batch_reconciliation_payload
+            )
+            st.session_state["institutional_batch_reconciliation_memory"] = dict(
+                persisted_batch_reconciliation or batch_reconciliation_payload
+            )
     st.session_state["institutional_check"] = {
         "runtime_status": "checked",
         "timestamp": datetime.now(UTC).isoformat(),
@@ -3103,6 +3177,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         "best_hits": best_hits_global,
         "total_hits": total_hits,
         "prize_count": total_prizes,
+        "batch_reconciliation_memory": batch_reconciliation_payload,
         "strong_near_miss_memory": strong_near_miss_payload,
     }
 
