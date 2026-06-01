@@ -2697,6 +2697,13 @@ def _load_generation_event_ids_for_batch(batch_id: str | None) -> list[int]:
     return sorted(event_ids)
 
 
+def _get_latest_unreconciled_generation_event_id(batch_id: str | None = None) -> int | None:
+    for group in _load_persisted_generation_event_groups(batch_id=batch_id):
+        if not bool(group.get("is_conferida", False)):
+            return _safe_int(group.get("generation_event_id"), default=None)
+    return None
+
+
 def _store_active_batch_state(*, batch_id: str | None = None, generation_event_ids: list[int] | None = None, policy_id: str | None = None, generated_at: str | None = None, game_size: int | None = None, total_games: int | None = None) -> None:
     resolved_batch_id = str(batch_id or "").strip()
     if resolved_batch_id:
@@ -2737,6 +2744,7 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                 ]
                 if not rows:
                     continue
+            reconciliation_summary = _load_latest_reconciliation_for_generation(session, int(event.id or 0))
             games: list[dict[str, Any]] = []
             for row in rows:
                 numbers = [int(number) for number in (row.numbers or [])]
@@ -2769,6 +2777,9 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
+                    "reconciliation": reconciliation_summary or {},
+                    "conference_status": "Conferido" if reconciliation_summary else "Nao conferido",
+                    "is_conferida": bool(reconciliation_summary),
                     "games": games,
                     "structural_summary": _summarize_games_structurally([game["numbers"] for game in games]),
                 }
@@ -2779,6 +2790,10 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
 def _run_institutional_conference(contest_number: int | None = None) -> None:
     selected_contest = _safe_int(contest_number, default=None)
     selected_batch_id = str(st.session_state.get("institutional_active_batch_id", "") or "").strip()
+    selected_generation_event_id = _safe_int(
+        st.session_state.get("active_reconciliation_generation_event_id"),
+        default=None,
+    )
     latest_contest = _load_imported_contest(selected_contest) or _get_latest_contest()
     if latest_contest is None:
         st.session_state["institutional_check_result"] = {
@@ -2792,12 +2807,32 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             "warning": "Gere jogos na bateria ativa antes de conferir."
         }
         return
+    if selected_generation_event_id is None:
+        selected_generation_event_id = _get_latest_unreconciled_generation_event_id(batch_id=selected_batch_id or None)
+        if selected_generation_event_id is not None:
+            st.session_state["active_reconciliation_generation_event_id"] = selected_generation_event_id
     generation_results: list[dict[str, Any]] = []
     total_prizes = 0
     total_hits = 0
     best_hits_global = 0
     latest_imported_contest_number = _safe_int(_safe_get(latest_contest, "contest_number"), default=None)
-    for group in grouped_generations:
+    selected_generation_groups = grouped_generations
+    if selected_generation_event_id is not None:
+        selected_generation_groups = [
+            group
+            for group in grouped_generations
+            if int(group.get("generation_event_id", 0) or 0) == int(selected_generation_event_id or 0)
+        ]
+        if not selected_generation_groups:
+            selected_generation_groups = [
+                group
+                for group in grouped_generations
+                if not bool(group.get("is_conferida", False))
+            ]
+    if not selected_generation_groups:
+        selected_generation_groups = grouped_generations[:1]
+
+    for group in selected_generation_groups:
         group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
         contest_to_use = selected_contest or group_target_contest or latest_imported_contest_number
         contest_payload = _load_imported_contest(contest_to_use) if contest_to_use else latest_contest
@@ -3542,6 +3577,22 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
     for column in ("data/hora", "reconciled_at", "estratégia", "origem/modelo", "status de conferência", "premiação", "observações", "tipo visual", "motivo rejeição", "policy_id", "policy_origin", "policy_variant", "classificação científica", "ação sugerida", "status comandante saída", "status científico"):
         if column in df.columns:
             df[column] = df[column].fillna("").astype(str)
+    if "status de conferência" in df.columns:
+        df["status de conferência"] = (
+            df["status de conferência"]
+            .astype(str)
+            .str.strip()
+            .replace(
+                {
+                    "Nao conferido": "Não conferido",
+                    "Nao conferida": "Não conferido",
+                    "Nao conferidos": "Não conferido",
+                    "Conferida": "Conferido",
+                    "Conferidas": "Conferido",
+                    "Nao conferido": "Não conferido",
+                }
+            )
+        )
     for column in ("is_conferible", "is_rejected_policy", "is_candidate", "is_guardian_rejected", "is_scientific_rejected", "is_calibration_only"):
         if column in df.columns:
             df[column] = df[column].fillna(False).astype(bool)
@@ -4024,6 +4075,20 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 st.warning(f"Alerta: {selected_generation.get('observações/alertas')}")
             selected_history = next((item for item in _load_generation_history(limit=None) if int(item.get("generation_event_id", 0) or 0) == selected_generation_id), {})
             if selected_history:
+                selected_generation_batch_id = str(selected_generation.get("batch_id", "") or "").strip()
+                if selected_generation_batch_id and bool(selected_generation.get("is_conferible", False)):
+                    action_cols = st.columns([1.2, 1.0, 1.0])
+                    if action_cols[0].button("Enviar geração para conferência", type="primary"):
+                        st.session_state["institutional_active_batch_id"] = selected_generation_batch_id
+                        st.session_state["active_reconciliation_batch_id"] = selected_generation_batch_id
+                        st.session_state["active_reconciliation_generation_event_id"] = selected_generation_id
+                        st.session_state["active_reconciliation_scope"] = "generation"
+                        st.success(
+                            f"Geração {selected_generation_id} enviada para conferência da bateria {selected_generation_batch_id}."
+                        )
+                        st.rerun()
+                    action_cols[1].caption("Somente geração conferível")
+                    action_cols[2].caption("Vai abrir a conferência com esta geração")
                 st.markdown("###### Top jogos da geração selecionada")
                 st.dataframe(
                     pd.DataFrame(
@@ -5283,6 +5348,29 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         selected_batch_id = active_batch_id
     st.session_state["institutional_active_batch_id"] = str(selected_batch_id or "").strip()
     active_generation_event_ids = _load_generation_event_ids_for_batch(selected_batch_id)
+    active_generation_groups = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
+    selectable_generation_ids = [
+        int(group.get("generation_event_id", 0) or 0)
+        for group in active_generation_groups
+        if int(group.get("generation_event_id", 0) or 0) > 0
+    ]
+    latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=selected_batch_id or None)
+    if "active_reconciliation_generation_event_id" not in st.session_state:
+        st.session_state["active_reconciliation_generation_event_id"] = (
+            latest_unreconciled_generation_id if latest_unreconciled_generation_id is not None else (selectable_generation_ids[0] if selectable_generation_ids else None)
+        )
+    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    if selectable_generation_ids:
+        selected_generation_index = selectable_generation_ids.index(active_generation_event_id) if active_generation_event_id in selectable_generation_ids else 0
+        selected_generation_event_id = st.selectbox(
+            "Selecionar geração para conferência",
+            options=selectable_generation_ids,
+            index=selected_generation_index,
+            help="Por padrão usamos a geração mais recente sem conferência dentro da bateria ativa.",
+        )
+        st.session_state["active_reconciliation_generation_event_id"] = int(selected_generation_event_id)
+    else:
+        selected_generation_event_id = None
 
     live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
     try:
@@ -5322,6 +5410,15 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         nav_cols[3].metric("Último concurso", selected_contest)
     else:
         nav_cols[3].caption("Último concurso: -")
+    st.caption(
+        " | ".join(
+            [
+                f"Bateria ativa: {selected_batch_id or '-'}",
+                f"Geração ativa: {selected_generation_event_id or '-'}",
+                f"gerações ativas: {', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}",
+            ]
+        )
+    )
     contest_buttons = st.columns([0.48, 0.62, 0.66])
     if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_contest)):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
@@ -5898,7 +5995,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
     strategy_options = sorted(str(value) for value in games_df["estratégia"].dropna().astype(str).unique().tolist())
-    status_options = sorted(str(value) for value in games_df["status de conferência"].dropna().astype(str).unique().tolist())
     contest_options = sorted(
         int(value)
         for value in games_df["concurso conferido"].dropna().astype(int).unique().tolist()
@@ -5907,7 +6003,11 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     selected_generation_ids = filter_row_1[0].multiselect("filtrar por geração", generation_options, default=generation_options)
     selected_strategies = filter_row_1[1].multiselect("filtrar por estratégia", strategy_options, default=strategy_options)
-    selected_statuses = filter_row_1[2].multiselect("filtrar por status de conferência", status_options, default=status_options)
+    selected_status_view = filter_row_1[2].selectbox(
+        "filtrar por status de conferência",
+        ["Todos", "Não conferido", "Conferido"],
+        index=0,
+    )
     selected_contests = filter_row_1[3].multiselect("filtrar por concurso", contest_options, default=contest_options)
     order_by = filter_row_1[4].selectbox("ordenar por", ["score", "data", "acertos"], index=0)
 
@@ -5924,8 +6024,8 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         filtered_df = filtered_df[filtered_df["generation_event_id"].isin(selected_generation_ids)]
     if selected_strategies:
         filtered_df = filtered_df[filtered_df["estratégia"].isin(selected_strategies)]
-    if selected_statuses:
-        filtered_df = filtered_df[filtered_df["status de conferência"].isin(selected_statuses)]
+    if selected_status_view != "Todos":
+        filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) == selected_status_view]
     if selected_contests:
         filtered_df = filtered_df[
             filtered_df["concurso conferido"].fillna(0).astype(int).isin(selected_contests)
