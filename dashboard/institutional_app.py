@@ -3825,7 +3825,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
             games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
             generations_in_batch=1,
-            policy_discovery=scientific_policy_discovery if latest_commander else None,
+            policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
         )
         if scientific_batch:
             scientific_state = {
