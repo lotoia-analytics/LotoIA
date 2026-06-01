@@ -34,6 +34,7 @@ from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_lotofacil_history,
+    build_post_reconciliation_scientific_memory,
     discover_scientific_generation_policy,
     get_scientific_generation_policy,
 )
@@ -874,6 +875,77 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
     return memories
 
 
+def _persist_scientific_reconciliation_memory(memory_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(memory_payload or {})
+    if not payload:
+        return {}
+    generation_range = dict(payload.get("generation_range") or {})
+    policy_applied = dict(payload.get("policy_applied") or {})
+    policy_before = dict(payload.get("policy_before") or {})
+    policy_after = dict(payload.get("policy_after") or {})
+    with get_session(DB_PATH) as session:
+        row = ScientificInstitutionalMemory(
+            memory_kind=str(payload.get("memory_kind", "scientific_reconciliation") or "scientific_reconciliation"),
+            strategy_name=str(payload.get("strategy_name", f"{int(payload.get('game_size', 15) or 15)} dezenas") or ""),
+            game_size=int(payload.get("game_size", 15) or 15),
+            batch_id=str(payload.get("batch_id", "") or ""),
+            generation_range=generation_range,
+            total_games=int(payload.get("total_games", 0) or 0),
+            unique_games=int(payload.get("unique_games", 0) or 0),
+            duplicate_games=int(payload.get("duplicate_games", 0) or 0),
+            structural_status=str(payload.get("structural_status", "") or ""),
+            scientific_status=str(payload.get("scientific_status", "") or ""),
+            scientific_classification=str(payload.get("scientific_classification", payload.get("local_classification", "")) or ""),
+            main_reason=str(payload.get("main_reason", payload.get("policy_adjustment_reason", "")) or ""),
+            recommended_action=str(payload.get("recommended_action", payload.get("policy_adjustment_reason", "")) or ""),
+            policy_applied=policy_applied,
+            policy_before=policy_before,
+            policy_after=policy_after,
+            best_hit=int(payload.get("best_hit", 0) or 0),
+            average_hits=float(payload.get("average_hits", 0.0) or 0.0),
+            count_11_plus=int(payload.get("count_11_plus", 0) or 0),
+            count_12_plus=int(payload.get("count_12_plus", 0) or 0),
+            count_13_plus=int(payload.get("count_13_plus", 0) or 0),
+            count_14_plus=int(payload.get("count_14_plus", 0) or 0),
+            count_15=int(payload.get("count_15", 0) or 0),
+            validation_contests=list(payload.get("validation_contests", []) or []),
+            cross_validation_summary=dict(payload.get("cross_validation_summary", {}) or {}),
+            frequency_alerts=list(payload.get("frequency_alerts", []) or []),
+            absence_alerts=list(payload.get("absence_alerts", []) or []),
+            parity_alerts=list(payload.get("parity_alerts", []) or []),
+            repetition_alerts=list(payload.get("repetition_alerts", []) or []),
+            sequence_alerts=list(payload.get("sequence_alerts", []) or []),
+            low_high_alerts=list(payload.get("low_high_alerts", []) or []),
+            range_alerts=list(payload.get("range_alerts", []) or []),
+            decision_mode=str(payload.get("decision_mode", "OBSERVACAO") or "OBSERVACAO"),
+            approved_for_use=int(bool(payload.get("approved_for_use", False))),
+            notes=str(payload.get("notes", "") or ""),
+            official_history_count=int(payload.get("official_history_count", 0) or 0),
+            official_history_first_contest=payload.get("official_history_first_contest"),
+            official_history_last_contest=payload.get("official_history_last_contest"),
+            official_history_window=list(payload.get("official_history_window", []) or []),
+            source=str(payload.get("source", "scientific_reconciliation") or "scientific_reconciliation"),
+        )
+        session.add(row)
+        session.flush()
+        payload["memory_id"] = int(row.id or 0)
+        payload["based_on_post_reconciliation_memory_id"] = int(row.id or 0)
+        payload["created_at"] = row.created_at.isoformat() if getattr(row, "created_at", None) else payload.get("created_at", "")
+        session.commit()
+    st.session_state["institutional_last_scientific_reconciliation_memory"] = dict(payload)
+    return payload
+
+
+def _make_streamlit_dataframe_safe(df: pd.DataFrame | None) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    safe_df = df.copy()
+    for column in safe_df.columns:
+        if safe_df[column].dtype == "object":
+            safe_df[column] = safe_df[column].apply(lambda value: "" if value is None else str(value))
+    return safe_df
+
+
 def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     decision_index: dict[str, dict[str, Any]] = {}
     memory_index: dict[str, dict[str, Any]] = {}
@@ -1194,6 +1266,10 @@ def _render_scientific_memory_block() -> None:
     official_diagnostics = _load_official_history_diagnostics()
     scientific_memory = _load_latest_scientific_memory(limit=5)
     latest_memory = scientific_memory[0] if scientific_memory else {}
+    post_reconciliation_memory = next(
+        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
+        {},
+    )
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
@@ -1211,6 +1287,48 @@ def _render_scientific_memory_block() -> None:
             ]
         )
     )
+    if post_reconciliation_memory:
+        st.markdown("###### Memória pós-conferência científica")
+        post_window = dict(post_reconciliation_memory.get("generation_range") or {})
+        cross_validation_summary = dict(post_reconciliation_memory.get("cross_validation_summary") or {})
+        scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
+        post_summary_cols = st.columns(6)
+        post_summary_cols[0].metric(
+            "Última geração conferida",
+            post_window.get("generation_event_id", post_reconciliation_memory.get("batch_id", "-")) or "-",
+        )
+        post_summary_cols[1].metric(
+            "Concurso conferido",
+            post_window.get("contest_number", post_reconciliation_memory.get("official_history_last_contest", "-")) or "-",
+        )
+        post_summary_cols[2].metric("Jogos conferidos", int(post_reconciliation_memory.get("total_games", 0) or 0))
+        post_summary_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
+        post_summary_cols[4].metric("Jogos com 10", int(post_reconciliation_memory.get("count_10", scientific_components.get("count_10", 0)) or 0))
+        post_summary_cols[5].metric("Jogos com 11+", int(post_reconciliation_memory.get("count_11_plus", 0) or 0))
+        post_detail_cols = st.columns(4)
+        post_detail_cols[0].markdown(f"**Classificação local**  \n{post_reconciliation_memory.get('scientific_classification', '-') or '-'}")
+        post_detail_cols[1].markdown(f"**Ação sugerida**  \n{post_reconciliation_memory.get('recommended_action', '-') or '-'}")
+        post_detail_cols[2].markdown(
+            f"**Nível de confiança**  \n{cross_validation_summary.get('confidence_level', '-') or '-'}"
+        )
+        post_detail_cols[3].markdown(
+            f"**Risco de overfit**  \n{scientific_components.get('overfit_risk', '-') or '-'}"
+        )
+        windows_summary = cross_validation_summary.get("historical_windows", {}) or {}
+        if windows_summary:
+            st.markdown("###### Expansão histórica")
+            window_items = sorted(
+                windows_summary.items(),
+                key=lambda item: (item[0] != "all", int(item[0]) if str(item[0]).isdigit() else 9999),
+            )
+            window_cols = st.columns(min(5, max(1, len(window_items))))
+            for index, (label, window_payload) in enumerate(window_items[: len(window_cols)]):
+                window_cols[index].metric(
+                    f"Janela {label}",
+                    int(window_payload.get("contest_count", 0) or 0),
+                )
+            with st.expander("Ver memória pós-conferência completa", expanded=False):
+                st.json(post_reconciliation_memory)
     st.markdown("##### Hist?rico Oficial Lotof?cil")
     official_rows = _load_official_history_rows()
     if official_rows:
@@ -1231,8 +1349,9 @@ def _render_scientific_memory_block() -> None:
         if order_mode == "Mais recentes":
             filtered_rows = list(reversed(filtered_rows))
         table_rows = filtered_rows[:limit_value]
+        official_df = pd.DataFrame(table_rows)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
         st.dataframe(
-            pd.DataFrame(table_rows)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]],
+            _make_streamlit_dataframe_safe(official_df),
             hide_index=True,
             use_container_width=True,
         )
@@ -1255,7 +1374,7 @@ def _render_scientific_memory_block() -> None:
     )
     if scientific_memory:
         with st.expander("Mem?ria cient?fica completa", expanded=False):
-            st.dataframe(pd.DataFrame(scientific_memory), hide_index=True, use_container_width=True)
+            st.dataframe(_make_streamlit_dataframe_safe(pd.DataFrame(scientific_memory)), hide_index=True, use_container_width=True)
 
 
 def _format_scientific_number_list(values: Sequence[int] | None) -> str:
@@ -2843,6 +2962,23 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             games=list(group.get("games") or []),
             contest=contest_payload,
         )
+        group_games = list(group.get("games") or [])
+        group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
+        scientific_policy_snapshot = discover_scientific_generation_policy(
+            group_game_size or int(group.get("total_games", 0) or 0) or 15,
+            db_path=DB_PATH,
+        )
+        scientific_memory_payload = build_post_reconciliation_scientific_memory(
+            generation_event_id=int(group.get("generation_event_id") or 0),
+            batch_id=str(group.get("batch_id", "") or selected_batch_id or ""),
+            contest=contest_payload,
+            games=list(group.get("games") or []),
+            policy_before=dict(scientific_policy_snapshot.get("policy_before") or scientific_policy_snapshot.get("policy") or {}),
+            policy_after=dict(scientific_policy_snapshot.get("policy_after") or scientific_policy_snapshot.get("policy") or {}),
+            db_path=DB_PATH,
+        )
+        persisted_scientific_memory = _persist_scientific_reconciliation_memory(scientific_memory_payload)
+        st.session_state["institutional_post_reconciliation_memory"] = dict(persisted_scientific_memory or scientific_memory_payload)
         hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
         generation_results.append(
             {
@@ -2859,6 +2995,9 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
                 "games": list(group.get("games") or []),
                 "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
                 "contest_date": str(comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""),
+                "post_reconciliation_memory_id": int((persisted_scientific_memory or scientific_memory_payload).get("memory_id", 0) or 0),
+                "post_reconciliation_local_classification": str((persisted_scientific_memory or scientific_memory_payload).get("local_classification", "") or ""),
+                "post_reconciliation_recommended_action": str((persisted_scientific_memory or scientific_memory_payload).get("recommended_action", "") or ""),
             }
         )
         total_prizes += int(comparison.get("prize_count", 0) or 0)
@@ -4633,14 +4772,21 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
     for index, game in enumerate(games, start=1):
         numbers = _extract_int_numbers(game.get("numbers", []))
         matched = sorted(set(numbers) & set(official_numbers))
+        missing_draw_numbers = sorted(set(official_numbers) - set(numbers))
+        extra_numbers = sorted(set(numbers) - set(official_numbers))
+        score_original = float(game.get("score", 0.0) or 0.0)
         results.append(
             {
                 "game_index": index,
                 "numbers": numbers,
+                "rank_original": int(game.get("game_index", index) or index),
                 "hits": len(matched),
                 "matched_numbers": matched,
+                "missing_draw_numbers": missing_draw_numbers,
+                "extra_numbers": extra_numbers,
                 "prize_status": "premiado" if len(matched) >= 11 else "nao_premiado",
                 "prize_tier": f"faixa_{len(matched)}" if len(matched) >= 11 else "",
+                "score_original": score_original,
             }
         )
     best_hits = max((int(row["hits"]) for row in results), default=0)
@@ -4690,7 +4836,14 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
                     matched_numbers=list(game["matched_numbers"]),
                     prize_status=str(game["prize_status"]),
                     prize_tier=str(game["prize_tier"]),
-                    context_json={"source": "institutional", "build_marker": BUILD_MARKER},
+                    context_json={
+                        "source": "institutional",
+                        "build_marker": BUILD_MARKER,
+                        "rank_original": int(game.get("rank_original", 0) or 0),
+                        "score_original": float(game.get("score_original", 0.0) or 0.0),
+                        "missing_draw_numbers": list(game.get("missing_draw_numbers", []) or []),
+                        "extra_numbers": list(game.get("extra_numbers", []) or []),
+                    },
                 )
             )
         session.commit()

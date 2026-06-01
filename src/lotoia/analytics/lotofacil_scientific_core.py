@@ -474,6 +474,129 @@ def _window_contests(contests: Sequence[dict[str, Any]], window_size: int | None
     return ordered
 
 
+def _scientific_local_classification(
+    *,
+    best_hits: int,
+    count_10: int,
+    count_11_plus: int,
+    count_12_plus: int,
+    count_13_plus: int,
+    count_14_plus: int,
+    count_15: int,
+) -> str:
+    if count_15 > 0 or best_hits >= 15:
+        return "TARGET_MAXIMUM"
+    if count_14_plus > 0 or best_hits >= 14:
+        return "EXCELLENT"
+    if count_13_plus > 0 or best_hits >= 13:
+        return "VERY_STRONG"
+    if count_12_plus > 0 or best_hits >= 12:
+        return "STRONG"
+    if count_11_plus > 0 or best_hits >= 11:
+        return "APPROVED_MINIMUM"
+    if best_hits >= 10 or count_10 > 0:
+        return "NEAR_MISS_LOCAL"
+    if best_hits == 9:
+        return "FAILED_MEDIUM"
+    return "FAILED_LOW"
+
+
+def _scientific_local_action(classification: str) -> str:
+    normalized = str(classification or "").strip().upper()
+    return {
+        "TARGET_MAXIMUM": "stabilize_target_maximum_and_preserve_diversity",
+        "EXCELLENT": "stabilize_excellence_and_seek_15",
+        "VERY_STRONG": "preserve_strong_pattern_and_seek_14_plus",
+        "STRONG": "reinforce_pattern_and_seek_13_plus",
+        "APPROVED_MINIMUM": "preserve_and_push_towards_12_plus",
+        "NEAR_MISS_LOCAL": "recalibrate_from_near_miss_towards_15",
+        "FAILED_MEDIUM": "recalibrate_from_near_miss_towards_15",
+        "FAILED_LOW": "recalibrate_from_low_performance_towards_15",
+    }.get(normalized, "recalibrate_from_near_miss_towards_15")
+
+
+def _scientific_local_confidence(
+    *,
+    classification: str,
+    overfit_risk: float,
+    cross_validation_support: float,
+) -> str:
+    normalized = str(classification or "").strip().upper()
+    if normalized in {"TARGET_MAXIMUM", "EXCELLENT"} and cross_validation_support >= 0.65 and overfit_risk <= 0.35:
+        return "HIGH"
+    if normalized in {"VERY_STRONG", "STRONG"} and cross_validation_support >= 0.45 and overfit_risk <= 0.55:
+        return "MEDIUM_HIGH"
+    if normalized in {"APPROVED_MINIMUM"} and cross_validation_support >= 0.30:
+        return "MEDIUM"
+    if normalized in {"NEAR_MISS_LOCAL", "FAILED_MEDIUM"}:
+        return "LOW_TO_MEDIUM"
+    return "LOW_LOCAL_ONLY"
+
+
+def _scientific_tier_weighted_score(
+    *,
+    count_10: int,
+    count_11_plus: int,
+    count_12_plus: int,
+    count_13_plus: int,
+    count_14_plus: int,
+    count_15: int,
+    best_hits: int,
+    average_hits: float,
+    stability: float,
+    overfit_risk: float,
+    concentration_risk: float,
+) -> float:
+    tier_score = (
+        float(count_10) * 1.0
+        + float(count_11_plus) * 4.0
+        + float(count_12_plus) * 8.0
+        + float(count_13_plus) * 13.0
+        + float(count_14_plus) * 21.0
+        + float(count_15) * 34.0
+    )
+    momentum_bonus = float(best_hits) * 1.25 + float(average_hits) * 0.75
+    stability_bonus = float(stability) * 12.0
+    penalty = float(overfit_risk) * 18.0 + float(concentration_risk) * 10.0
+    return round(tier_score + momentum_bonus + stability_bonus - penalty, 4)
+
+
+def _merge_policy_adjustments(
+    base_policy: Mapping[str, Any],
+    adjustments: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base_policy or {})
+    if not merged:
+        return {}
+    for key in (
+        "repeat_min",
+        "repeat_max",
+        "sequence_max",
+        "coverage_min",
+        "entropy_min",
+        "max_frequency_ratio",
+        "min_frequency_ratio",
+        "preferred_parity_pairs",
+        "allowed_parity_pairs",
+        "core_numbers",
+        "discouraged_numbers",
+        "preferred_profile_ratios",
+    ):
+        if key in adjustments:
+            merged[key] = adjustments[key]
+    if adjustments.get("policy_origin") is not None:
+        merged["policy_origin"] = adjustments.get("policy_origin")
+    if adjustments.get("policy_variant") is not None:
+        merged["policy_variant"] = adjustments.get("policy_variant")
+    if adjustments.get("policy_adjustment_reason") is not None:
+        merged["policy_adjustment_reason"] = adjustments.get("policy_adjustment_reason")
+    if adjustments.get("scientific_score") is not None:
+        merged["scientific_score"] = adjustments.get("scientific_score")
+    if adjustments.get("next_generation_policy_adjustments") is not None:
+        merged["next_generation_policy_adjustments"] = dict(adjustments.get("next_generation_policy_adjustments") or {})
+    return merged
+
+
 class LotofacilScientificCore:
     def __init__(
         self,
@@ -632,6 +755,321 @@ class LotofacilScientificCore:
                 }
             )
         return decisions
+
+    def build_post_reconciliation_scientific_memory(
+        self,
+        *,
+        generation_event_id: int,
+        batch_id: str,
+        contest: dict[str, Any],
+        games: Sequence[dict[str, Any]],
+        policy_before: dict[str, Any] | None = None,
+        policy_after: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_generation_event_id = int(generation_event_id or 0)
+        resolved_batch_id = str(batch_id or "").strip()
+        contest_numbers = _normalize_numbers(contest.get("numbers", contest.get("dezenas", [])))
+        contest_number = _safe_int(contest.get("contest_number", contest.get("contest_id", contest.get("concurso"))), default=None)
+        game_rows = [dict(game or {}) for game in games or []]
+        game_numbers = [_normalize_numbers(game.get("numbers", [])) for game in game_rows]
+        game_hits = [len(set(numbers) & set(contest_numbers)) for numbers in game_numbers]
+        best_hits = max(game_hits, default=0)
+        average_hits = _mean_or_zero([float(hit) for hit in game_hits])
+        count_10 = sum(1 for hit in game_hits if hit == 10)
+        count_11_plus = sum(1 for hit in game_hits if hit >= 11)
+        count_12_plus = sum(1 for hit in game_hits if hit >= 12)
+        count_13_plus = sum(1 for hit in game_hits if hit >= 13)
+        count_14_plus = sum(1 for hit in game_hits if hit >= 14)
+        count_15 = sum(1 for hit in game_hits if hit >= 15)
+        local_classification = _scientific_local_classification(
+            best_hits=best_hits,
+            count_10=count_10,
+            count_11_plus=count_11_plus,
+            count_12_plus=count_12_plus,
+            count_13_plus=count_13_plus,
+            count_14_plus=count_14_plus,
+            count_15=count_15,
+        )
+        recommended_action = _scientific_local_action(local_classification)
+        frequency_counter: Counter[int] = Counter(number for numbers in game_numbers for number in numbers)
+        max_frequency_number = max(frequency_counter, key=frequency_counter.get) if frequency_counter else None
+        max_frequency_count = int(frequency_counter.get(max_frequency_number, 0) or 0) if max_frequency_number is not None else 0
+        total_games = max(1, len(game_numbers))
+        max_frequency_ratio = round(max_frequency_count / total_games, 4) if total_games else 0.0
+        concentration_risk = round(max(0.0, min(1.0, (max_frequency_ratio - 0.70) / 0.30)), 4) if max_frequency_ratio > 0.70 else 0.0
+        windows_payload: dict[str, dict[str, Any]] = {}
+        validation_contests: list[int] = []
+        support_scores: list[float] = []
+        history = self.contests
+        for window_size in (10, 60, 100, 300, None):
+            window_label = "all" if window_size is None else str(int(window_size))
+            window_contests = _window_contests(history, window_size)
+            window_contest_numbers = [int(item.get("contest_number", 0) or 0) for item in window_contests]
+            validation_contests.extend(window_contest_numbers)
+            best_hits_per_contest: list[int] = []
+            average_hits_per_contest: list[float] = []
+            for official_contest in window_contests:
+                official_numbers = set(_normalize_numbers(official_contest.get("numbers", [])))
+                per_game_hits = [len(official_numbers.intersection(set(numbers))) for numbers in game_numbers]
+                best_hits_per_contest.append(max(per_game_hits, default=0))
+                average_hits_per_contest.append(_mean_or_zero([float(hit) for hit in per_game_hits]))
+            window_best_hits = max(best_hits_per_contest, default=0)
+            window_count_10 = sum(1 for hit in best_hits_per_contest if hit == 10)
+            window_count_11_plus = sum(1 for hit in best_hits_per_contest if hit >= 11)
+            window_count_12_plus = sum(1 for hit in best_hits_per_contest if hit >= 12)
+            window_count_13_plus = sum(1 for hit in best_hits_per_contest if hit >= 13)
+            window_count_14_plus = sum(1 for hit in best_hits_per_contest if hit >= 14)
+            window_count_15 = sum(1 for hit in best_hits_per_contest if hit >= 15)
+            if len(best_hits_per_contest) > 1:
+                avg_window_best = mean(best_hits_per_contest)
+                variance = mean((value - avg_window_best) ** 2 for value in best_hits_per_contest)
+                stability = round(max(0.0, 1.0 - min(sqrt(variance) / 5.0, 1.0)), 4)
+            else:
+                stability = 1.0 if best_hits_per_contest else 0.0
+            overfit_risk = round(
+                min(
+                    1.0,
+                    max(
+                        0.0,
+                        (1.0 - (window_count_11_plus / max(1, len(window_contests))) * 0.5)
+                        + ((1.0 - stability) * 0.5),
+                    ),
+                ),
+                4,
+            )
+            window_support = _mean_or_zero(
+                [
+                    min(
+                        1.0,
+                        (
+                            float(window_count_10) * 0.5
+                            + float(window_count_11_plus) * 1.0
+                            + float(window_count_12_plus) * 1.5
+                            + float(window_count_13_plus) * 2.0
+                            + float(window_count_14_plus) * 2.5
+                            + float(window_count_15) * 3.0
+                        )
+                        / max(1, len(window_contests)),
+                    )
+                ]
+            )
+            support_scores.append(window_support)
+            windows_payload[window_label] = {
+                "contest_scope": "SINGLE_CONTEST" if window_size is None else "HISTORICAL_WINDOW",
+                "window_size": None if window_size is None else int(window_size),
+                "contest_count": len(window_contests),
+                "contest_numbers": window_contest_numbers,
+                "best_hits_average": _mean_or_zero([float(value) for value in best_hits_per_contest]),
+                "best_hits_median": round(median(best_hits_per_contest), 4) if best_hits_per_contest else 0.0,
+                "best_hits_min": min(best_hits_per_contest) if best_hits_per_contest else 0,
+                "best_hits_max": window_best_hits,
+                "count_10": window_count_10,
+                "count_11_plus": window_count_11_plus,
+                "count_12_plus": window_count_12_plus,
+                "count_13_plus": window_count_13_plus,
+                "count_14_plus": window_count_14_plus,
+                "count_15": window_count_15,
+                "average_hits_per_contest": _mean_or_zero(average_hits_per_contest),
+                "stability": stability,
+                "overfit_risk": overfit_risk,
+                "scientific_score": _scientific_tier_weighted_score(
+                    count_10=window_count_10,
+                    count_11_plus=window_count_11_plus,
+                    count_12_plus=window_count_12_plus,
+                    count_13_plus=window_count_13_plus,
+                    count_14_plus=window_count_14_plus,
+                    count_15=window_count_15,
+                    best_hits=window_best_hits,
+                    average_hits=_mean_or_zero([float(value) for value in best_hits_per_contest]),
+                    stability=stability,
+                    overfit_risk=overfit_risk,
+                    concentration_risk=concentration_risk,
+                ),
+            }
+        historical_windows = dict(windows_payload)
+        cross_validation_support = _mean_or_zero(support_scores)
+        if local_classification in {"TARGET_MAXIMUM", "EXCELLENT"}:
+            confidence_level = "HIGH"
+        elif local_classification in {"VERY_STRONG", "STRONG"}:
+            confidence_level = "MEDIUM_HIGH"
+        elif local_classification in {"APPROVED_MINIMUM"}:
+            confidence_level = "MEDIUM"
+        else:
+            confidence_level = "LOW_TO_MEDIUM" if cross_validation_support >= 0.20 else "LOW_LOCAL_ONLY"
+        if confidence_level == "LOW_LOCAL_ONLY" and historical_windows:
+            confidence_level = "LOW_TO_MEDIUM"
+        base_policy = dict(policy_before or {})
+        adjusted_policy = dict(policy_after or base_policy or {})
+        if not adjusted_policy and base_policy:
+            adjusted_policy = dict(base_policy)
+        adjustments: dict[str, Any] = {
+            "policy_origin": "scientific_reconciliation_memory",
+            "policy_variant": "recalibrate_from_near_miss_towards_15",
+            "policy_adjustment_reason": recommended_action,
+            "based_on_reconciliation_id": resolved_generation_event_id,
+            "based_on_generation_event_id": resolved_generation_event_id,
+            "based_on_post_reconciliation_memory_id": None,
+            "contest_scope": "SINGLE_CONTEST",
+            "confidence_level": confidence_level,
+            "requires_cross_validation": True,
+            "scientific_score": _scientific_tier_weighted_score(
+                count_10=count_10,
+                count_11_plus=count_11_plus,
+                count_12_plus=count_12_plus,
+                count_13_plus=count_13_plus,
+                count_14_plus=count_14_plus,
+                count_15=count_15,
+                best_hits=best_hits,
+                average_hits=average_hits,
+                stability=cross_validation_support,
+                overfit_risk=max((window.get("overfit_risk", 0.0) for window in historical_windows.values()), default=0.0),
+                concentration_risk=concentration_risk,
+            ),
+            "next_generation_policy_adjustments": {
+                "repeat_min": int(base_policy.get("repeat_min", 0) or 0),
+                "repeat_max": int(base_policy.get("repeat_max", 0) or 0),
+                "sequence_max": int(base_policy.get("sequence_max", 0) or 0),
+                "coverage_min": round(min(0.85, float(base_policy.get("coverage_min", 0.35) or 0.35) + 0.03), 4),
+                "entropy_min": round(min(0.85, float(base_policy.get("entropy_min", 0.35) or 0.35) + 0.03), 4),
+                "max_frequency_ratio": round(max(0.50, float(base_policy.get("max_frequency_ratio", 0.70) or 0.70) - 0.05), 4),
+                "min_frequency_ratio": round(max(0.05, float(base_policy.get("min_frequency_ratio", 0.20) or 0.20)), 4),
+                "prefer_12_plus": True,
+                "prefer_13_plus": True,
+                "preserve_14_15_path": True,
+                "reduce_concentration": concentration_risk > 0.0,
+            },
+        }
+        adjusted_policy = _merge_policy_adjustments(adjusted_policy, adjustments)
+        adjusted_policy.update(
+            {
+                "policy_origin": adjustments["policy_origin"],
+                "policy_variant": adjustments["policy_variant"],
+                "policy_adjustment_reason": recommended_action,
+                "scientific_score": adjustments["scientific_score"],
+                "next_generation_policy_adjustments": adjustments["next_generation_policy_adjustments"],
+            }
+        )
+        return {
+            "event_type": "post_reconciliation_scientific_expansion",
+            "memory_kind": "scientific_reconciliation",
+            "generation_event_id": resolved_generation_event_id,
+            "batch_id": resolved_batch_id,
+            "contest_number": contest_number,
+            "generation_range": {
+                "generation_event_id": resolved_generation_event_id,
+                "batch_id": resolved_batch_id,
+                "contest_number": contest_number,
+                "contest_scope": "SINGLE_CONTEST",
+                "official_history_window": [10, 60, 100, 300],
+            },
+            "contest_scope": "SINGLE_CONTEST",
+            "local_classification": local_classification,
+            "scientific_classification": local_classification,
+            "confidence_level": confidence_level,
+            "requires_cross_validation": True,
+            "historical_windows": historical_windows,
+            "recommended_action": recommended_action,
+            "policy_adjustment_reason": recommended_action,
+            "next_generation_policy_adjustments": adjustments["next_generation_policy_adjustments"],
+            "scientific_score": adjustments["scientific_score"],
+            "scientific_score_components": {
+                "count_10": count_10,
+                "count_11_plus": count_11_plus,
+                "count_12_plus": count_12_plus,
+                "count_13_plus": count_13_plus,
+                "count_14_plus": count_14_plus,
+                "count_15": count_15,
+                "best_hits": best_hits,
+                "average_hits": average_hits,
+                "stability": cross_validation_support,
+                "overfit_risk": max((window.get("overfit_risk", 0.0) for window in historical_windows.values()), default=0.0),
+                "concentration_risk": concentration_risk,
+                "frequency_maxima_dezena": max_frequency_number,
+                "frequency_maxima_dezena_percentual": round(max_frequency_ratio * 100.0, 4),
+                "frequency_teto_percentual": 70.0,
+            },
+            "policy_before": base_policy,
+            "policy_after": adjusted_policy,
+            "policy_id": str(
+                adjusted_policy.get("policy_signature")
+                or adjusted_policy.get("policy_id")
+                or base_policy.get("policy_signature")
+                or base_policy.get("policy_id")
+                or ""
+            ),
+            "policy_origin": "scientific_reconciliation_memory",
+            "policy_variant": "recalibrate_from_near_miss_towards_15",
+            "policy_applied": dict(policy_after or base_policy or {}),
+            "total_games": len(game_rows),
+            "unique_games": len({tuple(numbers) for numbers in game_numbers}),
+            "duplicate_games": max(0, len(game_rows) - len({tuple(numbers) for numbers in game_numbers})),
+            "structural_status": "APROVADO" if int(generation_event_id or 0) and int(best_hits or 0) >= 0 else "REPROVADO",
+            "scientific_status": "APROVADO" if count_11_plus > 0 or count_12_plus > 0 or count_13_plus > 0 or count_14_plus > 0 or count_15 > 0 else "REPROVADO",
+            "main_reason": (
+                "alvo_maximo_15" if count_15 > 0 else
+                "excelencia_14" if count_14_plus > 0 else
+                "forte_13" if count_13_plus > 0 else
+                "forte_12" if count_12_plus > 0 else
+                "minimo_premiavel_11" if count_11_plus > 0 else
+                "near_miss_local"
+            ),
+            "best_hit": best_hits,
+            "average_hits": average_hits,
+            "count_10": count_10,
+            "count_11_plus": count_11_plus,
+            "count_12_plus": count_12_plus,
+            "count_13_plus": count_13_plus,
+            "count_14_plus": count_14_plus,
+            "count_15": count_15,
+            "decision_mode": "OBSERVACAO" if confidence_level.startswith("LOW") else "AUTONOMIA_SUPERVISIONADA",
+            "approved_for_use": int(count_11_plus > 0 and concentration_risk <= 0.5),
+            "notes": (
+                f"contest_scope=SINGLE_CONTEST | confidence_level={confidence_level} | "
+                f"requires_cross_validation=true | overfit_risk={max((window.get('overfit_risk', 0.0) for window in historical_windows.values()), default=0.0):.4f}"
+            ),
+            "official_history_count": len(history),
+            "official_history_first_contest": int(history[0].get("contest_number", 0) or 0) if history else None,
+            "official_history_last_contest": int(history[-1].get("contest_number", 0) or 0) if history else None,
+            "official_history_window": [10, 60, 100, 300],
+            "validation_contests": sorted(set(validation_contests)),
+            "cross_validation_summary": {
+                "contest_scope": "SINGLE_CONTEST",
+                "confidence_level": confidence_level,
+                "requires_cross_validation": True,
+                "historical_windows": historical_windows,
+                "scientific_score": adjustments["scientific_score"],
+                "scientific_score_components": {
+                    "count_10": count_10,
+                    "count_11_plus": count_11_plus,
+                    "count_12_plus": count_12_plus,
+                    "count_13_plus": count_13_plus,
+                    "count_14_plus": count_14_plus,
+                    "count_15": count_15,
+                    "best_hits": best_hits,
+                    "average_hits": average_hits,
+                    "stability": cross_validation_support,
+                    "overfit_risk": max((window.get("overfit_risk", 0.0) for window in historical_windows.values()), default=0.0),
+                    "concentration_risk": concentration_risk,
+                    "frequency_maxima_dezena": max_frequency_number,
+                    "frequency_maxima_dezena_percentual": round(max_frequency_ratio * 100.0, 4),
+                    "frequency_teto_percentual": 70.0,
+                },
+                "next_generation_policy_adjustments": adjustments["next_generation_policy_adjustments"],
+                "local_classification": local_classification,
+                "recommended_action": recommended_action,
+            },
+            "frequency_alerts": (
+                [f"frequencia_maxima_dezena_percentual={round(max_frequency_ratio * 100.0, 4)}"]
+                if max_frequency_ratio > 0.70
+                else []
+            ),
+            "absence_alerts": [],
+            "parity_alerts": [],
+            "repetition_alerts": [],
+            "sequence_alerts": [],
+            "low_high_alerts": [],
+            "range_alerts": [],
+        }
 
     def discover_scientific_generation_policy(
         self,
@@ -905,9 +1343,18 @@ class LotofacilScientificCore:
         memory_rows = self._load_scientific_memory_rows(limit=max(5, int(candidate_limit or 6)))
         decision_rows = self._load_scientific_calibration_decisions(limit=max(5, int(candidate_limit or 6)))
         latest_memory = memory_rows[0] if memory_rows else {}
+        latest_reconciliation_memory = next(
+            (row for row in memory_rows if str(row.get("memory_kind", "") or "").strip() == "scientific_reconciliation"),
+            {},
+        )
         approved_memory = next((row for row in memory_rows if bool(row.get("approved_for_use")) and row.get("policy_after")), {})
         latest_decision = decision_rows[0] if decision_rows else {}
-        memory_policy = dict(approved_memory.get("policy_after") or latest_memory.get("policy_after") or {})
+        memory_policy = dict(
+            latest_reconciliation_memory.get("policy_after")
+            or approved_memory.get("policy_after")
+            or latest_memory.get("policy_after")
+            or {}
+        )
         if memory_policy:
             memory_policy = {
                 **base_policy,
@@ -1158,6 +1605,7 @@ class LotofacilScientificCore:
                 "scientific_memory_count": len(memory_rows),
                 "scientific_decision_count": len(decision_rows),
                 "scientific_memory_latest": latest_memory,
+                "scientific_memory_latest_reconciliation": latest_reconciliation_memory,
                 "scientific_memory_latest_approved": approved_memory,
                 "scientific_decision_latest": latest_decision,
                 "selection_rank": None,
@@ -1240,6 +1688,7 @@ class LotofacilScientificCore:
             "scientific_memory_count": len(memory_rows),
             "scientific_decision_count": len(decision_rows),
             "scientific_memory_latest": latest_memory,
+            "scientific_memory_latest_reconciliation": latest_reconciliation_memory,
             "scientific_memory_latest_approved": approved_memory,
             "scientific_decision_latest": latest_decision,
             "selection_rank": int(selected_candidate["rank"]),
@@ -1435,3 +1884,25 @@ def get_scientific_generation_policy(
 ) -> dict[str, Any]:
     core = LotofacilScientificCore(contests=contests, db_path=db_path)
     return core.get_scientific_generation_policy(game_size)
+
+
+def build_post_reconciliation_scientific_memory(
+    *,
+    generation_event_id: int,
+    batch_id: str,
+    contest: dict[str, Any],
+    games: Sequence[dict[str, Any]],
+    policy_before: dict[str, Any] | None = None,
+    policy_after: dict[str, Any] | None = None,
+    contests: Sequence[dict[str, Any]] | None = None,
+    db_path: Any = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    core = LotofacilScientificCore(contests=contests, db_path=db_path)
+    return core.build_post_reconciliation_scientific_memory(
+        generation_event_id=generation_event_id,
+        batch_id=batch_id,
+        contest=contest,
+        games=games,
+        policy_before=policy_before,
+        policy_after=policy_after,
+    )

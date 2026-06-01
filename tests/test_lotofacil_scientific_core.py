@@ -4,6 +4,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     analyze_contest_transition,
     build_scientific_profile,
+    build_post_reconciliation_scientific_memory,
     discover_scientific_generation_policy,
     get_scientific_generation_policy,
 )
@@ -68,3 +69,44 @@ def test_lotofacil_scientific_core_discovers_policy_with_metadata() -> None:
     assert discovery["policy"]["repeat_min"] >= 0
     assert discovery["policy"]["repeat_max"] <= 15
     assert len(discovery["candidates_tested"]) == discovery["candidate_count"]
+
+
+def test_lotofacil_scientific_core_builds_post_reconciliation_memory_for_near_miss() -> None:
+    contest = _contest(3699, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    games = [
+        {"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "game_index": 1},
+    ]
+
+    memory = build_post_reconciliation_scientific_memory(
+        generation_event_id=340,
+        batch_id="calibration-340",
+        contest=contest,
+        games=games,
+        policy_before={
+            "repeat_min": 7,
+            "repeat_max": 10,
+            "sequence_max": 6,
+            "coverage_min": 0.4,
+            "entropy_min": 0.45,
+            "max_frequency_ratio": 0.7,
+            "min_frequency_ratio": 0.2,
+        },
+        policy_after={
+            "repeat_min": 7,
+            "repeat_max": 10,
+            "sequence_max": 6,
+            "coverage_min": 0.4,
+            "entropy_min": 0.45,
+            "max_frequency_ratio": 0.7,
+            "min_frequency_ratio": 0.2,
+        },
+    )
+
+    assert memory["memory_kind"] == "scientific_reconciliation"
+    assert memory["scientific_classification"] == "NEAR_MISS_LOCAL"
+    assert memory["recommended_action"] == "recalibrate_from_near_miss_towards_15"
+    assert memory["count_10"] == 1
+    assert memory["cross_validation_summary"]["scientific_score_components"]["count_10"] == 1
+    assert memory["generation_range"]["contest_number"] == 3699
+    assert memory["policy_after"]["policy_origin"] == "scientific_reconciliation_memory"
+    assert memory["policy_after"]["next_generation_policy_adjustments"]["max_frequency_ratio"] <= 0.7
