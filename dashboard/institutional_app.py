@@ -1152,6 +1152,9 @@ def _scientific_policy_is_ready(policy_discovery: dict[str, Any] | None) -> bool
     if not str(policy_discovery.get("selection_reason", "") or "").strip():
         return False
     policy = policy_discovery.get("policy")
+    selection_status = str(policy_discovery.get("selection_status", "") or "").strip().upper()
+    if selection_status and selection_status not in {"POLICY_SELECTED", "POLICY_DESCOBERTA_E_SELECIONADA"}:
+        return False
     return isinstance(policy, dict) and bool(policy)
 
 
@@ -1168,14 +1171,24 @@ def _render_scientific_policy_panel(
     discovery_ready = _scientific_policy_is_ready(policy_discovery)
     policy_payload = dict(policy_discovery.get("policy") or {}) if discovery_ready else {}
     discovery_origin = str(policy_discovery.get("policy_origin", "-") or "-") if isinstance(policy_discovery, dict) else "-"
-    discovery_status = "POL?TICA DESCOBERTA E SELECIONADA" if discovery_ready else "AGUARDANDO DESCOBERTA AUTOM?TICA"
+    selection_status = str(policy_discovery.get("selection_status", "") or "").strip().upper() if isinstance(policy_discovery, dict) else ""
+    if discovery_ready:
+        discovery_status = "POL?TICA DESCOBERTA E SELECIONADA"
+    elif selection_status == "NONE_APPROVED":
+        discovery_status = "NENHUMA POL?TICA APROVADA ENCONTRADA"
+    elif selection_status == "PENDING":
+        discovery_status = "DESCOBERTA EM EXECU??O"
+    else:
+        discovery_status = "AGUARDANDO DESCOBERTA AUTOM?TICA"
     selected_policy_id = str(policy_discovery.get("policy_id", "-") or "-") if discovery_ready else "-"
     selected_policy_name = str(policy_discovery.get("selection_variant", "-") or "-") if discovery_ready else "-"
     selected_reason = str(policy_discovery.get("selection_reason", "-") or "-") if discovery_ready else "-"
     selected_window = str(policy_discovery.get("validation_window", "-") or "-") if discovery_ready else "-"
     selected_score = str(policy_discovery.get("selection_score", "-") or "-") if discovery_ready else "-"
     selected_at = str(policy_discovery.get("selected_at", "-") or "-") if discovery_ready else "-"
-    tested_count = int(policy_discovery.get("policies_tested", policy_discovery.get("candidate_count", 0)) or 0) if discovery_ready else 0
+    tested_count = int(policy_discovery.get("policies_tested", policy_discovery.get("candidate_count", 0)) or 0) if isinstance(policy_discovery, dict) else 0
+    rejected_by_guardian = int(policy_discovery.get("rejected_by_guardian", 0) or 0) if isinstance(policy_discovery, dict) else 0
+    rejected_by_rules = int(policy_discovery.get("rejected_by_rules", 0) or 0) if isinstance(policy_discovery, dict) else 0
     parameter_reasoning = dict(policy_discovery.get("parameter_reasoning") or {}) if discovery_ready else {}
 
     top_cols = st.columns(4)
@@ -1195,7 +1208,15 @@ def _render_scientific_policy_panel(
     score_cols[1].metric("Selected at", selected_at)
 
     if not discovery_ready:
-        st.info("Par?metros: aguardando a LotoIA descobrir a pol?tica.")
+        if selection_status == "NONE_APPROVED":
+            st.warning("Nenhuma pol?tica aprovada encontrada.")
+            st.caption(
+                f"Pol?ticas testadas: {tested_count} | "
+                f"descartadas pelo guardi?o: {rejected_by_guardian} | "
+                f"descartadas pelas regras: {rejected_by_rules}"
+            )
+        else:
+            st.info("Par?metros: aguardando a LotoIA descobrir a pol?tica.")
         with st.expander("Ver payload t?cnico completo", expanded=False):
             st.json({"status": "aguardando descoberta autom?tica", "policy_discovery": policy_discovery or {}})
         return
@@ -1421,7 +1442,10 @@ def _institutional_generation_policy(size: int) -> dict[str, Any]:
     size = max(2, min(25, int(size or 15)))
     if size == 15:
         discovery = discover_scientific_generation_policy(size, db_path=DB_PATH)
-        return dict(discovery.get("policy") or discovery)
+        selection_status = str(discovery.get("selection_status", "") or "").strip().upper()
+        if selection_status == "POLICY_SELECTED" and discovery.get("policy"):
+            return dict(discovery.get("policy") or {})
+        return {}
     profile = _hb_geometry_profile_for_size(size)
     return {
         "repeat_min": 0,

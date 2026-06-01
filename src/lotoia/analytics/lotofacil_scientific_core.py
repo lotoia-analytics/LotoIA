@@ -711,6 +711,23 @@ class LotofacilScientificCore:
             total = sum(weights) or 1.0
             return {tuple(pair): round(weight / total, 4) for pair, weight in zip(pairs, weights, strict=False)}
 
+        def _policy_signature(policy: Mapping[str, Any]) -> str:
+            payload = {
+                "game_size": resolved_game_size,
+                "repeat_min": int(policy.get("repeat_min", 0) or 0),
+                "repeat_max": int(policy.get("repeat_max", 0) or 0),
+                "preferred_parity_pairs": list(policy.get("preferred_parity_pairs", []) or []),
+                "allowed_parity_pairs": list(policy.get("allowed_parity_pairs", []) or []),
+                "sequence_max": int(policy.get("sequence_max", 0) or 0),
+                "coverage_min": float(policy.get("coverage_min", 0.0) or 0.0),
+                "entropy_min": float(policy.get("entropy_min", 0.0) or 0.0),
+                "core_numbers": list(policy.get("core_numbers", []) or []),
+                "discouraged_numbers": list(policy.get("discouraged_numbers", []) or []),
+                "max_frequency_ratio": float(policy.get("max_frequency_ratio", 0.0) or 0.0),
+                "min_frequency_ratio": float(policy.get("min_frequency_ratio", 0.0) or 0.0),
+            }
+            return hashlib.sha1(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:12]
+
         def _canonical_policy(
             *,
             repeat_min: int,
@@ -902,6 +919,7 @@ class LotofacilScientificCore:
             memory_policy = {}
 
         candidate_policies: list[dict[str, Any]] = []
+        rejected_by_guardian_count = 0
         candidate_variants: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
         candidate_variants.append(
             (
@@ -918,6 +936,26 @@ class LotofacilScientificCore:
                     {"notes": ("scientific_memory_blend",)},
                 )
             )
+
+        rejected_policy_signatures: set[str] = set()
+        for row in memory_rows:
+            if bool(row.get("approved_for_use")):
+                continue
+            policy_after = dict(row.get("policy_after") or {})
+            policy_before = dict(row.get("policy_before") or {})
+            if policy_after:
+                rejected_policy_signatures.add(_policy_signature(policy_after))
+            if policy_before:
+                rejected_policy_signatures.add(_policy_signature(policy_before))
+        for row in decision_rows:
+            if bool(row.get("applied")):
+                continue
+            policy_after = dict(row.get("policy_after") or {})
+            policy_before = dict(row.get("policy_before") or {})
+            if policy_after:
+                rejected_policy_signatures.add(_policy_signature(policy_after))
+            if policy_before:
+                rejected_policy_signatures.add(_policy_signature(policy_before))
 
         repeat_anchor = max(0, min(resolved_game_size, base_repeat_center))
         for family_index, parity_family in enumerate(parity_families, start=1):
@@ -977,26 +1015,29 @@ class LotofacilScientificCore:
                             break
                     if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
                         break
-                if len(candidate_variants) >= max(20, int(candidate_limit or 120)):
-                    break
 
         candidate_variants = candidate_variants[: max(20, int(candidate_limit or 120))]
         for variant_name, params, extra in candidate_variants:
-            candidate_policies.append(
-                _canonical_policy(
-                    repeat_min=int(params["repeat_min"]),
-                    repeat_max=int(params["repeat_max"]),
-                    preferred=list(params["preferred"]),
-                    allowed=list(params["allowed"]),
-                    sequence_max=int(params["sequence_max"]),
-                    coverage_min=float(params["coverage_min"]),
-                    entropy_min=float(params["entropy_min"]),
-                    max_frequency_ratio=float(params["max_frequency_ratio"]),
-                    min_frequency_ratio=float(params["min_frequency_ratio"]),
-                    notes=tuple(params.get("notes", ())) + tuple(f"{key}={value}" for key, value in extra.items()),
-                    variant_name=variant_name,
-                )
+            candidate_policy = _canonical_policy(
+                repeat_min=int(params["repeat_min"]),
+                repeat_max=int(params["repeat_max"]),
+                preferred=list(params["preferred"]),
+                allowed=list(params["allowed"]),
+                sequence_max=int(params["sequence_max"]),
+                coverage_min=float(params["coverage_min"]),
+                entropy_min=float(params["entropy_min"]),
+                max_frequency_ratio=float(params["max_frequency_ratio"]),
+                min_frequency_ratio=float(params["min_frequency_ratio"]),
+                notes=tuple(params.get("notes", ())) + tuple(f"{key}={value}" for key, value in extra.items()),
+                variant_name=variant_name,
             )
+            candidate_signature = _policy_signature(candidate_policy)
+            if candidate_signature in rejected_policy_signatures:
+                candidate_policy["policy_variant"] = f"{variant_name}_rejected_by_guardian"
+                candidate_policy["policy_signature"] = candidate_signature
+                rejected_by_guardian_count += 1
+                continue
+            candidate_policies.append(candidate_policy)
 
         scored_candidates: list[dict[str, Any]] = []
         target_repeat = round(repeat_mean or max(1.0, resolved_game_size / 2), 2)
@@ -1023,6 +1064,17 @@ class LotofacilScientificCore:
             candidate_discouraged = [int(number) for number in candidate.get("discouraged_numbers", []) or []]
 
             acceptance_errors: list[str] = []
+            if candidate.get("policy_variant") == "history_profile_seed" and history_count >= 60:
+                acceptance_errors.append("seed_policy_requires_validation")
+            if resolved_game_size == 15 and history_count >= 60:
+                if repeat_min < 7 or repeat_max > 10:
+                    acceptance_errors.append("repeat_policy_out_of_bounds_for_15")
+                if max_frequency_ratio > 0.70:
+                    acceptance_errors.append("frequency_cap_above_threshold")
+                if min_frequency_ratio < 0.20:
+                    acceptance_errors.append("frequency_floor_below_threshold")
+                if sequence_max > 6:
+                    acceptance_errors.append("sequence_limit_above_threshold")
             if repeat_min > repeat_max:
                 acceptance_errors.append("repetition_range_inverted")
             if not candidate_preferred:
@@ -1090,18 +1142,60 @@ class LotofacilScientificCore:
 
         accepted_candidates = [item for item in scored_candidates if item["accepted"]]
         if not accepted_candidates:
-            accepted_candidates = scored_candidates or [
-                {
-                    "rank": 1,
-                    "variant": "base_history_profile",
-                    "policy": base_policy,
-                    "accepted": True,
-                    "acceptance_errors": [],
-                    "score": 0.0,
-                    "preferred_pair_match": True,
-                    "core_overlap": len(core_numbers),
-                }
-            ]
+            selection_reason = ""
+            return {
+                "game_size": resolved_game_size,
+                "policy": {},
+                "policy_before": dict(base_policy),
+                "policy_after": {},
+                "policy_id": "",
+                "policy_origin": "automatic_scientific_discovery",
+                "policies_tested": len(candidate_variants),
+                "validation_window": int(profile_window or len(self.contests)),
+                "official_history_count": history_count,
+                "official_history_first_contest": int(self.contests[0].get("contest_number", 0) or 0) if self.contests else None,
+                "official_history_last_contest": int(self.contests[-1].get("contest_number", 0) or 0) if self.contests else None,
+                "scientific_memory_count": len(memory_rows),
+                "scientific_decision_count": len(decision_rows),
+                "scientific_memory_latest": latest_memory,
+                "scientific_memory_latest_approved": approved_memory,
+                "scientific_decision_latest": latest_decision,
+                "selection_rank": None,
+                "selection_variant": "",
+                "selection_reason": "",
+                "selection_status": "NONE_APPROVED",
+                "candidate_count": len(candidate_variants),
+                "selection_score": None,
+                "selected_at": datetime.now(timezone.utc).isoformat(),
+                "candidates_tested": scored_candidates,
+                "approved_candidates": [],
+                "rejected_by_guardian": rejected_by_guardian_count,
+                "rejected_by_rules": sum(1 for item in scored_candidates if item["acceptance_errors"]),
+                "parameter_reasoning": {
+                    "repeat": f"derived from average repetition {repeat_mean:.2f} and adjusted around official-history stability",
+                    "parity": f"derived from average odd/even {average_odd:.2f}/{average_even:.2f} and validated parity families {preferred_pairs}",
+                    "sequence": f"derived from average sequence max {sequence_mean:.2f} with controlled ceiling {sequence_cap}",
+                    "coverage": f"derived from average coverage {coverage_mean:.2f} with floor {coverage_floor:.2f}",
+                    "entropy": f"derived from average entropy {entropy_mean:.2f} with floor {entropy_floor:.2f}",
+                    "core_numbers": f"top recurring numbers from official history: {list(core_numbers)}",
+                    "discouraged_numbers": f"least frequent numbers from official history: {list(discouraged_numbers)}",
+                    "frequency": f"observed history frequencies guided cap {observed_max_frequency:.2f} and floor {observed_min_frequency:.2f}",
+                    "selection": "none_approved",
+                },
+                "history_profile": {
+                    "contest_count": history_count,
+                    "window_size": int(profile.get("window_size", 0) or profile_window or 0),
+                    "average_repetition": repeat_mean,
+                    "average_sequence_max": sequence_mean,
+                    "average_coverage": coverage_mean,
+                    "average_entropy": entropy_mean,
+                    "average_parity_odd": average_odd,
+                    "average_parity_even": average_even,
+                    "dominant_numbers": profile.get("dominant_numbers", []),
+                    "discouraged_numbers": profile.get("discouraged_numbers", []),
+                    "source": profile.get("source", "imported_contests"),
+                },
+            }
         selected_candidate = min(accepted_candidates, key=lambda item: (float(item["score"]), int(item["rank"])))
         selected_policy = dict(selected_candidate["policy"])
         selected_policy["policy_origin"] = "automatic_scientific_discovery"
@@ -1138,7 +1232,7 @@ class LotofacilScientificCore:
             "policy_after": dict(selected_policy),
             "policy_id": selected_policy["policy_signature"],
             "policy_origin": "automatic_scientific_discovery",
-            "policies_tested": len(candidate_policies),
+            "policies_tested": len(candidate_variants),
             "validation_window": int(profile_window or len(self.contests)),
             "official_history_count": history_count,
             "official_history_first_contest": int(self.contests[0].get("contest_number", 0) or 0) if self.contests else None,
@@ -1151,11 +1245,14 @@ class LotofacilScientificCore:
             "selection_rank": int(selected_candidate["rank"]),
             "selection_variant": str(selected_candidate["variant"]),
             "selection_reason": selection_reason,
-            "candidate_count": len(candidate_policies),
+            "selection_status": "POLICY_SELECTED",
+            "candidate_count": len(candidate_variants),
             "selection_score": float(selected_candidate["score"]),
             "selected_at": datetime.now(timezone.utc).isoformat(),
             "candidates_tested": scored_candidates,
             "approved_candidates": [item for item in scored_candidates if item["accepted"]],
+            "rejected_by_guardian": rejected_by_guardian_count,
+            "rejected_by_rules": sum(1 for item in scored_candidates if item["acceptance_errors"]),
             "parameter_reasoning": {
                 "repeat": f"derived from average repetition {repeat_mean:.2f} and adjusted around official-history stability",
                 "parity": f"derived from average odd/even {average_odd:.2f}/{average_even:.2f} and validated parity families {preferred_pairs}",
