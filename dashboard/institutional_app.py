@@ -174,6 +174,48 @@ def _load_official_sync_diagnostics() -> dict[str, Any]:
     return _safe_json_load(SYNC_DIAGNOSTIC_FILE)
 
 
+def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
+    try:
+        draws = load_draws_csv()
+    except Exception:
+        return None
+    if not draws:
+        return None
+    latest_draw = draws[-1]
+    contest_number = _safe_int(getattr(latest_draw, "contest", None), default=None)
+    if contest_number is None:
+        return None
+    return {
+        "contest_number": int(contest_number),
+        "data": str(getattr(latest_draw, "date", "") or ""),
+        "dezenas": [int(number) for number in getattr(latest_draw, "numbers", []) or []],
+        "source": "historico_lotofacil.csv",
+    }
+
+
+def _load_official_sync_contest_summary() -> dict[str, Any] | None:
+    sync_summary = _load_official_sync_diagnostics()
+    if not isinstance(sync_summary, dict) or not sync_summary:
+        return None
+    payload = sync_summary.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    latest_record = _normalize_contest_record(payload.get("latest_contest_record") or sync_summary.get("latest_contest_record"))
+    if latest_record:
+        latest_record = dict(latest_record)
+        latest_record["source"] = "api_caixa_sincronizada"
+        return latest_record
+    latest_contest = _safe_int(payload.get("latest_contest") or sync_summary.get("imported_contest"), default=None)
+    if latest_contest is None:
+        return None
+    imported_numbers = _extract_int_numbers(payload.get("imported_numbers", []) or sync_summary.get("imported_numbers", []) or [])
+    return {
+        "contest_number": int(latest_contest),
+        "data": str(payload.get("sync_timestamp") or sync_summary.get("sync_timestamp") or ""),
+        "dezenas": imported_numbers,
+        "source": "api_caixa_sincronizada",
+    }
+
+
 def _mask_database_url(database_url: str) -> str:
     text = str(database_url or "").strip()
     if not text:
@@ -523,30 +565,49 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
     latest_contest = _get_latest_contest() or _load_latest_contest_summary() or {}
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_csv = _load_csv_latest_contest_summary() or {}
+    latest_sync = _load_official_sync_contest_summary() or {}
+    official_history = _load_official_history_diagnostics()
     return [
         {
-            "camada": "GERADOR",
-            "origem": "PostgreSQL",
-            "tabelas": "generation_events / generated_games",
-            "uso": f"última geração={latest_generation.get('generation_event_id', '-')}",
+            "camada": "CSV local",
+            "origem": "historico_lotofacil.csv",
+            "tabelas": "data/raw/historico_lotofacil.csv",
+            "uso": f"último concurso CSV={latest_csv.get('contest_number', '-')}",
         },
         {
-            "camada": "CONFERÊNCIA",
+            "camada": "API oficial",
+            "origem": "servicebus2.caixa.gov.br",
+            "tabelas": "sync_payload / response_preview",
+            "uso": f"último concurso API={latest_sync.get('contest_number', '-')}",
+        },
+        {
+            "camada": "Banco persistido",
             "origem": "PostgreSQL",
-            "tabelas": "imported_contests / reconciliation_runs / reconciliation_games",
+            "tabelas": "imported_contests / lotofacil_official_history",
+            "uso": f"último concurso persistido={latest_contest.get('contest_number', '-')} | imported_contests={snapshot['counts'].get('imported_contests', 0)} | lotofacil_official_history={official_history.get('total_lotofacil_official_history', 0)}",
+        },
+        {
+            "camada": "Histórico oficial",
+            "origem": "PostgreSQL",
+            "tabelas": "lotofacil_official_history",
+            "uso": (
+                f"primeiro={official_history.get('contest_number_min', '-')}"
+                f" | último={official_history.get('ultimo_concurso_lotofacil_official_history', '-')}"
+                f" | faltantes={official_history.get('total_concursos_faltantes', 0)}"
+            ),
+        },
+        {
+            "camada": "Conferência",
+            "origem": "PostgreSQL",
+            "tabelas": "reconciliation_runs / reconciliation_games",
             "uso": f"último concurso={latest_contest.get('contest_number', '-')} | última reconciliação={latest_reconciliation.get('id', '-')}",
         },
         {
-            "camada": "MEMÓRIA",
-            "origem": "PostgreSQL",
-            "tabelas": "generated_games / reconciliation_* / operational_logs",
-            "uso": "timeline e resumos institucionais",
-        },
-        {
-            "camada": "PAINEL",
+            "camada": "Gerador",
             "origem": "PostgreSQL + session_state",
-            "tabelas": "snapshot institucional",
-            "uso": f"build={BUILD_MARKER}",
+            "tabelas": "generation_events / generated_games",
+            "uso": f"última geração={latest_generation.get('generation_event_id', '-')} | build={BUILD_MARKER}",
         },
     ]
 
@@ -568,6 +629,21 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     conn_cols[0].caption(f"DATABASE_URL: {audit['database_url']}")
     conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
     conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
+    source_cols = st.columns(5)
+    csv_summary = _load_csv_latest_contest_summary() or {}
+    sync_summary = _load_official_sync_contest_summary() or {}
+    db_summary = _load_imported_contest() or {}
+    official_history = _load_official_history_diagnostics()
+    source_cols[0].metric("CSV oficial", int(csv_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[1].metric("API sincronizada", int(sync_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[2].metric("Banco persistido", int(db_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[3].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+    source_cols[4].metric("histórico oficial", int(official_history.get("total_lotofacil_official_history", 0) or 0))
+    official_cols = st.columns(4)
+    official_cols[0].metric("primeiro concurso", int(official_history.get("contest_number_min", 0) or 0) or "-")
+    official_cols[1].metric("último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
+    official_cols[2].metric("faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
+    official_cols[3].metric("status", str(official_history.get("status_base_oficial", "-") or "-"))
     st.markdown("##### SELECT COUNT(*) no runtime")
     audit_rows: list[dict[str, Any]] = []
     with _get_engine_cached().begin() as connection:
@@ -743,6 +819,14 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
 
 
 def _load_latest_contest_summary() -> dict[str, Any] | None:
+    official_sync = _load_official_sync_contest_summary()
+    if official_sync:
+        return {
+            "contest_number": int(official_sync.get("contest_number", 0) or 0),
+            "data": str(official_sync.get("data") or ""),
+            "dezenas": [int(number) for number in official_sync.get("dezenas", [])],
+            "source": str(official_sync.get("source") or "api_caixa_sincronizada"),
+        }
     latest_contest = _load_imported_contest()
     if latest_contest:
         return {
@@ -768,6 +852,9 @@ def _get_latest_contest() -> dict[str, Any] | None:
     sync_record = _normalize_contest_record(sync_summary.get("latest_contest_record"))
     if sync_record:
         return sync_record
+    persisted_sync_record = _load_official_sync_contest_summary()
+    if persisted_sync_record:
+        return persisted_sync_record
     sync_contest = sync_summary.get("latest_contest")
     if str(sync_contest or "").isdigit():
         synced_contest = _load_imported_contest(int(sync_contest))
@@ -5703,6 +5790,22 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
+        _persist_official_sync_diagnostics(
+            {
+                "sync_status": payload.get("status", "unknown"),
+                "sync_error": payload.get("sync_error", ""),
+                "sync_timestamp": payload.get("sync_timestamp", ""),
+                "http_status": payload.get("http_status", None),
+                "request_url": payload.get("request_url", ""),
+                "request_headers": payload.get("request_headers", {}),
+                "response_headers": payload.get("response_headers", {}),
+                "response_preview": payload.get("response_preview", ""),
+                "imported_contest": payload.get("latest_contest", None),
+                "imported_numbers": payload.get("imported_numbers", []),
+                "latest_contest_record": payload.get("latest_contest_record"),
+                "payload": payload,
+            }
+        )
         try:
             export_historical_csv(repository.get_all_contests())
             payload["history_export_status"] = "ok"

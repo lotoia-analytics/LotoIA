@@ -15,7 +15,12 @@ from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore
 from dashboard.institutional_app import _institutional_generation_policy
 from dashboard.institutional_app import _format_scientific_memory_listing
 from dashboard.institutional_app import _generation_strategy_display
+from dashboard.institutional_app import _institutional_source_map
+from dashboard.institutional_app import _get_latest_contest
 from dashboard.institutional_app import _official_15_policy_status_label
+from dashboard.institutional_app import _load_csv_latest_contest_summary
+from dashboard.institutional_app import _load_latest_contest_summary
+from dashboard.institutional_app import _load_official_sync_contest_summary
 from dashboard.institutional_app import _persist_generation_snapshot
 from dashboard.institutional_app import _resolve_official_15_calibration_context
 from dashboard.institutional_app import _scientific_policy_is_ready
@@ -896,6 +901,91 @@ def test_institutional_generation_policy_falls_back_to_history_profile_seed(tmp_
     assert policy["policy_adjustment_reason"] == "policy_derived_from_official_history"
     assert policy["based_on_memory_kind"] is None
     assert policy["based_on_batch_id"] is None
+
+
+def test_latest_contest_sources_are_distinguished(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+    monkeypatch.setattr("dashboard.institutional_app.DB_PATH", db_path, raising=False)
+    monkeypatch.setattr(
+        "dashboard.institutional_app._load_official_sync_diagnostics",
+        lambda: {
+            "sync_status": "ok",
+            "sync_timestamp": "2026-06-02T17:04:00+00:00",
+            "imported_contest": 3700,
+            "imported_numbers": [1, 3, 7, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 23, 25],
+            "payload": {
+                "latest_contest": 3700,
+                "latest_contest_record": {
+                    "contest_number": 3700,
+                    "data": "01/06/2026",
+                    "dezenas": [1, 3, 7, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 23, 25],
+                },
+            },
+        },
+    )
+
+    csv_summary = _load_csv_latest_contest_summary()
+    sync_summary = _load_official_sync_contest_summary()
+    latest_summary = _load_latest_contest_summary()
+    latest_contest = _get_latest_contest()
+
+    assert csv_summary is not None
+    assert csv_summary["contest_number"] == 3697
+    assert sync_summary is not None
+    assert sync_summary["contest_number"] == 3700
+    assert sync_summary["source"] == "api_caixa_sincronizada"
+    assert latest_summary is not None
+    assert latest_summary["contest_number"] == 3700
+    assert latest_summary["source"] == "api_caixa_sincronizada"
+    assert latest_contest is not None
+    assert latest_contest["contest_number"] == 3700
+
+
+def test_institutional_source_map_separates_csv_api_and_persisted_history(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+    monkeypatch.setattr("dashboard.institutional_app.DB_PATH", db_path, raising=False)
+    monkeypatch.setattr(
+        "dashboard.institutional_app._load_official_history_diagnostics",
+        lambda: {
+            "total_lotofacil_official_history": 4,
+            "contest_number_min": 3697,
+            "contest_number_max": 3700,
+            "total_concursos_faltantes": 0,
+            "ultimo_concurso_lotofacil_official_history": 3700,
+            "status_base_oficial": "OK",
+        },
+    )
+    monkeypatch.setattr(
+        "dashboard.institutional_app._load_official_sync_diagnostics",
+        lambda: {
+            "sync_status": "ok",
+            "sync_timestamp": "2026-06-02T17:04:00+00:00",
+            "imported_contest": 3700,
+            "imported_numbers": [1, 3, 7, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 23, 25],
+            "payload": {
+                "latest_contest": 3700,
+                "latest_contest_record": {
+                    "contest_number": 3700,
+                    "data": "01/06/2026",
+                    "dezenas": [1, 3, 7, 8, 9, 10, 12, 13, 14, 17, 18, 19, 20, 23, 25],
+                },
+            },
+        },
+    )
+    snapshot = {"counts": {"imported_contests": 4}}
+
+    source_map = _institutional_source_map(snapshot)
+    source_by_layer = {row["camada"]: row for row in source_map}
+
+    assert source_by_layer["CSV local"]["uso"].endswith("3697")
+    assert source_by_layer["API oficial"]["uso"].endswith("3700")
+    assert "último concurso persistido=3700" in source_by_layer["Banco persistido"]["uso"]
+    assert "lotofacil_official_history=4" in source_by_layer["Banco persistido"]["uso"]
+    assert "primeiro=3697" in source_by_layer["Histórico oficial"]["uso"]
+    assert "último=3700" in source_by_layer["Histórico oficial"]["uso"]
+    assert "faltantes=0" in source_by_layer["Histórico oficial"]["uso"]
 
 
 def test_generation_strategy_display_prioritizes_baseline_and_prepares_future_sizes(tmp_path, monkeypatch) -> None:
