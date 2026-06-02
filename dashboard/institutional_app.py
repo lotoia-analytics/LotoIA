@@ -40,6 +40,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     discover_scientific_generation_policy,
     _apply_scientific_15_vnext_policy,
     _decompose_hit_counts,
+    _scientific_tier_weighted_score,
     _scientific_validation_rule,
     get_scientific_generation_policy,
 )
