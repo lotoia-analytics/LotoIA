@@ -8,6 +8,8 @@ from typing import Any
 
 from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
+    _decompose_hit_counts,
+    _scientific_validation_rule,
     get_scientific_generation_policy,
 )
 from lotoia.statistics.advanced import calculate_sequence_stats
@@ -104,6 +106,9 @@ class ScientificBatchValidationReport:
     batch_id: str
     game_size: int
     reference_contests: tuple[int, ...]
+    validation_threshold: int
+    target_band: str
+    validation_zone_label: str
     total_jogos_solicitados: int
     total_jogos_gerados: int
     total_jogos_unicos: int
@@ -115,11 +120,18 @@ class ScientificBatchValidationReport:
     average_best_hits: float
     median_best_hits: float
     average_hits: float
+    count_10_exact: int
+    count_11_exact: int
+    count_12_exact: int
+    count_13_exact: int
+    count_14_exact: int
+    count_15_exact: int
     count_11_plus: int
     count_12_plus: int
     count_13_plus: int
     count_14_plus: int
     count_15: int
+    hit_histogram: dict[str, int]
     frequency_by_number: dict[str, int]
     frequency_maxima_dezena: int
     frequency_maxima_dezena_percentual: float
@@ -155,6 +167,9 @@ class ScientificBatchValidationReport:
             "batch_id": self.batch_id,
             "game_size": self.game_size,
             "reference_contests": list(self.reference_contests),
+            "validation_threshold": self.validation_threshold,
+            "target_band": self.target_band,
+            "validation_zone_label": self.validation_zone_label,
             "total_jogos_solicitados": self.total_jogos_solicitados,
             "total_jogos_gerados": self.total_jogos_gerados,
             "total_jogos_unicos": self.total_jogos_unicos,
@@ -166,11 +181,18 @@ class ScientificBatchValidationReport:
             "average_best_hits": self.average_best_hits,
             "median_best_hits": self.median_best_hits,
             "average_hits": self.average_hits,
+            "count_10_exact": self.count_10_exact,
+            "count_11_exact": self.count_11_exact,
+            "count_12_exact": self.count_12_exact,
+            "count_13_exact": self.count_13_exact,
+            "count_14_exact": self.count_14_exact,
+            "count_15_exact": self.count_15_exact,
             "count_11_plus": self.count_11_plus,
             "count_12_plus": self.count_12_plus,
             "count_13_plus": self.count_13_plus,
             "count_14_plus": self.count_14_plus,
             "count_15": self.count_15,
+            "hit_histogram": dict(self.hit_histogram),
             "frequency_by_number": dict(self.frequency_by_number),
             "frequency_maxima_dezena": self.frequency_maxima_dezena,
             "frequency_maxima_dezena_percentual": self.frequency_maxima_dezena_percentual,
@@ -206,6 +228,8 @@ class ScientificBatchValidationReport:
 def _classify_scientific_batch(
     *,
     best_hits: int,
+    validation_threshold: int,
+    validation_count_plus: int,
     count_11_plus: int,
     count_12_plus: int,
     total_unique: int,
@@ -222,13 +246,21 @@ def _classify_scientific_batch(
 ) -> tuple[str, str, str]:
     if total_duplicates > 0 or total_unique <= 0:
         return "REPROVADO", "REPROVADA", "duplicidade ou ausencia de jogos unicos"
-    if best_hits <= 10 or count_11_plus == 0:
-        return "REPROVADO", "APROVADA ESTRUTURALMENTE, REPROVADA CIENTIFICAMENTE", "maior acerto <= 10 e 11+ inexistente"
+    if best_hits < validation_threshold or validation_count_plus == 0:
+        return (
+            "REPROVADO",
+            "APROVADA ESTRUTURALMENTE, REPROVADA CIENTIFICAMENTE",
+            f"maior acerto < {validation_threshold} e zona principal inexistente",
+        )
 
     strong_threshold = not alerts_concentracao and not alerts_ausencia and not alerts_paridade and not alerts_repeticao and not alerts_baixa_alta and not alerts_faixas and not alerts_sequencia
     if best_hits >= 13 and count_12_plus > 0 and frequency_max_percent <= 70.0 and frequency_min_candidate_percent >= 20.0 and strong_threshold:
         return "APROVADO", "APROVADA FORTE", "bateria com alta resposta estatistica"
-    if best_hits >= 11 and count_11_plus > 0 and frequency_max_percent <= 70.0 and frequency_min_candidate_percent >= 20.0:
+    if best_hits >= validation_threshold and validation_count_plus > 0 and frequency_max_percent <= 70.0 and frequency_min_candidate_percent >= 20.0:
+        if validation_threshold >= 13:
+            return "APROVADO", "APROVADA MINIMA", "bateria estatisticamente saudavel"
+        if validation_threshold == 12:
+            return "APROVADO", "APROVADA MINIMA", "bateria estatisticamente saudavel"
         return "APROVADO", "APROVADA MODERADA", "bateria estatisticamente saudavel"
     return "REPROVADO", "REPROVADA", "alertas cientificos acima do limite"
 
@@ -242,6 +274,7 @@ def validate_scientific_batch(
     batch_id: str | None = None,
 ) -> dict[str, Any]:
     resolved_policy = dict(policy or get_scientific_generation_policy(game_size))
+    validation_rule = _scientific_validation_rule(game_size)
     normalized_games = []
     invalid_games: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
@@ -289,6 +322,9 @@ def validate_scientific_batch(
             batch_id=str(batch_id or "").strip() or "scientific-global",
             game_size=int(game_size),
             reference_contests=tuple(item["contest_number"] for item in normalized_references),
+            validation_threshold=int(validation_rule["validation_threshold"]),
+            target_band=str(validation_rule["target_band"]),
+            validation_zone_label=str(validation_rule["validation_zone_label"]),
             total_jogos_solicitados=total_requested,
             total_jogos_gerados=total_generated,
             total_jogos_unicos=total_unique,
@@ -300,11 +336,18 @@ def validate_scientific_batch(
             average_best_hits=0.0,
             median_best_hits=0.0,
             average_hits=0.0,
+            count_10_exact=0,
+            count_11_exact=0,
+            count_12_exact=0,
+            count_13_exact=0,
+            count_14_exact=0,
+            count_15_exact=0,
             count_11_plus=0,
             count_12_plus=0,
             count_13_plus=0,
             count_14_plus=0,
             count_15=0,
+            hit_histogram={str(number): 0 for number in range(16)},
             frequency_by_number={str(number): 0 for number in range(1, 26)},
             frequency_maxima_dezena=0,
             frequency_maxima_dezena_percentual=0.0,
@@ -413,11 +456,20 @@ def validate_scientific_batch(
     average_best_hits = round(mean(best_hits_values), 4) if best_hits_values else 0.0
     median_best_hits = round(median(best_hits_values), 4) if best_hits_values else 0.0
     average_hits = round(mean(average_hits_values), 4) if average_hits_values else 0.0
+    hit_decomposition = _decompose_hit_counts(best_hits_values)
+    validation_threshold = int(validation_rule["validation_threshold"])
+    target_band = str(validation_rule["target_band"])
+    validation_zone_label = str(validation_rule["validation_zone_label"])
     count_11_plus = sum(1 for hits in best_hits_values if hits >= 11)
     count_12_plus = sum(1 for hits in best_hits_values if hits >= 12)
     count_13_plus = sum(1 for hits in best_hits_values if hits >= 13)
     count_14_plus = sum(1 for hits in best_hits_values if hits >= 14)
     count_15 = sum(1 for hits in best_hits_values if hits >= 15)
+    validation_count_plus = {
+        11: count_11_plus,
+        12: count_12_plus,
+        13: count_13_plus,
+    }[validation_threshold]
 
     repeat_min = int(resolved_policy.get("repeat_min", 0) or 0)
     repeat_max = int(resolved_policy.get("repeat_max", game_size) or game_size)
@@ -487,6 +539,8 @@ def validate_scientific_batch(
 
     status, classification, reason = _classify_scientific_batch(
         best_hits=best_hits,
+        validation_threshold=validation_threshold,
+        validation_count_plus=validation_count_plus,
         count_11_plus=count_11_plus,
         count_12_plus=count_12_plus,
         total_unique=total_unique,
@@ -506,6 +560,9 @@ def validate_scientific_batch(
         batch_id=str(batch_id or "").strip() or "scientific-global",
         game_size=int(game_size),
         reference_contests=tuple(item["contest_number"] for item in normalized_references),
+        validation_threshold=validation_threshold,
+        target_band=target_band,
+        validation_zone_label=validation_zone_label,
         total_jogos_solicitados=total_requested,
         total_jogos_gerados=total_generated,
         total_jogos_unicos=total_unique,
@@ -517,11 +574,18 @@ def validate_scientific_batch(
         average_best_hits=average_best_hits,
         median_best_hits=median_best_hits,
         average_hits=average_hits,
+        count_10_exact=int(hit_decomposition["count_10_exact"]),
+        count_11_exact=int(hit_decomposition["count_11_exact"]),
+        count_12_exact=int(hit_decomposition["count_12_exact"]),
+        count_13_exact=int(hit_decomposition["count_13_exact"]),
+        count_14_exact=int(hit_decomposition["count_14_exact"]),
+        count_15_exact=int(hit_decomposition["count_15_exact"]),
         count_11_plus=count_11_plus,
         count_12_plus=count_12_plus,
         count_13_plus=count_13_plus,
         count_14_plus=count_14_plus,
         count_15=count_15,
+        hit_histogram=dict(hit_decomposition["hit_histogram"]),
         frequency_by_number=frequency_by_number,
         frequency_maxima_dezena=int(max_frequency),
         frequency_maxima_dezena_percentual=max_frequency_percent,

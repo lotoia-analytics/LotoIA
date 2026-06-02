@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
+from lotoia.analytics.lotofacil_scientific_core import _scientific_validation_rule
 from lotoia.governance.scientific_commander import validate_scientific_batch
 
 
@@ -46,7 +47,71 @@ def test_scientific_commander_reproves_structural_batch_with_weak_hits() -> None
     assert report["total_jogos_unicos"] == 100
     assert report["total_jogos_duplicados"] == 0
     assert report["best_hits"] == 10
+    assert report["count_10_exact"] == 100
+    assert report["count_11_exact"] == 0
+    assert report["count_12_exact"] == 0
+    assert report["count_13_exact"] == 0
+    assert report["count_14_exact"] == 0
+    assert report["count_15_exact"] == 0
     assert report["count_11_plus"] == 0
+    assert report["count_11_plus"] == report["count_11_exact"] + report["count_12_exact"] + report["count_13_exact"] + report["count_14_exact"] + report["count_15_exact"]
+    assert report["count_12_plus"] == report["count_12_exact"] + report["count_13_exact"] + report["count_14_exact"] + report["count_15_exact"]
+    assert report["hit_histogram"]["10"] == 100
     assert report["status_comandante_cientifico"] == "REPROVADO"
     assert report["classificacao_cientifica"] == "APROVADA ESTRUTURALMENTE, REPROVADA CIENTIFICAMENTE"
-    assert report["motivo_cientifico"] == "maior acerto <= 10 e 11+ inexistente"
+    assert report["motivo_cientifico"] == "maior acerto < 11 e zona principal inexistente"
+
+
+def test_scientific_validation_rule_by_game_size() -> None:
+    assert _scientific_validation_rule(15)["validation_threshold"] == 11
+    assert _scientific_validation_rule(15)["target_band"] == "11_to_15"
+    assert _scientific_validation_rule(17)["validation_threshold"] == 12
+    assert _scientific_validation_rule(17)["target_band"] == "12_to_15"
+    assert _scientific_validation_rule(18)["validation_threshold"] == 13
+    assert _scientific_validation_rule(18)["target_band"] == "13_to_15"
+
+
+def test_scientific_commander_rejects_11_hits_for_17_dezenas() -> None:
+    reference_contests = [_contest(index + 1, list(range(1, 12)) + list(range(18, 22))) for index in range(10)]
+    games = [{"numbers": list(range(1, 12)) + list(range(12, 18)), "profile_type": "recorrente"} for _ in range(100)]
+
+    report = validate_scientific_batch(
+        games,
+        reference_contests,
+        game_size=17,
+        policy={"repeat_min": 6, "repeat_max": 12, "sequence_max": 7, "max_frequency_ratio": 0.70, "min_frequency_ratio": 0.20},
+        batch_id="batch-17z",
+    )
+
+    assert report["validation_threshold"] == 12
+    assert report["target_band"] == "12_to_15"
+    assert report["validation_zone_label"] == "Zona de validação científica: 12 a 15 acertos."
+    assert report["best_hits"] == 11
+    assert report["count_11_exact"] == 100
+    assert report["count_12_exact"] == 0
+    assert report["count_11_plus"] == 100
+    assert report["count_12_plus"] == 0
+    assert report["status_comandante_cientifico"] == "REPROVADO"
+
+
+def test_scientific_commander_rejects_12_hits_for_18_dezenas() -> None:
+    reference_contests = [_contest(index + 1, list(range(1, 13)) + list(range(19, 22))) for index in range(10)]
+    games = [{"numbers": list(range(1, 13)) + list(range(13, 19)), "profile_type": "recorrente"} for _ in range(100)]
+
+    report = validate_scientific_batch(
+        games,
+        reference_contests,
+        game_size=18,
+        policy={"repeat_min": 6, "repeat_max": 12, "sequence_max": 8, "max_frequency_ratio": 0.70, "min_frequency_ratio": 0.20},
+        batch_id="batch-18z",
+    )
+
+    assert report["validation_threshold"] == 13
+    assert report["target_band"] == "13_to_15"
+    assert report["validation_zone_label"] == "Zona de validação científica: 13 a 15 acertos."
+    assert report["best_hits"] == 12
+    assert report["count_12_exact"] == 100
+    assert report["count_13_exact"] == 0
+    assert report["count_12_plus"] == 100
+    assert report["count_13_plus"] == 0
+    assert report["status_comandante_cientifico"] == "REPROVADO"
