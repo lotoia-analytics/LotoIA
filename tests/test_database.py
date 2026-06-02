@@ -151,6 +151,35 @@ def test_create_database_migrates_lead_runtime_columns(tmp_path: Path) -> None:
     assert {"source", "ip_hash", "user_agent"} <= lead_columns
 
 
+def test_create_database_migrates_generation_event_payload_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy_generation_events.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE generation_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER,
+                first_name TEXT NOT NULL DEFAULT '',
+                whatsapp TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                context_json JSON NOT NULL DEFAULT '{}',
+                ml_enabled INTEGER NOT NULL,
+                seed INTEGER NOT NULL,
+                strategy TEXT NOT NULL,
+                ranking_score REAL NOT NULL,
+                execution_time_ms REAL NOT NULL
+            )
+            """
+        )
+        connection.commit()
+
+    create_database(db_path)
+
+    inspector = inspect(get_engine(db_path))
+    generation_columns = {column["name"] for column in inspector.get_columns("generation_events")}
+    assert {"lead_id", "first_name", "whatsapp", "generated_games", "context_json"} <= generation_columns
+
+
 def test_save_and_read_backtest_run(tmp_path: Path) -> None:
     db_path = tmp_path / "lotoia.db"
 

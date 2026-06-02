@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine, inspect
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DEFAULT_DATABASE_PATH = Path("data/lotoia.db")
+logger = logging.getLogger(__name__)
 
 
 def _resolve_institutional_database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
@@ -944,13 +946,45 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
     engine = get_engine(path)
     Base.metadata.create_all(engine)
     if engine.url.get_backend_name() != "sqlite":
+        applied_migrations: list[str] = []
         with engine.begin() as connection:
+            inspector = inspect(connection)
+            lead_columns = {column["name"] for column in inspector.get_columns("leads")}
+            for column_sql, column_name in (
+                ("ALTER TABLE leads ADD COLUMN source TEXT NOT NULL DEFAULT 'public'", "source"),
+                ("ALTER TABLE leads ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''", "ip_hash"),
+                ("ALTER TABLE leads ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''", "user_agent"),
+            ):
+                if column_name not in lead_columns:
+                    connection.exec_driver_sql(column_sql)
+                    applied_migrations.append(f"leads.{column_name}")
+            generation_event_columns = {
+                column["name"]
+                for column in inspector.get_columns("generation_events")
+            }
+            for column_sql, column_name in (
+                ("ALTER TABLE generation_events ADD COLUMN lead_id INTEGER", "lead_id"),
+                ("ALTER TABLE generation_events ADD COLUMN first_name TEXT NOT NULL DEFAULT ''", "first_name"),
+                ("ALTER TABLE generation_events ADD COLUMN whatsapp TEXT NOT NULL DEFAULT ''", "whatsapp"),
+                ("ALTER TABLE generation_events ADD COLUMN generated_games JSON NOT NULL DEFAULT '[]'", "generated_games"),
+                ("ALTER TABLE generation_events ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'", "context_json"),
+            ):
+                if column_name not in generation_event_columns:
+                    connection.exec_driver_sql(column_sql)
+                    applied_migrations.append(f"generation_events.{column_name}")
             try:
                 connection.exec_driver_sql("ALTER TABLE generated_games ALTER COLUMN lead_id DROP NOT NULL")
             except Exception:
                 pass
+        if applied_migrations:
+            logger.info(
+                "Institutional schema migration applied on %s: %s",
+                engine.url.get_backend_name(),
+                ", ".join(applied_migrations),
+            )
     if engine.url.get_backend_name() != "sqlite":
         return
+    applied_migrations: list[str] = []
     with engine.begin() as connection:
         connection.exec_driver_sql(
             """
@@ -1337,12 +1371,19 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         }
         if "lead_id" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN lead_id INTEGER")
+            applied_migrations.append("generation_events.lead_id")
         if "first_name" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
+            applied_migrations.append("generation_events.first_name")
         if "whatsapp" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN whatsapp TEXT NOT NULL DEFAULT ''")
+            applied_migrations.append("generation_events.whatsapp")
+        if "generated_games" not in generation_event_columns:
+            connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN generated_games JSON NOT NULL DEFAULT '[]'")
+            applied_migrations.append("generation_events.generated_games")
         if "context_json" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'")
+            applied_migrations.append("generation_events.context_json")
         for column_sql, column_name in (
             ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
             ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),
@@ -1351,12 +1392,14 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         ):
             if column_name not in generated_columns:
                 connection.exec_driver_sql(column_sql)
+                applied_migrations.append(f"generated_games.{column_name}")
         reconciliation_run_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(reconciliation_runs)").fetchall()
         }
         if "payload" not in reconciliation_run_columns:
             connection.exec_driver_sql("ALTER TABLE reconciliation_runs ADD COLUMN payload JSON NOT NULL DEFAULT '{}'")
+            applied_migrations.append("reconciliation_runs.payload")
         reconciliation_game_columns = {
             row[1]
             for row in connection.exec_driver_sql("PRAGMA table_info(reconciliation_games)").fetchall()
@@ -1567,6 +1610,25 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE imported_contests ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
             )
+            applied_migrations.append("imported_contests.metadata_json")
+        lead_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(leads)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE leads ADD COLUMN source TEXT NOT NULL DEFAULT 'public'", "source"),
+            ("ALTER TABLE leads ADD COLUMN ip_hash TEXT NOT NULL DEFAULT ''", "ip_hash"),
+            ("ALTER TABLE leads ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''", "user_agent"),
+        ):
+            if column_name not in lead_columns:
+                connection.exec_driver_sql(column_sql)
+                applied_migrations.append(f"leads.{column_name}")
+    if applied_migrations:
+        logger.info(
+            "Institutional schema migration applied on %s: %s",
+            engine.url.get_backend_name(),
+            ", ".join(applied_migrations),
+        )
 
 
 def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
@@ -1580,15 +1642,8 @@ def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict
         adapter = resolve_institutional_adapter(path)
         resolved_url = adapter.database_url
         backend = adapter.backend
-    if backend == "sqlite":
-        create_database(path)
-        return {"database_url": resolved_url, "backend": backend}
-
-    return {
-        "database_url": resolved_url,
-        "backend": backend,
-        "bootstrap_skipped": True,
-    }
+    create_database(path)
+    return {"database_url": resolved_url, "backend": backend}
 
 
 def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:
