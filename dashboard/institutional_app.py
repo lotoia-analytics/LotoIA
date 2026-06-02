@@ -2455,16 +2455,20 @@ def _render_scientific_calibration_panel(
         technical_payload=technical_payload,
     )
     scientific_state = scientific_state or {
-        "mode": "OBSERVAÇÃO",
-        "structural_status": "aguardando geração",
-        "scientific_status": "aguardando avaliação",
-        "classification": "aguardando",
-        "main_reason": "aguardando primeira bateria",
-        "status_visual": "aguardando",
+        "mode": "GERAÇÃO PREPARADA",
+        "structural_status": "baseline oficial pronta" if int(strategy_size or 0) == 15 else "régua futura preparada",
+        "scientific_status": "VALIDATED_15_POLICY_LEVEL_3" if int(strategy_size or 0) == 15 else "PREPARADO",
+        "classification": "VALIDATED_15_POLICY_LEVEL_3" if int(strategy_size or 0) == 15 else "PREPARADO",
+        "main_reason": "usar baseline oficial validada nível 3 para próxima geração compacta"
+        if int(strategy_size or 0) == 15
+        else "Estratégia preparada para uso operacional futuro.",
+        "status_visual": "BASELINE OFICIAL" if int(strategy_size or 0) == 15 else "PREPARADO",
     }
     scientific_recommendation = scientific_recommendation or {
-        "action_suggested": "recalibrar distribuição de frequência",
-        "status_visual": "OBSERVAÇÃO",
+        "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta"
+        if int(strategy_size or 0) == 15
+        else "gerar jogos",
+        "status_visual": "BASELINE OFICIAL" if int(strategy_size or 0) == 15 else "PREPARADO",
     }
     st.markdown("##### Motor Científico de Calibração")
     official_15_banner = _official_15_policy_status_label(technical_payload)
@@ -6575,6 +6579,59 @@ def _ensure_institutional_schema() -> None:
     create_database(DB_PATH)
 
 
+def _generation_strategy_display(size: int) -> dict[str, Any]:
+    game_size = max(2, min(25, int(size or 15)))
+    policy = _institutional_generation_policy(game_size)
+    if game_size == 15:
+        official_label = _official_15_policy_status_label(policy) or (
+            "Política 15 validada nível 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos. "
+            "Ouro 14 e diamante 15 seguem como metas futuras."
+        )
+        scientific_status = str(policy.get("policy_validation_status") or "VALIDATED_15_POLICY_LEVEL_3")
+        return {
+            "policy": policy,
+            "strategy_label": "Política 15 validada nível 3",
+            "scientific_status": scientific_status,
+            "status_visual": "BASELINE OFICIAL",
+            "mode": "BASELINE VALIDADA",
+            "main_reason": official_label,
+            "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta",
+            "summary": official_label,
+        }
+    if game_size == 17:
+        return {
+            "policy": policy,
+            "strategy_label": "Estratégia 17 preparada",
+            "scientific_status": "PREPARADO",
+            "status_visual": "PREPARADO",
+            "mode": "GERAÇÃO PREPARADA",
+            "main_reason": "Régua futura preparada: 12 = validação mínima, 13 = validação forte, 14 = ouro, 15 = diamante.",
+            "action_suggested": "estratégia 17 pronta, aguardando liberação da calibração",
+            "summary": "Estratégia 17 preparada para ativação futura. Ainda sem política validada.",
+        }
+    if game_size == 18:
+        return {
+            "policy": policy,
+            "strategy_label": "Estratégia 18 preparada",
+            "scientific_status": "PREPARADO",
+            "status_visual": "PREPARADO",
+            "mode": "GERAÇÃO PREPARADA",
+            "main_reason": "Régua futura preparada: 13 = validação mínima, 14 = ouro, 15 = diamante.",
+            "action_suggested": "estratégia 18 pronta, aguardando liberação da calibração",
+            "summary": "Estratégia 18 preparada para ativação futura. Ainda sem política validada.",
+        }
+    return {
+        "policy": policy,
+        "strategy_label": f"Estratégia {game_size} preparada",
+        "scientific_status": "PREPARADO",
+        "status_visual": "PREPARADO",
+        "mode": "GERAÇÃO PREPARADA",
+        "main_reason": "Estratégia preparada para uso operacional futuro.",
+        "action_suggested": "gerar jogos",
+        "summary": "Estratégia preparada para uso operacional futuro.",
+    }
+
+
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     _ensure_official_history_seeded()
@@ -7504,6 +7561,270 @@ def _render_history_page(snapshot: dict[str, Any]) -> None:
     _render_analytical_page(snapshot)
 
 
+def _render_generator_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    _ensure_official_history_seeded()
+    live_counts = _database_snapshot()["counts"]
+    st.subheader("Gerador LotoIA")
+    st.write("Formulário operacional simples, com baseline oficial no topo e histórico antigo em segundo plano.")
+
+    status_cols = st.columns([1, 1, 1, 1, 1])
+    status_cols[0].metric("build", BUILD_MARKER)
+    status_cols[1].metric("backend", snapshot["backend"])
+    status_cols[2].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
+    status_cols[3].metric("generated_games", int(live_counts.get("generated_games", 0)))
+    status_cols[4].metric("output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
+
+    contest_summary = _get_latest_contest() or _load_latest_contest_summary()
+    top_cols = st.columns([1.1, 1.3, 1.6])
+    if contest_summary:
+        top_cols[0].metric("Último concurso", int(contest_summary["contest_number"]))
+        top_cols[1].caption(f"Fonte: {contest_summary.get('source', 'banco oficial')}")
+        top_cols[2].caption(
+            f"dezenas: {' '.join(f'{number:02d}' for number in contest_summary.get('dezenas', [])) or '-'}"
+        )
+    else:
+        top_cols[0].caption("Último concurso: -")
+        top_cols[1].caption("Fonte: banco vazio")
+
+    controls_cols = st.columns([1.0, 1.0])
+    requested_games = int(
+        controls_cols[0].number_input(
+            "Quantidade de jogos (1 a 100)",
+            min_value=1,
+            max_value=100,
+            value=int(st.session_state.get("institutional_total_games", 10) or 10),
+            step=1,
+            key="institutional_total_games",
+        )
+    )
+    controls_cols[0].caption("Atalhos comuns: 2, 10, 20, 50")
+    selected_game_size = int(
+        controls_cols[1].selectbox(
+            "Quantidade de dezenas por jogo",
+            [15, 17, 18],
+            index=[15, 17, 18].index(int(st.session_state.get("institutional_dezenas_per_game", 15) or 15))
+            if int(st.session_state.get("institutional_dezenas_per_game", 15) or 15) in {15, 17, 18}
+            else 0,
+            key="institutional_dezenas_per_game",
+        )
+    )
+
+    strategy_display = _generation_strategy_display(selected_game_size)
+    strategy_policy = dict(strategy_display.get("policy") or {})
+
+    strategy_cols = st.columns([1.4, 1.0, 1.0])
+    strategy_cols[0].markdown(
+        f"**Estratégia ativa**  \n{strategy_display.get('strategy_label', '-') or '-'}"
+    )
+    strategy_cols[1].metric("Status científico", str(strategy_display.get("scientific_status", "-") or "-"))
+    strategy_cols[2].metric("Status visual", str(strategy_display.get("status_visual", "-") or "-"))
+    if selected_game_size == 15:
+        st.success(str(strategy_display.get("summary", "-") or "-"))
+    else:
+        st.info(str(strategy_display.get("summary", "-") or "-"))
+
+    _render_scientific_calibration_panel(
+        strategy_size=selected_game_size,
+        scientific_state={
+            "mode": str(strategy_display.get("mode", "GERAÇÃO PREPARADA") or "GERAÇÃO PREPARADA"),
+            "structural_status": "baseline oficial pronta" if selected_game_size == 15 else "régua futura preparada",
+            "scientific_status": str(strategy_display.get("scientific_status", "-") or "-"),
+            "classification": str(strategy_display.get("scientific_status", "-") or "-"),
+            "main_reason": str(strategy_display.get("main_reason", "-") or "-"),
+            "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
+        },
+        scientific_recommendation={
+            "action_suggested": str(strategy_display.get("action_suggested", "gerar jogos") or "gerar jogos"),
+            "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
+        },
+        technical_payload=strategy_policy,
+    )
+
+    with st.expander("Modo científico avançado", expanded=False):
+        use_top50 = bool(
+            st.checkbox(
+                "Usar TOP50 estrutural HB",
+                value=bool(st.session_state.get("institutional_use_top50", True)),
+                key="institutional_use_top50",
+            )
+        )
+        repeat_limit = int(
+            st.number_input(
+                "Máx. repetição do último concurso",
+                min_value=0,
+                max_value=15,
+                value=int(st.session_state.get("institutional_repeat_limit", 10 if selected_game_size == 15 else 8) or (10 if selected_game_size == 15 else 8)),
+                step=1,
+                key="institutional_repeat_limit",
+            )
+        )
+        geometry_profile = _sync_hb_geometry_controls(selected_game_size)
+        parity_cols = st.columns([1.0, 1.0, 1.0, 1.0])
+        odd_min = int(
+            parity_cols[0].slider(
+                "Ímpares mínimo",
+                min_value=0,
+                max_value=selected_game_size,
+                value=int(st.session_state.get("institutional_odd_min", geometry_profile["odd_min"]) or geometry_profile["odd_min"]),
+                key="institutional_odd_min",
+            )
+        )
+        odd_max = int(
+            parity_cols[1].slider(
+                "Ímpares máximo",
+                min_value=0,
+                max_value=selected_game_size,
+                value=int(st.session_state.get("institutional_odd_max", geometry_profile["odd_max"]) or geometry_profile["odd_max"]),
+                key="institutional_odd_max",
+            )
+        )
+        even_min = int(
+            parity_cols[2].slider(
+                "Pares mínimo",
+                min_value=0,
+                max_value=selected_game_size,
+                value=int(st.session_state.get("institutional_even_min", geometry_profile["even_min"]) or geometry_profile["even_min"]),
+                key="institutional_even_min",
+            )
+        )
+        even_max = int(
+            parity_cols[3].slider(
+                "Pares máximo",
+                min_value=0,
+                max_value=selected_game_size,
+                value=int(st.session_state.get("institutional_even_max", geometry_profile["even_max"]) or geometry_profile["even_max"]),
+                key="institutional_even_max",
+            )
+        )
+        structural_cols = st.columns([1.0, 1.0, 1.0])
+        sequence_max = int(
+            structural_cols[0].slider(
+                "Limite de sequência",
+                min_value=1,
+                max_value=selected_game_size,
+                value=int(st.session_state.get("institutional_sequence_max", geometry_profile["sequence_max"]) or geometry_profile["sequence_max"]),
+                key="institutional_sequence_max",
+            )
+        )
+        coverage_min = float(
+            structural_cols[1].slider(
+                "Cobertura mínima",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("institutional_coverage_min", geometry_profile["coverage_min"]) or geometry_profile["coverage_min"]),
+                step=0.05,
+                key="institutional_coverage_min",
+            )
+        )
+        entropy_min = float(
+            structural_cols[2].slider(
+                "Entropia mínima",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("institutional_entropy_min", geometry_profile["entropy_min"]) or geometry_profile["entropy_min"]),
+                step=0.05,
+                key="institutional_entropy_min",
+            )
+        )
+        st.caption("Perfil geométrico adaptado automaticamente ao tamanho do jogo.")
+        st.caption(
+            " | ".join(
+                [
+                    f"policy_mode={strategy_policy.get('policy_mode', '-')}",
+                    f"validation_threshold={strategy_policy.get('validation_threshold', '-')}",
+                    f"target_band={strategy_policy.get('target_band', '-')}",
+                    f"current_target={strategy_policy.get('current_target', '-')}",
+                    f"secondary_target={strategy_policy.get('secondary_target', '-')}",
+                ]
+            )
+        )
+    if st.button("Gerar jogos", type="primary"):
+        _run_institutional_generation(
+            total_games=requested_games,
+            dezenas_per_game=selected_game_size,
+            use_top50=bool(st.session_state.get("institutional_use_top50", True)),
+            odd_min=int(st.session_state.get("institutional_odd_min", 0) or 0),
+            odd_max=int(st.session_state.get("institutional_odd_max", selected_game_size) or selected_game_size),
+            even_min=int(st.session_state.get("institutional_even_min", 0) or 0),
+            even_max=int(st.session_state.get("institutional_even_max", selected_game_size) or selected_game_size),
+            sequence_max=int(st.session_state.get("institutional_sequence_max", selected_game_size) or selected_game_size),
+            coverage_min=float(st.session_state.get("institutional_coverage_min", 0.0) or 0.0),
+            entropy_min=float(st.session_state.get("institutional_entropy_min", 0.0) or 0.0),
+            repeat_limit=int(st.session_state.get("institutional_repeat_limit", 0) or 0),
+            snapshot=snapshot,
+        )
+        st.rerun()
+
+    batch_result = st.session_state.get("institutional_generation_batch_result") or {}
+    generation_result = st.session_state.get("institutional_generation_result") or {}
+    summary_result = batch_result or generation_result
+    if summary_result:
+        st.markdown("##### Resultado da geração")
+        generation_event_id = int(summary_result.get("generation_event_id") or generation_result.get("generation_event_id") or 0)
+        persisted_count = _count_generated_games_for_event(generation_event_id) if generation_event_id else 0
+        batch_status = str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO")
+        total_requested = int(summary_result.get("quantidade_jogos_solicitada", requested_games) or requested_games)
+        total_generated = int(summary_result.get("quantidade_jogos_real_gerada", len(generation_result.get("jogos") or [])) or len(generation_result.get("jogos") or []))
+        total_unique = int(summary_result.get("total_jogos_unicos", total_generated) or total_generated)
+        total_duplicates = int(summary_result.get("total_jogos_duplicados", 0) or 0)
+        duplicate_history = max(0, total_generated - total_unique)
+        summary_cols = st.columns(6)
+        summary_cols[0].metric("batch_id", str(summary_result.get("batch_id", "-") or "-"))
+        summary_cols[1].metric("solicitados", total_requested)
+        summary_cols[2].metric("gerados", total_generated)
+        summary_cols[3].metric("dezenas/jogo", int(selected_game_size))
+        summary_cols[4].metric("duplicidade interna", total_duplicates)
+        summary_cols[5].metric("duplicidade histórico", duplicate_history)
+        st.caption(
+            " | ".join(
+                [
+                    f"policy_used={strategy_display.get('strategy_label', '-')}",
+                    f"policy_mode={strategy_policy.get('policy_mode', '-')}",
+                    f"status_comandante_saida={batch_status}",
+                    f"persistidos={persisted_count}",
+                    f"batch_id={summary_result.get('batch_id', '-')}",
+                ]
+            )
+        )
+        if batch_status != "APROVADO":
+            st.error(
+                "Comandante de Saída bloqueou a geração. "
+                f"status={batch_status} | "
+                f"motivo={summary_result.get('motivo_bloqueio', 'não foi possível gerar a quantidade solicitada de jogos únicos')}"
+            )
+        elif generation_result.get("jogos"):
+            st.success("Geração concluída com sucesso.")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "rank": index + 1,
+                            "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                            "perfil": game.get("profile_type", "-"),
+                            "score": round(float(game.get("final_score", {}).get("final_score", 0.0)), 4),
+                        }
+                        for index, game in enumerate(generation_result.get("jogos") or [])
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("A geração foi registrada, mas não há jogos visíveis para exibição.")
+        st.caption(
+            " | ".join(
+                [
+                    f"quantidade_solicitada={summary_result.get('quantidade_jogos_solicitada', '-')}",
+                    f"quantidade_gerada={summary_result.get('quantidade_jogos_real_gerada', '-')}",
+                    f"quantidade_dezenas={summary_result.get('quantidade_dezenas_solicitada', '-')}",
+                    f"duplicidade_interna={summary_result.get('total_jogos_duplicados', '-')}",
+                    f"duplicidade_histórico={duplicate_history}",
+                ]
+            )
+        )
+
+
 def _render_operational_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Operacional")
@@ -8047,7 +8368,7 @@ def main() -> None:
     if page == "audit":
         _render_runtime_audit_page(snapshot)
     elif page == "generation":
-        _render_generation_page(snapshot)
+        _render_generator_page(snapshot)
     elif page == "conference":
         _render_conference_page(snapshot)
     elif page == "simulation":

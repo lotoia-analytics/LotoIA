@@ -14,6 +14,7 @@ from lotoia.database.database import (
 from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore
 from dashboard.institutional_app import _institutional_generation_policy
 from dashboard.institutional_app import _format_scientific_memory_listing
+from dashboard.institutional_app import _generation_strategy_display
 from dashboard.institutional_app import _official_15_policy_status_label
 from dashboard.institutional_app import _persist_generation_snapshot
 from dashboard.institutional_app import _resolve_official_15_calibration_context
@@ -895,3 +896,43 @@ def test_institutional_generation_policy_falls_back_to_history_profile_seed(tmp_
     assert policy["policy_adjustment_reason"] == "policy_derived_from_official_history"
     assert policy["based_on_memory_kind"] is None
     assert policy["based_on_batch_id"] is None
+
+
+def test_generation_strategy_display_prioritizes_baseline_and_prepares_future_sizes(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+    monkeypatch.setattr("dashboard.institutional_app.DB_PATH", db_path, raising=False)
+    monkeypatch.setattr(
+        "dashboard.institutional_app.discover_scientific_generation_policy",
+        lambda *args, **kwargs: {
+            "selection_status": "NONE_APPROVED",
+            "selection_variant": "",
+            "policy_origin": "automatic_scientific_discovery",
+            "selection_reason": "policy_derived_from_official_history",
+            "based_on_memory_kind": None,
+            "based_on_memory_id": None,
+            "based_on_batch_id": None,
+            "based_on_generation_range": None,
+            "based_on_best_generations": [],
+        },
+    )
+
+    display_15 = _generation_strategy_display(15)
+    display_17 = _generation_strategy_display(17)
+    display_18 = _generation_strategy_display(18)
+
+    assert display_15["strategy_label"] == "Política 15 validada nível 3"
+    assert display_15["scientific_status"] == "VALIDATED_15_POLICY_LEVEL_3"
+    assert display_15["status_visual"] == "BASELINE OFICIAL"
+    assert "13 acertos" in display_15["summary"]
+    assert display_15["action_suggested"] == "usar baseline oficial validada nível 3 para próxima geração compacta"
+
+    assert display_17["strategy_label"] == "Estratégia 17 preparada"
+    assert display_17["scientific_status"] == "PREPARADO"
+    assert display_17["status_visual"] == "PREPARADO"
+    assert "12 = validação mínima" in display_17["main_reason"]
+
+    assert display_18["strategy_label"] == "Estratégia 18 preparada"
+    assert display_18["scientific_status"] == "PREPARADO"
+    assert display_18["status_visual"] == "PREPARADO"
+    assert "13 = validação mínima" in display_18["main_reason"]
