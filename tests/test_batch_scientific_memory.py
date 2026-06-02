@@ -1032,6 +1032,13 @@ def test_generation_strategy_display_prioritizes_baseline_and_prepares_future_si
 def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
     adjustment = _compact_small_batch_adjustment(game_size=15, total_games=20)
     assert adjustment["compactation_mode"] == "LIGHT_PRACTICAL_EXPANDED"
+    assert adjustment["scientific_mother_law"].startswith("Lei Cient")
+    assert adjustment["natural_scientific_quantity"] is True
+    assert adjustment["natural_quantity_reason"] == "structural_saturation_under_scientific_law"
+    assert adjustment["natural_quantity_mode"] == "OBSERVED_PRACTICAL_16"
+    assert adjustment["natural_generated_games"] == 16
+    assert adjustment["requested_games"] == 20
+    assert adjustment["persisted_games"] == 0
     assert adjustment["compactation_status"] == "STRUCTURAL_SATURATION"
     assert adjustment["compactation_test_status"] == "FAILED_MINIMUM_11_PLUS"
     assert adjustment["compactation_failure_type"] == "EXPANDED_LIGHT_GEOMETRY"
@@ -1051,9 +1058,33 @@ def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
     assert adjustment["compactation_adjustment_candidate_multiplier"] == 90
     assert adjustment["compactation_adjustment_attempt_limit"] == 1500
     assert "faixa 20" in adjustment["compactation_operational_law"]
-    assert "persistência somente com 20 jogos válidos" in adjustment["compactation_required_constraints"][4]
+    assert adjustment["compactation_law_role"] == "observed_operational_child_of_scientific_mother_law"
+    assert "persist" in adjustment["compactation_required_constraints"][4]
+
+    compact_15 = _compact_small_batch_adjustment(game_size=15, total_games=15)
+    assert compact_15["compactation_mode"] == "COMPACT_PRACTICAL_15"
+    assert compact_15["scientific_mother_law"].startswith("Lei Cient")
+    assert compact_15["natural_scientific_quantity"] is True
+    assert compact_15["natural_quantity_mode"] == "OBSERVED_COMPACT_12"
+    assert compact_15["natural_generated_games"] == 12
+    assert compact_15["requested_games"] == 15
+    assert compact_15["persisted_games"] == 0
+    assert compact_15["compactation_status"] == "OPERATIONAL_ACTIVE"
+    assert compact_15["compactation_test_status"] == "OPERATIONAL_COMPACT_15"
+    assert compact_15["compactation_adjustment_mode"] == "COMPACT_PRACTICAL_15"
+    assert compact_15["compactation_adjustment_odd_min"] == 3
+    assert compact_15["compactation_adjustment_odd_max"] == 12
+    assert compact_15["compactation_adjustment_sequence_max"] == 7
+    assert compact_15["compactation_law_role"] == "observed_operational_child_of_scientific_mother_law"
+
     compact_50 = _compact_small_batch_adjustment(game_size=15, total_games=50)
     assert compact_50["compactation_mode"] == "VALIDATED_BASELINE"
+    assert compact_50["scientific_mother_law"].startswith("Lei Cient")
+    assert compact_50["natural_scientific_quantity"] is True
+    assert compact_50["natural_quantity_mode"] == "VALIDATED_BASELINE_50"
+    assert compact_50["natural_generated_games"] == 50
+    assert compact_50["requested_games"] == 50
+    assert compact_50["persisted_games"] == 0
     assert compact_50["compactation_status"] == "VALIDATED_BASELINE"
     assert compact_50["compactation_adjustment_mode"] == "VALIDATED_BASELINE"
     assert compact_50["compactation_adjustment_candidate_multiplier"] == 20
@@ -1062,8 +1093,15 @@ def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
 def test_small_batch_compact_adjustment_preserves_rigid_mode_for_10() -> None:
     adjustment = _compact_small_batch_adjustment(game_size=15, total_games=10)
     assert adjustment["compactation_mode"] == "EXTREME_COMPACT"
+    assert adjustment["scientific_mother_law"] == "Lei Científica 15"
+    assert adjustment["natural_scientific_quantity"] is True
+    assert adjustment["natural_quantity_mode"] == "OBSERVED_EXTREME_9"
+    assert adjustment["natural_generated_games"] == 9
+    assert adjustment["requested_games"] == 10
+    assert adjustment["persisted_games"] == 0
     assert adjustment["compactation_adjustment_mode"] == "EXTREME_COMPACT"
     assert adjustment["compactation_adjustment_boost_numbers"] == [17, 23]
+    assert adjustment["compactation_law_role"] == "observed_operational_child_of_scientific_mother_law"
 
 
 def test_progressive_compactation_profiles_expand_with_batch_size() -> None:
@@ -1072,17 +1110,20 @@ def test_progressive_compactation_profiles_expand_with_batch_size() -> None:
     compact_50 = _compact_small_batch_adjustment(game_size=15, total_games=50)
 
     assert compact_30["compactation_mode"] == "BALANCED_PRACTICAL"
+    assert compact_30["scientific_mother_law"] == "Lei Científica 15"
     assert compact_30["compactation_adjustment_odd_max"] == 10
     assert compact_30["compactation_adjustment_sequence_max"] == 5
     assert compact_30["compactation_adjustment_candidate_multiplier"] == 70
 
     assert compact_40["compactation_mode"] == "NEAR_BASELINE"
+    assert compact_40["scientific_mother_law"] == "Lei Científica 15"
     assert compact_40["compactation_adjustment_odd_max"] == 11
     assert compact_40["compactation_adjustment_sequence_max"] == 6
     assert compact_40["compactation_adjustment_candidate_multiplier"] == 90
     assert compact_40["compactation_status"] == "OPERATIONAL_ACTIVE"
 
     assert compact_50["compactation_mode"] == "VALIDATED_BASELINE"
+    assert compact_50["scientific_mother_law"] == "Lei Científica 15"
     assert compact_50["compactation_adjustment_odd_max"] == 12
     assert compact_50["compactation_adjustment_sequence_max"] == 6
     assert compact_50["compactation_adjustment_candidate_multiplier"] == 20

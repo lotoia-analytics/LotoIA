@@ -6853,6 +6853,13 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         return {}
     if requested_games <= 10:
         return {
+            "scientific_mother_law": "Lei Científica 15",
+            "natural_scientific_quantity": True,
+            "natural_quantity_reason": "structural_saturation_under_scientific_law",
+            "natural_quantity_mode": "OBSERVED_EXTREME_9",
+            "natural_generated_games": 9,
+            "requested_games": requested_games,
+            "persisted_games": 0,
             "compactation_mode": "EXTREME_COMPACT",
             "compactation_status": "OPERATIONAL_ACTIVE",
             "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
@@ -6862,19 +6869,20 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "compactation_adjustment_reason": "high_precision_minimum_diversity",
             "compactation_adjustment_boost_numbers": [17, 23],
             "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
-            "compactation_adjustment_odd_min": 6,
-            "compactation_adjustment_odd_max": 8,
-            "compactation_adjustment_even_min": 6,
-            "compactation_adjustment_even_max": 8,
-            "compactation_adjustment_repeat_min": 5,
+            "compactation_adjustment_odd_min": 5,
+            "compactation_adjustment_odd_max": 9,
+            "compactation_adjustment_even_min": 5,
+            "compactation_adjustment_even_max": 9,
+            "compactation_adjustment_repeat_min": 4,
             "compactation_adjustment_repeat_max": 8,
-            "compactation_adjustment_coverage_min": 0.40,
-            "compactation_adjustment_entropy_min": 0.45,
-            "compactation_adjustment_sequence_max": 4,
-            "compactation_adjustment_candidate_multiplier": 35,
-            "compactation_adjustment_attempt_limit": 400,
+            "compactation_adjustment_coverage_min": 0.38,
+            "compactation_adjustment_entropy_min": 0.42,
+            "compactation_adjustment_sequence_max": 5,
+            "compactation_adjustment_candidate_multiplier": 60,
+            "compactation_adjustment_attempt_limit": 700,
             "compactation_diversity_minimum_expected": "alta precisão com diversidade mínima obrigatória",
             "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_law_role": "observed_operational_child_of_scientific_mother_law",
             "compactation_operational_law": "Lei de Compactação 15 - faixa 10: extremar precisão, manter diversidade mínima e bloqueio estrito de duplicidade",
             "compactation_required_constraints": [
                 "baseline 15 intocada",
@@ -6888,8 +6896,63 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
                 "seletividade alta",
             ],
         }
+    if requested_games <= 15:
+        return {
+            "scientific_mother_law": "Lei Científica 15",
+            "natural_scientific_quantity": True,
+            "natural_quantity_reason": "structural_saturation_under_scientific_law",
+            "natural_quantity_mode": "OBSERVED_COMPACT_12",
+            "natural_generated_games": 12,
+            "requested_games": requested_games,
+            "persisted_games": 0,
+            "compactation_mode": "COMPACT_PRACTICAL_15",
+            "compactation_status": "OPERATIONAL_ACTIVE",
+            "compactation_test_status": "OPERATIONAL_COMPACT_15",
+            "compactation_failure_type": "COMPACT_PRACTICAL_GEOMETRY_CONTROL",
+            "compactation_adjustment_status": "ENABLED",
+            "compactation_adjustment_mode": "COMPACT_PRACTICAL_15",
+            "compactation_adjustment_reason": "intermediate_operational_envelope_between_extreme_compact_and_light_practical",
+            "compactation_adjustment_boost_numbers": [7, 14, 17, 23],
+            "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+            "compactation_adjustment_odd_min": 3,
+            "compactation_adjustment_odd_max": 12,
+            "compactation_adjustment_even_min": 3,
+            "compactation_adjustment_even_max": 12,
+            "compactation_adjustment_repeat_min": 0,
+            "compactation_adjustment_repeat_max": 9,
+            "compactation_adjustment_coverage_min": 0.30,
+            "compactation_adjustment_entropy_min": 0.33,
+            "compactation_adjustment_sequence_max": 7,
+            "compactation_adjustment_candidate_multiplier": 200,
+            "compactation_adjustment_attempt_limit": 3000,
+            "compactation_diversity_minimum_expected": "diversidade controlada intermediária com preservação de pico",
+            "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_law_role": "observed_operational_child_of_scientific_mother_law",
+            "compactation_operational_law": "Lei de Compactação 15 - faixa 15: envelope intermediário entre precisão extrema e amplitude prática",
+            "compactation_required_constraints": [
+                "baseline 15 intocada",
+                "OutputCommander ativo",
+                "deduplicação interna obrigatória",
+                "deduplicação contra histórico obrigatória",
+                "persistência somente com bateria completa",
+            ],
+            "compactation_open_constraints": [
+                "odd/even 5 a 9",
+                "sequence_max 5",
+                "coverage_min 0.38",
+                "entropy_min 0.42",
+                "maior diversidade que 10 sem perder pico",
+            ],
+        }
     if requested_games <= 20:
         return {
+            "scientific_mother_law": "Lei Científica 15",
+            "natural_scientific_quantity": True,
+            "natural_quantity_reason": "structural_saturation_under_scientific_law",
+            "natural_quantity_mode": "OBSERVED_PRACTICAL_16",
+            "natural_generated_games": 16,
+            "requested_games": requested_games,
+            "persisted_games": 0,
             "compactation_mode": "LIGHT_PRACTICAL_EXPANDED",
             "compactation_status": "STRUCTURAL_SATURATION",
             "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
@@ -6912,6 +6975,7 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "compactation_adjustment_attempt_limit": 1500,
             "compactation_diversity_minimum_expected": "diversidade controlada com maior amplitude operacional",
             "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_law_role": "observed_operational_child_of_scientific_mother_law",
             "compactation_operational_law": "Lei de Compactação 15 - faixa 20: expansão operacional controlada; persistir somente se fechar 20 jogos únicos sem duplicidade",
             "compactation_required_constraints": [
                 "baseline 15 intocada",
@@ -6930,6 +6994,7 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         }
     if requested_games <= 30:
         return {
+            "scientific_mother_law": "Lei Científica 15",
             "compactation_mode": "BALANCED_PRACTICAL",
             "compactation_status": "OPERATIONAL_ACTIVE",
             "compactation_test_status": "OPERATIONAL_BALANCED",
@@ -6952,10 +7017,12 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "compactation_adjustment_attempt_limit": 900,
             "compactation_diversity_minimum_expected": "variedade equilibrada com governança",
             "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_law_role": "operational_child_of_scientific_mother_law",
             "compactation_operational_law": "Lei de Compactação 15 - faixa 30: ampliar variedade combinatória com governança estrita",
         }
     if requested_games <= 40:
         return {
+            "scientific_mother_law": "Lei Científica 15",
             "compactation_mode": "NEAR_BASELINE",
             "compactation_status": "OPERATIONAL_ACTIVE",
             "compactation_test_status": "OPERATIONAL_NEAR_BASELINE",
@@ -6978,9 +7045,17 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "compactation_adjustment_attempt_limit": 1200,
             "compactation_diversity_minimum_expected": "amplitude maior com qualidade preservada",
             "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_law_role": "operational_child_of_scientific_mother_law",
             "compactation_operational_law": "Lei de Compactação 15 - faixa 40: quase baseline, amplitude alta, filtros institucionais ativos",
         }
     return {
+        "scientific_mother_law": "Lei Científica 15",
+        "natural_scientific_quantity": True,
+        "natural_quantity_reason": "validated_scientific_baseline",
+        "natural_quantity_mode": "VALIDATED_BASELINE_50",
+        "natural_generated_games": 50,
+        "requested_games": requested_games,
+        "persisted_games": 0,
         "compactation_mode": "VALIDATED_BASELINE",
         "compactation_status": "VALIDATED_BASELINE",
         "compactation_test_status": "VALIDATED_BASELINE",
@@ -7003,6 +7078,7 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         "compactation_adjustment_attempt_limit": 1500,
         "compactation_diversity_minimum_expected": "baseline validada com amplitude operacional máxima",
         "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+        "compactation_law_role": "observed_operational_child_of_scientific_mother_law",
         "compactation_operational_law": "Lei de Compactação 15 - faixa 50: baseline validada com amplitude operacional máxima",
     }
 
@@ -7998,6 +8074,16 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         st.success(str(strategy_display.get("summary", "-") or "-"))
     else:
         st.info(str(strategy_display.get("summary", "-") or "-"))
+
+    natural_quantity_mode = str(strategy_policy.get("natural_quantity_mode", "") or "")
+    natural_generated_games = int(strategy_policy.get("natural_generated_games", 0) or 0)
+    natural_scientific_quantity = bool(strategy_policy.get("natural_scientific_quantity", False))
+    if selected_game_size == 15 and natural_scientific_quantity:
+        nat_cols = st.columns([1.1, 1.1, 1.3, 1.3])
+        nat_cols[0].metric("Quantidade solicitada", int(requested_games))
+        nat_cols[1].metric("Quantidade natural científica", int(natural_generated_games or requested_games))
+        nat_cols[2].metric("Modo natural", natural_quantity_mode or "-")
+        nat_cols[3].metric("Status", "filho operacional observado da Lei Científica 15")
 
     _render_scientific_calibration_panel(
         strategy_size=selected_game_size,
