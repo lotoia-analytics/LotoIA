@@ -3362,8 +3362,27 @@ def _run_institutional_generation(
     seed = int(time.time()) % 1_000_000
     batch_id = _institutional_output_batch_id()
     policy = _institutional_generation_policy(dezenas_per_game)
+    compact_adjustment = _compact_small_batch_adjustment(game_size=dezenas_per_game, total_games=total_games)
+    if compact_adjustment:
+        policy = dict(policy)
+        policy.update(compact_adjustment)
+        compact_boost_numbers = [int(number) for number in (policy.get("compactation_adjustment_boost_numbers", []) or [17, 23])]
+        compact_reduce_priority_numbers = [2, 5, 21, 24]
+        policy["core_numbers"] = sorted(
+            {int(number) for number in (policy.get("core_numbers", []) or [])}.union(compact_boost_numbers)
+        )
+        policy["discouraged_numbers"] = sorted(
+            {int(number) for number in (policy.get("discouraged_numbers", []) or [])}.union(compact_reduce_priority_numbers)
+        )
     repeat_min = int(policy.get("repeat_min", 0) or 0)
     repeat_max = int(policy.get("repeat_max", repeat_limit) or repeat_limit)
+    compact_repeat_min = policy.get("compactation_adjustment_repeat_min")
+    compact_repeat_max = policy.get("compactation_adjustment_repeat_max")
+    compact_sequence_max = policy.get("compactation_adjustment_sequence_max")
+    compact_odd_min = policy.get("compactation_adjustment_odd_min")
+    compact_odd_max = policy.get("compactation_adjustment_odd_max")
+    compact_even_min = policy.get("compactation_adjustment_even_min")
+    compact_even_max = policy.get("compactation_adjustment_even_max")
     preferred_parity_pairs = list(policy.get("preferred_parity_pairs", []) or [])
     allowed_parity_pairs = list(policy.get("allowed_parity_pairs", []) or [])
     preferred_profile_ratios = dict(policy.get("preferred_profile_ratios", {}) or {})
@@ -3371,14 +3390,56 @@ def _run_institutional_generation(
     discouraged_numbers = [int(number) for number in (policy.get("discouraged_numbers", []) or [])]
     max_frequency_ratio = float(policy.get("max_frequency_ratio", 1.0) or 1.0)
     min_frequency_ratio = float(policy.get("min_frequency_ratio", 0.0) or 0.0)
-    effective_sequence_max = int(min(sequence_max, int(policy.get("sequence_max", sequence_max) or sequence_max)))
-    effective_coverage_min = max(float(coverage_min), float(policy.get("coverage_min", coverage_min) or coverage_min))
-    effective_entropy_min = max(float(entropy_min), float(policy.get("entropy_min", entropy_min) or entropy_min))
+    effective_sequence_max = int(policy.get("sequence_max", sequence_max) or sequence_max)
+    if compact_sequence_max is not None:
+        effective_sequence_max = max(effective_sequence_max, int(compact_sequence_max))
+    effective_odd_min = int(compact_odd_min) if compact_odd_min is not None else odd_min
+    effective_odd_max = int(compact_odd_max) if compact_odd_max is not None else odd_max
+    effective_even_min = int(compact_even_min) if compact_even_min is not None else even_min
+    effective_even_max = int(compact_even_max) if compact_even_max is not None else even_max
+    compact_coverage_min = policy.get("compactation_adjustment_coverage_min")
+    compact_entropy_min = policy.get("compactation_adjustment_entropy_min")
+    if compact_repeat_min is not None:
+        repeat_min = max(0, int(compact_repeat_min))
+    if compact_repeat_max is not None:
+        repeat_max = max(0, int(compact_repeat_max))
+    if repeat_min > repeat_max:
+        repeat_min = repeat_max
+    if int(total_games or 0) <= 20 and int(dezenas_per_game or 0) == 15:
+        effective_sequence_max = max(effective_sequence_max, 6)
+        effective_odd_min = min(effective_odd_min, 5)
+        effective_odd_max = max(effective_odd_max, 10)
+        effective_even_min = min(effective_even_min, 5)
+        effective_even_max = max(effective_even_max, 10)
+        repeat_min = min(repeat_min, 3)
+        repeat_max = max(repeat_max, 9)
+        if compact_coverage_min is not None:
+            compact_coverage_min = min(float(compact_coverage_min), 0.34)
+        else:
+            compact_coverage_min = 0.34
+        if compact_entropy_min is not None:
+            compact_entropy_min = min(float(compact_entropy_min), 0.38)
+        else:
+            compact_entropy_min = 0.38
+    effective_coverage_min = (
+        float(compact_coverage_min)
+        if compact_coverage_min is not None
+        else max(float(coverage_min), float(policy.get("coverage_min", coverage_min) or coverage_min))
+    )
+    effective_entropy_min = (
+        float(compact_entropy_min)
+        if compact_entropy_min is not None
+        else max(float(entropy_min), float(policy.get("entropy_min", entropy_min) or entropy_min))
+    )
     latest_contest = _load_latest_contest_summary()
     target_contest = int(latest_contest["contest_number"]) if latest_contest else None
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
     candidate_count = max(total_games * 20, 200 if use_top50 else 120)
+    compact_candidate_multiplier = int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0)
+    if compact_candidate_multiplier > 0:
+        candidate_count = max(candidate_count, total_games * compact_candidate_multiplier)
+    compact_attempt_limit = int(policy.get("compactation_adjustment_attempt_limit", 0) or 0)
     ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(load_all_output_signatures())
@@ -3399,10 +3460,10 @@ def _run_institutional_generation(
             max_frequency_ratio=max_frequency_ratio,
             min_frequency_ratio=min_frequency_ratio,
             preferred_profile_ratios=preferred_profile_ratios,
-            odd_min=odd_min,
-            odd_max=odd_max,
-            even_min=even_min,
-            even_max=even_max,
+            odd_min=effective_odd_min,
+            odd_max=effective_odd_max,
+            even_min=effective_even_min,
+            even_max=effective_even_max,
             sequence_max=effective_sequence_max,
             coverage_min=effective_coverage_min,
             entropy_min=effective_entropy_min,
@@ -3424,10 +3485,10 @@ def _run_institutional_generation(
                 max_frequency_ratio=max_frequency_ratio,
                 min_frequency_ratio=min_frequency_ratio,
                 preferred_profile_ratios=preferred_profile_ratios,
-                odd_min=odd_min,
-                odd_max=odd_max,
-                even_min=even_min,
-                even_max=even_max,
+                odd_min=effective_odd_min,
+                odd_max=effective_odd_max,
+                even_min=effective_even_min,
+                even_max=effective_even_max,
                 preferred_parity_pairs=preferred_parity_pairs,
                 repeat_min=repeat_min,
                 repeat_max=repeat_max,
@@ -3462,7 +3523,10 @@ def _run_institutional_generation(
             break
 
     fallback_attempt = 0
-    while len(games) < total_games and fallback_attempt < max(total_games * 25, 50):
+    fallback_attempt_limit = max(total_games * 25, 50)
+    if compact_attempt_limit > 0:
+        fallback_attempt_limit = max(fallback_attempt_limit, compact_attempt_limit)
+    while len(games) < total_games and fallback_attempt < fallback_attempt_limit:
         candidate = ranked_candidates[fallback_attempt % len(ranked_candidates)] if ranked_candidates else {}
         fallback_numbers = _force_subset_from_universe(
             target_size=dezenas_per_game,
@@ -3476,10 +3540,10 @@ def _run_institutional_generation(
             max_frequency_ratio=max_frequency_ratio,
             min_frequency_ratio=min_frequency_ratio,
             preferred_profile_ratios=preferred_profile_ratios,
-            odd_min=odd_min,
-            odd_max=odd_max,
-            even_min=even_min,
-            even_max=even_max,
+            odd_min=effective_odd_min,
+            odd_max=effective_odd_max,
+            even_min=effective_even_min,
+            even_max=effective_even_max,
             preferred_parity_pairs=preferred_parity_pairs,
             repeat_min=repeat_min,
             repeat_max=repeat_max,
@@ -3536,6 +3600,20 @@ def _run_institutional_generation(
             "use_top50": use_top50,
             "core_numbers": core_numbers,
             "discouraged_numbers": discouraged_numbers,
+            "compactation_mode": str(policy.get("compactation_mode", "") or ""),
+            "compactation_test_status": str(policy.get("compactation_test_status", "") or ""),
+            "compactation_failure_type": str(policy.get("compactation_failure_type", "") or ""),
+            "compactation_adjustment_status": str(policy.get("compactation_adjustment_status", "") or ""),
+            "compactation_adjustment_mode": str(policy.get("compactation_adjustment_mode", "") or ""),
+            "compactation_adjustment_reason": str(policy.get("compactation_adjustment_reason", "") or ""),
+            "compactation_adjustment_boost_numbers": list(policy.get("compactation_adjustment_boost_numbers", []) or []),
+            "compactation_adjustment_reduce_priority_numbers": list(policy.get("compactation_adjustment_reduce_priority_numbers", []) or []),
+            "compactation_adjustment_repeat_min": int(policy.get("compactation_adjustment_repeat_min", 0) or 0),
+            "compactation_adjustment_repeat_max": int(policy.get("compactation_adjustment_repeat_max", 0) or 0),
+            "compactation_adjustment_coverage_min": float(policy.get("compactation_adjustment_coverage_min", 0.0) or 0.0),
+            "compactation_adjustment_entropy_min": float(policy.get("compactation_adjustment_entropy_min", 0.0) or 0.0),
+            "compactation_adjustment_sequence_max": int(policy.get("compactation_adjustment_sequence_max", 0) or 0),
+            "compactation_adjustment_candidate_multiplier": int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0),
             "max_frequency_ratio": max_frequency_ratio,
             "min_frequency_ratio": min_frequency_ratio,
             "repeticao_ultimo_concurso_min": repeat_min,
@@ -3620,6 +3698,24 @@ def _run_institutional_generation(
             "promote_numbers_for_12_plus": list(policy.get("promote_numbers_for_12_plus", []) or []),
             "reduce_priority_numbers": list(policy.get("reduce_priority_numbers", []) or []),
             "real_gap_number": policy.get("real_gap_number"),
+            "compactation_test_status": str(policy.get("compactation_test_status", "") or ""),
+            "compactation_failure_type": str(policy.get("compactation_failure_type", "") or ""),
+            "compactation_adjustment_status": str(policy.get("compactation_adjustment_status", "") or ""),
+            "compactation_adjustment_mode": str(policy.get("compactation_adjustment_mode", "") or ""),
+            "compactation_adjustment_reason": str(policy.get("compactation_adjustment_reason", "") or ""),
+            "compactation_adjustment_boost_numbers": list(policy.get("compactation_adjustment_boost_numbers", []) or []),
+            "compactation_adjustment_reduce_priority_numbers": list(policy.get("compactation_adjustment_reduce_priority_numbers", []) or []),
+            "compactation_adjustment_repeat_min": int(policy.get("compactation_adjustment_repeat_min", 0) or 0),
+            "compactation_adjustment_repeat_max": int(policy.get("compactation_adjustment_repeat_max", 0) or 0),
+            "compactation_adjustment_coverage_min": float(policy.get("compactation_adjustment_coverage_min", 0.0) or 0.0),
+            "compactation_adjustment_entropy_min": float(policy.get("compactation_adjustment_entropy_min", 0.0) or 0.0),
+            "compactation_adjustment_sequence_max": int(policy.get("compactation_adjustment_sequence_max", 0) or 0),
+            "compactation_adjustment_candidate_multiplier": int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0),
+            "compactation_adjustment_odd_min": int(policy.get("compactation_adjustment_odd_min", 0) or 0),
+            "compactation_adjustment_odd_max": int(policy.get("compactation_adjustment_odd_max", 0) or 0),
+            "compactation_adjustment_even_min": int(policy.get("compactation_adjustment_even_min", 0) or 0),
+            "compactation_adjustment_even_max": int(policy.get("compactation_adjustment_even_max", 0) or 0),
+            "compactation_adjustment_attempt_limit": int(policy.get("compactation_adjustment_attempt_limit", 0) or 0),
             "dezenas_per_game": dezenas_per_game,
             "total_games": total_games,
             "use_top50": use_top50,
@@ -3656,6 +3752,20 @@ def _run_institutional_generation(
         "use_top50": use_top50,
         "core_numbers": core_numbers,
         "discouraged_numbers": discouraged_numbers,
+        "compactation_mode": str(policy.get("compactation_mode", "") or ""),
+        "compactation_test_status": str(policy.get("compactation_test_status", "") or ""),
+        "compactation_failure_type": str(policy.get("compactation_failure_type", "") or ""),
+        "compactation_adjustment_status": str(policy.get("compactation_adjustment_status", "") or ""),
+        "compactation_adjustment_mode": str(policy.get("compactation_adjustment_mode", "") or ""),
+        "compactation_adjustment_reason": str(policy.get("compactation_adjustment_reason", "") or ""),
+        "compactation_adjustment_boost_numbers": list(policy.get("compactation_adjustment_boost_numbers", []) or []),
+        "compactation_adjustment_reduce_priority_numbers": list(policy.get("compactation_adjustment_reduce_priority_numbers", []) or []),
+        "compactation_adjustment_repeat_min": int(policy.get("compactation_adjustment_repeat_min", 0) or 0),
+        "compactation_adjustment_repeat_max": int(policy.get("compactation_adjustment_repeat_max", 0) or 0),
+        "compactation_adjustment_coverage_min": float(policy.get("compactation_adjustment_coverage_min", 0.0) or 0.0),
+        "compactation_adjustment_entropy_min": float(policy.get("compactation_adjustment_entropy_min", 0.0) or 0.0),
+        "compactation_adjustment_sequence_max": int(policy.get("compactation_adjustment_sequence_max", 0) or 0),
+        "compactation_adjustment_candidate_multiplier": int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0),
         "max_frequency_ratio": max_frequency_ratio,
         "min_frequency_ratio": min_frequency_ratio,
         "repeticao_ultimo_concurso_min": repeat_min,
@@ -6732,6 +6842,168 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
         "main_reason": "Estratégia preparada para uso operacional futuro.",
         "action_suggested": "gerar jogos",
         "summary": "Estratégia preparada para uso operacional futuro.",
+    }
+
+
+def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict[str, Any]:
+    if int(game_size or 0) != 15:
+        return {}
+    requested_games = int(total_games or 0)
+    if requested_games > 50:
+        return {}
+    if requested_games <= 10:
+        return {
+            "compactation_mode": "EXTREME_COMPACT",
+            "compactation_status": "OPERATIONAL_ACTIVE",
+            "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
+            "compactation_failure_type": "RIGID_BIMODAL_COMPACTATION",
+            "compactation_adjustment_status": "ENABLED",
+            "compactation_adjustment_mode": "EXTREME_COMPACT",
+            "compactation_adjustment_reason": "high_precision_minimum_diversity",
+            "compactation_adjustment_boost_numbers": [17, 23],
+            "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+            "compactation_adjustment_odd_min": 6,
+            "compactation_adjustment_odd_max": 8,
+            "compactation_adjustment_even_min": 6,
+            "compactation_adjustment_even_max": 8,
+            "compactation_adjustment_repeat_min": 5,
+            "compactation_adjustment_repeat_max": 8,
+            "compactation_adjustment_coverage_min": 0.40,
+            "compactation_adjustment_entropy_min": 0.45,
+            "compactation_adjustment_sequence_max": 4,
+            "compactation_adjustment_candidate_multiplier": 35,
+            "compactation_adjustment_attempt_limit": 400,
+            "compactation_diversity_minimum_expected": "alta precisão com diversidade mínima obrigatória",
+            "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_operational_law": "Lei de Compactação 15 - faixa 10: extremar precisão, manter diversidade mínima e bloqueio estrito de duplicidade",
+            "compactation_required_constraints": [
+                "baseline 15 intocada",
+                "OutputCommander ativo",
+                "deduplicação interna obrigatória",
+                "deduplicação contra histórico obrigatória",
+                "persistência somente com bateria completa",
+            ],
+            "compactation_open_constraints": [
+                "diversidade mínima obrigatória",
+                "seletividade alta",
+            ],
+        }
+    if requested_games <= 20:
+        return {
+            "compactation_mode": "LIGHT_PRACTICAL_EXPANDED",
+            "compactation_status": "STRUCTURAL_SATURATION",
+            "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
+            "compactation_failure_type": "EXPANDED_LIGHT_GEOMETRY",
+            "compactation_adjustment_status": "ENABLED",
+            "compactation_adjustment_mode": "LIGHT_PRACTICAL_EXPANDED",
+            "compactation_adjustment_reason": "expand_operational_envelope_without_breaking_governance",
+            "compactation_adjustment_boost_numbers": [7, 14, 17, 23],
+            "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+            "compactation_adjustment_odd_min": 5,
+            "compactation_adjustment_odd_max": 10,
+            "compactation_adjustment_even_min": 5,
+            "compactation_adjustment_even_max": 10,
+            "compactation_adjustment_repeat_min": 3,
+            "compactation_adjustment_repeat_max": 9,
+            "compactation_adjustment_coverage_min": 0.34,
+            "compactation_adjustment_entropy_min": 0.38,
+            "compactation_adjustment_sequence_max": 6,
+            "compactation_adjustment_candidate_multiplier": 90,
+            "compactation_adjustment_attempt_limit": 1500,
+            "compactation_diversity_minimum_expected": "diversidade controlada com maior amplitude operacional",
+            "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_operational_law": "Lei de Compactação 15 - faixa 20: expansão operacional controlada; persistir somente se fechar 20 jogos únicos sem duplicidade",
+            "compactation_required_constraints": [
+                "baseline 15 intocada",
+                "OutputCommander ativo",
+                "deduplicação interna obrigatória",
+                "deduplicação contra histórico obrigatória",
+                "persistência somente com 20 jogos válidos",
+            ],
+            "compactation_open_constraints": [
+                "odd/even 5 a 10",
+                "sequence_max 6",
+                "coverage_min 0.34",
+                "entropy_min 0.38",
+                "maior amplitude operacional",
+            ],
+        }
+    if requested_games <= 30:
+        return {
+            "compactation_mode": "BALANCED_PRACTICAL",
+            "compactation_status": "OPERATIONAL_ACTIVE",
+            "compactation_test_status": "OPERATIONAL_BALANCED",
+            "compactation_failure_type": "BALANCED_GEOMETRY_CONTROL",
+            "compactation_adjustment_status": "ENABLED",
+            "compactation_adjustment_mode": "BALANCED_PRACTICAL",
+            "compactation_adjustment_reason": "expand_combinatorial_variety_with_control",
+            "compactation_adjustment_boost_numbers": [7, 14, 17, 23],
+            "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+            "compactation_adjustment_odd_min": 6,
+            "compactation_adjustment_odd_max": 10,
+            "compactation_adjustment_even_min": 6,
+            "compactation_adjustment_even_max": 10,
+            "compactation_adjustment_repeat_min": 3,
+            "compactation_adjustment_repeat_max": 10,
+            "compactation_adjustment_coverage_min": 0.34,
+            "compactation_adjustment_entropy_min": 0.38,
+            "compactation_adjustment_sequence_max": 5,
+            "compactation_adjustment_candidate_multiplier": 70,
+            "compactation_adjustment_attempt_limit": 900,
+            "compactation_diversity_minimum_expected": "variedade equilibrada com governança",
+            "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_operational_law": "Lei de Compactação 15 - faixa 30: ampliar variedade combinatória com governança estrita",
+        }
+    if requested_games <= 40:
+        return {
+            "compactation_mode": "NEAR_BASELINE",
+            "compactation_status": "OPERATIONAL_ACTIVE",
+            "compactation_test_status": "OPERATIONAL_NEAR_BASELINE",
+            "compactation_failure_type": "NEAR_BASELINE_GEOMETRY_CONTROL",
+            "compactation_adjustment_status": "ENABLED",
+            "compactation_adjustment_mode": "NEAR_BASELINE",
+            "compactation_adjustment_reason": "approach_baseline_with_wider_amplitude",
+            "compactation_adjustment_boost_numbers": [7, 14, 17, 23],
+            "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+            "compactation_adjustment_odd_min": 6,
+            "compactation_adjustment_odd_max": 11,
+            "compactation_adjustment_even_min": 6,
+            "compactation_adjustment_even_max": 11,
+            "compactation_adjustment_repeat_min": 2,
+            "compactation_adjustment_repeat_max": 10,
+            "compactation_adjustment_coverage_min": 0.32,
+            "compactation_adjustment_entropy_min": 0.35,
+            "compactation_adjustment_sequence_max": 6,
+            "compactation_adjustment_candidate_multiplier": 90,
+            "compactation_adjustment_attempt_limit": 1200,
+            "compactation_diversity_minimum_expected": "amplitude maior com qualidade preservada",
+            "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+            "compactation_operational_law": "Lei de Compactação 15 - faixa 40: quase baseline, amplitude alta, filtros institucionais ativos",
+        }
+    return {
+        "compactation_mode": "VALIDATED_BASELINE",
+        "compactation_status": "VALIDATED_BASELINE",
+        "compactation_test_status": "VALIDATED_BASELINE",
+        "compactation_failure_type": "",
+        "compactation_adjustment_status": "ENABLED",
+        "compactation_adjustment_mode": "VALIDATED_BASELINE",
+        "compactation_adjustment_reason": "baseline_validated_ready_for_operational_use",
+        "compactation_adjustment_boost_numbers": [7, 14, 17, 23],
+        "compactation_adjustment_reduce_priority_numbers": [2, 5, 21, 24],
+        "compactation_adjustment_odd_min": 6,
+        "compactation_adjustment_odd_max": 12,
+        "compactation_adjustment_even_min": 6,
+        "compactation_adjustment_even_max": 12,
+        "compactation_adjustment_repeat_min": 1,
+        "compactation_adjustment_repeat_max": 10,
+        "compactation_adjustment_coverage_min": 0.30,
+        "compactation_adjustment_entropy_min": 0.33,
+        "compactation_adjustment_sequence_max": 6,
+        "compactation_adjustment_candidate_multiplier": 20,
+        "compactation_adjustment_attempt_limit": 1500,
+        "compactation_diversity_minimum_expected": "baseline validada com amplitude operacional máxima",
+        "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
+        "compactation_operational_law": "Lei de Compactação 15 - faixa 50: baseline validada com amplitude operacional máxima",
     }
 
 

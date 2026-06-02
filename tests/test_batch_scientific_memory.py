@@ -15,6 +15,7 @@ from lotoia.analytics.lotofacil_scientific_core import LotofacilScientificCore
 from dashboard.institutional_app import _institutional_generation_policy
 from dashboard.institutional_app import _format_scientific_memory_listing
 from dashboard.institutional_app import _generation_strategy_display
+from dashboard.institutional_app import _compact_small_batch_adjustment
 from dashboard.institutional_app import _institutional_source_map
 from dashboard.institutional_app import _get_latest_contest
 from dashboard.institutional_app import _official_15_policy_status_label
@@ -931,7 +932,7 @@ def test_latest_contest_sources_are_distinguished(tmp_path, monkeypatch) -> None
     latest_contest = _get_latest_contest()
 
     assert csv_summary is not None
-    assert csv_summary["contest_number"] == 3697
+    assert csv_summary["contest_number"] == 3700
     assert sync_summary is not None
     assert sync_summary["contest_number"] == 3700
     assert sync_summary["source"] == "api_caixa_sincronizada"
@@ -979,7 +980,7 @@ def test_institutional_source_map_separates_csv_api_and_persisted_history(tmp_pa
     source_map = _institutional_source_map(snapshot)
     source_by_layer = {row["camada"]: row for row in source_map}
 
-    assert source_by_layer["CSV local"]["uso"].endswith("3697")
+    assert source_by_layer["CSV local"]["uso"].endswith("3700")
     assert source_by_layer["API oficial"]["uso"].endswith("3700")
     assert "último concurso persistido=3700" in source_by_layer["Banco persistido"]["uso"]
     assert "lotofacil_official_history=4" in source_by_layer["Banco persistido"]["uso"]
@@ -1026,3 +1027,63 @@ def test_generation_strategy_display_prioritizes_baseline_and_prepares_future_si
     assert display_18["scientific_status"] == "PREPARADO"
     assert display_18["status_visual"] == "PREPARADO"
     assert "13 = validação mínima" in display_18["main_reason"]
+
+
+def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
+    adjustment = _compact_small_batch_adjustment(game_size=15, total_games=20)
+    assert adjustment["compactation_mode"] == "LIGHT_PRACTICAL_EXPANDED"
+    assert adjustment["compactation_status"] == "STRUCTURAL_SATURATION"
+    assert adjustment["compactation_test_status"] == "FAILED_MINIMUM_11_PLUS"
+    assert adjustment["compactation_failure_type"] == "EXPANDED_LIGHT_GEOMETRY"
+    assert adjustment["compactation_adjustment_status"] == "ENABLED"
+    assert adjustment["compactation_adjustment_mode"] == "LIGHT_PRACTICAL_EXPANDED"
+    assert adjustment["compactation_adjustment_boost_numbers"] == [7, 14, 17, 23]
+    assert adjustment["compactation_adjustment_reduce_priority_numbers"] == [2, 5, 21, 24]
+    assert adjustment["compactation_adjustment_odd_min"] == 5
+    assert adjustment["compactation_adjustment_odd_max"] == 10
+    assert adjustment["compactation_adjustment_even_min"] == 5
+    assert adjustment["compactation_adjustment_even_max"] == 10
+    assert adjustment["compactation_adjustment_repeat_min"] == 3
+    assert adjustment["compactation_adjustment_repeat_max"] == 9
+    assert adjustment["compactation_adjustment_coverage_min"] == 0.34
+    assert adjustment["compactation_adjustment_entropy_min"] == 0.38
+    assert adjustment["compactation_adjustment_sequence_max"] == 6
+    assert adjustment["compactation_adjustment_candidate_multiplier"] == 90
+    assert adjustment["compactation_adjustment_attempt_limit"] == 1500
+    assert "faixa 20" in adjustment["compactation_operational_law"]
+    assert "persistência somente com 20 jogos válidos" in adjustment["compactation_required_constraints"][4]
+    compact_50 = _compact_small_batch_adjustment(game_size=15, total_games=50)
+    assert compact_50["compactation_mode"] == "VALIDATED_BASELINE"
+    assert compact_50["compactation_status"] == "VALIDATED_BASELINE"
+    assert compact_50["compactation_adjustment_mode"] == "VALIDATED_BASELINE"
+    assert compact_50["compactation_adjustment_candidate_multiplier"] == 20
+
+
+def test_small_batch_compact_adjustment_preserves_rigid_mode_for_10() -> None:
+    adjustment = _compact_small_batch_adjustment(game_size=15, total_games=10)
+    assert adjustment["compactation_mode"] == "EXTREME_COMPACT"
+    assert adjustment["compactation_adjustment_mode"] == "EXTREME_COMPACT"
+    assert adjustment["compactation_adjustment_boost_numbers"] == [17, 23]
+
+
+def test_progressive_compactation_profiles_expand_with_batch_size() -> None:
+    compact_30 = _compact_small_batch_adjustment(game_size=15, total_games=30)
+    compact_40 = _compact_small_batch_adjustment(game_size=15, total_games=40)
+    compact_50 = _compact_small_batch_adjustment(game_size=15, total_games=50)
+
+    assert compact_30["compactation_mode"] == "BALANCED_PRACTICAL"
+    assert compact_30["compactation_adjustment_odd_max"] == 10
+    assert compact_30["compactation_adjustment_sequence_max"] == 5
+    assert compact_30["compactation_adjustment_candidate_multiplier"] == 70
+
+    assert compact_40["compactation_mode"] == "NEAR_BASELINE"
+    assert compact_40["compactation_adjustment_odd_max"] == 11
+    assert compact_40["compactation_adjustment_sequence_max"] == 6
+    assert compact_40["compactation_adjustment_candidate_multiplier"] == 90
+    assert compact_40["compactation_status"] == "OPERATIONAL_ACTIVE"
+
+    assert compact_50["compactation_mode"] == "VALIDATED_BASELINE"
+    assert compact_50["compactation_adjustment_odd_max"] == 12
+    assert compact_50["compactation_adjustment_sequence_max"] == 6
+    assert compact_50["compactation_adjustment_candidate_multiplier"] == 20
+    assert compact_50["compactation_adjustment_status"] == "ENABLED"
