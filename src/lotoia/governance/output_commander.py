@@ -62,6 +62,12 @@ def load_batch_output_signatures(batch_id: str | None, db_path: Any = DEFAULT_DA
         return {str(row[0] or "") for row in rows if str(row[0] or "")}
 
 
+def load_all_output_signatures(db_path: Any = DEFAULT_DATABASE_PATH) -> set[str]:
+    with get_session(db_path) as session:
+        rows = session.query(InstitutionalOutputSignature.game_signature).all()
+        return {str(row[0] or "") for row in rows if str(row[0] or "")}
+
+
 def output_commander_validate_games(
     games: Sequence[Mapping[str, Any]] | Sequence[dict[str, Any]],
     batch_id: str | None = None,
