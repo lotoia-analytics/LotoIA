@@ -9,6 +9,8 @@ from sqlalchemy import select
 
 from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
+    _apply_scientific_15_baseline_governance,
+    _apply_scientific_15_vnext_policy,
     get_scientific_generation_policy,
 )
 from lotoia.database.database import (
@@ -386,33 +388,42 @@ def _merge_policy(base_policy: Mapping[str, Any], report: Mapping[str, Any]) -> 
 
     frequency_caps = {str(number): 0.70 for number in top_numbers[:4]}
     frequency_floors = {str(number): 0.20 for number in core_numbers[:4]}
+    support_numbers = [int(number) for number in policy.get("controlled_support_numbers", []) or []]
+    for number in support_numbers:
+        frequency_floors.setdefault(str(number), 0.20)
     if int(policy.get("game_size", 15) or 15) == 15:
         frequency_caps = {str(number): min(0.70, float(policy.get("max_frequency_ratio", 0.70) or 0.70)) for number in top_numbers[:4]}
         frequency_floors = {str(number): max(0.20, float(policy.get("min_frequency_ratio", 0.20) or 0.20)) for number in core_numbers[:4]}
+        for number in support_numbers:
+            frequency_floors.setdefault(str(number), max(0.20, float(policy.get("min_frequency_ratio", 0.20) or 0.20)))
 
-    return {
-        "strategy": f"{int(policy.get('game_size', 15) or 15)}_dezenas",
-        "game_size": int(policy.get("game_size", 15) or 15),
-        "action": "recalibrate_frequency_distribution"
-        if str(report.get("classificacao_cientifica", "")).upper().startswith("REPROVADA")
-        else "maintain_current_policy",
-        "reason": _safe_str(report.get("motivo_cientifico", "")),
-        "frequency_caps": frequency_caps,
-        "frequency_floors": frequency_floors,
-        "keep_rules": {
+    merged = dict(policy)
+    merged.update(
+        {
+            "strategy": f"{int(policy.get('game_size', 15) or 15)}_dezenas",
             "game_size": int(policy.get("game_size", 15) or 15),
-            "batch_size": 100,
-            "repeat_previous_min": int(policy.get("repeat_min", 7) or 7),
-            "repeat_previous_max": int(policy.get("repeat_max", 10) or 10),
-            "sequence_max": int(policy.get("sequence_max", 6) or 6),
-            "unique_required": True,
-        },
-        "preferred_parity_pairs": [list(pair) for pair in policy.get("preferred_parity_pairs", []) or []],
-        "allowed_parity_pairs": [list(pair) for pair in policy.get("allowed_parity_pairs", []) or []],
-        "core_numbers": core_numbers,
-        "discouraged_numbers": discouraged_numbers,
-        "policy_before": dict(policy),
-    }
+            "action": "recalibrate_frequency_distribution"
+            if str(report.get("classificacao_cientifica", "")).upper().startswith("REPROVADA")
+            else "maintain_current_policy",
+            "reason": _safe_str(report.get("motivo_cientifico", "")),
+            "frequency_caps": frequency_caps,
+            "frequency_floors": frequency_floors,
+            "keep_rules": {
+                "game_size": int(policy.get("game_size", 15) or 15),
+                "batch_size": 100,
+                "repeat_previous_min": int(policy.get("repeat_min", 7) or 7),
+                "repeat_previous_max": int(policy.get("repeat_max", 10) or 10),
+                "sequence_max": int(policy.get("sequence_max", 6) or 6),
+                "unique_required": True,
+            },
+            "preferred_parity_pairs": [list(pair) for pair in policy.get("preferred_parity_pairs", []) or []],
+            "allowed_parity_pairs": [list(pair) for pair in policy.get("allowed_parity_pairs", []) or []],
+            "core_numbers": core_numbers,
+            "discouraged_numbers": discouraged_numbers,
+            "policy_before": dict(policy),
+        }
+    )
+    return merged
 
 
 @dataclass(frozen=True, slots=True)
@@ -530,6 +541,9 @@ def build_calibration_context(
     latest_memory_policy = dict((scientific_memory_summary.get("latest") or {}).get("policy_after") or {})
     if latest_memory_policy and bool((scientific_memory_summary.get("latest") or {}).get("approved_for_use")):
         base_policy = {**base_policy, **latest_memory_policy}
+    if resolved_game_size == 15:
+        base_policy = _apply_scientific_15_vnext_policy(base_policy)
+        base_policy = _apply_scientific_15_baseline_governance(base_policy, scientific_memory_summary.get("latest") or {})
     scientific_report = validate_scientific_batch(
         loaded_games,
         reference_contests,

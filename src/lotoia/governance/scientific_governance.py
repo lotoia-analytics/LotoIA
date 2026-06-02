@@ -60,6 +60,7 @@ __all__ = [
     "ScientificDatasetArtifact",
     "ScientificBenchmarkArtifact",
     "ScientificScoreMLContract",
+    "ScientificPolicy15BaselineGovernance",
     "ScientificExperimentRecord",
     "ScientificObservabilitySnapshot",
     "ScientificRuntimeContract",
@@ -67,6 +68,7 @@ __all__ = [
     "build_scientific_dataset_registry",
     "build_scientific_benchmark_registry",
     "build_scientific_score_ml_contract",
+    "build_scientific_policy_15_baseline_governance",
     "build_anti_leakage_policy",
     "build_scientific_experiment_record",
     "build_scientific_observability_snapshot",
@@ -77,6 +79,7 @@ __all__ = [
     "validate_scientific_benchmark_artifact",
     "validate_scientific_benchmark_registry",
     "validate_scientific_score_ml_contract",
+    "validate_scientific_policy_15_baseline_governance",
     "validate_anti_leakage_policy",
     "validate_scientific_experiment_record",
     "validate_scientific_observability_snapshot",
@@ -146,6 +149,73 @@ class ScientificScoreMLContract:
             "walk_forward_required": self.walk_forward_required,
             "anti_leakage_required": self.anti_leakage_required,
             "supervised_role": self.supervised_role,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ScientificPolicy15BaselineGovernance:
+    governance_name: str
+    policy_mode: str
+    policy_validation_status: str
+    official_15_search_standard: bool
+    validated_game_size: int
+    validated_threshold: int
+    target_band: str
+    current_target: str
+    secondary_target: str
+    highest_validated_hit: int
+    gold_target_14: bool
+    diamond_target_15: bool
+    baseline_batch_id: str
+    baseline_contest_number: int
+    baseline_total_games_checked: int
+    baseline_count_11_exact: int
+    baseline_count_12_exact: int
+    baseline_count_13_exact: int
+    baseline_count_14_exact: int
+    baseline_count_15_exact: int
+    approved_for_use: bool = True
+    validated_target: int = 13
+    validated_target_band: str = "13_plus_detected"
+    official_15_status_label: str = "Pol\u00edtica 15 validada n\u00edvel 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos em bateria prospectiva de 50 jogos. Ouro 14 e diamante 15 seguem como metas superiores futuras."
+    policy_protection_rules: tuple[str, ...] = (
+        "10_ou_menos_e_diagnostico_interno",
+        "11_e_piso_de_estabilidade",
+        "12_plus_e_alvo_operacional_principal",
+        "13_plus_e_refinamento_forte",
+        "14_e_ouro_excelencia",
+        "15_e_diamante_alvo_maximo",
+        "nao_rebaixar_para_history_profile_seed_ou_memoria_fraca",
+        "nova_politica_exige_validacao_prospectiva_superior",
+    )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "governance_name": self.governance_name,
+            "policy_mode": self.policy_mode,
+            "policy_validation_status": self.policy_validation_status,
+            "official_15_search_standard": self.official_15_search_standard,
+            "validated_game_size": self.validated_game_size,
+            "validated_threshold": self.validated_threshold,
+            "target_band": self.target_band,
+            "current_target": self.current_target,
+            "secondary_target": self.secondary_target,
+            "highest_validated_hit": self.highest_validated_hit,
+            "gold_target_14": self.gold_target_14,
+            "diamond_target_15": self.diamond_target_15,
+            "baseline_batch_id": self.baseline_batch_id,
+            "baseline_contest_number": self.baseline_contest_number,
+            "baseline_total_games_checked": self.baseline_total_games_checked,
+            "baseline_count_11_exact": self.baseline_count_11_exact,
+            "baseline_count_12_exact": self.baseline_count_12_exact,
+            "baseline_count_13_exact": self.baseline_count_13_exact,
+            "baseline_count_14_exact": self.baseline_count_14_exact,
+            "baseline_count_15_exact": self.baseline_count_15_exact,
+            "approved_for_use": self.approved_for_use,
+            "validated_target": self.validated_target,
+            "validated_target_band": self.validated_target_band,
+            "official_15_status_label": self.official_15_status_label,
+            "policy_protection_rules": self.policy_protection_rules,
         }
 
 
@@ -767,6 +837,104 @@ def build_scientific_runtime_contract(
         supervised_ml=supervised_ml,
         experiment_governance=experiment_governance,
     )
+
+
+def build_scientific_policy_15_baseline_governance(
+    *,
+    baseline_batch_id: str,
+    baseline_contest_number: int,
+    baseline_total_games_checked: int,
+    baseline_count_11_exact: int,
+    baseline_count_12_exact: int,
+    baseline_count_13_exact: int,
+    baseline_count_14_exact: int,
+    baseline_count_15_exact: int,
+    policy_mode: str = "hybrid_15_towards_12_plus",
+    policy_validation_status: str = "VALIDATED_15_POLICY_LEVEL_3",
+    official_15_search_standard: bool = True,
+    validated_game_size: int = 15,
+    validated_threshold: int = 11,
+    target_band: str = "11_to_15",
+    current_target: str = "12_plus",
+    secondary_target: str = "13_plus",
+    highest_validated_hit: int = 13,
+    gold_target_14: bool = False,
+    diamond_target_15: bool = False,
+    approved_for_use: bool = True,
+    validated_target: int = 13,
+    validated_target_band: str = "13_plus_detected",
+    official_15_status_label: str = "Pol\u00edtica 15 validada n\u00edvel 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos em bateria prospectiva de 50 jogos. Ouro 14 e diamante 15 seguem como metas superiores futuras.",
+    governance_name: str = "Lei da Pol\u00edtica Cient\u00edfica 15 — Baseline Validada N\u00edvel 3",
+) -> ScientificPolicy15BaselineGovernance:
+    return ScientificPolicy15BaselineGovernance(
+        governance_name=governance_name,
+        policy_mode=policy_mode,
+        policy_validation_status=policy_validation_status,
+        official_15_search_standard=official_15_search_standard,
+        validated_game_size=validated_game_size,
+        validated_threshold=validated_threshold,
+        target_band=target_band,
+        current_target=current_target,
+        secondary_target=secondary_target,
+        highest_validated_hit=highest_validated_hit,
+        gold_target_14=gold_target_14,
+        diamond_target_15=diamond_target_15,
+        baseline_batch_id=str(baseline_batch_id),
+        baseline_contest_number=int(baseline_contest_number),
+        baseline_total_games_checked=int(baseline_total_games_checked),
+        baseline_count_11_exact=int(baseline_count_11_exact),
+        baseline_count_12_exact=int(baseline_count_12_exact),
+        baseline_count_13_exact=int(baseline_count_13_exact),
+        baseline_count_14_exact=int(baseline_count_14_exact),
+        baseline_count_15_exact=int(baseline_count_15_exact),
+        approved_for_use=approved_for_use,
+        validated_target=validated_target,
+        validated_target_band=validated_target_band,
+        official_15_status_label=official_15_status_label,
+    )
+
+
+def validate_scientific_policy_15_baseline_governance(
+    governance: ScientificPolicy15BaselineGovernance,
+) -> ExperimentConsistencyReport:
+    errors: list[str] = []
+    if governance.governance_name != "Lei da Pol\u00edtica Cient\u00edfica 15 — Baseline Validada N\u00edvel 3":
+        errors.append("governance_name must declare the validated level 3 baseline")
+    if governance.policy_mode != "hybrid_15_towards_12_plus":
+        errors.append("policy_mode must remain hybrid_15_towards_12_plus")
+    if governance.policy_validation_status != "VALIDATED_15_POLICY_LEVEL_3":
+        errors.append("policy_validation_status must remain VALIDATED_15_POLICY_LEVEL_3")
+    if not governance.official_15_search_standard:
+        errors.append("official_15_search_standard must remain enabled")
+    if governance.validated_game_size != 15:
+        errors.append("validated_game_size must be 15")
+    if governance.validated_threshold != 11:
+        errors.append("validated_threshold must be 11")
+    if governance.target_band != "11_to_15":
+        errors.append("target_band must be 11_to_15")
+    if governance.current_target != "12_plus":
+        errors.append("current_target must be 12_plus")
+    if governance.secondary_target != "13_plus":
+        errors.append("secondary_target must be 13_plus")
+    if governance.highest_validated_hit != 13:
+        errors.append("highest_validated_hit must be 13")
+    if governance.gold_target_14:
+        errors.append("gold_target_14 must remain false")
+    if governance.diamond_target_15:
+        errors.append("diamond_target_15 must remain false")
+    if not governance.approved_for_use:
+        errors.append("approved_for_use must remain true")
+    if governance.validated_target != 13:
+        errors.append("validated_target must be 13")
+    if governance.validated_target_band != "13_plus_detected":
+        errors.append("validated_target_band must be 13_plus_detected")
+    if governance.baseline_total_games_checked != 50:
+        errors.append("baseline_total_games_checked must be 50")
+    if governance.baseline_count_11_exact < 0 or governance.baseline_count_12_exact < 0 or governance.baseline_count_13_exact < 0:
+        errors.append("baseline counts must not be negative")
+    if governance.baseline_count_14_exact != 0 or governance.baseline_count_15_exact != 0:
+        errors.append("baseline_count_14_exact and baseline_count_15_exact must be 0")
+    return ExperimentConsistencyReport(valid=not errors, errors=tuple(errors))
 
 
 def build_scientific_governance_registry(

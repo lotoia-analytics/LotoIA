@@ -9,12 +9,14 @@ from lotoia.governance.scientific_governance import (
     DATASET_OPERATIONAL,
     DATASET_VALIDATION,
     ScientificGovernanceRegistry,
+    ScientificPolicy15BaselineGovernance,
     build_anti_leakage_policy,
     build_scientific_benchmark_registry,
     build_scientific_dataset_registry,
     build_scientific_experiment_record,
     build_scientific_governance_registry,
     build_scientific_observability_snapshot,
+    build_scientific_policy_15_baseline_governance,
     build_scientific_runtime_contract,
     build_scientific_score_ml_contract,
     validate_anti_leakage_payload,
@@ -23,6 +25,7 @@ from lotoia.governance.scientific_governance import (
     validate_scientific_experiment_record,
     validate_scientific_governance_registry,
     validate_scientific_observability_snapshot,
+    validate_scientific_policy_15_baseline_governance,
     validate_scientific_runtime_contract,
     validate_scientific_score_ml_contract,
 )
@@ -179,6 +182,34 @@ def test_scientific_observability_and_runtime_contract_are_validated() -> None:
     assert runtime_report.errors == ()
 
 
+def test_scientific_policy_15_baseline_governance_is_valid() -> None:
+    governance = build_scientific_policy_15_baseline_governance(
+        baseline_batch_id="calibration-20260602172948-20a682cd",
+        baseline_contest_number=3697,
+        baseline_total_games_checked=50,
+        baseline_count_11_exact=23,
+        baseline_count_12_exact=13,
+        baseline_count_13_exact=3,
+        baseline_count_14_exact=0,
+        baseline_count_15_exact=0,
+    )
+    report = validate_scientific_policy_15_baseline_governance(governance)
+
+    assert isinstance(governance, ScientificPolicy15BaselineGovernance)
+    assert report.valid is True
+    assert report.errors == ()
+    assert governance.policy_mode == "hybrid_15_towards_12_plus"
+    assert governance.policy_validation_status == "VALIDATED_15_POLICY_LEVEL_3"
+    assert governance.official_15_search_standard is True
+    assert governance.validated_game_size == 15
+    assert governance.validated_threshold == 11
+    assert governance.current_target == "12_plus"
+    assert governance.secondary_target == "13_plus"
+    assert governance.highest_validated_hit == 13
+    assert governance.gold_target_14 is False
+    assert governance.diamond_target_15 is False
+
+
 def test_scientific_observability_rejects_out_of_band_metrics() -> None:
     observability = build_scientific_observability_snapshot(
         drift_temporal=1.2,
@@ -191,4 +222,3 @@ def test_scientific_observability_rejects_out_of_band_metrics() -> None:
 
     assert report.valid is False
     assert any("drift_temporal" in error for error in report.errors)
-

@@ -9,6 +9,7 @@ from typing import Any
 from lotoia.analytics.lotofacil_scientific_core import (
     LotofacilScientificCore,
     _decompose_hit_counts,
+    _scientific_validation_payload,
     _scientific_validation_rule,
     get_scientific_generation_policy,
 )
@@ -106,9 +107,14 @@ class ScientificBatchValidationReport:
     batch_id: str
     game_size: int
     reference_contests: tuple[int, ...]
+    contests_checked: int
+    games_per_contest: int
+    total_game_contest_checks: int
     validation_threshold: int
     target_band: str
     validation_zone_label: str
+    scientific_validation_zone_count: int
+    policy_validation_status: str
     total_jogos_solicitados: int
     total_jogos_gerados: int
     total_jogos_unicos: int
@@ -131,6 +137,11 @@ class ScientificBatchValidationReport:
     count_13_plus: int
     count_14_plus: int
     count_15: int
+    contests_with_11_plus: int
+    contests_with_12_plus: int
+    contests_with_13_plus: int
+    contests_with_14_plus: int
+    contests_with_15: int
     hit_histogram: dict[str, int]
     frequency_by_number: dict[str, int]
     frequency_maxima_dezena: int
@@ -157,6 +168,7 @@ class ScientificBatchValidationReport:
     alerts_sequencia: tuple[str, ...]
     contest_metrics: tuple[dict[str, Any], ...]
     game_metrics: tuple[dict[str, Any], ...]
+    backtest_aggregate: dict[str, Any]
     policy: dict[str, Any]
     status_comandante_cientifico: str
     classificacao_cientifica: str
@@ -167,9 +179,14 @@ class ScientificBatchValidationReport:
             "batch_id": self.batch_id,
             "game_size": self.game_size,
             "reference_contests": list(self.reference_contests),
+            "contests_checked": self.contests_checked,
+            "games_per_contest": self.games_per_contest,
+            "total_game_contest_checks": self.total_game_contest_checks,
             "validation_threshold": self.validation_threshold,
             "target_band": self.target_band,
             "validation_zone_label": self.validation_zone_label,
+            "scientific_validation_zone_count": self.scientific_validation_zone_count,
+            "policy_validation_status": self.policy_validation_status,
             "total_jogos_solicitados": self.total_jogos_solicitados,
             "total_jogos_gerados": self.total_jogos_gerados,
             "total_jogos_unicos": self.total_jogos_unicos,
@@ -192,6 +209,21 @@ class ScientificBatchValidationReport:
             "count_13_plus": self.count_13_plus,
             "count_14_plus": self.count_14_plus,
             "count_15": self.count_15,
+            "contests_with_11_plus": self.contests_with_11_plus,
+            "contests_with_12_plus": self.contests_with_12_plus,
+            "contests_with_13_plus": self.contests_with_13_plus,
+            "contests_with_14_plus": self.contests_with_14_plus,
+            "contests_with_15": self.contests_with_15,
+            "aggregate_count_11_exact": int(self.backtest_aggregate.get("count_11_exact", 0) or 0),
+            "aggregate_count_12_exact": int(self.backtest_aggregate.get("count_12_exact", 0) or 0),
+            "aggregate_count_13_exact": int(self.backtest_aggregate.get("count_13_exact", 0) or 0),
+            "aggregate_count_14_exact": int(self.backtest_aggregate.get("count_14_exact", 0) or 0),
+            "aggregate_count_15_exact": int(self.backtest_aggregate.get("count_15_exact", 0) or 0),
+            "aggregate_count_11_plus": int(self.backtest_aggregate.get("count_11_plus", 0) or 0),
+            "aggregate_count_12_plus": int(self.backtest_aggregate.get("count_12_plus", 0) or 0),
+            "aggregate_count_13_plus": int(self.backtest_aggregate.get("count_13_plus", 0) or 0),
+            "aggregate_count_14_plus": int(self.backtest_aggregate.get("count_14_plus", 0) or 0),
+            "aggregate_count_15": int(self.backtest_aggregate.get("count_15", 0) or 0),
             "hit_histogram": dict(self.hit_histogram),
             "frequency_by_number": dict(self.frequency_by_number),
             "frequency_maxima_dezena": self.frequency_maxima_dezena,
@@ -218,6 +250,7 @@ class ScientificBatchValidationReport:
             "alerts_sequencia": list(self.alerts_sequencia),
             "contest_metrics": [dict(item) for item in self.contest_metrics],
             "game_metrics": [dict(item) for item in self.game_metrics],
+            "backtest_aggregate": dict(self.backtest_aggregate),
             "policy": dict(self.policy),
             "status_comandante_cientifico": self.status_comandante_cientifico,
             "classificacao_cientifica": self.classificacao_cientifica,
@@ -315,16 +348,29 @@ def validate_scientific_batch(
     total_approved = total_unique
     total_rejected = max(0, total_requested - total_approved)
     tax_duplicity = round(total_duplicates / max(1, total_generated), 4)
+    contests_checked = len(normalized_references)
+    total_game_contest_checks = total_generated * contests_checked
 
     if not normalized_games or not normalized_references:
         status, classification, reason = "REPROVADO", "REPROVADA", "referencias ou jogos insuficientes"
+        validation_payload = _scientific_validation_payload(
+            game_size=game_size,
+            hit_decomposition={"hit_histogram": {str(number): 0 for number in range(16)}},
+            best_hits=0,
+            validation_count_plus=0,
+        )
         return ScientificBatchValidationReport(
             batch_id=str(batch_id or "").strip() or "scientific-global",
             game_size=int(game_size),
             reference_contests=tuple(item["contest_number"] for item in normalized_references),
+            contests_checked=contests_checked,
+            games_per_contest=total_generated,
+            total_game_contest_checks=total_game_contest_checks,
             validation_threshold=int(validation_rule["validation_threshold"]),
             target_band=str(validation_rule["target_band"]),
             validation_zone_label=str(validation_rule["validation_zone_label"]),
+            scientific_validation_zone_count=int(validation_payload["scientific_validation_zone_count"]),
+            policy_validation_status=str(validation_payload["policy_validation_status"]),
             total_jogos_solicitados=total_requested,
             total_jogos_gerados=total_generated,
             total_jogos_unicos=total_unique,
@@ -347,6 +393,11 @@ def validate_scientific_batch(
             count_13_plus=0,
             count_14_plus=0,
             count_15=0,
+            contests_with_11_plus=0,
+            contests_with_12_plus=0,
+            contests_with_13_plus=0,
+            contests_with_14_plus=0,
+            contests_with_15=0,
             hit_histogram={str(number): 0 for number in range(16)},
             frequency_by_number={str(number): 0 for number in range(1, 26)},
             frequency_maxima_dezena=0,
@@ -373,6 +424,26 @@ def validate_scientific_batch(
             alerts_sequencia=(),
             contest_metrics=(),
             game_metrics=(),
+            backtest_aggregate={
+                "total_game_contest_checks": 0,
+                "contests_checked": contests_checked,
+                "games_per_contest": total_generated,
+                "count_11_exact": 0,
+                "count_12_exact": 0,
+                "count_13_exact": 0,
+                "count_14_exact": 0,
+                "count_15_exact": 0,
+                "count_11_plus": 0,
+                "count_12_plus": 0,
+                "count_13_plus": 0,
+                "count_14_plus": 0,
+                "count_15": 0,
+                "contests_with_11_plus": 0,
+                "contests_with_12_plus": 0,
+                "contests_with_13_plus": 0,
+                "contests_with_14_plus": 0,
+                "contests_with_15": 0,
+            },
             policy=resolved_policy,
             status_comandante_cientifico=status,
             classificacao_cientifica=classification,
@@ -434,9 +505,26 @@ def validate_scientific_batch(
     min_candidate_frequency_percent = round((min_candidate_frequency / max(1, total_generated)) * 100, 4) if total_generated else 0.0
 
     contest_metrics: list[dict[str, Any]] = []
+    aggregate_exact_counts: Counter[int] = Counter()
+    contests_with_11_plus = 0
+    contests_with_12_plus = 0
+    contests_with_13_plus = 0
+    contests_with_14_plus = 0
+    contests_with_15 = 0
     for reference in normalized_references:
         contest_numbers = reference["numbers"]
         hits_per_game = [len(set(game["numbers"]) & set(contest_numbers)) for game in per_game_metrics]
+        aggregate_exact_counts.update(hits_per_game)
+        if any(hits >= 11 for hits in hits_per_game):
+            contests_with_11_plus += 1
+        if any(hits >= 12 for hits in hits_per_game):
+            contests_with_12_plus += 1
+        if any(hits >= 13 for hits in hits_per_game):
+            contests_with_13_plus += 1
+        if any(hits >= 14 for hits in hits_per_game):
+            contests_with_14_plus += 1
+        if any(hits >= 15 for hits in hits_per_game):
+            contests_with_15 += 1
         contest_metrics.append(
             {
                 "contest_number": int(reference["contest_number"]),
@@ -470,6 +558,12 @@ def validate_scientific_batch(
         12: count_12_plus,
         13: count_13_plus,
     }[validation_threshold]
+    validation_payload = _scientific_validation_payload(
+        game_size=game_size,
+        hit_decomposition=hit_decomposition,
+        best_hits=best_hits,
+        validation_count_plus=validation_count_plus,
+    )
 
     repeat_min = int(resolved_policy.get("repeat_min", 0) or 0)
     repeat_max = int(resolved_policy.get("repeat_max", game_size) or game_size)
@@ -560,9 +654,14 @@ def validate_scientific_batch(
         batch_id=str(batch_id or "").strip() or "scientific-global",
         game_size=int(game_size),
         reference_contests=tuple(item["contest_number"] for item in normalized_references),
+        contests_checked=contests_checked,
+        games_per_contest=total_generated,
+        total_game_contest_checks=total_game_contest_checks,
         validation_threshold=validation_threshold,
         target_band=target_band,
         validation_zone_label=validation_zone_label,
+        scientific_validation_zone_count=int(validation_payload["scientific_validation_zone_count"]),
+        policy_validation_status=str(validation_payload["policy_validation_status"]),
         total_jogos_solicitados=total_requested,
         total_jogos_gerados=total_generated,
         total_jogos_unicos=total_unique,
@@ -585,6 +684,11 @@ def validate_scientific_batch(
         count_13_plus=count_13_plus,
         count_14_plus=count_14_plus,
         count_15=count_15,
+        contests_with_11_plus=contests_with_11_plus,
+        contests_with_12_plus=contests_with_12_plus,
+        contests_with_13_plus=contests_with_13_plus,
+        contests_with_14_plus=contests_with_14_plus,
+        contests_with_15=contests_with_15,
         hit_histogram=dict(hit_decomposition["hit_histogram"]),
         frequency_by_number=frequency_by_number,
         frequency_maxima_dezena=int(max_frequency),
@@ -611,6 +715,26 @@ def validate_scientific_batch(
         alerts_sequencia=tuple(alerts_sequencia),
         contest_metrics=tuple(contest_metrics),
         game_metrics=tuple(per_game_metrics),
+        backtest_aggregate={
+            "total_game_contest_checks": total_game_contest_checks,
+            "contests_checked": contests_checked,
+            "games_per_contest": total_generated,
+            "count_11_exact": int(aggregate_exact_counts.get(11, 0)),
+            "count_12_exact": int(aggregate_exact_counts.get(12, 0)),
+            "count_13_exact": int(aggregate_exact_counts.get(13, 0)),
+            "count_14_exact": int(aggregate_exact_counts.get(14, 0)),
+            "count_15_exact": int(aggregate_exact_counts.get(15, 0)),
+            "count_11_plus": sum(int(aggregate_exact_counts.get(hit, 0)) for hit in range(11, 16)),
+            "count_12_plus": sum(int(aggregate_exact_counts.get(hit, 0)) for hit in range(12, 16)),
+            "count_13_plus": sum(int(aggregate_exact_counts.get(hit, 0)) for hit in range(13, 16)),
+            "count_14_plus": sum(int(aggregate_exact_counts.get(hit, 0)) for hit in range(14, 16)),
+            "count_15": int(aggregate_exact_counts.get(15, 0)),
+            "contests_with_11_plus": contests_with_11_plus,
+            "contests_with_12_plus": contests_with_12_plus,
+            "contests_with_13_plus": contests_with_13_plus,
+            "contests_with_14_plus": contests_with_14_plus,
+            "contests_with_15": contests_with_15,
+        },
         policy=resolved_policy,
         status_comandante_cientifico=status,
         classificacao_cientifica=classification,

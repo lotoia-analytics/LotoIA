@@ -9,6 +9,7 @@ from lotoia.analytics.lotofacil_scientific_core import (
     discover_scientific_generation_policy,
     get_scientific_generation_policy,
 )
+from lotoia.database.database import create_database
 
 
 def _contest(contest_number: int, numbers: list[int]) -> dict[str, object]:
@@ -48,12 +49,24 @@ def test_lotofacil_scientific_core_builds_profile_with_frequency_windows_and_met
     assert policy["preferred_parity_pairs"]
     assert all(sum(pair) == 15 for pair in policy["preferred_parity_pairs"])
     assert all(sum(pair) == 15 for pair in policy["allowed_parity_pairs"])
-    assert len(policy["core_numbers"]) == 4
+    assert policy["validation_threshold"] == 11
+    assert policy["target_band"] == "11_to_15"
+    assert policy["policy_mode"] == "hybrid_15_towards_12_plus"
+    assert policy["current_target"] == "12_plus"
+    assert policy["secondary_target"] == "13_plus"
+    assert policy["memory_role"] == "strong_support"
+    assert policy["dominant_memory"] == "conditional"
+    assert policy["core_numbers_to_preserve"] == [1, 10, 18, 20, 9, 11, 6, 21]
+    assert policy["controlled_support_numbers"] == [24, 15]
+    assert policy["promote_numbers_for_12_plus"] == [17, 14, 7]
+    assert policy["real_gap_number"] == 16
+    assert policy["reduce_priority_numbers"] == [2, 3, 5, 8]
+    assert len(policy["core_numbers"]) == 8
     assert all(isinstance(number, int) for number in policy["core_numbers"])
     assert len(policy["discouraged_numbers"]) == 6
 
 
-def test_lotofacil_scientific_core_discovers_policy_with_metadata() -> None:
+def test_lotofacil_scientific_core_discovers_policy_with_metadata(tmp_path) -> None:
     contests = [
         _contest(1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
         _contest(2, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 24, 25, 2]),
@@ -61,7 +74,9 @@ def test_lotofacil_scientific_core_discovers_policy_with_metadata() -> None:
         _contest(4, [1, 4, 5, 7, 8, 9, 10, 12, 14, 16, 18, 19, 21, 23, 25]),
     ]
 
-    discovery = discover_scientific_generation_policy(15, contests=contests)
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+    discovery = discover_scientific_generation_policy(15, contests=contests, db_path=db_path)
 
     assert discovery["policy_origin"] == "automatic_scientific_discovery"
     assert discovery["candidate_count"] >= 20
@@ -106,11 +121,54 @@ def test_lotofacil_scientific_core_builds_post_reconciliation_memory_for_near_mi
     assert memory["memory_kind"] == "scientific_reconciliation"
     assert memory["scientific_classification"] == "NEAR_MISS_LOCAL"
     assert memory["recommended_action"] == "recalibrate_from_near_miss_towards_15"
+    assert memory["validation_threshold"] == 11
+    assert memory["scientific_validation_zone_count"] == 0
+    assert memory["policy_validation_status"] == "REPROVADO"
     assert memory["count_10"] == 1
     assert memory["cross_validation_summary"]["scientific_score_components"]["count_10"] == 1
     assert memory["generation_range"]["contest_number"] == 3699
     assert memory["policy_after"]["policy_origin"] == "scientific_reconciliation_memory"
     assert memory["policy_after"]["next_generation_policy_adjustments"]["max_frequency_ratio"] <= 0.7
+
+
+def test_lotofacil_scientific_core_uses_threshold_by_game_size_for_17_and_18() -> None:
+    contest_17 = _contest(3700, list(range(1, 18)))
+    games_17 = [
+        {"numbers": list(range(1, 12)) + list(range(18, 24)), "game_index": 1},
+    ]
+    memory_17 = build_post_reconciliation_scientific_memory(
+        generation_event_id=341,
+        batch_id="calibration-341",
+        contest=contest_17,
+        games=games_17,
+        policy_before={},
+        policy_after={},
+    )
+
+    contest_18 = _contest(3701, list(range(1, 19)))
+    games_18 = [
+        {"numbers": list(range(1, 13)) + list(range(19, 25)), "game_index": 1},
+    ]
+    memory_18 = build_post_reconciliation_scientific_memory(
+        generation_event_id=342,
+        batch_id="calibration-342",
+        contest=contest_18,
+        games=games_18,
+        policy_before={},
+        policy_after={},
+    )
+
+    assert memory_17["validation_threshold"] == 12
+    assert memory_17["target_band"] == "12_to_15"
+    assert memory_17["scientific_validation_zone_count"] == 0
+    assert memory_17["policy_validation_status"] == "REPROVADO"
+    assert memory_17["best_hit"] == 11
+
+    assert memory_18["validation_threshold"] == 13
+    assert memory_18["target_band"] == "13_to_15"
+    assert memory_18["scientific_validation_zone_count"] == 0
+    assert memory_18["policy_validation_status"] == "REPROVADO"
+    assert memory_18["best_hit"] == 12
 
 
 def test_lotofacil_scientific_core_uses_reconciliation_results_for_count_10() -> None:

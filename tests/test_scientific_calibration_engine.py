@@ -56,6 +56,26 @@ def test_scientific_calibration_recommends_recalibration_policy(tmp_path) -> Non
     assert context["scientific_status"] == "REPROVADO"
     assert context["classification"] == "REPROVADA"
     assert policy["action"] == "recalibrate_frequency_distribution"
+    assert policy["policy_mode"] == "hybrid_15_towards_12_plus"
+    assert policy["validation_threshold"] == 11
+    assert policy["target_band"] == "11_to_15"
+    assert policy["current_target"] == "12_plus"
+    assert policy["secondary_target"] == "13_plus"
+    assert policy["memory_role"] == "strong_support"
+    assert policy["dominant_memory"] == "conditional"
+    assert policy["core_numbers_to_preserve"] == [1, 10, 18, 20, 9, 11, 6, 21]
+    assert policy["controlled_support_numbers"] == [24, 15]
+    assert policy["promote_numbers_for_12_plus"] == [17, 14, 7]
+    assert policy["reduce_priority_numbers"] == [2, 3, 5, 8]
+    assert policy["real_gap_number"] == 16
+    assert 2 not in policy.get("forbidden_numbers", [])
+    assert 3 not in policy.get("forbidden_numbers", [])
+    assert 5 not in policy.get("forbidden_numbers", [])
+    assert 8 not in policy.get("forbidden_numbers", [])
+    assert 24 not in policy.get("forbidden_numbers", [])
+    assert 15 not in policy.get("forbidden_numbers", [])
+    assert 24 in policy["controlled_support_numbers"]
+    assert 15 in policy["controlled_support_numbers"]
     assert policy["keep_rules"]["batch_size"] == 100
     assert policy["keep_rules"]["repeat_previous_min"] <= policy["keep_rules"]["repeat_previous_max"]
     assert policy["keep_rules"]["repeat_previous_min"] >= 0
@@ -64,6 +84,8 @@ def test_scientific_calibration_recommends_recalibration_policy(tmp_path) -> Non
     assert policy["keep_rules"]["unique_required"] is True
     assert recommendation["action_suggested"] == "recalibrate_frequency_distribution"
     assert recommendation["status_visual"] == "REPROVADO"
+    assert recommendation["recommended_policy"]["policy_mode"] == "hybrid_15_towards_12_plus"
+    assert recommendation["recommended_policy"]["validation_threshold"] == 11
 
 
 def test_register_scientific_calibration_decision_persists_memory(tmp_path) -> None:
@@ -102,6 +124,12 @@ def test_register_scientific_calibration_decision_persists_memory(tmp_path) -> N
     assert len(memory_rows) == 1
     assert memory_rows[0].batch_id == "batch-scientific-calibration"
     assert memory_rows[0].strategy_name == "15_dezenas"
+    stored_policy_after = dict(stored[0].policy_after or {})
+    assert stored_policy_after["policy_validation_status"] == "VALIDATED_15_POLICY_LEVEL_3"
+    assert stored_policy_after["official_15_search_standard"] is True
+    assert stored_policy_after["baseline_batch_id"] == "calibration-20260602172948-20a682cd"
+    assert stored_policy_after["baseline_contest_number"] == 3697
+    assert stored_policy_after["baseline_total_games_checked"] == 50
 
 
 def test_official_history_is_preferred_over_imported_contests(tmp_path) -> None:

@@ -355,6 +355,7 @@ class GenerationEvent(Base):
         nullable=False,
     )
     generated_games: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     ml_enabled: Mapped[int] = mapped_column(Integer, nullable=False)
     seed: Mapped[int] = mapped_column(Integer, nullable=False)
     strategy: Mapped[str] = mapped_column(String, nullable=False)
@@ -1340,6 +1341,8 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
         if "whatsapp" not in generation_event_columns:
             connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN whatsapp TEXT NOT NULL DEFAULT ''")
+        if "context_json" not in generation_event_columns:
+            connection.exec_driver_sql("ALTER TABLE generation_events ADD COLUMN context_json JSON NOT NULL DEFAULT '{}'")
         for column_sql, column_name in (
             ("ALTER TABLE generated_games ADD COLUMN target_contest INTEGER", "target_contest"),
             ("ALTER TABLE generated_games ADD COLUMN origin TEXT NOT NULL DEFAULT 'dashboard'", "origin"),

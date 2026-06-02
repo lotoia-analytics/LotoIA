@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import json
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from math import log2, sqrt
 from itertools import product
 from statistics import mean, median
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import select
 
@@ -577,6 +577,254 @@ target_band_by_game_size = {
     18: "13_to_15",
 }
 
+_scientific_15_vnext_core_numbers = (1, 10, 18, 20, 9, 11, 6, 21)
+_scientific_15_vnext_controlled_support_numbers = (24, 15)
+_scientific_15_vnext_promote_numbers = (17, 14, 7)
+_scientific_15_vnext_real_gap_number = 16
+_scientific_15_vnext_reduce_priority_numbers = (2, 3, 5, 8)
+
+
+def _scientific_15_vnext_policy_metadata() -> dict[str, Any]:
+    return {
+        "policy_mode": "hybrid_15_towards_12_plus",
+        "validation_threshold": 11,
+        "target_band": "11_to_15",
+        "memory_role": "strong_support",
+        "dominant_memory": "conditional",
+        "dominant_memory_mode": "conditional",
+        "current_target": "12_plus",
+        "secondary_target": "13_plus",
+        "current_target_label": "12+",
+        "secondary_target_label": "13+",
+        "validation_priority": {
+            "primary": "12_plus",
+            "secondary": "13_plus",
+            "stability_floor": "11",
+            "diagnostic_only": ["10"],
+        },
+        "policy_objective": "increase_12_plus_while_preserving_11_floor",
+        "policy_notes": [
+            "12_plus is the primary reference",
+            "13_plus is refinement",
+            "11 remains the stability floor",
+            "10 is diagnostic only",
+        ],
+        "core_numbers_to_preserve": list(_scientific_15_vnext_core_numbers),
+        "controlled_support_numbers": list(_scientific_15_vnext_controlled_support_numbers),
+        "promote_numbers_for_12_plus": list(_scientific_15_vnext_promote_numbers),
+        "real_gap_number": _scientific_15_vnext_real_gap_number,
+        "reduce_priority_numbers": list(_scientific_15_vnext_reduce_priority_numbers),
+        "forbidden_numbers": [],
+        "avoid_hard_veto_numbers": [],
+    }
+
+
+def _apply_scientific_15_vnext_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
+    enriched = dict(policy)
+    if int(enriched.get("game_size", 0) or 0) != 15:
+        return enriched
+    enriched.update(_scientific_15_vnext_policy_metadata())
+    core_numbers = list(_scientific_15_vnext_core_numbers)
+    reduce_priority_numbers = list(_scientific_15_vnext_reduce_priority_numbers)
+    support_numbers = list(_scientific_15_vnext_controlled_support_numbers)
+    if core_numbers:
+        enriched["core_numbers"] = core_numbers
+    if reduce_priority_numbers:
+        enriched["discouraged_numbers"] = reduce_priority_numbers + [12, 22]
+    if support_numbers:
+        enriched["controlled_support_numbers"] = support_numbers
+    enriched.setdefault("policy_adjustment_reason", "hybrid_15_towards_12_plus")
+    enriched.setdefault("policy_origin", "scientific_calibration_vnext_15")
+    return enriched
+
+
+def _apply_scientific_15_baseline_governance(
+    policy: Mapping[str, Any],
+    baseline: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    from lotoia.governance.scientific_governance import build_scientific_policy_15_baseline_governance
+
+    enriched = _apply_scientific_15_vnext_policy(policy)
+    if int(enriched.get("game_size", 0) or 0) != 15:
+        return enriched
+
+    baseline_policy = dict(baseline or {})
+    baseline_policy_after = dict(baseline_policy.get("policy_after") or baseline_policy.get("policy_applied") or {})
+    baseline_summary = dict(baseline_policy.get("cross_validation_summary") or {})
+    baseline_notes_raw = baseline_policy.get("notes") or {}
+    if isinstance(baseline_notes_raw, str):
+        try:
+            baseline_notes = json.loads(baseline_notes_raw) if baseline_notes_raw.strip() else {}
+        except Exception:
+            baseline_notes = {}
+    elif isinstance(baseline_notes_raw, Mapping):
+        baseline_notes = dict(baseline_notes_raw)
+    else:
+        baseline_notes = {}
+
+    if baseline_policy_after:
+        for key in (
+            "policy_mode",
+            "policy_validation_status",
+            "official_15_search_standard",
+            "validated_game_size",
+            "validated_threshold",
+            "target_band",
+            "current_target",
+            "secondary_target",
+            "highest_validated_hit",
+            "gold_target_14",
+            "diamond_target_15",
+            "baseline_batch_id",
+            "baseline_contest_number",
+            "baseline_total_games_checked",
+            "baseline_count_11_exact",
+            "baseline_count_12_exact",
+            "baseline_count_13_exact",
+            "baseline_count_14_exact",
+            "baseline_count_15_exact",
+            "validated_target",
+            "validated_target_band",
+            "official_15_status_label",
+            "gold_signal_14",
+            "diamond_signal_15",
+        ):
+            if key in baseline_policy_after:
+                enriched[key] = baseline_policy_after[key]
+
+    for key in (
+        "policy_validation_status",
+        "official_15_search_standard",
+        "validated_game_size",
+        "validated_threshold",
+        "target_band",
+        "current_target",
+        "secondary_target",
+        "highest_validated_hit",
+        "gold_target_14",
+        "diamond_target_15",
+        "baseline_batch_id",
+        "baseline_contest_number",
+        "baseline_total_games_checked",
+        "baseline_count_11_exact",
+        "baseline_count_12_exact",
+        "baseline_count_13_exact",
+        "baseline_count_14_exact",
+        "baseline_count_15_exact",
+        "validated_target",
+        "validated_target_band",
+        "official_15_status_label",
+        "gold_signal_14",
+        "diamond_signal_15",
+    ):
+        if key in baseline_summary:
+            enriched[key] = baseline_summary[key]
+        elif key in baseline_notes:
+            enriched[key] = baseline_notes[key]
+
+    if baseline_policy_after:
+        enriched.setdefault("baseline_batch_id", baseline_policy_after.get("baseline_batch_id"))
+        enriched.setdefault("baseline_contest_number", baseline_policy_after.get("baseline_contest_number"))
+        enriched.setdefault("baseline_total_games_checked", baseline_policy_after.get("baseline_total_games_checked"))
+        enriched.setdefault("baseline_count_11_exact", baseline_policy_after.get("baseline_count_11_exact"))
+        enriched.setdefault("baseline_count_12_exact", baseline_policy_after.get("baseline_count_12_exact"))
+        enriched.setdefault("baseline_count_13_exact", baseline_policy_after.get("baseline_count_13_exact"))
+        enriched.setdefault("baseline_count_14_exact", baseline_policy_after.get("baseline_count_14_exact"))
+        enriched.setdefault("baseline_count_15_exact", baseline_policy_after.get("baseline_count_15_exact"))
+
+    enriched.setdefault("policy_validation_status", "VALIDATED_15_POLICY_LEVEL_3")
+    enriched.setdefault("official_15_search_standard", True)
+    enriched.setdefault("validated_game_size", 15)
+    enriched.setdefault("validated_threshold", 11)
+    enriched.setdefault("target_band", "11_to_15")
+    enriched.setdefault("current_target", "12_plus")
+    enriched.setdefault("secondary_target", "13_plus")
+    enriched.setdefault("highest_validated_hit", 13)
+    enriched.setdefault("gold_target_14", False)
+    enriched.setdefault("diamond_target_15", False)
+    enriched.setdefault("validated_target", 13)
+    enriched.setdefault("validated_target_band", "13_plus_detected")
+    governance = build_scientific_policy_15_baseline_governance(
+        baseline_batch_id=str(
+            baseline_summary.get("baseline_batch_id")
+            or baseline_policy_after.get("baseline_batch_id")
+            or baseline_policy.get("batch_id")
+            or policy.get("batch_id")
+            or ""
+        ),
+        baseline_contest_number=int(
+            baseline_summary.get("baseline_contest_number")
+            or baseline_policy_after.get("baseline_contest_number")
+            or baseline_policy.get("contest_number")
+            or policy.get("contest_number")
+            or 3697
+        ),
+        baseline_total_games_checked=int(
+            baseline_summary.get("baseline_total_games_checked")
+            or baseline_policy_after.get("baseline_total_games_checked")
+            or baseline_policy.get("baseline_total_games_checked")
+            or baseline_policy.get("total_games_checked")
+            or 50
+        ),
+        baseline_count_11_exact=int(
+            baseline_summary.get("baseline_count_11_exact")
+            or baseline_policy_after.get("baseline_count_11_exact")
+            or baseline_policy.get("baseline_count_11_exact")
+            or baseline_policy.get("count_11_exact")
+            or 23
+        ),
+        baseline_count_12_exact=int(
+            baseline_summary.get("baseline_count_12_exact")
+            or baseline_policy_after.get("baseline_count_12_exact")
+            or baseline_policy.get("baseline_count_12_exact")
+            or baseline_policy.get("count_12_exact")
+            or 13
+        ),
+        baseline_count_13_exact=int(
+            baseline_summary.get("baseline_count_13_exact")
+            or baseline_policy_after.get("baseline_count_13_exact")
+            or baseline_policy.get("baseline_count_13_exact")
+            or baseline_policy.get("count_13_exact")
+            or 3
+        ),
+        baseline_count_14_exact=int(
+            baseline_summary.get("baseline_count_14_exact")
+            or baseline_policy_after.get("baseline_count_14_exact")
+            or baseline_policy.get("baseline_count_14_exact")
+            or baseline_policy.get("count_14_exact")
+            or 0
+        ),
+        baseline_count_15_exact=int(
+            baseline_summary.get("baseline_count_15_exact")
+            or baseline_policy_after.get("baseline_count_15_exact")
+            or baseline_policy.get("baseline_count_15_exact")
+            or baseline_policy.get("count_15_exact")
+            or 0
+        ),
+        policy_mode=str(baseline_policy_after.get("policy_mode") or baseline_policy.get("policy_mode") or "hybrid_15_towards_12_plus"),
+        policy_validation_status=str(baseline_summary.get("policy_validation_status") or baseline_policy_after.get("policy_validation_status") or "VALIDATED_15_POLICY_LEVEL_3"),
+        official_15_search_standard=bool(baseline_summary.get("official_15_search_standard") if "official_15_search_standard" in baseline_summary else baseline_policy_after.get("official_15_search_standard", True)),
+        validated_game_size=int(baseline_summary.get("validated_game_size") or baseline_policy_after.get("validated_game_size") or 15),
+        validated_threshold=int(baseline_summary.get("validated_threshold") or baseline_policy_after.get("validated_threshold") or 11),
+        target_band=str(baseline_summary.get("target_band") or baseline_policy_after.get("target_band") or "11_to_15"),
+        current_target=str(baseline_summary.get("current_target") or baseline_policy_after.get("current_target") or "12_plus"),
+        secondary_target=str(baseline_summary.get("secondary_target") or baseline_policy_after.get("secondary_target") or "13_plus"),
+        highest_validated_hit=int(baseline_summary.get("highest_validated_hit") or baseline_policy_after.get("highest_validated_hit") or 13),
+        gold_target_14=bool(baseline_summary.get("gold_target_14") if "gold_target_14" in baseline_summary else baseline_policy_after.get("gold_target_14", False)),
+        diamond_target_15=bool(baseline_summary.get("diamond_target_15") if "diamond_target_15" in baseline_summary else baseline_policy_after.get("diamond_target_15", False)),
+        approved_for_use=bool(baseline_policy.get("approved_for_use", True)),
+        validated_target=int(baseline_summary.get("validated_target") or baseline_policy_after.get("validated_target") or 13),
+        validated_target_band=str(baseline_summary.get("validated_target_band") or baseline_policy_after.get("validated_target_band") or "13_plus_detected"),
+        official_15_status_label=str(
+            baseline_summary.get("official_15_status_label")
+            or baseline_policy_after.get("official_15_status_label")
+            or "Política 15 validada nível 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos em bateria prospectiva de 50 jogos. Ouro 14 e diamante 15 seguem como metas superiores futuras."
+        ),
+    ).as_dict()
+    enriched.update(governance)
+    enriched["baseline_governance"] = dict(governance)
+    return enriched
+
 
 def _decompose_hit_counts(hits: Sequence[int]) -> dict[str, Any]:
     normalized_hits = [max(0, min(15, int(hit))) for hit in hits if hit is not None]
@@ -621,9 +869,40 @@ def _scientific_validation_rule(game_size: int) -> dict[str, Any]:
         "game_size": resolved_game_size,
         "validation_threshold": validation_threshold,
         "target_band": target_band,
-        "validation_zone_label": f"Zona de validação científica: {validation_threshold} a 15 acertos.",
-        "validation_minimum_label": f"{validation_threshold} = validação mínima",
+        "validation_zone_label": f"Zona de valida\u00e7\u00e3o cient\u00edfica: {validation_threshold} a 15 acertos.",
+        "validation_minimum_label": f"{validation_threshold} = valida\u00e7\u00e3o m\u00ednima",
         "validation_band_counts": [str(index) for index in range(validation_threshold, 16)],
+    }
+
+
+def _scientific_validation_payload(
+    *,
+    game_size: int,
+    hit_decomposition: Mapping[str, Any],
+    best_hits: int,
+    validation_count_plus: int,
+) -> dict[str, Any]:
+    validation_rule = _scientific_validation_rule(game_size)
+    validation_threshold = int(validation_rule["validation_threshold"])
+    exact_counts = {
+        f"count_{hit}_exact": int(hit_decomposition.get(f"count_{hit}_exact", 0) or 0)
+        for hit in range(validation_threshold, 16)
+    }
+    plus_counts = {
+        f"count_{hit}_plus": int(hit_decomposition.get(f"count_{hit}_plus", 0) or 0)
+        for hit in range(validation_threshold, 15)
+    }
+    return {
+        "game_size": int(validation_rule["game_size"]),
+        "validation_threshold": validation_threshold,
+        "target_band": str(validation_rule["target_band"]),
+        "validation_zone_label": str(validation_rule["validation_zone_label"]),
+        "validation_minimum_label": str(validation_rule["validation_minimum_label"]),
+        "validation_band_counts": list(validation_rule["validation_band_counts"]),
+        "validation_exact_counts": exact_counts,
+        "validation_plus_counts": plus_counts,
+        "scientific_validation_zone_count": int(validation_count_plus),
+        "policy_validation_status": "APROVADO" if int(best_hits or 0) >= validation_threshold and int(validation_count_plus or 0) > 0 else "REPROVADO",
     }
 
 
@@ -864,6 +1143,12 @@ class LotofacilScientificCore:
             12: count_12_plus,
             13: count_13_plus,
         }.get(validation_threshold, count_11_plus)
+        validation_payload = _scientific_validation_payload(
+            game_size=game_size,
+            hit_decomposition=hit_decomposition,
+            best_hits=best_hits,
+            validation_count_plus=validation_count_plus,
+        )
         local_classification = _scientific_local_classification(
             validation_threshold=validation_threshold,
             validation_count_plus=validation_count_plus,
@@ -1204,6 +1489,7 @@ class LotofacilScientificCore:
             "sequence_alerts": [],
             "low_high_alerts": [],
             "range_alerts": [],
+            **validation_payload,
         }
 
     def build_strong_near_miss_scientific_memory(
@@ -1628,6 +1914,12 @@ class LotofacilScientificCore:
             12: global_count_12_plus,
             13: global_count_13_plus,
         }.get(validation_threshold, global_count_11_plus)
+        validation_payload = _scientific_validation_payload(
+            game_size=batch_game_size,
+            hit_decomposition=_decompose_hit_counts(all_hits),
+            best_hits=global_best_hits,
+            validation_count_plus=validation_count_plus,
+        )
         average_hits = _mean_or_zero([float(value) for value in all_hits])
         dispersion = round(
             sqrt(_mean_or_zero([(float(hit) - average_hits) ** 2 for hit in all_hits])) if len(all_hits) > 1 else 0.0,
@@ -1848,6 +2140,7 @@ class LotofacilScientificCore:
             "requires_cross_validation": True,
             "overfit_risk": round(min(1.0, dispersion / 5.0), 4),
             "recommended_action": recommended_action,
+            **validation_payload,
         }
         best_generation_details = [
             detail
@@ -2021,6 +2314,7 @@ class LotofacilScientificCore:
             "extra_numbers_json": extra_numbers,
         }
         payload["policy_adjustment_reason"] = recommended_action
+        payload.update(validation_payload)
         return payload
 
     def discover_scientific_generation_policy(
@@ -2263,6 +2557,7 @@ class LotofacilScientificCore:
             notes=("automatic_discovery_seed", "derived_from_official_history"),
             variant_name="history_profile_seed",
         )
+        base_policy = _apply_scientific_15_vnext_policy(base_policy)
 
         def _policy_to_candidate_params(policy: dict[str, Any]) -> dict[str, Any]:
             preferred_raw = policy.get("preferred_parity_pairs", []) or []
@@ -3070,7 +3365,10 @@ class LotofacilScientificCore:
                 ),
             }
         )
+        selected_policy = _apply_scientific_15_vnext_policy(selected_policy)
+        selected_policy = _apply_scientific_15_baseline_governance(selected_policy, approved_memory or latest_memory)
         validation_rule = _scientific_validation_rule(resolved_game_size)
+        selected_policy["game_size"] = resolved_game_size
         selected_policy["validation_threshold"] = int(validation_rule["validation_threshold"])
         selected_policy["target_band"] = str(validation_rule["target_band"])
         selected_policy["validation_zone_label"] = str(validation_rule["validation_zone_label"])
@@ -3082,7 +3380,15 @@ class LotofacilScientificCore:
             selected_policy["dominant_memory_mode"] = "conditional"
             selected_policy["policy_mode"] = "CROSS_VALIDATED_BATCH_SUPPORT"
             selected_policy["status_prospectivo"] = "pending_prospective_validation"
-        elif not hybrid_auxiliary_mode and prioritized_memory_kind in {"scientific_batch_reconciliation", "scientific_strong_near_miss", "scientific_reconciliation", "scientific_calibration"} and memory_policy:
+        elif (
+            not (
+                selected_policy.get("official_15_search_standard")
+                and str(selected_policy.get("policy_validation_status", "")).upper() == "VALIDATED_15_POLICY_LEVEL_3"
+            )
+            and not hybrid_auxiliary_mode
+            and prioritized_memory_kind in {"scientific_batch_reconciliation", "scientific_strong_near_miss", "scientific_reconciliation", "scientific_calibration"}
+            and memory_policy
+        ):
             selected_policy["dominant_memory"] = True
             selected_policy["memory_role"] = "dominant"
             selected_policy["policy_mode"] = "MEMORY_DOMINANT"
@@ -3425,3 +3731,4 @@ def build_batch_reconciliation_scientific_memory(
         policy_before=policy_before,
         policy_after=policy_after,
     )
+
