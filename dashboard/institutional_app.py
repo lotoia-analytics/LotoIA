@@ -38,6 +38,8 @@ from lotoia.analytics.lotofacil_scientific_core import (
     build_post_reconciliation_scientific_memory,
     build_strong_near_miss_scientific_memory,
     discover_scientific_generation_policy,
+    _decompose_hit_counts,
+    _scientific_validation_rule,
     get_scientific_generation_policy,
 )
 from lotoia.analytics.scientific_calibration_engine import (
@@ -51,6 +53,7 @@ from lotoia.analytics.scientific_calibration_engine import (
 from lotoia.governance.scientific_commander import validate_scientific_batch
 from lotoia.governance.output_commander import (
     game_signature as _game_signature,
+    load_all_output_signatures,
     load_batch_output_signatures,
     output_commander_validate_games,
 )
@@ -844,6 +847,25 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
         generation_range = dict(getattr(row, "generation_range", {}) or {})
         cross_validation_summary = dict(getattr(row, "cross_validation_summary", {}) or {})
         scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
+        hit_decomposition = _scientific_hit_decomposition(
+            {
+                "count_10": int(scientific_components.get("count_10", 0) or 0),
+                "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
+                "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
+                "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
+                "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
+                "count_15": int(getattr(row, "count_15", 0) or 0),
+                "count_10_exact": int(scientific_components.get("count_10_exact", generation_range.get("count_10_exact", 0)) or 0),
+                "count_11_exact": int(scientific_components.get("count_11_exact", generation_range.get("count_11_exact", 0)) or 0),
+                "count_12_exact": int(scientific_components.get("count_12_exact", generation_range.get("count_12_exact", 0)) or 0),
+                "count_13_exact": int(scientific_components.get("count_13_exact", generation_range.get("count_13_exact", 0)) or 0),
+                "count_14_exact": int(scientific_components.get("count_14_exact", generation_range.get("count_14_exact", 0)) or 0),
+                "count_15_exact": int(scientific_components.get("count_15_exact", generation_range.get("count_15_exact", 0)) or 0),
+                "hit_histogram": dict(scientific_components.get("hit_histogram", generation_range.get("hit_histogram", {})) or {}),
+                "generation_range": generation_range,
+                "cross_validation_summary": cross_validation_summary,
+            }
+        )
         memories.append(
             {
                 "id": int(getattr(row, "id", 0) or 0),
@@ -867,12 +889,19 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
                 "recommended_action": str(getattr(row, "recommended_action", "") or ""),
                 "best_hit": int(getattr(row, "best_hit", 0) or 0),
                 "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
-                "count_10": int(scientific_components.get("count_10", 0) or 0),
-                "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
-                "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
-                "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
-                "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
-                "count_15": int(getattr(row, "count_15", 0) or 0),
+                "count_10": int(hit_decomposition["count_10_exact"]),
+                "count_10_exact": int(hit_decomposition["count_10_exact"]),
+                "count_11_exact": int(hit_decomposition["count_11_exact"]),
+                "count_12_exact": int(hit_decomposition["count_12_exact"]),
+                "count_13_exact": int(hit_decomposition["count_13_exact"]),
+                "count_14_exact": int(hit_decomposition["count_14_exact"]),
+                "count_15_exact": int(hit_decomposition["count_15_exact"]),
+                "count_11_plus": int(hit_decomposition["count_11_plus"]),
+                "count_12_plus": int(hit_decomposition["count_12_plus"]),
+                "count_13_plus": int(hit_decomposition["count_13_plus"]),
+                "count_14_plus": int(hit_decomposition["count_14_plus"]),
+                "count_15": int(hit_decomposition["count_15"]),
+                "hit_histogram": dict(hit_decomposition["hit_histogram"]),
                 "decision_mode": str(getattr(row, "decision_mode", "OBSERVACAO") or "OBSERVACAO"),
                 "approved_for_use": bool(getattr(row, "approved_for_use", 0) or 0),
                 "official_history_count": int(getattr(row, "official_history_count", 0) or 0),
@@ -882,6 +911,9 @@ def _load_latest_scientific_memory(limit: int = 5) -> list[dict[str, Any]]:
                 "source": str(getattr(row, "source", "") or ""),
                 "cross_validation_summary": cross_validation_summary,
                 "scientific_score_components": scientific_components,
+                "generation_details": list(cross_validation_summary.get("generation_details") or []),
+                "best_generation_details": list(cross_validation_summary.get("best_generation_details") or []),
+                "games_with_10_hits": list(cross_validation_summary.get("games_with_10_hits") or []),
             }
         )
     return memories
@@ -902,6 +934,25 @@ def _load_all_scientific_memory() -> list[dict[str, Any]]:
         generation_range = dict(getattr(row, "generation_range", {}) or {})
         cross_validation_summary = dict(getattr(row, "cross_validation_summary", {}) or {})
         scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
+        hit_decomposition = _scientific_hit_decomposition(
+            {
+                "count_10": int(scientific_components.get("count_10", 0) or 0),
+                "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
+                "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
+                "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
+                "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
+                "count_15": int(getattr(row, "count_15", 0) or 0),
+                "count_10_exact": int(scientific_components.get("count_10_exact", generation_range.get("count_10_exact", 0)) or 0),
+                "count_11_exact": int(scientific_components.get("count_11_exact", generation_range.get("count_11_exact", 0)) or 0),
+                "count_12_exact": int(scientific_components.get("count_12_exact", generation_range.get("count_12_exact", 0)) or 0),
+                "count_13_exact": int(scientific_components.get("count_13_exact", generation_range.get("count_13_exact", 0)) or 0),
+                "count_14_exact": int(scientific_components.get("count_14_exact", generation_range.get("count_14_exact", 0)) or 0),
+                "count_15_exact": int(scientific_components.get("count_15_exact", generation_range.get("count_15_exact", 0)) or 0),
+                "hit_histogram": dict(scientific_components.get("hit_histogram", generation_range.get("hit_histogram", {})) or {}),
+                "generation_range": generation_range,
+                "cross_validation_summary": cross_validation_summary,
+            }
+        )
         memories.append(
             {
                 "id": int(getattr(row, "id", 0) or 0),
@@ -925,12 +976,19 @@ def _load_all_scientific_memory() -> list[dict[str, Any]]:
                 "recommended_action": str(getattr(row, "recommended_action", "") or ""),
                 "best_hit": int(getattr(row, "best_hit", 0) or 0),
                 "average_hits": float(getattr(row, "average_hits", 0.0) or 0.0),
-                "count_10": int(scientific_components.get("count_10", 0) or 0),
-                "count_11_plus": int(getattr(row, "count_11_plus", 0) or 0),
-                "count_12_plus": int(getattr(row, "count_12_plus", 0) or 0),
-                "count_13_plus": int(getattr(row, "count_13_plus", 0) or 0),
-                "count_14_plus": int(getattr(row, "count_14_plus", 0) or 0),
-                "count_15": int(getattr(row, "count_15", 0) or 0),
+                "count_10": int(hit_decomposition["count_10_exact"]),
+                "count_10_exact": int(hit_decomposition["count_10_exact"]),
+                "count_11_exact": int(hit_decomposition["count_11_exact"]),
+                "count_12_exact": int(hit_decomposition["count_12_exact"]),
+                "count_13_exact": int(hit_decomposition["count_13_exact"]),
+                "count_14_exact": int(hit_decomposition["count_14_exact"]),
+                "count_15_exact": int(hit_decomposition["count_15_exact"]),
+                "count_11_plus": int(hit_decomposition["count_11_plus"]),
+                "count_12_plus": int(hit_decomposition["count_12_plus"]),
+                "count_13_plus": int(hit_decomposition["count_13_plus"]),
+                "count_14_plus": int(hit_decomposition["count_14_plus"]),
+                "count_15": int(hit_decomposition["count_15"]),
+                "hit_histogram": dict(hit_decomposition["hit_histogram"]),
                 "decision_mode": str(getattr(row, "decision_mode", "OBSERVACAO") or "OBSERVACAO"),
                 "approved_for_use": bool(getattr(row, "approved_for_use", 0) or 0),
                 "official_history_count": int(getattr(row, "official_history_count", 0) or 0),
@@ -940,9 +998,90 @@ def _load_all_scientific_memory() -> list[dict[str, Any]]:
                 "source": str(getattr(row, "source", "") or ""),
                 "cross_validation_summary": cross_validation_summary,
                 "scientific_score_components": scientific_components,
+                "generation_details": list(cross_validation_summary.get("generation_details") or []),
+                "best_generation_details": list(cross_validation_summary.get("best_generation_details") or []),
+                "games_with_10_hits": list(cross_validation_summary.get("games_with_10_hits") or []),
             }
         )
     return memories
+
+
+def _format_scientific_memory_listing(memories: list[dict[str, Any]]) -> pd.DataFrame:
+    if not memories:
+        return pd.DataFrame()
+    display_rows: list[dict[str, Any]] = []
+    for row in memories:
+        cross_validation_summary = dict(row.get("cross_validation_summary") or {})
+        memory_kind = str(row.get("memory_kind", "") or "").strip()
+        is_batch_memory = memory_kind == "scientific_batch_reconciliation"
+        classification = str(
+            row.get("scientific_classification")
+            or row.get("classification")
+            or cross_validation_summary.get("classification")
+            or "-"
+        )
+        memory_role = str(
+            row.get("memory_role")
+            or cross_validation_summary.get("memory_role")
+            or ("strong_support" if is_batch_memory else "auxiliary")
+        )
+        dominant_memory = row.get("dominant_memory", cross_validation_summary.get("dominant_memory"))
+        if isinstance(dominant_memory, bool):
+            dominant_memory = "conditional" if dominant_memory else "false"
+        if dominant_memory in (None, ""):
+            dominant_memory = "conditional" if is_batch_memory else "false"
+        selection_variant = str(
+            row.get("selection_variant")
+            or cross_validation_summary.get("selection_variant")
+            or ("cross_validated_scientific_batch_memory" if is_batch_memory else row.get("strategy_name") or "-")
+        )
+        cross_validation_reason = str(
+            row.get("cross_validation_reason")
+            or cross_validation_summary.get("cross_validation_reason")
+            or ("historical_cross_validation_supports_memory" if is_batch_memory else row.get("main_reason") or "-")
+        )
+        recommended_action = str(row.get("recommended_action", "") or "-")
+        prospective_status = str(
+            row.get("prospective_status")
+            or cross_validation_summary.get("prospective_status")
+            or ("pending_prospective_validation" if is_batch_memory else "pending_prospective_validation")
+        )
+        scientific_reading = str(
+            row.get("scientific_reading")
+            or cross_validation_summary.get("scientific_reading")
+            or ("memória com suporte histórico cruzado" if is_batch_memory else "memória científica")
+        )
+        display_rows.append(
+            {
+                "leitura científica": scientific_reading,
+                "memory_id": int(row.get("id", 0) or 0),
+                "memory_kind": memory_kind,
+                "batch_id de origem": str(row.get("batch_id", "") or "-"),
+                "classification": classification,
+                "memory_role": memory_role,
+                "dominant_memory": str(dominant_memory),
+                "selection_variant": selection_variant,
+                "cross_validation_reason": cross_validation_reason,
+                "recommended_action": recommended_action,
+                "status prospectivo": prospective_status,
+            }
+        )
+    return pd.DataFrame(
+        display_rows,
+        columns=[
+            "leitura científica",
+            "memory_id",
+            "memory_kind",
+            "batch_id de origem",
+            "classification",
+            "memory_role",
+            "dominant_memory",
+            "selection_variant",
+            "cross_validation_reason",
+            "recommended_action",
+            "status prospectivo",
+        ],
+    )
 
 
 def _ensure_scientific_batch_memory_from_history() -> dict[str, Any]:
@@ -995,7 +1134,7 @@ def _ensure_scientific_batch_memory_from_history() -> dict[str, Any]:
     global_count_15 = sum(int(row.get("count_15", 0) or 0) for row in candidate_rows)
     global_average_hits = _mean_or_zero([float(row.get("average_hits", 0.0) or 0.0) for row in candidate_rows])
     dispersion = round(
-        sqrt(_mean_or_zero([(float(row.get("best_hit", 0) or 0) - global_average_hits) ** 2 for row in candidate_rows]))
+        math.sqrt(_mean_or_zero([(float(row.get("best_hit", 0) or 0) - global_average_hits) ** 2 for row in candidate_rows]))
         if len(candidate_rows) > 1
         else 0.0,
         4,
@@ -1653,6 +1792,7 @@ def _render_scientific_memory_block() -> None:
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
         cross_validation_summary = dict(post_reconciliation_memory.get("cross_validation_summary") or {})
         scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
+        post_hit_decomposition = _scientific_hit_decomposition(post_reconciliation_memory)
         post_summary_cols = st.columns(6)
         post_summary_cols[0].metric(
             "Última geração conferida",
@@ -1664,8 +1804,21 @@ def _render_scientific_memory_block() -> None:
         )
         post_summary_cols[2].metric("Jogos conferidos", int(post_reconciliation_memory.get("total_games", 0) or 0))
         post_summary_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
-        post_summary_cols[4].metric("Jogos com 10", int(post_reconciliation_memory.get("count_10", scientific_components.get("count_10", 0)) or 0))
-        post_summary_cols[5].metric("Jogos com 11+", int(post_reconciliation_memory.get("count_11_plus", 0) or 0))
+        post_summary_cols[4].metric("Jogos com 10", int(post_hit_decomposition.get("count_10_exact", 0) or 0))
+        post_summary_cols[5].metric("Jogos com 11+", int(post_hit_decomposition.get("count_11_plus", 0) or 0))
+        post_exact_cols = st.columns(6)
+        post_exact_cols[0].metric("count_10_exact", int(post_hit_decomposition.get("count_10_exact", 0) or 0))
+        post_exact_cols[1].metric("count_11_exact", int(post_hit_decomposition.get("count_11_exact", 0) or 0))
+        post_exact_cols[2].metric("count_12_exact", int(post_hit_decomposition.get("count_12_exact", 0) or 0))
+        post_exact_cols[3].metric("count_13_exact", int(post_hit_decomposition.get("count_13_exact", 0) or 0))
+        post_exact_cols[4].metric("count_14_exact", int(post_hit_decomposition.get("count_14_exact", 0) or 0))
+        post_exact_cols[5].metric("count_15_exact", int(post_hit_decomposition.get("count_15_exact", 0) or 0))
+        post_plus_cols = st.columns(5)
+        post_plus_cols[0].metric("count_11_plus", int(post_hit_decomposition.get("count_11_plus", 0) or 0))
+        post_plus_cols[1].metric("count_12_plus", int(post_hit_decomposition.get("count_12_plus", 0) or 0))
+        post_plus_cols[2].metric("count_13_plus", int(post_hit_decomposition.get("count_13_plus", 0) or 0))
+        post_plus_cols[3].metric("count_14_plus", int(post_hit_decomposition.get("count_14_plus", 0) or 0))
+        post_plus_cols[4].metric("count_15", int(post_hit_decomposition.get("count_15", 0) or 0))
         post_detail_cols = st.columns(4)
         post_detail_cols[0].markdown(f"**Classificação local**  \n{post_reconciliation_memory.get('scientific_classification', '-') or '-'}")
         post_detail_cols[1].markdown(f"**Ação sugerida**  \n{post_reconciliation_memory.get('recommended_action', '-') or '-'}")
@@ -1690,7 +1843,7 @@ def _render_scientific_memory_block() -> None:
                 )
             with st.expander("Ver memória pós-conferência completa", expanded=False):
                 st.json(post_reconciliation_memory)
-    batch_reconciliation_memory = next(
+        batch_reconciliation_memory = next(
         (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
         {},
     )
@@ -1698,6 +1851,49 @@ def _render_scientific_memory_block() -> None:
         st.markdown("###### Memória consolidada da bateria conferida")
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
         batch_components = dict(batch_reconciliation_memory.get("scientific_score_components") or {})
+        batch_cross_validation = dict(batch_reconciliation_memory.get("cross_validation_summary") or {})
+        batch_hit_decomposition = _scientific_hit_decomposition(batch_reconciliation_memory)
+        batch_cross_windows = dict(
+            batch_cross_validation.get("windows")
+            or batch_cross_validation.get("cross_validation_windows")
+            or {}
+        )
+        batch_memory_role = str(
+            batch_reconciliation_memory.get("memory_role")
+            or batch_cross_validation.get("memory_role")
+            or "strong_support"
+        )
+        batch_dominant_memory = batch_reconciliation_memory.get(
+            "dominant_memory",
+            batch_cross_validation.get("dominant_memory", "conditional"),
+        )
+        batch_selection_variant = str(
+            batch_reconciliation_memory.get("selection_variant")
+            or batch_cross_validation.get("selection_variant")
+            or "cross_validated_scientific_batch_memory"
+        )
+        batch_cross_validation_reason = str(
+            batch_reconciliation_memory.get("cross_validation_reason")
+            or batch_cross_validation.get("cross_validation_reason")
+            or "historical_cross_validation_supports_memory"
+        )
+        batch_prospective_status = "pending_prospective_validation"
+        st.info(
+            "Memória com suporte histórico cruzado. Validação cruzada histórica favorável, mas ainda pendente de validação prospectiva."
+        )
+        identity_cols = st.columns(5)
+        identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
+        identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
+        identity_cols[2].markdown(f"**batch_id de origem**  \n{batch_reconciliation_memory.get('batch_id', '-') or '-'}")
+        identity_cols[3].markdown(f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
+        identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
+        role_cols = st.columns(3)
+        role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
+        role_cols[1].markdown(f"**dominant_memory**  \n{batch_dominant_memory}")
+        role_cols[2].markdown(f"**selection_variant**  \n{batch_selection_variant}")
+        control_cols = st.columns(2)
+        control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
+        control_cols[1].markdown(f"**recommended_action**  \n{batch_reconciliation_memory.get('recommended_action', '-') or '-'}")
         batch_cols = st.columns(6)
         batch_cols[0].metric(
             "Última bateria conferida",
@@ -1706,8 +1902,21 @@ def _render_scientific_memory_block() -> None:
         batch_cols[1].metric("Total de gerações", int(batch_window.get("total_generations", 0) or 0))
         batch_cols[2].metric("Total de jogos", int(batch_window.get("total_games_checked", 0) or 0))
         batch_cols[3].metric("Melhor acerto global", int(batch_window.get("global_best_hits", 0) or 0))
-        batch_cols[4].metric("Jogos com 10", int(batch_window.get("global_count_10", batch_reconciliation_memory.get("count_10", 0)) or 0))
-        batch_cols[5].metric("Jogos com 11+", int(batch_window.get("global_count_11_plus", batch_reconciliation_memory.get("count_11_plus", 0)) or 0))
+        batch_cols[4].metric("Jogos com 10", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
+        batch_cols[5].metric("Jogos com 11+", int(batch_hit_decomposition.get("count_11_plus", 0) or 0))
+        batch_exact_cols = st.columns(6)
+        batch_exact_cols[0].metric("count_10_exact", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
+        batch_exact_cols[1].metric("count_11_exact", int(batch_hit_decomposition.get("count_11_exact", 0) or 0))
+        batch_exact_cols[2].metric("count_12_exact", int(batch_hit_decomposition.get("count_12_exact", 0) or 0))
+        batch_exact_cols[3].metric("count_13_exact", int(batch_hit_decomposition.get("count_13_exact", 0) or 0))
+        batch_exact_cols[4].metric("count_14_exact", int(batch_hit_decomposition.get("count_14_exact", 0) or 0))
+        batch_exact_cols[5].metric("count_15_exact", int(batch_hit_decomposition.get("count_15_exact", 0) or 0))
+        batch_plus_cols = st.columns(5)
+        batch_plus_cols[0].metric("count_11_plus", int(batch_hit_decomposition.get("count_11_plus", 0) or 0))
+        batch_plus_cols[1].metric("count_12_plus", int(batch_hit_decomposition.get("count_12_plus", 0) or 0))
+        batch_plus_cols[2].metric("count_13_plus", int(batch_hit_decomposition.get("count_13_plus", 0) or 0))
+        batch_plus_cols[3].metric("count_14_plus", int(batch_hit_decomposition.get("count_14_plus", 0) or 0))
+        batch_plus_cols[4].metric("count_15", int(batch_hit_decomposition.get("count_15", 0) or 0))
         batch_detail_cols = st.columns(4)
         batch_detail_cols[0].markdown(f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
         batch_detail_cols[1].markdown(f"**Ação recomendada**  \n{batch_reconciliation_memory.get('recommended_action', '-') or '-'}")
@@ -1717,6 +1926,31 @@ def _render_scientific_memory_block() -> None:
         batch_detail_cols[3].markdown(
             f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
         )
+        st.markdown("###### Validação histórica")
+        if batch_cross_windows:
+            for label in ("10", "30", "60"):
+                window_payload = dict(batch_cross_windows.get(label, {}) or {})
+                if not window_payload:
+                    continue
+                st.markdown(f"**Janela {label}**")
+                window_cols = st.columns(3)
+                window_cols[0].metric("average_best_hits", f"{float(window_payload.get('average_best_hits', 0.0) or 0.0):.4f}")
+                window_cols[1].metric("max_best_hits", int(window_payload.get("max_best_hits", 0) or 0))
+                window_cols[2].metric("contests_with_11_plus", int(window_payload.get("contests_with_11_plus", 0) or 0))
+                window_detail_cols = st.columns(3)
+                window_detail_cols[0].metric("total_count_11_plus", int(window_payload.get("total_count_11_plus", 0) or 0))
+                window_detail_cols[1].metric("total_count_12_plus", int(window_payload.get("total_count_12_plus", 0) or 0))
+                window_detail_cols[2].metric("total_count_13_plus", int(window_payload.get("total_count_13_plus", 0) or 0))
+                with st.expander(f"Ver detalhes da janela {label}", expanded=False):
+                    st.json(window_payload)
+        else:
+            st.caption("Validação cruzada histórica não persistida nesta memória; usando o resumo consolidado disponível.")
+        st.markdown("###### Validação prospectiva")
+        prospective_cols = st.columns(4)
+        prospective_cols[0].markdown("**Status**  \nainda não confirmada")
+        prospective_cols[1].markdown("**Próximo passo**  \nrequer próxima bateria limpa")
+        prospective_cols[2].markdown("**Conferência**  \ncontra concurso não usado como calibração")
+        prospective_cols[3].markdown("**Critério mínimo**  \nproduzir 11+")
         ranking_payload = list(
             dict(batch_reconciliation_memory.get("cross_validation_summary") or {}).get("near_miss_generation_ranking") or []
         )
@@ -1740,8 +1974,15 @@ def _render_scientific_memory_block() -> None:
                     f"batch_id={batch_reconciliation_memory.get('batch_id', '-')}",
                     f"generation_event_ids={batch_window.get('generation_event_ids', [])}",
                     f"classification={batch_reconciliation_memory.get('scientific_classification', '-')}",
+                    f"memory_role={batch_memory_role}",
+                    f"dominant_memory={batch_dominant_memory}",
+                    f"cross_validation_reason={batch_cross_validation_reason}",
                 ]
             )
+        )
+        st.warning(
+            "A memória possui suporte histórico cruzado, mas ainda depende de validação prospectiva. "
+            "O uso recomendado é condicional/híbrido até produzir 11+ na próxima bateria limpa."
         )
         with st.expander("Ver memória consolidada da bateria completa", expanded=False):
             st.json(batch_reconciliation_memory)
@@ -1753,19 +1994,33 @@ def _render_scientific_memory_block() -> None:
         st.markdown("###### Melhores near miss da última bateria")
         near_miss_window = dict(strong_near_miss_memory.get("generation_range") or {})
         near_miss_components = dict(strong_near_miss_memory.get("scientific_score_components") or {})
+        near_miss_hit_decomposition = _scientific_hit_decomposition(strong_near_miss_memory)
         near_miss_cols = st.columns(6)
         near_miss_cols[0].metric("Melhor geração", int(near_miss_window.get("best_generation_event_id", 0) or 0))
         near_miss_cols[1].metric(
             "Jogos com 10",
-            int(near_miss_window.get("best_generation_count_10", 0) or strong_near_miss_memory.get("count_10", 0) or 0),
+            int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0),
         )
         near_miss_cols[2].metric(
             "Jogos com 11+",
-            int(near_miss_window.get("best_generation_count_11_plus", 0) or strong_near_miss_memory.get("count_11_plus", 0) or 0),
+            int(near_miss_hit_decomposition.get("count_11_plus", 0) or 0),
         )
         near_miss_cols[3].metric("Melhor acerto", int(near_miss_window.get("best_generation_best_hits", 0) or strong_near_miss_memory.get("best_hit", 0) or 0))
         near_miss_cols[4].metric("Classificação", str(strong_near_miss_memory.get("scientific_classification", "-") or "-"))
         near_miss_cols[5].metric("Ação", str(strong_near_miss_memory.get("recommended_action", "-") or "-"))
+        near_miss_exact_cols = st.columns(6)
+        near_miss_exact_cols[0].metric("count_10_exact", int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0))
+        near_miss_exact_cols[1].metric("count_11_exact", int(near_miss_hit_decomposition.get("count_11_exact", 0) or 0))
+        near_miss_exact_cols[2].metric("count_12_exact", int(near_miss_hit_decomposition.get("count_12_exact", 0) or 0))
+        near_miss_exact_cols[3].metric("count_13_exact", int(near_miss_hit_decomposition.get("count_13_exact", 0) or 0))
+        near_miss_exact_cols[4].metric("count_14_exact", int(near_miss_hit_decomposition.get("count_14_exact", 0) or 0))
+        near_miss_exact_cols[5].metric("count_15_exact", int(near_miss_hit_decomposition.get("count_15_exact", 0) or 0))
+        near_miss_plus_cols = st.columns(5)
+        near_miss_plus_cols[0].metric("count_11_plus", int(near_miss_hit_decomposition.get("count_11_plus", 0) or 0))
+        near_miss_plus_cols[1].metric("count_12_plus", int(near_miss_hit_decomposition.get("count_12_plus", 0) or 0))
+        near_miss_plus_cols[2].metric("count_13_plus", int(near_miss_hit_decomposition.get("count_13_plus", 0) or 0))
+        near_miss_plus_cols[3].metric("count_14_plus", int(near_miss_hit_decomposition.get("count_14_plus", 0) or 0))
+        near_miss_plus_cols[4].metric("count_15", int(near_miss_hit_decomposition.get("count_15", 0) or 0))
         st.caption(
             " | ".join(
                 [
@@ -1824,7 +2079,16 @@ def _render_scientific_memory_block() -> None:
     )
     if scientific_memory:
         with st.expander("Mem?ria cient?fica completa", expanded=False):
-            st.dataframe(_make_streamlit_dataframe_safe(pd.DataFrame(scientific_memory)), hide_index=True, use_container_width=True)
+            st.caption(
+                "Memória com suporte histórico cruzado | strong_support | dominant_memory=conditional | "
+                "validação cruzada histórica favorável | uso condicional/híbrido | pending_prospective_validation"
+            )
+            scientific_memory_listing = _format_scientific_memory_listing(scientific_memory)
+            st.dataframe(
+                _make_streamlit_dataframe_safe(scientific_memory_listing),
+                hide_index=True,
+                use_container_width=True,
+            )
 
 
 def _format_scientific_number_list(values: Sequence[int] | None) -> str:
@@ -1878,7 +2142,7 @@ def _normalize_scientific_parity_pair(value: Any) -> tuple[int, int] | None:
 def _scientific_policy_is_ready(policy_discovery: dict[str, Any] | None) -> bool:
     if not isinstance(policy_discovery, dict):
         return False
-    if str(policy_discovery.get("policy_origin", "") or "").strip() != "automatic_scientific_discovery":
+    if str(policy_discovery.get("policy_origin", "") or "").strip() not in {"automatic_scientific_discovery", "scientific_batch_reconciliation_memory"}:
         return False
     if int(policy_discovery.get("candidate_count", policy_discovery.get("policies_tested", 0)) or 0) <= 0:
         return False
@@ -1916,6 +2180,19 @@ def _render_scientific_policy_panel(
     selected_policy_id = str(policy_discovery.get("policy_id", "-") or "-") if discovery_ready else "-"
     selected_policy_name = str(policy_discovery.get("selection_variant", "-") or "-") if discovery_ready else "-"
     selected_reason = str(policy_discovery.get("selection_reason", "-") or "-") if discovery_ready else "-"
+    selected_memory_role = str(policy_discovery.get("memory_role", policy_payload.get("memory_role", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_dominant_memory = str(policy_discovery.get("dominant_memory", policy_payload.get("dominant_memory", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_based_on_memory_kind = str(policy_discovery.get("based_on_memory_kind", policy_payload.get("based_on_memory_kind", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_based_on_memory_id = str(policy_discovery.get("based_on_memory_id", policy_payload.get("based_on_memory_id", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_based_on_batch_id = str(policy_discovery.get("based_on_batch_id", policy_payload.get("based_on_batch_id", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_cross_validation_reason = str(policy_discovery.get("cross_validation_reason", policy_payload.get("cross_validation_reason", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_recommended_action = str(policy_discovery.get("recommended_action", policy_payload.get("recommended_action", "-")) or "-") if isinstance(policy_discovery, dict) else "-"
+    selected_validation_threshold = int(policy_discovery.get("validation_threshold", policy_payload.get("validation_threshold", strategy_size if strategy_size else 15)) or 15) if isinstance(policy_discovery, dict) else 15
+    selected_target_band = str(policy_discovery.get("target_band", policy_payload.get("target_band", f"{selected_validation_threshold}_to_15")) or f"{selected_validation_threshold}_to_15") if isinstance(policy_discovery, dict) else f"{selected_validation_threshold}_to_15"
+    selected_validation_zone_label = str(policy_discovery.get("validation_zone_label", policy_payload.get("validation_zone_label", f"Zona de validação científica: {selected_validation_threshold} a 15 acertos.")) or f"Zona de validação científica: {selected_validation_threshold} a 15 acertos.") if isinstance(policy_discovery, dict) else f"Zona de validação científica: {selected_validation_threshold} a 15 acertos."
+    panel_validation_rule = _scientific_validation_rule(strategy_size)
+    panel_validation_threshold = int(panel_validation_rule.get("validation_threshold", selected_validation_threshold) or selected_validation_threshold)
+    panel_validation_zone_label = str(panel_validation_rule.get("validation_zone_label", selected_validation_zone_label) or selected_validation_zone_label)
     selected_window = str(policy_discovery.get("validation_window", "-") or "-") if discovery_ready else "-"
     selected_score = str(policy_discovery.get("selection_score", "-") or "-") if discovery_ready else "-"
     selected_at = str(policy_discovery.get("selected_at", "-") or "-") if discovery_ready else "-"
@@ -1923,6 +2200,17 @@ def _render_scientific_policy_panel(
     rejected_by_guardian = int(policy_discovery.get("rejected_by_guardian", 0) or 0) if isinstance(policy_discovery, dict) else 0
     rejected_by_rules = int(policy_discovery.get("rejected_by_rules", 0) or 0) if isinstance(policy_discovery, dict) else 0
     parameter_reasoning = dict(policy_discovery.get("parameter_reasoning") or {}) if discovery_ready else {}
+    cross_validation_summary = dict(
+        policy_discovery.get("cross_validation_summary")
+        or policy_payload.get("cross_validation_summary")
+        or {}
+    ) if isinstance(policy_discovery, dict) else {}
+    cross_validation_windows = dict(
+        policy_discovery.get("cross_validation_windows")
+        or policy_payload.get("cross_validation_windows")
+        or cross_validation_summary.get("windows")
+        or {}
+    ) if isinstance(policy_discovery, dict) else {}
 
     top_cols = st.columns(4)
     top_cols[0].metric("Estrat?gia", f"{int(strategy_size)} dezenas")
@@ -1939,6 +2227,13 @@ def _render_scientific_policy_panel(
     score_cols = st.columns(2)
     score_cols[0].metric("Selection score", selected_score)
     score_cols[1].metric("Selected at", selected_at)
+
+    if discovery_ready:
+        st.info(
+            "Último concurso não produziu 11+, mas a validação cruzada histórica sustenta a memória como "
+            f"{selected_memory_role} / dominant_memory {selected_dominant_memory}."
+        )
+        st.caption(panel_validation_zone_label)
 
     if not discovery_ready:
         if selection_status == "NONE_APPROVED":
@@ -1985,6 +2280,47 @@ def _render_scientific_policy_panel(
         "Controle de frequ?ncia (m?n. candidata)",
         f"{float(policy_payload.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
+
+    identity_cols = st.columns(4)
+    identity_cols[0].markdown(f"**based_on_memory_kind**  \n{selected_based_on_memory_kind}")
+    identity_cols[1].markdown(f"**based_on_memory_id**  \n{selected_based_on_memory_id}")
+    identity_cols[2].markdown(f"**based_on_batch_id**  \n{selected_based_on_batch_id}")
+    identity_cols[3].markdown(f"**memory_role / dominant_memory**  \n{selected_memory_role} / {selected_dominant_memory}")
+
+    control_cols = st.columns(3)
+    control_cols[0].markdown(f"**selection_variant**  \n{selected_policy_name}")
+    control_cols[1].markdown(f"**cross_validation_reason**  \n{selected_cross_validation_reason}")
+    control_cols[2].markdown(f"**recommended_action**  \n{selected_recommended_action}")
+
+    if cross_validation_windows:
+        st.markdown("###### Validação cruzada histórica")
+        window_labels = [("10", "Janela 10"), ("30", "Janela 30"), ("60", "Janela 60")]
+        for key, label in window_labels:
+            window = dict(cross_validation_windows.get(key, {}) or {})
+            if not window:
+                continue
+            window_decomposition = _scientific_hit_decomposition({"game_size": strategy_size, **window})
+            st.markdown(f"**{label}**")
+            window_cols = st.columns(3)
+            window_cols[0].metric("average_best_hits", f"{float(window.get('average_best_hits', 0.0) or 0.0):.4f}")
+            window_cols[1].metric("max_best_hits", str(int(window.get('max_best_hits', 0) or 0)))
+            window_cols[2].metric("contests_with_11_plus", str(int(window.get('contests_with_11_plus', 0) or 0)))
+            window_detail_counts = [count for count in range(panel_validation_threshold, 16)]
+            detail_cols = st.columns(max(1, len(window_detail_counts) + 2))
+            detail_cols[0].metric("validation_threshold", str(int(window_decomposition.get("validation_threshold", panel_validation_threshold) or panel_validation_threshold)))
+            for index, count in enumerate(window_detail_counts, start=1):
+                detail_cols[index].metric(
+                    f"count_{count}_exact",
+                    str(int(window_decomposition.get(f"count_{count}_exact", 0) or 0)),
+                )
+            detail_cols[len(window_detail_counts) + 1].metric(
+                f"count_{panel_validation_threshold}_plus",
+                str(int(window_decomposition.get(f"count_{panel_validation_threshold}_plus", 0) or 0)),
+            )
+            st.caption(window_decomposition.get("validation_zone_label", panel_validation_zone_label))
+            with st.expander(f"Ver detalhes da {label.lower()}", expanded=False):
+                st.json(window)
+
     if parameter_reasoning:
         st.markdown("###### Motivo de cada parâmetro")
         rationale_cols = st.columns(2)
@@ -2178,7 +2514,33 @@ def _institutional_generation_policy(size: int) -> dict[str, Any]:
         selection_status = str(discovery.get("selection_status", "") or "").strip().upper()
         if selection_status == "POLICY_SELECTED" and discovery.get("policy"):
             return dict(discovery.get("policy") or {})
-        return {}
+        profile = _hb_geometry_profile_for_size(size)
+        return {
+            "repeat_min": 0,
+            "repeat_max": min(size, 8),
+            "preferred_parity_pairs": [],
+            "allowed_parity_pairs": [],
+            "sequence_max": int(profile["sequence_max"]),
+            "coverage_min": float(profile["coverage_min"]),
+            "entropy_min": float(profile["entropy_min"]),
+            "core_numbers": [],
+            "discouraged_numbers": [],
+            "max_frequency_ratio": 1.0,
+            "min_frequency_ratio": 0.0,
+            "preferred_profile_ratios": {},
+            "policy_origin": str(discovery.get("policy_origin") or "automatic_scientific_discovery"),
+            "policy_variant": "history_profile_seed",
+            "selection_variant": str(discovery.get("selection_variant") or "history_profile_seed"),
+            "selection_status": str(discovery.get("selection_status") or "NONE_APPROVED"),
+            "selection_reason": str(discovery.get("selection_reason") or "policy_derived_from_official_history"),
+            "policy_adjustment_reason": str(discovery.get("selection_reason") or "policy_derived_from_official_history"),
+            "status_prospectivo": str(discovery.get("status_prospectivo") or "pending_prospective_validation"),
+            "based_on_memory_kind": discovery.get("based_on_memory_kind"),
+            "based_on_memory_id": discovery.get("based_on_memory_id"),
+            "based_on_batch_id": discovery.get("based_on_batch_id"),
+            "based_on_generation_range": dict(discovery.get("based_on_generation_range") or {}),
+            "based_on_best_generations": list(discovery.get("based_on_best_generations") or []),
+        }
     profile = _hb_geometry_profile_for_size(size)
     return {
         "repeat_min": 0,
@@ -2796,10 +3158,10 @@ def _run_institutional_generation(
     target_contest = int(latest_contest["contest_number"]) if latest_contest else None
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
-    candidate_count = max(total_games * 5, 50 if use_top50 else 30)
+    candidate_count = max(total_games * 20, 200 if use_top50 else 120)
     ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
     games: list[dict[str, Any]] = []
-    used_signatures: set[str] = set(load_batch_output_signatures(batch_id))
+    used_signatures: set[str] = set(load_all_output_signatures())
     batch_number_usage = batch_number_usage if batch_number_usage is not None else {}
     batch_profile_usage = batch_profile_usage if batch_profile_usage is not None else {}
     batch_total_games = max(1, int(batch_total_games or total_games))
@@ -2936,7 +3298,7 @@ def _run_institutional_generation(
         target_size=dezenas_per_game,
         required_total=total_games,
         candidate_total=total_games,
-        persisted_signatures=set(load_batch_output_signatures(batch_id)),
+        persisted_signatures=set(load_all_output_signatures()),
     )
     if commander_report.get("status_comandante_saida") != "APROVADO" or int(commander_report.get("quantidade_jogos_unicos", 0) or 0) != int(total_games):
         approved_total = int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games))
@@ -3013,6 +3375,20 @@ def _run_institutional_generation(
         target_contest=target_contest,
         batch_id=batch_id,
         generation_context={
+            "policy_origin": str(policy.get("policy_origin", "") or ""),
+            "policy_variant": str(policy.get("policy_variant", "") or ""),
+            "policy_adjustment_reason": str(policy.get("policy_adjustment_reason", "") or ""),
+            "status_prospectivo": str(policy.get("status_prospectivo", "") or "pending_prospective_validation"),
+            "memory_role": str(policy.get("memory_role", "") or ""),
+            "dominant_memory": policy.get("dominant_memory"),
+            "selection_variant": str(policy.get("selection_variant", "") or ""),
+            "cross_validation_reason": str(policy.get("cross_validation_reason", "") or ""),
+            "cross_validation_summary": dict(policy.get("cross_validation_summary", {}) or {}),
+            "based_on_memory_kind": str(policy.get("based_on_memory_kind", "") or ""),
+            "based_on_memory_id": policy.get("based_on_memory_id"),
+            "based_on_batch_id": str(policy.get("based_on_batch_id", "") or ""),
+            "based_on_generation_range": dict(policy.get("based_on_generation_range", {}) or {}),
+            "based_on_best_generations": list(policy.get("based_on_best_generations", []) or []),
             "dezenas_per_game": dezenas_per_game,
             "total_games": total_games,
             "use_top50": use_top50,
@@ -3062,6 +3438,7 @@ def _run_institutional_generation(
         "elapsed_time": round(time.monotonic() - started, 3),
         "batch_id": batch_id,
         "output_commander": commander_report,
+        "status_prospectivo": str(policy.get("status_prospectivo", "") or "pending_prospective_validation"),
     }
     st.session_state["institutional_generation_result"] = {
         "generation_event_id": generation_snapshot["generation_event_id"],
@@ -3084,6 +3461,7 @@ def _run_institutional_generation(
         "len_primeiro_jogo": len(games[0]["numbers"]) if games else 0,
         "batch_id": batch_id,
         "status_comandante_saida": commander_report.get("status_comandante_saida", "APROVADO"),
+        "status_prospectivo": str(policy.get("status_prospectivo", "") or "pending_prospective_validation"),
         "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
         "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
         "total_jogos_rejeitados": int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0),
@@ -3324,7 +3702,12 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                         "game_index": int(row.game_index or 0),
                         "numbers": numbers,
                         "profile_type": str(row.profile_type or ""),
+                        "perfil": str(row.profile_type or ""),
+                        "game_signature": str(context_json.get("game_signature", "") or ""),
+                        "context_json": context_json,
                         "score": round(float((row.final_score or {}).get("final_score", 0.0) or 0.0), 4),
+                        "final_score": dict(row.final_score or {}),
+                        "quadra_score": dict(row.quadra_score or {}),
                         "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
                         "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
                         "odd": sum(1 for number in numbers if number % 2 != 0),
@@ -3344,6 +3727,7 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
+                    "batch_id": str(context_json.get("batch_id", "") or ""),
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
                     "reconciliation": reconciliation_summary or {},
@@ -3460,6 +3844,13 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         total_prizes += int(comparison.get("prize_count", 0) or 0)
         total_hits += int(comparison.get("total_hits", 0) or 0)
         best_hits_global = max(best_hits_global, int(comparison.get("best_hits", 0) or 0))
+    batch_hit_values = [
+        int(result.get("hits", 0) or 0)
+        for generation in generation_results
+        for result in list(generation.get("results") or [])
+        if isinstance(result, dict)
+    ]
+    batch_hit_decomposition = _decompose_hit_counts(batch_hit_values)
     strong_near_miss_payload: dict[str, Any] = {}
     if generation_results:
         strong_near_miss_payload = build_strong_near_miss_scientific_memory(
@@ -3496,6 +3887,61 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
             st.session_state["institutional_batch_reconciliation_memory"] = dict(
                 persisted_batch_reconciliation or batch_reconciliation_payload
             )
+    batch_generation_range = dict(batch_reconciliation_payload.get("generation_range") or {})
+    batch_conference_result = {
+        "runtime_status": "checked",
+        "status": "checked",
+        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
+        "contest_date": str(latest_contest.get("data", "") or ""),
+        "batch_id": str(batch_reconciliation_payload.get("batch_id", selected_batch_id) or selected_batch_id or ""),
+        "generation_event_ids": list(batch_generation_range.get("generation_event_ids", []) or [int(item.get("generation_event_id", 0) or 0) for item in generation_results if int(item.get("generation_event_id", 0) or 0) > 0]),
+        "first_generation_event_id": batch_generation_range.get("first_generation_event_id"),
+        "last_generation_event_id": batch_generation_range.get("last_generation_event_id"),
+        "total_generations": int(batch_generation_range.get("total_generations", len(generation_results)) or len(generation_results)),
+        "total_games_checked": int(batch_generation_range.get("total_games_checked", sum(int(item.get("total_games", 0) or 0) for item in generation_results)) or sum(int(item.get("total_games", 0) or 0) for item in generation_results)),
+        "best_hits": int(batch_reconciliation_payload.get("best_hit", best_hits_global) or best_hits_global),
+        "count_10_exact": int(batch_reconciliation_payload.get("count_10_exact", batch_hit_decomposition["count_10_exact"]) or batch_hit_decomposition["count_10_exact"]),
+        "count_11_exact": int(batch_reconciliation_payload.get("count_11_exact", batch_hit_decomposition["count_11_exact"]) or batch_hit_decomposition["count_11_exact"]),
+        "count_12_exact": int(batch_reconciliation_payload.get("count_12_exact", batch_hit_decomposition["count_12_exact"]) or batch_hit_decomposition["count_12_exact"]),
+        "count_13_exact": int(batch_reconciliation_payload.get("count_13_exact", batch_hit_decomposition["count_13_exact"]) or batch_hit_decomposition["count_13_exact"]),
+        "count_14_exact": int(batch_reconciliation_payload.get("count_14_exact", batch_hit_decomposition["count_14_exact"]) or batch_hit_decomposition["count_14_exact"]),
+        "count_15_exact": int(batch_reconciliation_payload.get("count_15_exact", batch_hit_decomposition["count_15_exact"]) or batch_hit_decomposition["count_15_exact"]),
+        "count_11_plus": int(batch_reconciliation_payload.get("count_11_plus", batch_hit_decomposition["count_11_plus"]) or batch_hit_decomposition["count_11_plus"]),
+        "count_12_plus": int(batch_reconciliation_payload.get("count_12_plus", batch_hit_decomposition["count_12_plus"]) or batch_hit_decomposition["count_12_plus"]),
+        "count_13_plus": int(batch_reconciliation_payload.get("count_13_plus", batch_hit_decomposition["count_13_plus"]) or batch_hit_decomposition["count_13_plus"]),
+        "count_14_plus": int(batch_reconciliation_payload.get("count_14_plus", batch_hit_decomposition["count_14_plus"]) or batch_hit_decomposition["count_14_plus"]),
+        "count_15": int(batch_reconciliation_payload.get("count_15", batch_hit_decomposition["count_15"]) or batch_hit_decomposition["count_15"]),
+        "hit_histogram": dict(batch_reconciliation_payload.get("hit_histogram", batch_hit_decomposition["hit_histogram"]) or batch_hit_decomposition["hit_histogram"]),
+        "total_hits": int(total_hits),
+        "prize_count": int(total_prizes),
+        "best_generation_event_id": int(batch_generation_range.get("best_generation_event_id", 0) or batch_reconciliation_payload.get("best_generation_event_id", 0) or 0),
+        "best_generations": list(batch_generation_range.get("best_generations", []) or []),
+        "classification": str(batch_reconciliation_payload.get("scientific_classification", "") or ""),
+        "recommended_action": str(batch_reconciliation_payload.get("recommended_action", "") or ""),
+        "source_batch_id": str(batch_reconciliation_payload.get("batch_id", selected_batch_id) or selected_batch_id or ""),
+        "memory_id": int(batch_reconciliation_payload.get("memory_id", 0) or 0),
+        "games_with_11_plus": list(batch_reconciliation_payload.get("games_with_11_plus", []) or []),
+        "generation_results": generation_results,
+        "batch_reconciliation_memory": batch_reconciliation_payload,
+        "strong_near_miss_memory": strong_near_miss_payload,
+        "scientific_state": {
+            "mode": "AUTONOMIA SUPERVISIONADA"
+            if str(batch_reconciliation_payload.get("decision_mode", "")).upper() == "AUTONOMIA_SUPERVISIONADA"
+            else "OBSERVAÇÃO",
+            "structural_status": str(batch_reconciliation_payload.get("structural_status", "BLOQUEADO") or "BLOQUEADO"),
+            "scientific_status": str(batch_reconciliation_payload.get("scientific_status", "-") or "-"),
+            "classification": str(batch_reconciliation_payload.get("scientific_classification", "-") or "-"),
+            "main_reason": str(batch_reconciliation_payload.get("main_reason", "-") or "-"),
+            "status_visual": str(batch_reconciliation_payload.get("confidence_level", "-") or "-"),
+            "reference_window": list(batch_generation_range.get("generation_event_ids", []) or []),
+            "source_batch_id": str(batch_reconciliation_payload.get("batch_id", selected_batch_id) or selected_batch_id or ""),
+        },
+        "scientific_recommendation": {
+            "action_suggested": str(batch_reconciliation_payload.get("recommended_action", "-") or "-"),
+            "status_visual": str(batch_reconciliation_payload.get("confidence_level", "-") or "-"),
+        },
+    }
+    st.session_state["institutional_batch_conference_result"] = dict(batch_conference_result)
     st.session_state["institutional_check"] = {
         "runtime_status": "checked",
         "timestamp": datetime.now(UTC).isoformat(),
@@ -3512,6 +3958,20 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         "best_hits": best_hits_global,
         "total_hits": total_hits,
         "prize_count": total_prizes,
+        "games_with_11_plus": list(batch_reconciliation_payload.get("games_with_11_plus", []) or []),
+        "count_10_exact": int(batch_reconciliation_payload.get("count_10_exact", batch_hit_decomposition["count_10_exact"]) or batch_hit_decomposition["count_10_exact"]),
+        "count_11_exact": int(batch_reconciliation_payload.get("count_11_exact", batch_hit_decomposition["count_11_exact"]) or batch_hit_decomposition["count_11_exact"]),
+        "count_12_exact": int(batch_reconciliation_payload.get("count_12_exact", batch_hit_decomposition["count_12_exact"]) or batch_hit_decomposition["count_12_exact"]),
+        "count_13_exact": int(batch_reconciliation_payload.get("count_13_exact", batch_hit_decomposition["count_13_exact"]) or batch_hit_decomposition["count_13_exact"]),
+        "count_14_exact": int(batch_reconciliation_payload.get("count_14_exact", batch_hit_decomposition["count_14_exact"]) or batch_hit_decomposition["count_14_exact"]),
+        "count_15_exact": int(batch_reconciliation_payload.get("count_15_exact", batch_hit_decomposition["count_15_exact"]) or batch_hit_decomposition["count_15_exact"]),
+        "count_11_plus": int(batch_reconciliation_payload.get("count_11_plus", batch_hit_decomposition["count_11_plus"]) or batch_hit_decomposition["count_11_plus"]),
+        "count_12_plus": int(batch_reconciliation_payload.get("count_12_plus", batch_hit_decomposition["count_12_plus"]) or batch_hit_decomposition["count_12_plus"]),
+        "count_13_plus": int(batch_reconciliation_payload.get("count_13_plus", batch_hit_decomposition["count_13_plus"]) or batch_hit_decomposition["count_13_plus"]),
+        "count_14_plus": int(batch_reconciliation_payload.get("count_14_plus", batch_hit_decomposition["count_14_plus"]) or batch_hit_decomposition["count_14_plus"]),
+        "count_15": int(batch_reconciliation_payload.get("count_15", batch_hit_decomposition["count_15"]) or batch_hit_decomposition["count_15"]),
+        "hit_histogram": dict(batch_reconciliation_payload.get("hit_histogram", batch_hit_decomposition["hit_histogram"]) or batch_hit_decomposition["hit_histogram"]),
+        "batch_conference_result": batch_conference_result,
         "batch_reconciliation_memory": batch_reconciliation_payload,
         "strong_near_miss_memory": strong_near_miss_payload,
     }
@@ -4480,7 +4940,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) if scientific_batch_id else {}
+        scientific_batch = dict(st.session_state.get("institutional_batch_conference_result") or {})
+        if not scientific_batch and scientific_batch_id:
+            scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
         latest_generated_games = list(latest_commander.get("generated_games", []) or [])
         latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
         scientific_game_size = int(
@@ -5151,11 +5613,41 @@ def _persist_generation_snapshot(
     if generation_context:
         context_payload.update({str(key): value for key, value in generation_context.items()})
     with get_session(DB_PATH) as session:
+        policy_origin = str((generation_context or {}).get("policy_origin", "") or "")
+        policy_adjustment_reason = str((generation_context or {}).get("policy_adjustment_reason", "") or "")
+        status_prospectivo = str((generation_context or {}).get("status_prospectivo", "") or "pending_prospective_validation")
+        memory_role = str((generation_context or {}).get("memory_role", "") or "")
+        dominant_memory = (generation_context or {}).get("dominant_memory")
+        selection_variant = str((generation_context or {}).get("selection_variant", "") or "")
+        cross_validation_reason = str((generation_context or {}).get("cross_validation_reason", "") or "")
+        cross_validation_summary = dict((generation_context or {}).get("cross_validation_summary", {}) or {})
+        based_on_memory_kind = str((generation_context or {}).get("based_on_memory_kind", "") or "")
+        based_on_memory_id = generation_context.get("based_on_memory_id") if generation_context else None
+        based_on_batch_id = str((generation_context or {}).get("based_on_batch_id", "") or "")
+        based_on_generation_range = dict((generation_context or {}).get("based_on_generation_range", {}) or {})
+        based_on_best_generations = list((generation_context or {}).get("based_on_best_generations", []) or [])
+        event_context = {
+            **context_payload,
+            "policy_origin": policy_origin,
+            "policy_adjustment_reason": policy_adjustment_reason,
+            "status_prospectivo": status_prospectivo,
+            "memory_role": memory_role,
+            "dominant_memory": dominant_memory,
+            "selection_variant": selection_variant,
+            "cross_validation_reason": cross_validation_reason,
+            "cross_validation_summary": cross_validation_summary,
+            "based_on_memory_kind": based_on_memory_kind or None,
+            "based_on_memory_id": based_on_memory_id,
+            "based_on_batch_id": based_on_batch_id or None,
+            "based_on_generation_range": based_on_generation_range or None,
+            "based_on_best_generations": based_on_best_generations,
+        }
         event = GenerationEvent(
             lead_id=None,
             first_name="institutional",
             whatsapp="",
             generated_games=games,
+            context_json=event_context,
             ml_enabled=0,
             seed=seed,
             strategy="institutional_clean_hb",
@@ -5165,9 +5657,16 @@ def _persist_generation_snapshot(
         session.add(event)
         session.flush()
         generation_event_id = int(event.id)
+        event.context_json = {
+            **event_context,
+            "generation_event_id": generation_event_id,
+            "game_signatures": [],
+        }
+        game_signatures: list[str] = []
         for index, game in enumerate(games, start=1):
             numbers = list(game.get("numbers", []))
             signature = _game_signature(numbers)
+            game_signatures.append(signature)
             session.add(
                 GeneratedGame(
                     generation_event_id=generation_event_id,
@@ -5182,6 +5681,18 @@ def _persist_generation_snapshot(
                     quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
                     context_json={
                         **context_payload,
+                        "policy_origin": policy_origin,
+                        "policy_adjustment_reason": policy_adjustment_reason,
+                        "status_prospectivo": status_prospectivo,
+                        "memory_role": memory_role,
+                        "dominant_memory": dominant_memory,
+                        "selection_variant": selection_variant,
+                        "cross_validation_reason": cross_validation_reason,
+                        "based_on_memory_kind": based_on_memory_kind or None,
+                        "based_on_memory_id": based_on_memory_id,
+                        "based_on_batch_id": based_on_batch_id or None,
+                        "based_on_generation_range": based_on_generation_range or None,
+                        "based_on_best_generations": based_on_best_generations,
                         "game_signature": signature,
                         "game_index": index,
                     },
@@ -5197,9 +5708,26 @@ def _persist_generation_snapshot(
                         "numbers": numbers,
                         "source": "institutional_app",
                         "build_marker": BUILD_MARKER,
+                        "policy_origin": policy_origin,
+                        "policy_adjustment_reason": policy_adjustment_reason,
+                        "status_prospectivo": status_prospectivo,
+                        "memory_role": memory_role,
+                        "dominant_memory": dominant_memory,
+                        "selection_variant": selection_variant,
+                        "cross_validation_reason": cross_validation_reason,
+                        "based_on_memory_kind": based_on_memory_kind or None,
+                        "based_on_memory_id": based_on_memory_id,
+                        "based_on_batch_id": based_on_batch_id or None,
+                        "based_on_generation_range": based_on_generation_range or None,
+                        "based_on_best_generations": based_on_best_generations,
                     },
                 )
             )
+        event.context_json = {
+            **event_context,
+            "generation_event_id": generation_event_id,
+            "game_signatures": list(game_signatures),
+        }
         event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
         try:
             session.commit()
@@ -5259,6 +5787,146 @@ def _safe_int(value: Any, default: int | None = None) -> int | None:
         return default
 
 
+def _scientific_hit_decomposition(payload: dict[str, Any] | None) -> dict[str, Any]:
+    data = dict(payload or {})
+    generation_range = dict(data.get("generation_range") or {})
+    cross_validation_summary = dict(data.get("cross_validation_summary") or {})
+    scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
+    game_size = int(
+        data.get("game_size")
+        or generation_range.get("game_size")
+        or cross_validation_summary.get("game_size")
+        or 15
+    )
+    validation_threshold = int(
+        data.get("validation_threshold")
+        or generation_range.get("validation_threshold")
+        or scientific_components.get("validation_threshold")
+        or (13 if game_size >= 18 else 12 if game_size >= 17 else 11)
+    )
+    target_band = str(
+        data.get("target_band")
+        or generation_range.get("target_band")
+        or scientific_components.get("target_band")
+        or f"{validation_threshold}_to_15"
+    )
+    validation_zone_label = str(
+        data.get("validation_zone_label")
+        or generation_range.get("validation_zone_label")
+        or scientific_components.get("validation_zone_label")
+        or f"Zona de validação científica: {validation_threshold} a 15 acertos."
+    )
+    base_histogram = dict(
+        data.get("hit_histogram")
+        or scientific_components.get("hit_histogram")
+        or generation_range.get("hit_histogram")
+        or {}
+    )
+    count_10_exact = int(
+        data.get("count_10_exact")
+        or scientific_components.get("count_10_exact")
+        or generation_range.get("count_10_exact")
+        or generation_range.get("global_count_10")
+        or data.get("count_10")
+        or scientific_components.get("count_10")
+        or 0
+    )
+    count_11_exact = int(
+        data.get("count_11_exact")
+        or scientific_components.get("count_11_exact")
+        or generation_range.get("count_11_exact")
+        or max(
+            0,
+            int(data.get("count_11_plus", generation_range.get("global_count_11_plus", scientific_components.get("count_11_plus", 0)) or 0) or 0)
+            - int(data.get("count_12_plus", generation_range.get("global_count_12_plus", scientific_components.get("count_12_plus", 0)) or 0) or 0),
+        )
+    )
+    count_12_exact = int(
+        data.get("count_12_exact")
+        or scientific_components.get("count_12_exact")
+        or generation_range.get("count_12_exact")
+        or max(
+            0,
+            int(data.get("count_12_plus", generation_range.get("global_count_12_plus", scientific_components.get("count_12_plus", 0)) or 0) or 0)
+            - int(data.get("count_13_plus", generation_range.get("global_count_13_plus", scientific_components.get("count_13_plus", 0)) or 0) or 0),
+        )
+    )
+    count_13_exact = int(
+        data.get("count_13_exact")
+        or scientific_components.get("count_13_exact")
+        or generation_range.get("count_13_exact")
+        or max(
+            0,
+            int(data.get("count_13_plus", generation_range.get("global_count_13_plus", scientific_components.get("count_13_plus", 0)) or 0) or 0)
+            - int(data.get("count_14_plus", generation_range.get("global_count_14_plus", scientific_components.get("count_14_plus", 0)) or 0) or 0),
+        )
+    )
+    count_14_exact = int(
+        data.get("count_14_exact")
+        or scientific_components.get("count_14_exact")
+        or generation_range.get("count_14_exact")
+        or max(
+            0,
+            int(data.get("count_14_plus", generation_range.get("global_count_14_plus", scientific_components.get("count_14_plus", 0)) or 0) or 0)
+            - int(data.get("count_15_exact", data.get("count_15", generation_range.get("global_count_15", scientific_components.get("count_15", 0)) or 0)) or 0),
+        )
+    )
+    count_15_exact = int(
+        data.get("count_15_exact")
+        or scientific_components.get("count_15_exact")
+        or generation_range.get("count_15_exact")
+        or data.get("count_15")
+        or generation_range.get("global_count_15")
+        or scientific_components.get("count_15")
+        or 0
+    )
+    histogram = {str(index): int(base_histogram.get(str(index), 0) or 0) for index in range(16)}
+    histogram["10"] = max(histogram.get("10", 0), count_10_exact)
+    histogram["11"] = max(histogram.get("11", 0), count_11_exact)
+    histogram["12"] = max(histogram.get("12", 0), count_12_exact)
+    histogram["13"] = max(histogram.get("13", 0), count_13_exact)
+    histogram["14"] = max(histogram.get("14", 0), count_14_exact)
+    histogram["15"] = max(histogram.get("15", 0), count_15_exact)
+    return {
+        "hit_histogram": histogram,
+        "game_size": game_size,
+        "validation_threshold": validation_threshold,
+        "target_band": target_band,
+        "validation_zone_label": validation_zone_label,
+        "count_10_exact": count_10_exact,
+        "count_11_exact": count_11_exact,
+        "count_12_exact": count_12_exact,
+        "count_13_exact": count_13_exact,
+        "count_14_exact": count_14_exact,
+        "count_15_exact": count_15_exact,
+        "count_11_plus": int(
+            data.get("count_11_plus")
+            or generation_range.get("global_count_11_plus")
+            or scientific_components.get("count_11_plus")
+            or (count_11_exact + count_12_exact + count_13_exact + count_14_exact + count_15_exact)
+        ),
+        "count_12_plus": int(
+            data.get("count_12_plus")
+            or generation_range.get("global_count_12_plus")
+            or scientific_components.get("count_12_plus")
+            or (count_12_exact + count_13_exact + count_14_exact + count_15_exact)
+        ),
+        "count_13_plus": int(
+            data.get("count_13_plus")
+            or generation_range.get("global_count_13_plus")
+            or scientific_components.get("count_13_plus")
+            or (count_13_exact + count_14_exact + count_15_exact)
+        ),
+        "count_14_plus": int(
+            data.get("count_14_plus")
+            or generation_range.get("global_count_14_plus")
+            or scientific_components.get("count_14_plus")
+            or (count_14_exact + count_15_exact)
+        ),
+        "count_15": int(data.get("count_15") or generation_range.get("global_count_15") or scientific_components.get("count_15") or count_15_exact),
+    }
+
+
 def _institutional_output_batch_id() -> str:
     batch_id = str(st.session_state.get("institutional_output_batch_id", "") or "").strip()
     if not batch_id:
@@ -5268,7 +5936,8 @@ def _institutional_output_batch_id() -> str:
 
 
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
-    official_numbers = _extract_int_numbers(contest.get("dezenas", []))
+    official_source = contest.get("dezenas", contest.get("numbers", contest.get("contest_numbers", [])))
+    official_numbers = _extract_int_numbers(official_source)
     results: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
         numbers = _extract_int_numbers(game.get("numbers", []))
@@ -5282,12 +5951,20 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
                 "numbers": numbers,
                 "rank_original": int(game.get("game_index", index) or index),
                 "hits": len(matched),
+                "hit_classification": (
+                    f"EXACT_{len(matched)}"
+                    if 11 <= len(matched) <= 15
+                    else ("NEAR_MISS_10" if len(matched) == 10 else "BELOW_PRIZE")
+                ),
                 "matched_numbers": matched,
                 "missing_draw_numbers": missing_draw_numbers,
                 "extra_numbers": extra_numbers,
                 "prize_status": "premiado" if len(matched) >= 11 else "nao_premiado",
                 "prize_tier": f"faixa_{len(matched)}" if len(matched) >= 11 else "",
                 "score_original": score_original,
+                "profile_type": str(game.get("profile_type", "") or ""),
+                "perfil": str(game.get("perfil", game.get("profile_type", "")) or ""),
+                "game_signature": str(game.get("game_signature", "") or ""),
             }
         )
     best_hits = max((int(row["hits"]) for row in results), default=0)
