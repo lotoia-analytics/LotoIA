@@ -24,6 +24,12 @@ def test_output_commander_blocks_duplicate_games_and_duplicate_numbers() -> None
     assert report["quantidade_jogos_duplicados"] == 1
     assert report["duplicate_hashes"] == ["01-02-03-04-05-06-07-08-09-10-11-12-13-14-15"]
     assert report["motivo_bloqueio"]
+    assert report["blocked_reason"] == report["motivo_bloqueio"]
+    assert report["requested_games"] == 2
+    assert report["generated_candidates"] == 2
+    assert report["approved_total"] == 1
+    assert report["natural_approvable_candidate"] is True
+    assert report["candidate_reason"] == "valid_individual_games_but_incomplete_requested_package"
 
 
 def test_output_commander_rejects_internal_duplicate_numbers() -> None:

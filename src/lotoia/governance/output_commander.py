@@ -135,23 +135,33 @@ def output_commander_validate_games(
     error_message = ""
     if blocked_reasons:
         error_message = " / ".join(blocked_reasons)
+    natural_approvable_candidate = approved_total > 0 and approved_total < requested_total
+    candidate_reason = "valid_individual_games_but_incomplete_requested_package" if natural_approvable_candidate else ""
 
     return {
         "batch_id": resolved_batch_id,
         "generation_event_id": generation_event_id,
         "quantidade_jogos_solicitada": requested_total,
+        "requested_games": requested_total,
         "quantidade_jogos_candidatos": candidate_total_value,
+        "generated_candidates": candidate_total_value,
         "quantidade_jogos_gerada": candidate_total_value,
         "quantidade_jogos_aprovados": approved_total,
+        "approved_total": approved_total,
         "quantidade_jogos_persistidos": 0,
+        "persisted_games": 0,
         "quantidade_jogos_unicos": total_unique,
         "quantidade_jogos_duplicados": total_duplicates,
         "quantidade_jogos_rejeitados": rejected_total,
         "quantidade_dezenas_por_jogo": total_size,
         "taxa_duplicidade": round(total_duplicates / max(1, total_requested), 4),
         "status_comandante_saida": status,
+        "output_commander_status": status,
         "error_message": error_message,
         "motivo_bloqueio": error_message,
+        "blocked_reason": error_message,
+        "natural_approvable_candidate": natural_approvable_candidate,
+        "candidate_reason": candidate_reason,
         "duplicate_hashes": duplicate_hashes,
         "invalid_games": invalid_games,
         "accepted_games": accepted_games,

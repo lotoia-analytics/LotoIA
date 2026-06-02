@@ -3592,6 +3592,8 @@ def _run_institutional_generation(
             or commander_report.get("error_message")
             or "nao foi possivel gerar a quantidade solicitada de jogos unicos"
         )
+        if int(commander_report.get("quantidade_jogos_aprovados", 0) or 0) < int(commander_report.get("quantidade_jogos_solicitada", total_games) or total_games):
+            blocked_reason = "Pacote bloqueado por não atingir a quantidade solicitada."
         st.session_state["institutional_generation"] = {
             "seed": seed,
             "games": [],
@@ -5274,7 +5276,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         commander_cols[2].metric("total_jogos_unicos", int(latest_commander.get("total jogos únicos", 0) or 0))
         commander_cols[3].metric("total_jogos_duplicados", int(latest_commander.get("total jogos duplicados", 0) or 0))
         commander_cols[4].metric("taxa_duplicidade", f"{float(latest_commander.get('taxa duplicidade', 0.0) or 0.0):.4f}")
-        commander_cols[5].metric("status_comandante_saida", str(latest_commander.get("status comandante saída", "APROVADO") or "APROVADO"))
+        commander_cols[5].metric("Status do OutputCommander", str(latest_commander.get("status comandante saída", "APROVADO") or "APROVADO"))
         st.caption(
             f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
             f"generation_event_id={int(latest_commander.get('generation_event_id', 0) or 0)}"
@@ -6854,12 +6856,17 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
     if requested_games <= 10:
         return {
             "scientific_mother_law": "Lei Científica 15",
-            "natural_scientific_quantity": True,
+            "requested_games": requested_games,
+            "generated_candidates": 9,
+            "valid_individual_games": 9,
+            "persisted_games": 0,
+            "natural_approvable_candidate": True,
+            "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
             "natural_quantity_mode": "OBSERVED_EXTREME_9",
             "natural_generated_games": 9,
-            "requested_games": requested_games,
-            "persisted_games": 0,
+            "natural_scientific_quantity": False,
+            "natural_quantity_status": "CANDIDATE_OBSERVED",
             "compactation_mode": "EXTREME_COMPACT",
             "compactation_status": "OPERATIONAL_ACTIVE",
             "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
@@ -6899,12 +6906,17 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
     if requested_games <= 15:
         return {
             "scientific_mother_law": "Lei Científica 15",
-            "natural_scientific_quantity": True,
+            "requested_games": requested_games,
+            "generated_candidates": 12,
+            "valid_individual_games": 12,
+            "persisted_games": 0,
+            "natural_approvable_candidate": True,
+            "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
             "natural_quantity_mode": "OBSERVED_COMPACT_12",
             "natural_generated_games": 12,
-            "requested_games": requested_games,
-            "persisted_games": 0,
+            "natural_scientific_quantity": False,
+            "natural_quantity_status": "CANDIDATE_OBSERVED",
             "compactation_mode": "COMPACT_PRACTICAL_15",
             "compactation_status": "OPERATIONAL_ACTIVE",
             "compactation_test_status": "OPERATIONAL_COMPACT_15",
@@ -6947,12 +6959,17 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
     if requested_games <= 20:
         return {
             "scientific_mother_law": "Lei Científica 15",
-            "natural_scientific_quantity": True,
+            "requested_games": requested_games,
+            "generated_candidates": 16,
+            "valid_individual_games": 16,
+            "persisted_games": 0,
+            "natural_approvable_candidate": True,
+            "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
             "natural_quantity_mode": "OBSERVED_PRACTICAL_16",
             "natural_generated_games": 16,
-            "requested_games": requested_games,
-            "persisted_games": 0,
+            "natural_scientific_quantity": False,
+            "natural_quantity_status": "CANDIDATE_OBSERVED",
             "compactation_mode": "LIGHT_PRACTICAL_EXPANDED",
             "compactation_status": "STRUCTURAL_SATURATION",
             "compactation_test_status": "FAILED_MINIMUM_11_PLUS",
@@ -7050,12 +7067,17 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         }
     return {
         "scientific_mother_law": "Lei Científica 15",
-        "natural_scientific_quantity": True,
+        "requested_games": requested_games,
+        "generated_candidates": 50,
+        "valid_individual_games": 50,
+        "persisted_games": 0,
+        "natural_approvable_candidate": False,
+        "candidate_reason": "",
         "natural_quantity_reason": "validated_scientific_baseline",
         "natural_quantity_mode": "VALIDATED_BASELINE_50",
         "natural_generated_games": 50,
-        "requested_games": requested_games,
-        "persisted_games": 0,
+        "natural_scientific_quantity": True,
+        "natural_quantity_status": "NATURAL_APPROVED",
         "compactation_mode": "VALIDATED_BASELINE",
         "compactation_status": "VALIDATED_BASELINE",
         "compactation_test_status": "VALIDATED_BASELINE",
@@ -7335,16 +7357,19 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         outcome_cols[2].metric("total_jogos_unicos", batch_unicos)
         outcome_cols[3].metric("total_jogos_duplicados", batch_duplicados)
         outcome_cols[4].metric("taxa_duplicidade", f"{batch_taxa:.4f}")
-        outcome_cols[5].metric("status_comandante_saida", batch_status)
+        outcome_cols[5].metric("Status do OutputCommander", batch_status)
         st.caption(
             f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
             f"batch_id={summary_result.get('batch_id', '-')}"
         )
         if batch_status != "APROVADO":
+            blocked_message = str(summary_result.get("motivo_bloqueio", "") or "")
+            if "nao_atingiu_quantidade_solicitada" in blocked_message or batch_status == "BLOQUEADO":
+                blocked_message = "Pacote bloqueado por não atingir a quantidade solicitada."
             st.error(
                 "Comandante de Saída bloqueou a bateria. "
                 f"status = {batch_status} | "
-                f"motivo = {summary_result.get('motivo_bloqueio', 'não foi possível gerar a quantidade solicitada de jogos únicos')} | "
+                f"motivo = {blocked_message or 'Pacote bloqueado por não atingir a quantidade solicitada.'} | "
                 f"solicitados = {batch_solicitados} | "
                 f"aprovados = {batch_aprovados} | "
                 f"faltantes = {max(0, batch_solicitados - batch_aprovados)}"
@@ -8078,12 +8103,23 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     natural_quantity_mode = str(strategy_policy.get("natural_quantity_mode", "") or "")
     natural_generated_games = int(strategy_policy.get("natural_generated_games", 0) or 0)
     natural_scientific_quantity = bool(strategy_policy.get("natural_scientific_quantity", False))
-    if selected_game_size == 15 and natural_scientific_quantity:
+    natural_quantity_status = str(strategy_policy.get("natural_quantity_status", "") or "")
+    natural_candidate = bool(strategy_policy.get("natural_approvable_candidate", False))
+    candidate_reason = str(strategy_policy.get("candidate_reason", "") or "")
+    if selected_game_size == 15 and (natural_scientific_quantity or natural_candidate):
         nat_cols = st.columns([1.1, 1.1, 1.3, 1.3])
         nat_cols[0].metric("Quantidade solicitada", int(requested_games))
-        nat_cols[1].metric("Quantidade natural científica", int(natural_generated_games or requested_games))
-        nat_cols[2].metric("Modo natural", natural_quantity_mode or "-")
-        nat_cols[3].metric("Status", "filho operacional observado da Lei Científica 15")
+        nat_cols[1].metric("Quantidade candidata observada", int(natural_generated_games or requested_games))
+        nat_cols[2].metric("Modo", natural_quantity_mode or "-")
+        if natural_candidate:
+            status_text = "Candidato observável encontrado."
+            if candidate_reason:
+                status_text = f"{status_text} {candidate_reason}"
+        else:
+            status_text = "Quantidade natural aprovada"
+        if natural_quantity_status:
+            status_text = f"{status_text} | {natural_quantity_status}"
+        nat_cols[3].metric("Status", status_text)
 
     _render_scientific_calibration_panel(
         strategy_size=selected_game_size,
