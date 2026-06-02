@@ -16,9 +16,11 @@ from dashboard.institutional_app import _institutional_generation_policy
 from dashboard.institutional_app import _format_scientific_memory_listing
 from dashboard.institutional_app import _official_15_policy_status_label
 from dashboard.institutional_app import _persist_generation_snapshot
+from dashboard.institutional_app import _resolve_official_15_calibration_context
 from dashboard.institutional_app import _scientific_policy_is_ready
 from dashboard.institutional_app import _run_institutional_conference
 from dashboard.institutional_app import _scientific_hit_decomposition
+from dashboard.institutional_app import _scientific_15_is_official_baseline
 
 
 def _contest(contest_number: int, numbers: list[int]) -> dict[str, object]:
@@ -149,6 +151,151 @@ def test_official_15_policy_status_label_is_exposed() -> None:
     assert _official_15_policy_status_label(payload) == (
         "Política 15 validada até nível 13. Ouro 14 e diamante 15 seguem como metas futuras."
     )
+
+
+def test_official_15_baseline_is_prioritized_over_historical_memory(tmp_path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    create_database(db_path)
+
+    with get_session(db_path) as session:
+        session.add(
+            ScientificInstitutionalMemory(
+                memory_kind="scientific_batch_reconciliation",
+                strategy_name="15 dezenas",
+                game_size=15,
+                batch_id="batch-351-360",
+                generation_range={
+                    "batch_id": "batch-351-360",
+                    "generation_event_ids": [351, 352, 353, 354, 355, 356, 357, 358, 359, 360],
+                    "best_generations": [351, 354],
+                    "first_generation_event_id": 351,
+                    "last_generation_event_id": 360,
+                    "total_generations": 10,
+                    "total_games_checked": 100,
+                },
+                total_games=100,
+                unique_games=100,
+                duplicate_games=0,
+                structural_status="APROVADO",
+                scientific_status="APROVADO",
+                scientific_classification="STRONG_NEAR_MISS_BATCH",
+                main_reason="near_miss_batch",
+                recommended_action="recalibrate_from_strong_near_miss_towards_11_plus_and_15",
+                policy_applied={"policy_validation_status": "REPROVADO"},
+                policy_before={"policy_validation_status": "REPROVADO"},
+                policy_after={"policy_validation_status": "REPROVADO"},
+                best_hit=10,
+                average_hits=10.0,
+                count_11_plus=0,
+                count_12_plus=0,
+                count_13_plus=0,
+                count_14_plus=0,
+                count_15=0,
+                validation_contests=[3699],
+                cross_validation_summary={"policy_validation_status": "REPROVADO"},
+                decision_mode="OBSERVACAO",
+                approved_for_use=0,
+                notes="historical memory",
+                official_history_count=3699,
+                official_history_first_contest=1,
+                official_history_last_contest=3699,
+                official_history_window=[10, 30, 60],
+                source="scientific_reconciliation",
+            )
+        )
+        session.add(
+            ScientificInstitutionalMemory(
+                memory_kind="scientific_batch_reconciliation",
+                strategy_name="15 dezenas",
+                game_size=15,
+                batch_id="calibration-20260602172948-20a682cd",
+                generation_range={
+                    "batch_id": "calibration-20260602172948-20a682cd",
+                    "contest_number": 3697,
+                    "baseline_batch_id": "calibration-20260602172948-20a682cd",
+                    "baseline_contest_number": 3697,
+                    "policy_validation_status": "VALIDATED_15_POLICY_LEVEL_3",
+                    "official_15_search_standard": True,
+                    "validated_target_band": "13_plus_detected",
+                },
+                total_games=50,
+                unique_games=50,
+                duplicate_games=0,
+                structural_status="APROVADO",
+                scientific_status="VALIDATED_15_POLICY_LEVEL_3",
+                scientific_classification="VALIDATED_15_POLICY_LEVEL_3",
+                main_reason="baseline oficial",
+                recommended_action="usar baseline oficial validada nível 3 para próxima geração compacta",
+                policy_applied={
+                    "policy_validation_status": "VALIDATED_15_POLICY_LEVEL_3",
+                    "official_15_search_standard": True,
+                    "baseline_batch_id": "calibration-20260602172948-20a682cd",
+                    "baseline_contest_number": 3697,
+                },
+                policy_before={},
+                policy_after={
+                    "policy_validation_status": "VALIDATED_15_POLICY_LEVEL_3",
+                    "official_15_search_standard": True,
+                    "baseline_batch_id": "calibration-20260602172948-20a682cd",
+                    "baseline_contest_number": 3697,
+                },
+                best_hit=13,
+                average_hits=11.14,
+                count_11_plus=39,
+                count_12_plus=16,
+                count_13_plus=3,
+                count_14_plus=0,
+                count_15=0,
+                validation_contests=[3697],
+                cross_validation_summary={
+                    "policy_validation_status": "VALIDATED_15_POLICY_LEVEL_3",
+                    "official_15_search_standard": True,
+                },
+                decision_mode="OBSERVACAO",
+                approved_for_use=1,
+                notes="official baseline",
+                official_history_count=3697,
+                official_history_first_contest=1,
+                official_history_last_contest=3697,
+                official_history_window=[10, 30, 60],
+                source="scientific_calibration",
+            )
+        )
+        session.commit()
+
+    import dashboard.institutional_app as institutional_app
+
+    old_db_path = institutional_app.DB_PATH
+    institutional_app.DB_PATH = db_path
+    try:
+        state, recommendation, technical_payload = _resolve_official_15_calibration_context(
+            strategy_size=15,
+            scientific_state={
+                "mode": "AUTONOMIA SUPERVISIONADA",
+                "structural_status": "BLOQUEADO",
+                "scientific_status": "STRONG_NEAR_MISS_BATCH",
+                "classification": "STRONG_NEAR_MISS_BATCH",
+                "main_reason": "recalibrate_from_strong_near_miss_towards_11_plus_and_15",
+                "status_visual": "OBSERVAÇÃO",
+            },
+            scientific_recommendation={
+                "action_suggested": "recalibrate_from_strong_near_miss_towards_11_plus_and_15",
+                "status_visual": "OBSERVAÇÃO",
+            },
+            technical_payload={
+                "scientific_classification": "STRONG_NEAR_MISS_BATCH",
+                "recommended_action": "recalibrate_from_strong_near_miss_towards_11_plus_and_15",
+            },
+        )
+    finally:
+        institutional_app.DB_PATH = old_db_path
+
+    assert _scientific_15_is_official_baseline(technical_payload)
+    assert state["mode"] == "BASELINE VALIDADA"
+    assert state["scientific_status"] == "VALIDATED_15_POLICY_LEVEL_3"
+    assert state["classification"] == "VALIDATED_15_POLICY_LEVEL_3"
+    assert "Política 15 validada até nível 13" in state["main_reason"]
+    assert recommendation["action_suggested"] == "usar baseline oficial validada nível 3 para próxima geração compacta"
 
 
 def test_scientific_batch_reconciliation_becomes_auxiliary_without_evolution(tmp_path) -> None:

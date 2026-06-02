@@ -1752,9 +1752,11 @@ def _render_scientific_memory_block() -> None:
     synthesized_batch_memory = _ensure_scientific_batch_memory_from_history()
     if synthesized_batch_memory:
         st.session_state["institutional_batch_reconciliation_memory"] = dict(synthesized_batch_memory)
-    scientific_memory = _load_latest_scientific_memory(limit=6)
+    scientific_memory = _load_latest_scientific_memory(limit=20)
+    official_15_memory = next((row for row in scientific_memory if _scientific_15_is_official_baseline(row)), {})
+    historical_scientific_memory = [row for row in scientific_memory if not _scientific_15_is_official_baseline(row)]
     active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
-    latest_memory = scientific_memory[0] if scientific_memory else {}
+    latest_memory = official_15_memory or (scientific_memory[0] if scientific_memory else {})
     if active_reconciliation_generation_event_id is not None:
         post_reconciliation_memory = next(
             (
@@ -1789,8 +1791,50 @@ def _render_scientific_memory_block() -> None:
             ]
         )
     )
+    if official_15_memory:
+        st.markdown("###### Baseline oficial da política 15")
+        official_hit_decomposition = _scientific_hit_decomposition(official_15_memory)
+        official_window = dict(official_15_memory.get("generation_range") or {})
+        official_cols = st.columns(6)
+        official_cols[0].metric("Status atual", str(official_15_memory.get("policy_validation_status", "-") or "-"))
+        official_cols[1].metric("Baseline oficial", str(official_15_memory.get("batch_id", "-") or "-"))
+        official_cols[2].metric("Concurso de validação", int(official_15_memory.get("contest_number", official_window.get("contest_number", 0)) or 0))
+        official_cols[3].metric("Melhor acerto", int(official_15_memory.get("best_hit", 0) or 0))
+        official_cols[4].metric("Jogos com 11+", int(official_hit_decomposition.get("count_11_plus", 0) or 0))
+        official_cols[5].metric("Jogos com 13+", int(official_hit_decomposition.get("count_13_plus", 0) or 0))
+        official_banner = _official_15_policy_status_label(official_15_memory)
+        if official_banner:
+            st.success(official_banner)
+        official_exact_cols = st.columns(5)
+        official_exact_cols[0].metric("count_11_exact", int(official_hit_decomposition.get("count_11_exact", 0) or 0))
+        official_exact_cols[1].metric("count_12_exact", int(official_hit_decomposition.get("count_12_exact", 0) or 0))
+        official_exact_cols[2].metric("count_13_exact", int(official_hit_decomposition.get("count_13_exact", 0) or 0))
+        official_exact_cols[3].metric("count_14_exact", int(official_hit_decomposition.get("count_14_exact", 0) or 0))
+        official_exact_cols[4].metric("count_15_exact", int(official_hit_decomposition.get("count_15_exact", 0) or 0))
+        official_plus_cols = st.columns(5)
+        official_plus_cols[0].metric("count_11_plus", int(official_hit_decomposition.get("count_11_plus", 0) or 0))
+        official_plus_cols[1].metric("count_12_plus", int(official_hit_decomposition.get("count_12_plus", 0) or 0))
+        official_plus_cols[2].metric("count_13_plus", int(official_hit_decomposition.get("count_13_plus", 0) or 0))
+        official_plus_cols[3].metric("count_14_plus", int(official_hit_decomposition.get("count_14_plus", 0) or 0))
+        official_plus_cols[4].metric("count_15", int(official_hit_decomposition.get("count_15", 0) or 0))
+        official_detail_cols = st.columns(4)
+        official_detail_cols[0].markdown(
+            f"**Classificação oficial**  \n{official_15_memory.get('policy_validation_status', '-') or '-'}"
+        )
+        official_detail_cols[1].markdown(
+            f"**Mensagem oficial**  \n{official_banner or 'Política 15 validada até nível 13. Ouro 14 e diamante 15 seguem como metas futuras.'}"
+        )
+        official_detail_cols[2].markdown(
+            f"**Baseline batch_id**  \n{official_15_memory.get('baseline_batch_id', official_15_memory.get('batch_id', '-')) or '-'}"
+        )
+        official_detail_cols[3].markdown(
+            f"**Concurso base**  \n{official_15_memory.get('baseline_contest_number', official_window.get('contest_number', '-')) or '-'}"
+        )
+        with st.expander("Ver baseline oficial da política 15 completa", expanded=False):
+            st.json(official_15_memory)
     if post_reconciliation_memory:
-        st.markdown("###### Memória pós-conferência científica")
+        post_title = "###### Histórico antigo / memória anterior à baseline oficial - Memória pós-conferência científica" if official_15_memory else "###### Memória pós-conferência científica"
+        st.markdown(post_title)
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
         cross_validation_summary = dict(post_reconciliation_memory.get("cross_validation_summary") or {})
         scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
@@ -1849,11 +1893,12 @@ def _render_scientific_memory_block() -> None:
             with st.expander("Ver memória pós-conferência completa", expanded=False):
                 st.json(post_reconciliation_memory)
         batch_reconciliation_memory = next(
-        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
-        {},
-    )
+            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
+            {},
+        )
     if batch_reconciliation_memory:
-        st.markdown("###### Memória consolidada da bateria conferida")
+        batch_title = "###### Histórico antigo / memória anterior à baseline oficial - Memória consolidada da bateria conferida" if official_15_memory else "###### Memória consolidada da bateria conferida"
+        st.markdown(batch_title)
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
         batch_components = dict(batch_reconciliation_memory.get("scientific_score_components") or {})
         batch_cross_validation = dict(batch_reconciliation_memory.get("cross_validation_summary") or {})
@@ -1882,10 +1927,16 @@ def _render_scientific_memory_block() -> None:
             or batch_cross_validation.get("cross_validation_reason")
             or "historical_cross_validation_supports_memory"
         )
-        batch_prospective_status = "pending_prospective_validation"
-        st.info(
-            "Memória com suporte histórico cruzado. Validação cruzada histórica favorável, mas ainda pendente de validação prospectiva."
-        )
+        batch_prospective_status = "historical_only" if official_15_memory else "pending_prospective_validation"
+        if official_15_memory:
+            st.info(
+                "Histórico antigo / memória anterior à baseline oficial. "
+                "A política 15 consolidada acima é a referência principal atual."
+            )
+        else:
+            st.info(
+                "Memória com suporte histórico cruzado. Validação cruzada histórica favorável, mas ainda pendente de validação prospectiva."
+            )
         identity_cols = st.columns(5)
         identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
         identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
@@ -2007,10 +2058,16 @@ def _render_scientific_memory_block() -> None:
                 ]
             )
         )
-        st.warning(
-            "A memória possui suporte histórico cruzado, mas ainda depende de validação prospectiva. "
-            f"O uso recomendado é condicional/híbrido até produzir {batch_hit_decomposition.get('validation_threshold', 11)}+ na próxima bateria limpa."
-        )
+        if official_15_memory:
+            st.warning(
+                "Histórico antigo preservado para auditoria. "
+                "A baseline oficial da política 15 acima é a leitura principal e já validada nível 3."
+            )
+        else:
+            st.warning(
+                "A memória possui suporte histórico cruzado, mas ainda depende de validação prospectiva. "
+                f"O uso recomendado é condicional/híbrido até produzir {batch_hit_decomposition.get('validation_threshold', 11)}+ na próxima bateria limpa."
+            )
         with st.expander("Ver memória consolidada da bateria completa", expanded=False):
             st.json(batch_reconciliation_memory)
     strong_near_miss_memory = next(
@@ -2018,7 +2075,8 @@ def _render_scientific_memory_block() -> None:
         {},
     )
     if strong_near_miss_memory:
-        st.markdown("###### Melhores near miss da última bateria")
+        near_miss_title = "###### Histórico antigo / memória anterior à baseline oficial - Melhores near miss da última bateria" if official_15_memory else "###### Melhores near miss da última bateria"
+        st.markdown(near_miss_title)
         near_miss_window = dict(strong_near_miss_memory.get("generation_range") or {})
         near_miss_components = dict(strong_near_miss_memory.get("scientific_score_components") or {})
         near_miss_hit_decomposition = _scientific_hit_decomposition(strong_near_miss_memory)
@@ -2091,8 +2149,8 @@ def _render_scientific_memory_block() -> None:
         st.info("Hist?rico oficial vazio. Aguarde a sincroniza??o da base oficial.")
     scientific_cols = st.columns(3)
     scientific_cols[0].metric("Mem?ria cient?fica", len(scientific_memory))
-    scientific_cols[1].metric("Classifica??o", latest_memory.get("scientific_classification", "-") or "-")
-    scientific_cols[2].metric("A??o", latest_memory.get("recommended_action", "-") or "-")
+    scientific_cols[1].metric("Classifica??o", latest_memory.get("scientific_classification", "-") or latest_memory.get("policy_validation_status", "-") or "-")
+    scientific_cols[2].metric("A??o", latest_memory.get("recommended_action", "-") or _official_15_policy_status_label(latest_memory) or "-")
     st.caption(
         " | ".join(
             [
@@ -2106,11 +2164,19 @@ def _render_scientific_memory_block() -> None:
     )
     if scientific_memory:
         with st.expander("Mem?ria cient?fica completa", expanded=False):
-            st.caption(
-                "Memória com suporte histórico cruzado | strong_support | dominant_memory=conditional | "
-                "validação cruzada histórica favorável | uso condicional/híbrido | pending_prospective_validation"
-            )
-            scientific_memory_listing = _format_scientific_memory_listing(scientific_memory)
+            if official_15_memory:
+                st.caption(
+                    "Baseline oficial 15 validada nível 3 | official_15_search_standard=true | "
+                    "histórico antigo preservado abaixo apenas para auditoria"
+                )
+                display_rows = [official_15_memory] + historical_scientific_memory
+            else:
+                st.caption(
+                    "Memória com suporte histórico cruzado | strong_support | dominant_memory=conditional | "
+                    "validação cruzada histórica favorável | uso condicional/híbrido | pending_prospective_validation"
+                )
+                display_rows = scientific_memory
+            scientific_memory_listing = _format_scientific_memory_listing(display_rows)
             st.dataframe(
                 _make_streamlit_dataframe_safe(scientific_memory_listing),
                 hide_index=True,
@@ -2382,6 +2448,12 @@ def _render_scientific_calibration_panel(
     scientific_recommendation: dict[str, Any] | None,
     technical_payload: dict[str, Any] | None = None,
 ) -> None:
+    scientific_state, scientific_recommendation, technical_payload = _resolve_official_15_calibration_context(
+        strategy_size=strategy_size,
+        scientific_state=scientific_state,
+        scientific_recommendation=scientific_recommendation,
+        technical_payload=technical_payload,
+    )
     scientific_state = scientific_state or {
         "mode": "OBSERVAÇÃO",
         "structural_status": "aguardando geração",
@@ -2395,6 +2467,29 @@ def _render_scientific_calibration_panel(
         "status_visual": "OBSERVAÇÃO",
     }
     st.markdown("##### Motor Científico de Calibração")
+    official_15_banner = _official_15_policy_status_label(technical_payload)
+    if official_15_banner:
+        st.success(official_15_banner)
+        baseline_batch_id = str(
+            (technical_payload or {}).get("baseline_batch_id")
+            or (technical_payload or {}).get("source_batch_id")
+            or (technical_payload or {}).get("batch_id")
+            or ""
+        ).strip()
+        baseline_contest_number = (
+            (technical_payload or {}).get("baseline_contest_number")
+            or (technical_payload or {}).get("contest_number")
+            or (technical_payload or {}).get("reference_window", [None])[-1]
+        )
+        st.caption(
+            " | ".join(
+                [
+                    f"status_atual={str((technical_payload or {}).get('policy_validation_status', 'VALIDATED_15_POLICY_LEVEL_3') or 'VALIDATED_15_POLICY_LEVEL_3')}",
+                    f"baseline_batch_id={baseline_batch_id or 'calibration-20260602172948-20a682cd'}",
+                    f"concurso_validacao={baseline_contest_number or 3697}",
+                ]
+            )
+        )
     top_cols = st.columns(4)
     top_cols[0].metric("Modo", str(scientific_state.get("mode", "-") or "-"))
     top_cols[1].metric("Estratégia", f"{int(strategy_size)} dezenas")
@@ -6115,6 +6210,139 @@ def _official_15_policy_status_label(payload: dict[str, Any] | None) -> str:
     ):
         return "Política 15 validada até nível 13. Ouro 14 e diamante 15 seguem como metas futuras."
     return ""
+
+
+def _scientific_15_is_official_baseline(payload: dict[str, Any] | None) -> bool:
+    data = dict(payload or {})
+    generation_range = dict(data.get("generation_range") or {})
+    cross_validation_summary = dict(data.get("cross_validation_summary") or {})
+    policy_after = dict(data.get("policy_after") or {})
+    source_generation_range = dict(data.get("source_generation_range") or {})
+    merged_candidates = (data, generation_range, cross_validation_summary, policy_after, source_generation_range)
+    game_size = 0
+    policy_validation_status = ""
+    validated_target_band = ""
+    official_search_standard = False
+    baseline_batch_id = ""
+    source_batch_id = ""
+    for candidate in merged_candidates:
+        if not game_size:
+            game_size = int(
+                candidate.get("game_size")
+                or candidate.get("validated_game_size")
+                or 0
+            )
+        if not policy_validation_status:
+            policy_validation_status = str(
+                candidate.get("policy_validation_status")
+                or candidate.get("classification")
+                or candidate.get("scientific_classification")
+                or ""
+            ).strip().upper()
+        if not validated_target_band:
+            validated_target_band = str(candidate.get("validated_target_band") or "").strip()
+        if not official_search_standard:
+            official_search_standard = bool(candidate.get("official_15_search_standard"))
+        if not baseline_batch_id:
+            baseline_batch_id = str(candidate.get("baseline_batch_id") or "").strip()
+        if not source_batch_id:
+            source_batch_id = str(candidate.get("source_batch_id") or candidate.get("batch_id") or "").strip()
+    return bool(
+        game_size == 15
+        and (
+            official_search_standard
+            or policy_validation_status == "VALIDATED_15_POLICY_LEVEL_3"
+            or validated_target_band == "13_plus_detected"
+            or baseline_batch_id == "calibration-20260602172948-20a682cd"
+            or source_batch_id == "calibration-20260602172948-20a682cd"
+        )
+    )
+
+
+def _resolve_official_15_calibration_context(
+    *,
+    strategy_size: int,
+    scientific_state: dict[str, Any] | None,
+    scientific_recommendation: dict[str, Any] | None,
+    technical_payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    if int(strategy_size or 0) != 15:
+        return scientific_state, scientific_recommendation, technical_payload
+    payload = dict(technical_payload or {})
+    if _scientific_15_is_official_baseline(payload):
+        official_label = _official_15_policy_status_label(payload)
+        return (
+            {
+                "mode": "BASELINE VALIDADA",
+                "structural_status": "baseline oficial pronta",
+                "scientific_status": str(
+                    payload.get("policy_validation_status")
+                    or payload.get("classification")
+                    or "VALIDATED_15_POLICY_LEVEL_3"
+                ),
+                "classification": str(
+                    payload.get("classification")
+                    or payload.get("policy_validation_status")
+                    or "VALIDATED_15_POLICY_LEVEL_3"
+                ),
+                "main_reason": official_label
+                or "última decisão científica: política 15 validada nível 3",
+                "status_visual": "BASELINE OFICIAL",
+                "reference_window": list(
+                    payload.get("reference_window")
+                    or payload.get("generation_range", {}).get("generation_event_ids", [])
+                    or [payload.get("baseline_contest_number", 3697)]
+                ),
+                "source_batch_id": str(
+                    payload.get("baseline_batch_id")
+                    or payload.get("source_batch_id")
+                    or payload.get("batch_id")
+                    or "calibration-20260602172948-20a682cd"
+                ),
+            },
+            {
+                "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta",
+                "status_visual": "BASELINE OFICIAL",
+            },
+            payload or None,
+        )
+    latest_official_memory = next((row for row in _load_latest_scientific_memory(limit=20) if _scientific_15_is_official_baseline(row)), {})
+    if latest_official_memory:
+        official_label = _official_15_policy_status_label(latest_official_memory)
+        return (
+            {
+                "mode": "BASELINE VALIDADA",
+                "structural_status": "baseline oficial pronta",
+                "scientific_status": str(
+                    latest_official_memory.get("policy_validation_status")
+                    or latest_official_memory.get("scientific_classification")
+                    or "VALIDATED_15_POLICY_LEVEL_3"
+                ),
+                "classification": str(
+                    latest_official_memory.get("scientific_classification")
+                    or latest_official_memory.get("policy_validation_status")
+                    or "VALIDATED_15_POLICY_LEVEL_3"
+                ),
+                "main_reason": official_label
+                or "última decisão científica: política 15 validada nível 3",
+                "status_visual": "BASELINE OFICIAL",
+                "reference_window": list(
+                    latest_official_memory.get("generation_range", {}).get("generation_event_ids", [])
+                    or [latest_official_memory.get("baseline_contest_number", 3697)]
+                ),
+                "source_batch_id": str(
+                    latest_official_memory.get("baseline_batch_id")
+                    or latest_official_memory.get("batch_id")
+                    or "calibration-20260602172948-20a682cd"
+                ),
+            },
+            {
+                "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta",
+                "status_visual": "BASELINE OFICIAL",
+            },
+            latest_official_memory,
+        )
+    return scientific_state, scientific_recommendation, technical_payload
 
 
 def _institutional_output_batch_id() -> str:

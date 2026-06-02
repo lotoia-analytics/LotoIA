@@ -3374,7 +3374,14 @@ class LotofacilScientificCore:
         selected_policy["validation_zone_label"] = str(validation_rule["validation_zone_label"])
         selected_policy["validation_minimum_label"] = str(validation_rule["validation_minimum_label"])
         selected_policy["validation_band_counts"] = list(validation_rule["validation_band_counts"])
-        if cross_validated_batch_mode and memory_policy:
+        if (
+            cross_validated_batch_mode
+            and memory_policy
+            and not (
+                selected_policy.get("official_15_search_standard")
+                and str(selected_policy.get("policy_validation_status", "")).upper() == "VALIDATED_15_POLICY_LEVEL_3"
+            )
+        ):
             selected_policy["memory_role"] = "strong_support"
             selected_policy["dominant_memory"] = "conditional"
             selected_policy["dominant_memory_mode"] = "conditional"
