@@ -8110,15 +8110,13 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         nat_cols = st.columns([1.1, 1.1, 1.3, 1.3])
         nat_cols[0].metric("Quantidade solicitada", int(requested_games))
         nat_cols[1].metric("Quantidade candidata observada", int(natural_generated_games or requested_games))
-        nat_cols[2].metric("Modo", natural_quantity_mode or "-")
+        nat_cols[2].metric("Status da observação", natural_quantity_mode or "-")
         if natural_candidate:
             status_text = "Candidato observável encontrado."
             if candidate_reason:
                 status_text = f"{status_text} {candidate_reason}"
         else:
             status_text = "Quantidade natural aprovada"
-        if natural_quantity_status:
-            status_text = f"{status_text} | {natural_quantity_status}"
         nat_cols[3].metric("Status", status_text)
 
     _render_scientific_calibration_panel(
