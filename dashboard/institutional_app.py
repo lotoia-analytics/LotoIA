@@ -8194,7 +8194,11 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             use_expander=False,
         )
 
-    with st.expander("Modo estrutural avançado", expanded=False):
+    advanced_controls_open = bool(st.session_state.get("institutional_advanced_controls_open", False))
+    if st.button("Carregar ajustes avançados", key="institutional_advanced_controls_toggle", use_container_width=True):
+        st.session_state["institutional_advanced_controls_open"] = not advanced_controls_open
+        st.rerun()
+    if advanced_controls_open:
         use_top50 = bool(
             st.checkbox(
                 "Usar TOP50 estrutural HB",
@@ -8292,6 +8296,17 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+    else:
+        use_top50 = bool(st.session_state.get("institutional_use_top50", True))
+        repeat_limit = int(st.session_state.get("institutional_repeat_limit", 10 if selected_game_size == 15 else 8) or (10 if selected_game_size == 15 else 8))
+        geometry_profile = _sync_hb_geometry_controls(selected_game_size)
+        odd_min = int(geometry_profile["odd_min"])
+        odd_max = int(geometry_profile["odd_max"])
+        even_min = int(geometry_profile["even_min"])
+        even_max = int(geometry_profile["even_max"])
+        sequence_max = int(geometry_profile["sequence_max"])
+        coverage_min = float(geometry_profile["coverage_min"])
+        entropy_min = float(geometry_profile["entropy_min"])
     if st.button("Gerar jogos", type="primary"):
         _run_institutional_generation(
             total_games=requested_games,
