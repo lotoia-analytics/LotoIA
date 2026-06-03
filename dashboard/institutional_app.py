@@ -8194,119 +8194,16 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             use_expander=False,
         )
 
-    advanced_controls_open = bool(st.session_state.get("institutional_advanced_controls_open", False))
-    if st.button("Carregar ajustes avançados", key="institutional_advanced_controls_toggle", use_container_width=True):
-        st.session_state["institutional_advanced_controls_open"] = not advanced_controls_open
-        st.rerun()
-    if advanced_controls_open:
-        use_top50 = bool(
-            st.checkbox(
-                "Usar TOP50 estrutural HB",
-                value=bool(st.session_state.get("institutional_use_top50", True)),
-                key="institutional_use_top50",
-            )
-        )
-        repeat_limit = int(
-            st.number_input(
-                "Máx. repetição do último concurso",
-                min_value=0,
-                max_value=15,
-                value=int(st.session_state.get("institutional_repeat_limit", 10 if selected_game_size == 15 else 8) or (10 if selected_game_size == 15 else 8)),
-                step=1,
-                key="institutional_repeat_limit",
-            )
-        )
-        geometry_profile = _sync_hb_geometry_controls(selected_game_size)
-        parity_cols = st.columns([1.0, 1.0, 1.0, 1.0])
-        odd_min = int(
-            parity_cols[0].slider(
-                "Ímpares mínimo",
-                min_value=0,
-                max_value=selected_game_size,
-                value=int(st.session_state.get("institutional_odd_min", geometry_profile["odd_min"]) or geometry_profile["odd_min"]),
-                key="institutional_odd_min",
-            )
-        )
-        odd_max = int(
-            parity_cols[1].slider(
-                "Ímpares máximo",
-                min_value=0,
-                max_value=selected_game_size,
-                value=int(st.session_state.get("institutional_odd_max", geometry_profile["odd_max"]) or geometry_profile["odd_max"]),
-                key="institutional_odd_max",
-            )
-        )
-        even_min = int(
-            parity_cols[2].slider(
-                "Pares mínimo",
-                min_value=0,
-                max_value=selected_game_size,
-                value=int(st.session_state.get("institutional_even_min", geometry_profile["even_min"]) or geometry_profile["even_min"]),
-                key="institutional_even_min",
-            )
-        )
-        even_max = int(
-            parity_cols[3].slider(
-                "Pares máximo",
-                min_value=0,
-                max_value=selected_game_size,
-                value=int(st.session_state.get("institutional_even_max", geometry_profile["even_max"]) or geometry_profile["even_max"]),
-                key="institutional_even_max",
-            )
-        )
-        structural_cols = st.columns([1.0, 1.0, 1.0])
-        sequence_max = int(
-            structural_cols[0].slider(
-                "Limite de sequência",
-                min_value=1,
-                max_value=selected_game_size,
-                value=int(st.session_state.get("institutional_sequence_max", geometry_profile["sequence_max"]) or geometry_profile["sequence_max"]),
-                key="institutional_sequence_max",
-            )
-        )
-        coverage_min = float(
-            structural_cols[1].slider(
-                "Cobertura mínima",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(st.session_state.get("institutional_coverage_min", geometry_profile["coverage_min"]) or geometry_profile["coverage_min"]),
-                step=0.05,
-                key="institutional_coverage_min",
-            )
-        )
-        entropy_min = float(
-            structural_cols[2].slider(
-                "Entropia mínima",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(st.session_state.get("institutional_entropy_min", geometry_profile["entropy_min"]) or geometry_profile["entropy_min"]),
-                step=0.05,
-                key="institutional_entropy_min",
-            )
-        )
-        st.caption("Perfil geométrico adaptado automaticamente ao tamanho do jogo.")
-        st.caption(
-            " | ".join(
-                [
-                    f"policy_mode={strategy_policy.get('policy_mode', '-')}",
-                    f"validation_threshold={strategy_policy.get('validation_threshold', '-')}",
-                    f"target_band={strategy_policy.get('target_band', '-')}",
-                    f"current_target={strategy_policy.get('current_target', '-')}",
-                    f"secondary_target={strategy_policy.get('secondary_target', '-')}",
-                ]
-            )
-        )
-    else:
-        use_top50 = bool(st.session_state.get("institutional_use_top50", True))
-        repeat_limit = int(st.session_state.get("institutional_repeat_limit", 10 if selected_game_size == 15 else 8) or (10 if selected_game_size == 15 else 8))
-        geometry_profile = _sync_hb_geometry_controls(selected_game_size)
-        odd_min = int(geometry_profile["odd_min"])
-        odd_max = int(geometry_profile["odd_max"])
-        even_min = int(geometry_profile["even_min"])
-        even_max = int(geometry_profile["even_max"])
-        sequence_max = int(geometry_profile["sequence_max"])
-        coverage_min = float(geometry_profile["coverage_min"])
-        entropy_min = float(geometry_profile["entropy_min"])
+    use_top50 = bool(st.session_state.get("institutional_use_top50", True))
+    repeat_limit = int(st.session_state.get("institutional_repeat_limit", 10 if selected_game_size == 15 else 8) or (10 if selected_game_size == 15 else 8))
+    geometry_profile = _sync_hb_geometry_controls(selected_game_size)
+    odd_min = int(geometry_profile["odd_min"])
+    odd_max = int(geometry_profile["odd_max"])
+    even_min = int(geometry_profile["even_min"])
+    even_max = int(geometry_profile["even_max"])
+    sequence_max = int(geometry_profile["sequence_max"])
+    coverage_min = float(geometry_profile["coverage_min"])
+    entropy_min = float(geometry_profile["entropy_min"])
     if st.button("Gerar jogos", type="primary"):
         _run_institutional_generation(
             total_games=requested_games,
