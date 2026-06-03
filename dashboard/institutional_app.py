@@ -2234,10 +2234,11 @@ def _render_scientific_memory_block() -> None:
         )
     else:
         st.info("Hist?rico oficial vazio. Aguarde a sincroniza??o da base oficial.")
-    scientific_cols = st.columns(3)
-    scientific_cols[0].metric("Mem?ria cient?fica", len(scientific_memory))
-    scientific_cols[1].metric("Classifica??o", latest_memory.get("scientific_classification", "-") or latest_memory.get("policy_validation_status", "-") or "-")
-    scientific_cols[2].metric("A??o", latest_memory.get("recommended_action", "-") or _official_15_policy_status_label(latest_memory) or "-")
+    scientific_cols = st.columns(4)
+    scientific_cols[0].metric("Lei Científica LotoIA", "COMMANDER")
+    scientific_cols[1].metric("Gerador ADM", "EXECUTOR")
+    scientific_cols[2].metric("OutputCommander", "AUDITOR")
+    scientific_cols[3].metric("Memória institucional", "REGISTRY")
     st.caption(
         " | ".join(
             [
@@ -2246,6 +2247,9 @@ def _render_scientific_memory_block() -> None:
                 f"batch_id={latest_memory.get('batch_id', '-')} ",
                 f"decision_mode={latest_memory.get('decision_mode', '-')} ",
                 f"approved_for_use={latest_memory.get('approved_for_use', False)}",
+                "generation_hierarchy=LOTOIA_LAW_ONLY",
+                "legacy_calibrator_role=REMOVED_FROM_RUNTIME",
+                "legacy_runtime_access=False",
             ]
         )
     )
@@ -2254,13 +2258,13 @@ def _render_scientific_memory_block() -> None:
             if official_15_memory:
                 st.caption(
                     "Baseline oficial 15 validada nível 3 | official_15_search_standard=true | "
-                    "histórico antigo preservado abaixo apenas para auditoria"
+                    "histórico antigo preservado abaixo apenas para auditoria | historical_view_only=true"
                 )
                 display_rows = [official_15_memory] + historical_scientific_memory
             else:
                 st.caption(
-                    "Memória com suporte histórico cruzado | strong_support | dominant_memory=conditional | "
-                    "validação cruzada histórica favorável | uso condicional/híbrido | pending_prospective_validation"
+                    "Memória institucional com suporte histórico cruzado | strong_support | dominant_memory=conditional | "
+                    "validação cruzada histórica favorável | historical_view_only=true"
                 )
                 display_rows = scientific_memory
             scientific_memory_listing = _format_scientific_memory_listing(display_rows)
@@ -2344,19 +2348,19 @@ def _render_scientific_policy_panel(
     generations_in_batch: int,
     policy_discovery: dict[str, Any] | None = None,
 ) -> None:
-    st.markdown("##### Pol?tica Cient?fica Aplicada")
+    st.markdown("##### Lei Científica da Geração")
     discovery_ready = _scientific_policy_is_ready(policy_discovery)
     policy_payload = dict(policy_discovery.get("policy") or {}) if discovery_ready else {}
     discovery_origin = str(policy_discovery.get("policy_origin", "-") or "-") if isinstance(policy_discovery, dict) else "-"
     selection_status = str(policy_discovery.get("selection_status", "") or "").strip().upper() if isinstance(policy_discovery, dict) else ""
     if discovery_ready:
-        discovery_status = "POL?TICA DESCOBERTA E SELECIONADA"
+        discovery_status = "LEI DESCOBERTA E SELECIONADA"
     elif selection_status == "NONE_APPROVED":
-        discovery_status = "NENHUMA POL?TICA APROVADA ENCONTRADA"
+        discovery_status = "NENHUMA LEI APROVADA ENCONTRADA"
     elif selection_status == "PENDING":
-        discovery_status = "DESCOBERTA EM EXECU??O"
+        discovery_status = "DESCOBERTA EM EXECUÇÃO"
     else:
-        discovery_status = "AGUARDANDO DESCOBERTA AUTOM?TICA"
+        discovery_status = "AGUARDANDO LEI AUTOMÁTICA"
     selected_policy_id = str(policy_discovery.get("policy_id", "-") or "-") if discovery_ready else "-"
     selected_policy_name = str(policy_discovery.get("selection_variant", "-") or "-") if discovery_ready else "-"
     selected_reason = str(policy_discovery.get("selection_reason", "-") or "-") if discovery_ready else "-"
@@ -2394,13 +2398,13 @@ def _render_scientific_policy_panel(
     ) if isinstance(policy_discovery, dict) else {}
 
     top_cols = st.columns(4)
-    top_cols[0].metric("Estrat?gia", f"{int(strategy_size)} dezenas")
-    top_cols[1].metric("Origem", discovery_origin if discovery_ready else "aguardando descoberta autom?tica")
-    top_cols[2].metric("Status", discovery_status if discovery_ready else "AGUARDANDO VARREDURA CIENT?FICA")
-    top_cols[3].metric("Pol?ticas testadas", tested_count if discovery_ready else 0)
+    top_cols[0].metric("Lei", f"{int(strategy_size)} dezenas")
+    top_cols[1].metric("Origem", discovery_origin if discovery_ready else "aguardando lei automática")
+    top_cols[2].metric("Status", discovery_status if discovery_ready else "AGUARDANDO LEI")
+    top_cols[3].metric("Leis testadas", tested_count if discovery_ready else 0)
 
     meta_cols = st.columns(4)
-    meta_cols[0].metric("Pol?tica selecionada", selected_policy_name)
+    meta_cols[0].metric("Lei selecionada", selected_policy_name)
     meta_cols[1].metric("Janela analisada", selected_window)
     meta_cols[2].metric("Crit?rio vencedor", selected_reason)
     meta_cols[3].metric("Pol?tica ID", selected_policy_id)
@@ -2421,16 +2425,16 @@ def _render_scientific_policy_panel(
 
     if not discovery_ready:
         if selection_status == "NONE_APPROVED":
-            st.warning("Nenhuma pol?tica aprovada encontrada.")
+            st.warning("Nenhuma lei aprovada encontrada.")
             st.caption(
-                f"Pol?ticas testadas: {tested_count} | "
+                f"Leis testadas: {tested_count} | "
                 f"descartadas pelo guardi?o: {rejected_by_guardian} | "
                 f"descartadas pelas regras: {rejected_by_rules}"
             )
         else:
-            st.info("Par?metros: aguardando a LotoIA descobrir a pol?tica.")
+            st.info("Parâmetros: aguardando a LotoIA descobrir a lei.")
         with st.expander("Ver payload t?cnico completo", expanded=False):
-            st.json({"status": "aguardando descoberta autom?tica", "policy_discovery": policy_discovery or {}})
+            st.json({"status": "aguardando descoberta automática", "policy_discovery": policy_discovery or {}})
         return
 
     detail_cols = st.columns(3)
@@ -2474,7 +2478,9 @@ def _render_scientific_policy_panel(
     control_cols = st.columns(3)
     control_cols[0].markdown(f"**selection_variant**  \n{selected_policy_name}")
     control_cols[1].markdown(f"**cross_validation_reason**  \n{selected_cross_validation_reason}")
-    control_cols[2].markdown(f"**recommended_action**  \n{selected_recommended_action}")
+    control_cols[2].markdown(
+        f"**historical_view_only**  \n{str(bool(policy_discovery.get('legacy_runtime_access', False)) is False).lower()}"
+    )
 
     if cross_validation_windows:
         st.markdown("###### Validação cruzada histórica")
@@ -2557,7 +2563,7 @@ def _render_scientific_calibration_panel(
         else "gerar jogos",
         "status_visual": "BASELINE OFICIAL" if int(strategy_size or 0) == 15 else "PREPARADO",
     }
-    st.markdown("##### Motor Científico de Calibração")
+    st.markdown("##### Visão Histórica de Calibração")
     official_15_banner = _official_15_policy_status_label(technical_payload)
     if official_15_banner:
         st.success(official_15_banner)
@@ -2623,6 +2629,9 @@ def _render_scientific_calibration_panel(
         payload: dict[str, Any] = {}
         if technical_payload:
             payload.update(technical_payload)
+        payload.setdefault("historical_view_only", True)
+        payload.setdefault("legacy_removed_from_runtime", True)
+        payload.setdefault("legacy_runtime_access", False)
         payload.setdefault("scientific_state", scientific_state)
         payload.setdefault("scientific_recommendation", scientific_recommendation)
         st.json(payload)
@@ -5309,14 +5318,6 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
             }
         )
-        _render_scientific_policy_panel(
-            policy=history_policy,
-            strategy_size=int(scientific_game_size),
-            total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
-            games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
-            generations_in_batch=1,
-            policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
-        )
         if scientific_batch:
             scientific_state = {
                 "mode": "AUTONOMIA SUPERVISIONADA"
@@ -5339,16 +5340,25 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         else:
             scientific_state = None
             scientific_recommendation = None
-        _render_scientific_calibration_panel(
-            strategy_size=int(scientific_game_size),
-            scientific_state=scientific_state,
-            scientific_recommendation=scientific_recommendation,
-            technical_payload=scientific_batch if scientific_batch else None,
-        )
-        latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
-        if latest_scientific_decisions:
-            st.markdown("##### Mem?ria cient?fica de calibra??o")
-            st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+        with st.expander("Diagnóstico histórico de calibração", expanded=False):
+            _render_scientific_policy_panel(
+                policy=history_policy,
+                strategy_size=int(scientific_game_size),
+                total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
+                games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
+                generations_in_batch=1,
+                policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
+            )
+            _render_scientific_calibration_panel(
+                strategy_size=int(scientific_game_size),
+                scientific_state=scientific_state,
+                scientific_recommendation=scientific_recommendation,
+                technical_payload=scientific_batch if scientific_batch else None,
+            )
+            latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
+            if latest_scientific_decisions:
+                st.markdown("##### Memória histórica de calibração")
+                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
 
 
 
@@ -7365,12 +7375,21 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     else:
         scientific_state = None
         scientific_recommendation = None
-    _render_scientific_calibration_panel(
-        strategy_size=int(dezenas_per_game),
-        scientific_state=scientific_state,
-        scientific_recommendation=scientific_recommendation,
-        technical_payload=scientific_batch if scientific_batch else None,
-    )
+    with st.expander("Diagnóstico histórico de calibração", expanded=False):
+        _render_scientific_policy_panel(
+            policy=official_generation_policy,
+            strategy_size=int(dezenas_per_game),
+            total_expected_games=int(total_jogos_esperados),
+            games_per_generation=int(total_games),
+            generations_in_batch=int(generation_runs),
+            policy_discovery=scientific_policy_discovery,
+        )
+        _render_scientific_calibration_panel(
+            strategy_size=int(dezenas_per_game),
+            scientific_state=scientific_state,
+            scientific_recommendation=scientific_recommendation,
+            technical_payload=scientific_batch if scientific_batch else None,
+        )
     if summary_result:
         st.markdown("##### Diagnóstico da bateria")
         batch_status = str(summary_result.get("status_comandante_saida", "BLOQUEADO") or "BLOQUEADO")
@@ -8149,22 +8168,23 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             status_text = "Quantidade natural aprovada"
         nat_cols[3].metric("Status", status_text)
 
-    _render_scientific_calibration_panel(
-        strategy_size=selected_game_size,
-        scientific_state={
-            "mode": str(strategy_display.get("mode", "GERAÇÃO PREPARADA") or "GERAÇÃO PREPARADA"),
-            "structural_status": "baseline oficial pronta" if selected_game_size == 15 else "régua futura preparada",
-            "scientific_status": str(strategy_display.get("scientific_status", "-") or "-"),
-            "classification": str(strategy_display.get("scientific_status", "-") or "-"),
-            "main_reason": str(strategy_display.get("main_reason", "-") or "-"),
-            "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
-        },
-        scientific_recommendation={
-            "action_suggested": str(strategy_display.get("action_suggested", "gerar jogos") or "gerar jogos"),
-            "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
-        },
-        technical_payload=strategy_policy,
-    )
+    with st.expander("Diagnóstico histórico de calibração", expanded=False):
+        _render_scientific_calibration_panel(
+            strategy_size=selected_game_size,
+            scientific_state={
+                "mode": str(strategy_display.get("mode", "GERAÇÃO PREPARADA") or "GERAÇÃO PREPARADA"),
+                "structural_status": "baseline oficial pronta" if selected_game_size == 15 else "régua futura preparada",
+                "scientific_status": str(strategy_display.get("scientific_status", "-") or "-"),
+                "classification": str(strategy_display.get("scientific_status", "-") or "-"),
+                "main_reason": str(strategy_display.get("main_reason", "-") or "-"),
+                "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
+            },
+            scientific_recommendation={
+                "action_suggested": str(strategy_display.get("action_suggested", "gerar jogos") or "gerar jogos"),
+                "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
+            },
+            technical_payload=strategy_policy,
+        )
 
     with st.expander("Modo científico avançado", expanded=False):
         use_top50 = bool(
