@@ -441,6 +441,7 @@ def _get_engine_cached():
     return get_engine(DB_PATH)
 
 
+@st.cache_data(show_spinner=False, ttl=2)
 def _database_snapshot() -> dict[str, Any]:
     adapter = InstitutionalDatabaseAdapter(DB_PATH)
     engine = _get_engine_cached()
@@ -709,6 +710,7 @@ def _runtime_audit_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@st.cache_data(show_spinner=False, ttl=2)
 def _hb_geometry_state() -> dict[str, Any]:
     with _JOB_LOCK:
         state = dict(_JOB_STATE)
@@ -5055,6 +5057,7 @@ def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
         if safe_df[column].dtype == "object":
             safe_df[column] = safe_df[column].apply(lambda value: "" if value is None else str(value))
     return safe_df
+@st.cache_data(show_spinner=False, ttl=5)
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
