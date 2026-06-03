@@ -5342,7 +5342,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         else:
             scientific_state = None
             scientific_recommendation = None
-        with st.expander("Diagnóstico histórico de calibração", expanded=False):
+        with st.expander("Diagnóstico histórico", expanded=False):
             _render_scientific_policy_panel(
                 policy=history_policy,
                 strategy_size=int(scientific_game_size),
@@ -5360,7 +5360,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             )
             latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
             if latest_scientific_decisions:
-                st.markdown("##### Memória histórica de calibração")
+                st.markdown("##### Memória histórica")
                 st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
 
 
@@ -7378,7 +7378,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     else:
         scientific_state = None
         scientific_recommendation = None
-    with st.expander("Diagnóstico histórico de calibração", expanded=False):
+    with st.expander("Diagnóstico histórico", expanded=False):
         _render_scientific_policy_panel(
             policy=official_generation_policy,
             strategy_size=int(dezenas_per_game),
@@ -8172,7 +8172,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             status_text = "Quantidade natural aprovada"
         nat_cols[3].metric("Status", status_text)
 
-    with st.expander("Diagnóstico histórico de calibração", expanded=False):
+    with st.expander("Diagnóstico histórico", expanded=False):
         _render_scientific_calibration_panel(
             strategy_size=selected_game_size,
             scientific_state={
@@ -8191,7 +8191,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             use_expander=False,
         )
 
-    with st.expander("Modo científico avançado", expanded=False):
+    with st.expander("Modo estrutural avançado", expanded=False):
         use_top50 = bool(
             st.checkbox(
                 "Usar TOP50 estrutural HB",
