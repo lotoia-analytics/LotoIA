@@ -2540,6 +2540,7 @@ def _render_scientific_calibration_panel(
     scientific_state: dict[str, Any] | None,
     scientific_recommendation: dict[str, Any] | None,
     technical_payload: dict[str, Any] | None = None,
+    use_expander: bool = True,
 ) -> None:
     scientific_state, scientific_recommendation, technical_payload = _resolve_official_15_calibration_context(
         strategy_size=strategy_size,
@@ -2625,7 +2626,8 @@ def _render_scientific_calibration_panel(
         summary_bits.append(f"main_reason={scientific_state.get('main_reason')}")
     if summary_bits:
         st.caption(" | ".join(summary_bits))
-    with st.expander("Ver diagnóstico científico completo", expanded=False):
+    panel_context = st.expander("Ver diagnóstico científico completo", expanded=False) if use_expander else st.container()
+    with panel_context:
         payload: dict[str, Any] = {}
         if technical_payload:
             payload.update(technical_payload)
@@ -5354,6 +5356,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 scientific_state=scientific_state,
                 scientific_recommendation=scientific_recommendation,
                 technical_payload=scientific_batch if scientific_batch else None,
+                use_expander=False,
             )
             latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
             if latest_scientific_decisions:
@@ -7389,6 +7392,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             scientific_state=scientific_state,
             scientific_recommendation=scientific_recommendation,
             technical_payload=scientific_batch if scientific_batch else None,
+            use_expander=False,
         )
     if summary_result:
         st.markdown("##### Diagnóstico da bateria")
@@ -8184,6 +8188,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
                 "status_visual": str(strategy_display.get("status_visual", "-") or "-"),
             },
             technical_payload=strategy_policy,
+            use_expander=False,
         )
 
     with st.expander("Modo científico avançado", expanded=False):
