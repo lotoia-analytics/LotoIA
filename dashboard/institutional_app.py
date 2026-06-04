@@ -8771,6 +8771,14 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     left, right = st.columns(2)
     left.metric("Formato", f"{selected_card_format} dezenas")
     right.metric("Estratégia ativa", "Lei 15")
+    st.info(
+        "Lei 15 gera base 11+ com busca por 14/15. "
+        "Lei 17 valida 12+ com busca por 14/15. "
+        "Lei 18 valida 13+ com busca por 14/15."
+    )
+    st.caption(
+        "17/18 dezenas significam apenas expansão auditada do núcleo: 15 + 2 reservas auditadas | 15 + 3 reservas auditadas."
+    )
     if st.button("Gerar com Lei 15", type="primary", key="clean_law15_generate_button"):
         result = _run_clean_law15_generation(requested_count=requested_count)
         result["selected_card_format"] = int(selected_card_format)
