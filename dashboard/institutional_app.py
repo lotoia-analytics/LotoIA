@@ -7070,6 +7070,11 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
         if selected_group not in OFFICIAL_15_GROUPS:
             selected_group = "G30"
         group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
+        group_label_map = {group: label for group, (_, label) in OFFICIAL_15_GROUP_ROLES.items()}
+        model_label = " | ".join(
+            f"{group_label_map.get(group, group)}" if " = " in group_label_map.get(group, "") else f"{group} = {group_label_map.get(group, group)}"
+            for group in OFFICIAL_15_GROUPS
+        )
         official_label = (
             "Materialização oficial 15 dezenas pronta. Quantidade fechada por grupo oficial."
         )
@@ -7092,6 +7097,7 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
             "policy_mode": "OFFICIAL_GROUP_MATERIALIZATION",
             "historical_deduplication_mode": "AUDIT_ONLY",
             "official_package_preserved": True,
+            "official_15_generation_model_label": f"Modelo oficial 15 dezenas: {model_label}",
         }
     if game_size == 17:
         return {
@@ -8523,6 +8529,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         f"Modelo oficial 15 dezenas: {selected_official_group} | "
         f"{str(strategy_display.get('selected_15_group_label', '') or '').strip()}"
     )
+    st.caption(str(strategy_display.get("official_15_generation_model_label", "") or ""))
     if selected_game_size == 15:
         st.caption(
             " | ".join(
