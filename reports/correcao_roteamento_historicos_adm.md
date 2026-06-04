@@ -1,8 +1,8 @@
 # Correção de Roteamento dos Históricos do ADM
 
 ## Causa identificada
-- Rota não reconhecida e fallback de navegação podiam acabar retornando para a tela de geração.
-- Isso fazia o Gerador reaparecer fora do núcleo operacional.
+- Divergência entre rótulos exibidos na sidebar e chaves internas do roteador, especialmente com variações de acento.
+- A página histórica podia cair no fallback por não bater exatamente com a chave esperada.
 
 ## Rotas afetadas
 - `history_analytical`
@@ -17,10 +17,16 @@
 - Rota desconhecida agora cai em uma página leve de fallback.
 - Nenhuma rota de histórico pode cair no Gerador.
 
+## Chaves corrigidas
+- `Histórico Analítico` e `Historico Analitico` agora apontam para `history_analytical`.
+- `Histórico Institucional` e `Historico Institucional` agora apontam para `history_institutional`.
+- O roteador passou a comparar rótulos com normalização Unicode, reduzindo divergência por acento.
+
 ## Validação dos históricos
 - `Histórico Analítico` continua acessível.
 - `Histórico Institucional` continua acessível.
 - Ambas as rotas renderizam suas próprias telas.
+- O fallback seguro continua ativo para rotas desconhecidas.
 
 ## Confirmação do Gerador
 - O Gerador não é mais fallback para histórico ou rota desconhecida.
@@ -33,4 +39,3 @@
 ## Confirmação funcional
 - Nenhuma lógica funcional foi alterada.
 - A correção foi apenas de roteamento/renderização.
-

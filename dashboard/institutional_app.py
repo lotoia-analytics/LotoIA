@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import uuid
+import unicodedata
 from collections import Counter
 from functools import lru_cache
 from datetime import UTC, datetime
@@ -171,7 +172,9 @@ PAGE_TARGETS = {
     "Conferir Resultados": "conference",
     "Simular Resultados": "simulation",
     "Histórico Analítico": "history_analytical",
+    "Historico Analitico": "history_analytical",
     "Histórico Institucional": "history_institutional",
+    "Historico Institucional": "history_institutional",
     "Limpar Históricos": "clear_histories",
     "Apagar Histórico": "delete_history",
     "Comparativos histórico": "comparative_history",
@@ -198,9 +201,10 @@ def _canonical_page_id(value: str | None) -> str:
         return PAGE_TARGETS[text_value]
     if text_value in PAGE_LABELS:
         return text_value
-    normalized = text_value.casefold()
+    normalized = unicodedata.normalize("NFKD", text_value).encode("ascii", "ignore").decode("ascii").casefold()
     for label, page_id in PAGE_TARGETS.items():
-        if label.casefold() == normalized:
+        normalized_label = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode("ascii").casefold()
+        if normalized_label == normalized:
             return page_id
     return "fallback"
 
