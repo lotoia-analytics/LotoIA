@@ -8753,6 +8753,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
+    st.session_state.setdefault("clean_law15_card_format", 15)
     current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
     selected_card_format = int(
         st.selectbox(
@@ -8767,7 +8768,6 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             key="clean_law15_card_format",
         )
     )
-    st.session_state["clean_law15_card_format"] = selected_card_format
     left, right = st.columns(2)
     left.metric("Formato", f"{selected_card_format} dezenas")
     right.metric("Estratégia ativa", "Lei 15")
