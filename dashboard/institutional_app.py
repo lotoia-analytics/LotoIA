@@ -202,11 +202,14 @@ def _canonical_page_id(value: str | None) -> str:
     for label, page_id in PAGE_TARGETS.items():
         if label.casefold() == normalized:
             return page_id
-    return "generation"
+    return "fallback"
 
 
 def _canonical_page_label(value: str | None) -> str:
-    return PAGE_LABELS.get(_canonical_page_id(value), "Painel Inicial Institucional")
+    page_id = _canonical_page_id(value)
+    if page_id == "fallback":
+        return "Página não encontrada"
+    return PAGE_LABELS.get(page_id, "Painel Inicial Institucional")
 
 _JOB_LOCK = threading.Lock()
 _JOB_STATE: dict[str, Any] = {
@@ -7442,6 +7445,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
         "home",
+        "fallback",
         "generation",
         "clean_law15_generation",
         "conference",
@@ -7479,7 +7483,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     elif choice not in allowed_pages:
         choice = _canonical_page_id(page)
     if choice not in allowed_pages:
-        choice = "home"
+        choice = "fallback"
     st.session_state["institutional_page_id"] = choice
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
@@ -10210,7 +10214,17 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     state_cols[3].metric("Destrutivas", "bloqueadas")
     with st.expander("Detalhes técnicos avançados", expanded=False):
         st.caption("Home institucional leve, sem histórico pesado e sem execução operacional.")
-    st.caption(f"json: {HB_GEOMETRY_JSON_FILE} | csv: {HB_GEOMETRY_CSV_FILE} | progress: {HB_GEOMETRY_PROGRESS_FILE}")
+
+
+def _render_fallback_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Página não encontrada")
+    st.info("Rota ainda não institucionalizada ou indisponível no momento. Use a navegação lateral para acessar uma página suportada.")
+    cols = st.columns(3)
+    cols[0].metric("Home", "disponível")
+    cols[1].metric("Históricos", "acessíveis")
+    cols[2].metric("Gerador", "fora do fallback")
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.caption("Fallback leve e não operacional.")
 
 
 def main() -> None:
@@ -10229,6 +10243,8 @@ def main() -> None:
         _render_runtime_audit_page(snapshot)
     elif page == "home":
         _render_home_page(snapshot)
+    elif page == "fallback":
+        _render_fallback_page(snapshot)
     elif page == "audit_monitoring":
         _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
