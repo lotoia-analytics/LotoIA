@@ -156,6 +156,7 @@ HISTORICAL_TEST_TABLES = (
 PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 
 PAGE_TARGETS = {
+    "Painel Inicial Institucional": "home",
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
@@ -192,7 +193,7 @@ PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
 def _canonical_page_id(value: str | None) -> str:
     text_value = str(value or "").strip()
     if not text_value:
-        return "generation"
+        return "home"
     if text_value in PAGE_TARGETS:
         return PAGE_TARGETS[text_value]
     if text_value in PAGE_LABELS:
@@ -205,7 +206,7 @@ def _canonical_page_id(value: str | None) -> str:
 
 
 def _canonical_page_label(value: str | None) -> str:
-    return PAGE_LABELS.get(_canonical_page_id(value), "Gerar Jogos")
+    return PAGE_LABELS.get(_canonical_page_id(value), "Painel Inicial Institucional")
 
 _JOB_LOCK = threading.Lock()
 _JOB_STATE: dict[str, Any] = {
@@ -7325,7 +7326,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.rerun()
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
-    for label in ["Gerador ADM - Lei 15 Limpo", "Conferir Resultados", "Simular Resultados"]:
+    for label in ["Painel Inicial Institucional", "Gerador ADM - Lei 15 Limpo", "Conferir Resultados", "Simular Resultados"]:
         _nav_entry(label)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
@@ -7369,6 +7370,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
+        "home",
         "generation",
         "clean_law15_generation",
         "conference",
@@ -7402,11 +7404,11 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     }
     if choice in blocked_pages:
         st.sidebar.warning("P?gina bloqueada por pol?tica institucional.")
-        choice = "generation"
+        choice = "home"
     elif choice not in allowed_pages:
         choice = _canonical_page_id(page)
     if choice not in allowed_pages:
-        choice = "generation"
+        choice = "home"
     st.session_state["institutional_page_id"] = choice
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
@@ -10110,6 +10112,33 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     if not csv_frame.empty:
         with st.expander("CSV consolidado", expanded=False):
             st.dataframe(csv_frame.tail(20), hide_index=True, use_container_width=True)
+
+
+def _render_home_page(snapshot: dict[str, Any]) -> None:
+    st.subheader("Painel Institucional LotoIA")
+    st.write("Home institucional leve, sem geração, sem recalibração e sem carga histórica pesada.")
+    cols = st.columns(4)
+    cols[0].metric("status runtime", "ativo")
+    cols[1].metric("build", BUILD_MARKER)
+    cols[2].metric("backend conectado", snapshot.get("backend", "-"))
+    latest_contest = _load_latest_contest_summary()
+    cols[3].metric("último concurso", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
+    st.caption(
+        "Lei 15 é comando soberano | Lei 17/18 são validação/referência | áreas de quarentena e ações destrutivas permanecem bloqueadas."
+    )
+    st.markdown("##### Atalhos institucionais")
+    shortcut_cols = st.columns(3)
+    shortcut_cols[0].markdown("- Gerador ADM - Lei 15 Limpo\n- Conferir Resultados")
+    shortcut_cols[1].markdown("- Simular Resultados\n- Histórico Analítico")
+    shortcut_cols[2].markdown("- Auditoria e Monitoramento\n- Histórico Institucional")
+    st.markdown("##### Estado institucional")
+    state_cols = st.columns(4)
+    state_cols[0].metric("Gerador", "não carregado")
+    state_cols[1].metric("Geração automática", "bloqueada na home")
+    state_cols[2].metric("Quarentena", "restrita")
+    state_cols[3].metric("Destrutivas", "bloqueadas")
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.caption("Home institucional leve, sem histórico pesado e sem execução operacional.")
     st.caption(f"json: {HB_GEOMETRY_JSON_FILE} | csv: {HB_GEOMETRY_CSV_FILE} | progress: {HB_GEOMETRY_PROGRESS_FILE}")
 
 
@@ -10119,7 +10148,7 @@ def main() -> None:
     snapshot = _database_snapshot()
     _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(
-        st.session_state.get("institutional_page_id", "generation"),
+        st.session_state.get("institutional_page_id", "home"),
         snapshot,
     )
     st.session_state["institutional_page_id"] = page
@@ -10127,6 +10156,8 @@ def main() -> None:
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
     if page == "audit":
         _render_runtime_audit_page(snapshot)
+    elif page == "home":
+        _render_home_page(snapshot)
     elif page == "audit_monitoring":
         _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
