@@ -7329,22 +7329,22 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
     game_size = max(2, min(25, int(size or 15)))
     policy = _institutional_generation_policy(game_size)
     if game_size == 15:
-        official_label = "Runtime limpo ADM 15 pronto. Quantidade fechada pelo usuário."
+        official_label = "Política 15 validada nível 3. Núcleo operacional pronto."
         return {
             "policy": policy,
-            "strategy_label": "Runtime Limpo ADM 15",
-            "scientific_status": "CLEAN_DIRECT_15_LAW_RUNTIME",
-            "status_visual": "CLEAN_DIRECT_15_LAW_RUNTIME",
-            "mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "strategy_label": "Política 15 validada nível 3",
+            "scientific_status": "VALIDATED_15_POLICY_LEVEL_3",
+            "status_visual": "BASELINE OFICIAL",
+            "mode": "BASELINE OFICIAL",
             "main_reason": official_label,
-            "action_suggested": "usar runtime limpo para a próxima quantidade solicitada",
-            "summary": official_label,
-            "generation_mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
-            "policy_mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta",
+            "summary": "Política 15 validada até nível 13. 13 acertos preservados. Ouro 14 e diamante 15 seguem como metas futuras.",
+            "generation_mode": "VALIDATED_15_POLICY_LEVEL_3",
+            "policy_mode": "VALIDATED_15_POLICY_LEVEL_3",
             "historical_deduplication_mode": "AUDIT_ONLY",
             "official_package_preserved": False,
             "legacy_generation_flow": "ARCHIVED",
-            "official_15_generation_model_label": "Runtime Limpo ADM 15: 15 dezenas por jogo",
+            "official_15_generation_model_label": "Lei 15 validada: 15 dezenas por jogo",
         }
     if game_size == 17:
         return {
@@ -8753,11 +8753,34 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
+    current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
+    selected_card_format = int(
+        st.selectbox(
+            "Formato do cartão",
+            options=list(OFFICIAL_CARD_FORMATS),
+            index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
+            format_func=lambda value: {
+                15: "15 dezenas — Núcleo Lei 15",
+                17: "17 dezenas — Lei 15 + 2 reservas auditadas",
+                18: "18 dezenas — Lei 15 + 3 reservas auditadas",
+            }.get(int(value), f"{int(value)} dezenas"),
+            key="clean_law15_card_format",
+        )
+    )
+    st.session_state["clean_law15_card_format"] = selected_card_format
     left, right = st.columns(2)
-    left.metric("Formato", "15 dezenas por jogo")
+    left.metric("Formato", f"{selected_card_format} dezenas")
     right.metric("Estratégia ativa", "Lei 15")
-    if st.button("Gerar jogos", type="primary", key="clean_law15_generate_button"):
-        st.session_state["clean_law15_generation_result"] = _run_clean_law15_generation(requested_count=requested_count)
+    if st.button("Gerar com Lei 15", type="primary", key="clean_law15_generate_button"):
+        result = _run_clean_law15_generation(requested_count=requested_count)
+        result["selected_card_format"] = int(selected_card_format)
+        result["card_format_label"] = {
+            15: "15 dezenas — Núcleo Lei 15",
+            17: "17 dezenas — Lei 15 + 2 reservas auditadas",
+            18: "18 dezenas — Lei 15 + 3 reservas auditadas",
+        }.get(int(selected_card_format), f"{int(selected_card_format)} dezenas")
+        result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
+        st.session_state["clean_law15_generation_result"] = result
         st.rerun()
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
@@ -8766,6 +8789,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             f"Quantidade solicitada={result.get('requested_count', '-')}"
             f" | gerados={len(result.get('games') or [])}"
             f" | dezenas/jogo={result.get('dezenas_por_jogo', '-')}"
+            f" | formato_cartao={result.get('selected_card_format', 15)}"
         )
         st.caption(
             " | ".join(
@@ -8796,19 +8820,30 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         diag_cols[1].metric("valid_candidates", int(diagnostics.get("valid_candidates_found", 0) or 0))
         diag_cols[2].metric("attempts_used", int(diagnostics.get("attempts_used", 0) or 0))
         diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
-        games = list(result.get("games") or [])
+        games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], int(result.get("selected_card_format", 15) or 15)))
         if games:
             st.markdown("#### Jogos gerados")
             games_df = pd.DataFrame(
                 [
                     {
                         "jogo": index + 1,
-                        "dezenas": " ".join(f"{int(number):02d}" for number in game.get("numbers", [])),
+                        "núcleo_lei_15": " ".join(f"{int(number):02d}" for number in game.get("core_numbers", game.get("numbers", []))),
+                        "reservas_auditadas": " ".join(f"+{int(number):02d}" for number in game.get("audited_reserve_numbers", [])) or "-",
+                        "cartão_final": " ".join(f"{int(number):02d}" for number in game.get("final_card_numbers", game.get("numbers", []))),
                     }
                     for index, game in enumerate(games)
                 ]
             )
             st.dataframe(games_df, hide_index=True, use_container_width=True)
+            st.caption(
+                " | ".join(
+                    [
+                        f"Núcleo Lei 15={len(games[0].get('core_numbers', games[0].get('numbers', [])))}",
+                        f"Reservas auditadas={len(games[0].get('audited_reserve_numbers', []))}",
+                        f"Cartão final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}",
+                    ]
+                )
+            )
         with st.expander("Diagnóstico da página limpa", expanded=False):
             st.write(f"requested_count={result.get('requested_count', '-')}")
             st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
