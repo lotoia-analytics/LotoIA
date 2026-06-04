@@ -109,6 +109,15 @@ PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 
 PAGE_TARGETS = {
     "Auditoria Runtime": "audit",
+    "Auditoria e Monitoramento": "audit_monitoring",
+    "Conferência por concurso": "audit_monitoring_conference",
+    "Desempenho por grupo": "audit_monitoring_group_performance",
+    "Dezenas faltantes": "audit_monitoring_missing_numbers",
+    "Dezenas sobrando": "audit_monitoring_extra_numbers",
+    "Vazamento lateral": "audit_monitoring_side_leak",
+    "Evolução 13 -> 14": "audit_monitoring_13_to_14",
+    "Evolução 14 -> 15": "audit_monitoring_14_to_15",
+    "Hipóteses para teste offline": "audit_monitoring_offline_hypotheses",
     "Gerar Jogos": "generation",
     "Conferir Resultados": "conference",
     "Simular Resultados": "simulation",
@@ -664,8 +673,6 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     official_cols[1].metric("último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
     official_cols[2].metric("faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
     official_cols[3].metric("status", str(official_history.get("status_base_oficial", "-") or "-"))
-    st.markdown("##### Auditoria e Monitoramento")
-    _render_post_conference_monitoring_panel()
     st.markdown("##### SELECT COUNT(*) no runtime")
     audit_rows: list[dict[str, Any]] = []
     with _get_engine_cached().begin() as connection:
@@ -6829,10 +6836,11 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.caption("Painel institucional limpo")
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
+    _sidebar_nav_button("Auditoria e Monitoramento", "Auditoria e Monitoramento", page)
+    pages = list(PAGE_TARGETS.values())
     st.sidebar.markdown(
-        '<div style="padding-left:0.9rem;margin-top:0.25rem;color:#6b7280;font-size:0.78rem;line-height:1.45;">'
-        '└── Auditoria e Monitoramento<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Conferência por concurso<br>'
+        '<div style="padding-left:0.9rem;margin-top:-0.35rem;margin-bottom:0.2rem;color:#6b7280;font-size:0.78rem;line-height:1.45;">'
+        '└── Conferência por concurso<br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;├── Desempenho por grupo<br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas faltantes<br>'
         '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas sobrando<br>'
@@ -6843,7 +6851,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         '</div>',
         unsafe_allow_html=True,
     )
-    pages = list(PAGE_TARGETS.values())
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
     _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
@@ -7245,6 +7252,43 @@ def _render_post_conference_monitoring_panel() -> None:
         )
     with st.expander("Payload de monitoramento", expanded=False):
         st.json(POST_DRAW_MONITORING_PAYLOAD)
+
+
+def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Auditoria e Monitoramento")
+    st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
+    st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
+    if section == "overview":
+        _render_post_conference_monitoring_panel()
+        return
+    with st.expander("Contexto institucional", expanded=False):
+        st.json(POST_DRAW_MONITORING_PAYLOAD)
+    if section == "conference":
+        st.markdown("##### Conferência por concurso")
+        st.info("Aqui a camada registra o desempenho por concurso e deixa a leitura pronta para auditoria manual.")
+        _render_post_conference_monitoring_panel()
+    elif section == "group_performance":
+        st.markdown("##### Desempenho por grupo")
+        st.caption("Resultados por G50/G30/G20/G10 e análise por grupo ativo.")
+    elif section == "missing_numbers":
+        st.markdown("##### Dezenas faltantes")
+        st.caption("Lista e frequência das dezenas ausentes nos acertos por grupo.")
+    elif section == "extra_numbers":
+        st.markdown("##### Dezenas sobrando")
+        st.caption("Lista e frequência das dezenas excedentes nos jogos de cada grupo.")
+    elif section == "side_leak":
+        st.markdown("##### Vazamento lateral")
+        st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
+    elif section == "13_to_14":
+        st.markdown("##### Evolução 13 -> 14")
+        st.caption("Avalia hipóteses de conversão 13 para 14 sem recalibrar automaticamente.")
+    elif section == "14_to_15":
+        st.markdown("##### Evolução 14 -> 15")
+        st.caption("Avalia hipóteses de conversão 14 para 15 em modo observador.")
+    elif section == "offline_hypotheses":
+        st.markdown("##### Hipóteses para teste offline")
+        st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
 
 
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
@@ -8931,6 +8975,24 @@ def main() -> None:
     st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
     if page == "audit":
         _render_runtime_audit_page(snapshot)
+    elif page == "audit_monitoring":
+        _render_audit_monitoring_page(snapshot, "overview")
+    elif page == "audit_monitoring_conference":
+        _render_audit_monitoring_page(snapshot, "conference")
+    elif page == "audit_monitoring_group_performance":
+        _render_audit_monitoring_page(snapshot, "group_performance")
+    elif page == "audit_monitoring_missing_numbers":
+        _render_audit_monitoring_page(snapshot, "missing_numbers")
+    elif page == "audit_monitoring_extra_numbers":
+        _render_audit_monitoring_page(snapshot, "extra_numbers")
+    elif page == "audit_monitoring_side_leak":
+        _render_audit_monitoring_page(snapshot, "side_leak")
+    elif page == "audit_monitoring_13_to_14":
+        _render_audit_monitoring_page(snapshot, "13_to_14")
+    elif page == "audit_monitoring_14_to_15":
+        _render_audit_monitoring_page(snapshot, "14_to_15")
+    elif page == "audit_monitoring_offline_hypotheses":
+        _render_audit_monitoring_page(snapshot, "offline_hypotheses")
     elif page == "generation":
         _render_generator_page(snapshot)
     elif page == "conference":
