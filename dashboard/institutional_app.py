@@ -7434,15 +7434,18 @@ def _load_official_15_group_games() -> dict[str, list[tuple[int, ...]]]:
     return parsed
 
 
+OFFICIAL_15_GROUPS_REGISTRY = _load_official_15_group_games()
+
+
 def _official_15_group_games_for_quantity(quantity: int) -> list[tuple[int, ...]]:
     group = OFFICIAL_15_QUANTITY_TO_GROUP.get(int(quantity or 0))
     if not group:
         return []
-    return list(_load_official_15_group_games().get(group, []))
+    return list(OFFICIAL_15_GROUPS_REGISTRY.get(group, []))
 
 
 def _official_15_group_registry_found() -> bool:
-    return bool(_load_official_15_group_games())
+    return bool(OFFICIAL_15_GROUPS_REGISTRY)
 
 
 def _render_post_conference_monitoring_panel() -> None:
