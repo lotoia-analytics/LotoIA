@@ -9,7 +9,7 @@ Núcleo 15-17-18 consolidado institucionalmente.
 - Lei 18 valida após a geração.
 
 ## Fluxo correto
-Lei 15 gera base 11+ → Lei 17 valida 12+ → Lei 18 valida 13+, com Lei 17 e Lei 18 sempre buscando evidências de 14 e 15
+Lei 15 gera base 11+ com busca contínua por 14 e 15 → Lei 17 valida 12+ com busca contínua por 14 e 15 → Lei 18 valida 13+ com busca contínua por 14 e 15
 
 ## Limites de autoridade
 - Lei 15 continua como única camada de comando da geração.
@@ -32,4 +32,4 @@ Isso significa:
 Nenhuma lógica foi alterada neste registro. Trata-se apenas de formalização documental do núcleo institucional consolidado.
 
 ## Conclusão
-O núcleo 15-17-18 está consolidado institucionalmente: a Lei 15 gera base 11+, a Lei 17 valida 12+ e a Lei 18 valida 13+, com Lei 17 e Lei 18 sempre buscando evidências de 14 e 15, mantendo a Lei 15 como única camada de comando da geração e as demais camadas exclusivamente como validações pós-geração.
+Todas as camadas do núcleo 15-17-18 buscam 14 e 15, respeitando suas funções: Lei 15 comanda a geração 11+; Lei 17 valida a régua 12+; Lei 18 valida a régua 13+. Nenhuma camada recalibra ou substitui outra.
