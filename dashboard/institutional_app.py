@@ -7066,38 +7066,23 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
     game_size = max(2, min(25, int(size or 15)))
     policy = _institutional_generation_policy(game_size)
     if game_size == 15:
-        selected_group = str(st.session_state.get("institutional_official_15_group", "G30") or "G30").strip().upper()
-        if selected_group not in OFFICIAL_15_GROUPS:
-            selected_group = "G30"
-        group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
-        group_label_map = {group: label for group, (_, label) in OFFICIAL_15_GROUP_ROLES.items()}
-        model_label = " | ".join(
-            f"{group_label_map.get(group, group)}" if " = " in group_label_map.get(group, "") else f"{group} = {group_label_map.get(group, group)}"
-            for group in OFFICIAL_15_GROUPS
-        )
         official_label = (
-            "Materialização oficial 15 dezenas pronta. Quantidade fechada por grupo oficial."
+            "Geração direta de 15 dezenas pronta. Quantidade fechada pelo usuário."
         )
-        scientific_status = str(policy.get("policy_validation_status") or "VALIDATED_15_POLICY_LEVEL_3")
         return {
             "policy": policy,
-            "strategy_label": "Materialização oficial 15 dezenas",
-            "official_15_generation_model": "OFFICIAL_GROUP_MATERIALIZATION",
-            "allowed_15_groups": list(OFFICIAL_15_GROUPS),
-            "selected_15_group": selected_group,
-            "selected_15_group_role": group_role,
-            "selected_15_group_label": group_label,
-            "scientific_status": scientific_status,
-            "status_visual": "OFFICIAL_GROUP_MATERIALIZATION",
-            "mode": "OFFICIAL_GROUP_MATERIALIZATION",
+            "strategy_label": "Geração direta de 15 dezenas",
+            "scientific_status": "DIRECT_15_GAME_GENERATION",
+            "status_visual": "DIRECT_15_GAME_GENERATION",
+            "mode": "DIRECT_15_GAME_GENERATION",
             "main_reason": official_label,
-            "action_suggested": "usar materialização oficial fechada para próxima geração compacta",
+            "action_suggested": "usar geração direta para a próxima quantidade solicitada",
             "summary": official_label,
-            "generation_mode": "OFFICIAL_GROUP_MATERIALIZATION",
-            "policy_mode": "OFFICIAL_GROUP_MATERIALIZATION",
+            "generation_mode": "DIRECT_15_GAME_GENERATION",
+            "policy_mode": "DIRECT_15_GAME_GENERATION",
             "historical_deduplication_mode": "AUDIT_ONLY",
-            "official_package_preserved": True,
-            "official_15_generation_model_label": f"Modelo oficial 15 dezenas: {model_label}",
+            "official_package_preserved": False,
+            "official_15_generation_model_label": "Modo direto de 15 dezenas: 15 dezenas por jogo",
         }
     if game_size == 17:
         return {
@@ -8491,29 +8476,25 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     controls_cols = st.columns([1.0, 1.0])
     selected_game_size = 15
     st.session_state["institutional_dezenas_per_game"] = selected_game_size
-    st.markdown("##### Modelo oficial 15 dezenas")
-    official_model_cols = st.columns([1.4, 1.0, 1.0])
-    quantity_options = [10, 20, 30, 50]
+    st.markdown("##### Geração oficial de 15 dezenas")
+    direct_cols = st.columns([1.4, 1.0, 1.0])
     selected_quantity = int(
-        official_model_cols[0].selectbox(
-            "Quantidade oficial",
-            quantity_options,
-            index=quantity_options.index(int(st.session_state.get("institutional_total_games", 30) or 30))
-            if int(st.session_state.get("institutional_total_games", 30) or 30) in quantity_options
-            else 2,
+        direct_cols[0].number_input(
+            "Quantidade de jogos",
+            min_value=1,
+            max_value=100,
+            value=int(st.session_state.get("institutional_total_games", 30) or 30),
+            step=1,
             key="institutional_total_games",
         )
     )
-    selected_official_group = OFFICIAL_15_QUANTITY_TO_GROUP.get(selected_quantity, "G30")
-    st.session_state["institutional_official_15_group"] = selected_official_group
     requested_games = selected_quantity
-    official_model_cols[1].metric("Formato fechado", "15 dezenas")
-    official_model_cols[2].metric("Grupo oficial", selected_official_group)
-    st.caption("10 = G10 | 20 = G20 | 30 = G30 | 50 = G50")
-    controls_cols[0].metric("Quantidade oficial", requested_games)
-    controls_cols[0].caption("Seleção travada pelo modelo oficial. Não há quantidade livre nesta fase.")
-    controls_cols[1].metric("Modelo selecionado", selected_official_group)
-    controls_cols[1].caption("15 dezenas fixas por jogo. Fases 17/18 continuam inativas.")
+    direct_cols[1].metric("Formato", "15 dezenas por jogo")
+    direct_cols[2].metric("Modo", "DIRETO")
+    controls_cols[0].metric("Quantidade de jogos", requested_games)
+    controls_cols[0].caption("Fonte única de verdade: quantidade digitada pelo usuário.")
+    controls_cols[1].metric("Modelo", "Direto 15 dezenas")
+    controls_cols[1].caption("Sem grupo oficial, sem registry e sem pacote fechado.")
 
     strategy_display = _generation_strategy_display(selected_game_size)
     strategy_policy = dict(strategy_display.get("policy") or {})
@@ -8525,19 +8506,15 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     strategy_cols[1].metric("Status científico", str(strategy_display.get("scientific_status", "-") or "-"))
     strategy_cols[2].metric("Status visual", str(strategy_display.get("status_visual", "-") or "-"))
     st.success(str(strategy_display.get("summary", "-") or "-"))
-    st.caption(
-        f"Modelo oficial 15 dezenas: {selected_official_group} | "
-        f"{str(strategy_display.get('selected_15_group_label', '') or '').strip()}"
-    )
-    st.caption(str(strategy_display.get("official_15_generation_model_label", "") or ""))
+    st.caption("Geração direta de 15 dezenas | Quantidade de jogos definida pelo usuário")
     if selected_game_size == 15:
         st.caption(
             " | ".join(
                 [
-                    f"generation_mode={strategy_display.get('generation_mode', 'OFFICIAL_GROUP_MATERIALIZATION')}",
-                    f"policy_mode={strategy_display.get('policy_mode', 'OFFICIAL_GROUP_MATERIALIZATION')}",
+                    f"generation_mode={strategy_display.get('generation_mode', 'DIRECT_15_GAME_GENERATION')}",
+                    f"policy_mode={strategy_display.get('policy_mode', 'DIRECT_15_GAME_GENERATION')}",
                     f"historical_deduplication_mode={strategy_display.get('historical_deduplication_mode', 'AUDIT_ONLY')}",
-                    f"official_package_preserved={str(strategy_display.get('official_package_preserved', True)).lower()}",
+                    f"official_package_preserved={str(strategy_display.get('official_package_preserved', False)).lower()}",
                 ]
             )
         )
