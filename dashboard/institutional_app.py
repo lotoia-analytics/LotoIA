@@ -3491,7 +3491,7 @@ def _run_institutional_generation(
     batch_total_games = max(1, int(batch_total_games or total_games))
     official_group_games = _official_15_group_games_for_quantity(total_games) if int(dezenas_per_game or 0) == 15 else []
     games: list[dict[str, Any]] = []
-    used_signatures: set[str] = set(load_all_output_signatures())
+    used_signatures: set[str] = set() if official_group_games else set(load_all_output_signatures())
     if official_group_games:
         if len(official_group_games) != int(total_games):
             st.session_state["institutional_generation"] = {
@@ -8451,6 +8451,29 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+    batch_result = st.session_state.get("institutional_generation_batch_result") or {}
+    generation_result = st.session_state.get("institutional_generation_result") or {}
+    summary_result = batch_result or generation_result
+    with st.expander("Auditoria técnica ADM", expanded=False):
+        diagnostic_payload = {
+            "runtime_commit": BUILD_MARKER,
+            "selected_quantity_from_ui": int(selected_quantity),
+            "selected_quantity_from_state": int(st.session_state.get("institutional_total_games", selected_quantity) or selected_quantity),
+            "selected_group_from_ui": str(selected_official_group),
+            "selected_group_from_state": str(st.session_state.get("institutional_official_15_group", selected_official_group) or selected_official_group),
+            "generation_mode_resolved": str(strategy_display.get("generation_mode", strategy_policy.get("policy_mode", "")) or ""),
+            "policy_mode_resolved": str(strategy_display.get("policy_mode", strategy_policy.get("policy_mode", "")) or ""),
+            "materialization_called": bool(selected_game_size == 15),
+            "official_package_size_loaded": int(len(_official_15_group_games_for_quantity(requested_games)) if selected_game_size == 15 else 0),
+            "historical_deduplication_mode": str(strategy_display.get("historical_deduplication_mode", "AUDIT_ONLY" if selected_game_size == 15 else "BLOCK") or ""),
+            "historical_duplicates_found": int(summary_result.get("historical_duplicates_found", 0) or 0),
+            "historical_duplicates_removed": int(summary_result.get("historical_duplicates_removed", 0) or 0),
+            "official_package_preserved": bool(summary_result.get("official_package_preserved", selected_game_size == 15)),
+            "output_commander_status": str(summary_result.get("status_comandante_saida", "") or ""),
+            "final_generated_count": int(summary_result.get("quantidade_jogos_real_gerada", 0) or 0),
+        }
+        for key, value in diagnostic_payload.items():
+            st.caption(f"{key}={value}")
 
     natural_quantity_mode = str(strategy_policy.get("natural_quantity_mode", "") or "")
     natural_generated_games = int(strategy_policy.get("natural_generated_games", 0) or 0)
