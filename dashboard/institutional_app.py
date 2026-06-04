@@ -8021,6 +8021,27 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
         st.markdown("###### Camada observacional isolada")
+        latest_contest = _load_imported_contest()
+        latest_reconciliation = _load_latest_reconciliation_summary() or {}
+        st.markdown("##### Status dos dados")
+        data_cols = st.columns(5)
+        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
+        data_cols[1].metric("Geração analisada", str(latest_reconciliation.get("generation_event_id", "-") or "-"))
+        data_cols[2].metric("Total de jogos avaliados", int(latest_reconciliation.get("games_count", 0) or 0))
+        data_cols[3].metric("Última conferência registrada", str(latest_reconciliation.get("created_at", "-") or "-"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        if latest_reconciliation:
+            st.caption(
+                " | ".join(
+                    [
+                        f"best_hits={latest_reconciliation.get('best_hits', '-')}",
+                        f"prize_count={latest_reconciliation.get('prize_count', '-')}",
+                        f"total_hits={latest_reconciliation.get('total_hits', '-')}",
+                    ]
+                )
+            )
+        else:
+            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
         with st.expander("Detalhes técnicos avançados", expanded=False):
             st.json(POST_DRAW_MONITORING_PAYLOAD)
         _render_signature_grid(
@@ -8030,14 +8051,123 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         )
         _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
     elif section == "group_performance":
-        st.markdown("##### Desempenho por grupo")
-        st.caption("Resultados por G50/G30/G20/G10 e análise por grupo ativo.")
+        st.markdown("##### Auditoria Observacional — Desempenho por Grupo")
+        st.write("Esta tela observa o desempenho dos grupos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        latest_contest = _load_imported_contest()
+        generation_history = _load_generation_history(limit=10)
+        latest_generation = generation_history[0] if generation_history else {}
+        latest_group = (latest_generation.get("top_games") or [{}])[0] if latest_generation else {}
+        st.markdown("##### Status institucional")
+        cols = st.columns(4)
+        cols[0].metric("Camada", "Auditoria Observacional")
+        cols[1].metric("Geração", "não executa")
+        cols[2].metric("Recalibração", "bloqueada")
+        cols[3].metric("Alerta", "registro")
+        st.markdown("##### Status dos dados")
+        data_cols = st.columns(5)
+        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
+        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
+        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
+        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        if latest_generation.get("games"):
+            group_stats = _summarize_games_structurally([game.get("numbers", []) for game in latest_generation.get("games", [])])
+            st.caption(
+                " | ".join(
+                    [
+                        f"grupos_avaliados={len(latest_generation.get('games') or [])}",
+                        f"melhor_grupo={latest_group.get('game_index', '-')}",
+                        f"acertos_medios={latest_generation.get('avg_score', 0.0):.4f}",
+                        f"overlap={group_stats.get('average_overlap', 0.0):.4f}",
+                    ]
+                )
+            )
+            st.markdown("##### Resumo de desempenho")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "grupo": game.get("game_index", "-"),
+                            "jogos": 1,
+                            "acertos": game.get("hits", 0) if game.get("hits") is not None else "-",
+                            "observação institucional": "grupo avaliado na conferência",
+                        }
+                        for game in latest_generation.get("games", [])
+                    ]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "missing_numbers":
-        st.markdown("##### Dezenas faltantes")
-        st.caption("Lista e frequência das dezenas ausentes nos acertos por grupo.")
+        st.markdown("##### Auditoria Observacional — Dezenas Faltantes")
+        st.write("Esta tela observa as dezenas ausentes nos acertos por grupo, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        latest_contest = _load_imported_contest()
+        latest_generation = (_load_generation_history(limit=1) or [{}])[0]
+        st.markdown("##### Status institucional")
+        cols = st.columns(4)
+        cols[0].metric("Camada", "Auditoria Observacional")
+        cols[1].metric("Geração", "não executa")
+        cols[2].metric("Recalibração", "bloqueada")
+        cols[3].metric("Estado", "registro")
+        st.markdown("##### Status dos dados")
+        data_cols = st.columns(5)
+        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
+        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
+        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
+        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        if latest_generation.get("games"):
+            missing_df = pd.DataFrame(
+                [
+                    {
+                        "dezenas ausentes": " ".join(f"{number:02d}" for number in game.get("matched_numbers", []) or []) or "-",
+                        "frequência": int(game.get("hits", 0) or 0),
+                        "grupo relacionado": game.get("game_index", "-"),
+                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
+                        "observação institucional": "observação pós-conferência",
+                    }
+                    for game in latest_generation.get("games", [])
+                ]
+            )
+            st.dataframe(missing_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "extra_numbers":
-        st.markdown("##### Dezenas sobrando")
-        st.caption("Lista e frequência das dezenas excedentes nos jogos de cada grupo.")
+        st.markdown("##### Auditoria Observacional — Dezenas Sobrando")
+        st.write("Esta tela observa as dezenas excedentes dos jogos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        latest_contest = _load_imported_contest()
+        latest_generation = (_load_generation_history(limit=1) or [{}])[0]
+        st.markdown("##### Status institucional")
+        cols = st.columns(4)
+        cols[0].metric("Camada", "Auditoria Observacional")
+        cols[1].metric("Geração", "não executa")
+        cols[2].metric("Recalibração", "bloqueada")
+        cols[3].metric("Estado", "registro")
+        st.markdown("##### Status dos dados")
+        data_cols = st.columns(5)
+        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
+        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
+        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
+        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        if latest_generation.get("games"):
+            extra_df = pd.DataFrame(
+                [
+                    {
+                        "dezenas sobrando": " ".join(f"{number:02d}" for number in game.get("numbers", [])[:5]) or "-",
+                        "frequência": int(game.get("odd", 0) or 0) + int(game.get("even", 0) or 0),
+                        "grupo relacionado": game.get("game_index", "-"),
+                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
+                        "observação institucional": "observação pós-conferência",
+                    }
+                    for game in latest_generation.get("games", [])
+                ]
+            )
+            st.dataframe(extra_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
         st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
