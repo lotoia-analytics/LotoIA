@@ -32,6 +32,7 @@ from clean_core import (  # type: ignore
 
 OFFICIAL_CARD_FORMATS = (15, 17, 18)
 MENU_ITEMS = [
+    "Gerar Jogos",
     "Conferir Resultados",
     "Simular Resultados",
     "Histórico Analítico",
@@ -354,15 +355,18 @@ def _render_apagar_historicos() -> None:
 
 def _render_navigation() -> str:
     st.sidebar.title("LotoIA Clean Zero")
-    st.sidebar.markdown("#### Operacoes")
-    st.sidebar.markdown("#### Historicos")
+    st.sidebar.markdown("#### OPERAÇÕES")
+    st.sidebar.markdown("#### HISTÓRICOS")
     return st.sidebar.radio("Menu Principal", MENU_ITEMS, index=0)
 
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA Clean Zero", layout="wide")
     menu = _render_navigation()
-    if menu == "Conferir Resultados":
+    if menu == "Gerar Jogos":
+        _render_header()
+        _render_generator_block()
+    elif menu == "Conferir Resultados":
         _render_header()
         _render_conferir_resultados()
     elif menu == "Simular Resultados":
