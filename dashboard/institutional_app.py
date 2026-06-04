@@ -7400,53 +7400,67 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
 
-    def _nav_entry(label: str, *, disabled: bool = False) -> None:
-        if st.sidebar.button(label, key=f"nav_{PAGE_TARGETS.get(label, label)}", disabled=disabled):
-            page_id = _canonical_page_id(label)
-            st.session_state["institutional_page_id"] = page_id
+    def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
+        resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
+        if st.sidebar.button(label, key=f"nav_{resolved_page_id}", disabled=disabled):
+            st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
-    for label in ["Painel Inicial Institucional", "Gerador ADM - Lei 15 Limpo", "Conferir Resultados", "Simular Resultados"]:
-        _nav_entry(label)
+    for label, page_id in [
+        ("Painel Inicial Institucional", "home"),
+        ("Gerador ADM - Lei 15 Limpo", "clean_law15_generation"),
+        ("Conferir Resultados", "conference"),
+        ("Simular Resultados", "simulation"),
+    ]:
+        _nav_entry(label, page_id)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
-    for label in ["Hist?rico Anal?tico", "Hist?rico Institucional", "Comparativos hist?rico"]:
-        _nav_entry(label)
+    for label, page_id in [
+        ("Hist?rico Anal?tico", "history_analytical"),
+        ("Hist?rico Institucional", "history_institutional"),
+        ("Comparativos hist?rico", "comparative_history"),
+    ]:
+        _nav_entry(label, page_id)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
-    for label in [
-        "Auditoria Runtime",
-        "Auditoria e Monitoramento",
-        "Confer?ncia por concurso",
-        "Desempenho por grupo",
-        "Dezenas faltantes",
-        "Dezenas sobrando",
+    for label, page_id in [
+        ("Auditoria Runtime", "audit"),
+        ("Auditoria e Monitoramento", "audit_monitoring"),
+        ("Confer?ncia por concurso", "audit_monitoring_conference"),
+        ("Desempenho por grupo", "audit_monitoring_group_performance"),
+        ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
+        ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
-        _nav_entry(label)
+        _nav_entry(label, page_id)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
-    for label in ["Benchmark resumido", "Estat?sticas operacionais", "M?tricas HB", "Cobertura estrutural"]:
-        _nav_entry(label)
+    for label, page_id in [
+        ("Benchmark resumido", "summary_benchmark"),
+        ("Estat?sticas operacionais", "operational_statistics"),
+        ("M?tricas HB", "hb_metrics"),
+        ("Cobertura estrutural", "structural_coverage"),
+    ]:
+        _nav_entry(label, page_id)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
-    for label in [
-        "Vazamento lateral",
-        "Evolu??o 13 -> 14",
-        "Evolu??o 14 -> 15",
-        "Hip?teses para teste offline",
-        "An?lises Estrat?gicas",
-        "Testar Estrat?gias",
-        "Simular Estrat?gias",
-        "Replay institucional",
-        "HB Geometry",
+    for label, page_id in [
+        ("Vazamento lateral", "audit_monitoring_side_leak"),
+        ("Evolu??o 13 -> 14", "audit_monitoring_13_to_14"),
+        ("Evolu??o 14 -> 15", "audit_monitoring_14_to_15"),
+        ("Hip?teses para teste offline", "audit_monitoring_offline_hypotheses"),
+        ("An?lises Estrat?gicas", "strategies_analysis"),
+        ("Testar Estrat?gias", "strategies_test"),
+        ("Simular Estrat?gias", "strategies_simulation"),
+        ("Replay institucional", "institutional_replay"),
+        ("HB Geometry", "hb_geometry"),
     ]:
-        _nav_entry(label, disabled=True)
+        _nav_entry(label, page_id, disabled=True)
     st.sidebar.caption("Itens de quarentena permanecem vis?veis apenas como refer?ncia institucional.")
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
-    for label in ["Limpar Hist?ricos", "Apagar Hist?rico"]:
-        _nav_entry(label, disabled=True)
+    for label, page_id in [("Limpar Hist?ricos", "clear_histories"), ("Apagar Hist?rico", "delete_history")]:
+        _nav_entry(label, page_id, disabled=True)
     st.sidebar.caption("A??es destrutivas ficam bloqueadas at? defini??o de trava institucional.")
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
