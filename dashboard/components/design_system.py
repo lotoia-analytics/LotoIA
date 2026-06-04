@@ -104,6 +104,42 @@ def render_institutional_design_system() -> None:
         .lotoia-flow-panel {
             padding: 1rem 1.05rem;
         }
+        .lotoia-signature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+            gap: 0.55rem;
+            margin: 0.35rem 0 0.75rem 0;
+        }
+        .lotoia-signature-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.45rem 0.7rem;
+            border-radius: 0.85rem;
+            border: 1px solid #d7e1ec;
+            background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
+            box-shadow: 0 8px 18px rgba(18, 52, 86, 0.05);
+            overflow: hidden;
+        }
+        .lotoia-signature-index {
+            flex: 0 0 auto;
+            width: 1.9rem;
+            height: 1.9rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #123456;
+            color: #ffffff;
+            font-size: 0.72rem;
+            font-weight: 800;
+        }
+        .lotoia-signature-text {
+            font-size: 0.84rem;
+            color: #20415f;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
         </style>
         """,
         unsafe_allow_html=True,

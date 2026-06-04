@@ -105,6 +105,43 @@ POST_DRAW_MONITORING_PAYLOAD = {
     "gold_target": 14,
     "diamond_target": 15,
 }
+
+
+def _render_signature_grid(signatures: list[str], *, title: str, empty_label: str = "Nenhuma assinatura disponível") -> None:
+    st.markdown(f"##### {title}")
+    if not signatures:
+        st.caption(empty_label)
+        return
+    rows = []
+    for index, signature in enumerate(signatures, start=1):
+        rows.append(
+            f"""
+            <div class="lotoia-signature-pill">
+                <span class="lotoia-signature-index">{index:02d}</span>
+                <span class="lotoia-signature-text">{signature}</span>
+            </div>
+            """
+        )
+    st.markdown(
+        """
+        <div class="lotoia-signature-grid">
+        """
+        + "".join(rows)
+        + """
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_block_distribution(block_distribution: list[int]) -> None:
+    st.markdown("##### Distribuição por bloco")
+    if not block_distribution:
+        st.caption("Distribuição indisponível")
+        return
+    cols = st.columns(min(5, max(1, len(block_distribution))))
+    for index, value in enumerate(block_distribution):
+        cols[index % len(cols)].metric(f"Bloco {index}", int(value))
 HISTORICAL_TEST_TABLES = (
     "generation_events",
     "generated_games",
@@ -7687,6 +7724,12 @@ def _render_post_conference_monitoring_panel() -> None:
             "- Não altera Lei\n"
             "- Não recalibra"
         )
+    _render_signature_grid(
+        list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+        title="Dezenas organizadas no topo",
+        empty_label="Este painel não recebeu dezenas para exibir no topo.",
+    )
+    _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
     with st.expander("Payload de monitoramento", expanded=False):
         st.json(POST_DRAW_MONITORING_PAYLOAD)
 
