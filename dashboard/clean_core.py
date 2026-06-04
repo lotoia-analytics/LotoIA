@@ -42,6 +42,20 @@ def _format_numbers_for_history(values: Sequence[int] | None) -> str:
     return " ".join(f"{number:02d}" for number in _to_int_list(values))
 
 
+def _parse_numbers_text(value: str | None) -> list[int]:
+    if not value:
+        return []
+    numbers: list[int] = []
+    for token in str(value).replace(",", " ").split():
+        try:
+            number = int(token)
+        except Exception:
+            continue
+        if 1 <= number <= 25:
+            numbers.append(number)
+    return numbers
+
+
 def _database_snapshot() -> dict[str, Any]:
     create_database(DB_PATH)
     counts: dict[str, int] = {}
@@ -473,5 +487,117 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
                 "premiação",
                 "observações",
             ]
-        )
+    )
     return df
+
+
+def _load_clean_generated_rows() -> list[dict[str, Any]]:
+    return _load_accumulated_analytical_rows()
+
+
+def _load_official_history_rows() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    try:
+        with get_session(DB_PATH) as session:
+            for contest_number, created_at, data, dezenas in session.execute(
+                text(
+                    "SELECT contest_number, created_at, data, dezenas "
+                    "FROM imported_contests ORDER BY contest_number ASC"
+                )
+            ).fetchall():
+                parsed_numbers = _parse_numbers_text(dezenas)
+                rows.append(
+                    {
+                        "contest_number": int(contest_number or 0),
+                        "created_at": created_at.isoformat() if getattr(created_at, "isoformat", None) else str(created_at or ""),
+                        "data": str(data or ""),
+                        "dezenas": " ".join(f"{number:02d}" for number in parsed_numbers),
+                        "numbers": parsed_numbers,
+                        "source": "imported_contests",
+                    }
+                )
+    except Exception:
+        pass
+    if rows:
+        return rows
+    try:
+        with get_session(DB_PATH) as session:
+            for contest_number, created_at, draw_date, numbers, source in session.execute(
+                text(
+                    "SELECT contest_number, created_at, draw_date, numbers, source "
+                    "FROM lotofacil_official_history ORDER BY contest_number ASC"
+                )
+            ).fetchall():
+                parsed_numbers = _parse_numbers_text(numbers)
+                rows.append(
+                    {
+                        "contest_number": int(contest_number or 0),
+                        "created_at": created_at.isoformat() if getattr(created_at, "isoformat", None) else str(created_at or ""),
+                        "data": str(draw_date or ""),
+                        "dezenas": " ".join(f"{number:02d}" for number in parsed_numbers),
+                        "numbers": parsed_numbers,
+                        "source": str(source or "lotofacil_official_history"),
+                    }
+                )
+    except Exception:
+        return []
+    return rows
+
+
+def _load_clean_institutional_events() -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    try:
+        with get_session(DB_PATH) as session:
+            generation_events = (
+                session.query(GenerationEvent)
+                .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+                .limit(20)
+                .all()
+            )
+            for event in generation_events:
+                context = dict(event.context_json or {})
+                events.append(
+                    {
+                        "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                        "event_type": "Geração Clean Zero",
+                        "headline": f"Geração #{event.id}",
+                        "details": f"Formato {context.get('selected_card_format', context.get('format_cartao', 15))} | Jogos {len(event.generated_games or [])}",
+                    }
+                )
+            reconciliation_runs = (
+                session.query(ReconciliationRun)
+                .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+                .limit(20)
+                .all()
+            )
+            for run in reconciliation_runs:
+                payload = dict(run.payload or {})
+                events.append(
+                    {
+                        "created_at": run.created_at.isoformat() if getattr(run, "created_at", None) else "",
+                        "event_type": "Conferência institucional",
+                        "headline": f"Reconciliação #{run.id}",
+                        "details": f"Concurso {payload.get('contest_number', '-')}",
+                    }
+                )
+    except Exception:
+        return []
+    return events
+
+
+def _load_generated_games_for_reconciliation() -> list[dict[str, Any]]:
+    rows = _load_clean_generated_rows()
+    games: list[dict[str, Any]] = []
+    for row in rows:
+        games.append(
+            {
+                "generation_event_id": int(row.get("generation_event_id", 0) or 0),
+                "game_index": int(row.get("jogo n°", 0) or 0),
+                "numbers": _parse_numbers_text(str(row.get("cartão_final", "") or "")),
+                "core_numbers": _parse_numbers_text(str(row.get("núcleo_lei_15", "") or "")),
+                "audited_reserve_numbers": _parse_numbers_text(str(row.get("reservas_auditadas", "") or "")),
+                "final_card_numbers": _parse_numbers_text(str(row.get("cartão_final", "") or "")),
+                "formato_cartao": int(row.get("formato_cartao", 15) or 15),
+            }
+        )
+    return games
