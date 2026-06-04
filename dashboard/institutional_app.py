@@ -16,6 +16,7 @@ import threading
 import time
 import uuid
 from collections import Counter
+from functools import lru_cache
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
