@@ -40,6 +40,13 @@ MENU_ITEMS = [
     "Limpar Histórico",
     "Apagar Históricos",
 ]
+OPERATIONS_ITEMS = ["Gerar Jogos", "Conferir Resultados", "Simular Resultados"]
+HISTORY_ITEMS = [
+    "Histórico Analítico",
+    "Histórico Institucional",
+    "Limpar Histórico",
+    "Apagar Históricos",
+]
 
 
 def _numbers_to_text(numbers: Iterable[int]) -> str:
@@ -356,8 +363,15 @@ def _render_apagar_historicos() -> None:
 def _render_navigation() -> str:
     st.sidebar.title("LotoIA Clean Zero")
     st.sidebar.markdown("#### OPERAÇÕES")
+    selected_operation = st.sidebar.radio(" ", OPERATIONS_ITEMS, index=0, key="zero_nav_operations", label_visibility="collapsed")
     st.sidebar.markdown("#### HISTÓRICOS")
-    return st.sidebar.radio("Menu Principal", MENU_ITEMS, index=0)
+    selected_history = st.sidebar.radio(" ", HISTORY_ITEMS, index=0, key="zero_nav_histories", label_visibility="collapsed")
+    st.session_state["zero_selected_menu"] = st.session_state.get("zero_selected_menu", selected_operation)
+    if selected_operation != st.session_state.get("zero_selected_menu"):
+        st.session_state["zero_selected_menu"] = selected_operation
+    if selected_history != st.session_state.get("zero_selected_menu"):
+        st.session_state["zero_selected_menu"] = selected_history
+    return st.session_state.get("zero_selected_menu", "Gerar Jogos")
 
 
 def main() -> None:
