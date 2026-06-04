@@ -42,7 +42,7 @@ MENU_ITEMS = [
 ]
 OPERATIONS_ITEMS = ["Gerar Jogos", "Conferir Resultados", "Simular Resultados"]
 HISTORY_ITEMS = [
-    "Histórico Analítico",
+    "Históricos Analíticos",
     "Histórico Institucional",
     "Limpar Histórico",
     "Apagar Históricos",
@@ -384,10 +384,10 @@ def _render_navigation() -> str:
         st.session_state["zero_selected_menu"] = "Gerar Jogos"
 
     def _nav_button(label: str, *, active: bool) -> None:
-        if st.button(
+        if st.sidebar.button(
             label,
             key=f"zero_nav_{label}",
-            use_container_width=True,
+            use_container_width=False,
             type="primary" if active else "secondary",
         ):
             st.session_state["zero_selected_menu"] = label
@@ -413,7 +413,7 @@ def main() -> None:
     elif menu == "Simular Resultados":
         _render_header()
         _render_simular_resultados()
-    elif menu == "Histórico Analítico":
+    elif menu == "Históricos Analíticos":
         _render_header()
         _render_historico_analitico()
     elif menu == "Histórico Institucional":
