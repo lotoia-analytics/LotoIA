@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import pandas as pd
+from sqlalchemy import text
 
 CURRENT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = CURRENT_DIR.parent
@@ -49,14 +50,26 @@ def _database_snapshot() -> dict[str, Any]:
         counts["generation_events"] = int(session.query(GenerationEvent).count())
         counts["generated_games"] = int(session.query(GeneratedGame).count())
         counts["reconciliation_runs"] = int(session.query(ReconciliationRun).count())
-        counts["imported_contests"] = int(session.execute("SELECT COUNT(*) FROM imported_contests").scalar() or 0)
-        counts["lotofacil_official_history"] = int(session.execute("SELECT COUNT(*) FROM lotofacil_official_history").scalar() or 0)
+        try:
+            counts["imported_contests"] = int(session.execute(text("SELECT COUNT(*) FROM imported_contests")).scalar() or 0)
+        except Exception:
+            counts["imported_contests"] = 0
+        try:
+            counts["lotofacil_official_history"] = int(session.execute(text("SELECT COUNT(*) FROM lotofacil_official_history")).scalar() or 0)
+        except Exception:
+            counts["lotofacil_official_history"] = 0
         latest_generation = session.query(GenerationEvent).order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc()).first()
         latest["generation_events"] = int(latest_generation.id) if latest_generation else "-"
         latest["generated_games"] = int(latest_generation.id) if latest_generation else "-"
         latest["reconciliation_runs"] = int(session.query(ReconciliationRun).order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc()).first().id) if session.query(ReconciliationRun).count() else "-"
-        latest["imported_contests"] = int(session.execute("SELECT COALESCE(MAX(contest_number), 0) FROM imported_contests").scalar() or 0) or "-"
-        latest["lotofacil_official_history"] = int(session.execute("SELECT COALESCE(MAX(contest_number), 0) FROM lotofacil_official_history").scalar() or 0) or "-"
+        try:
+            latest["imported_contests"] = int(session.execute(text("SELECT COALESCE(MAX(contest_number), 0) FROM imported_contests")).scalar() or 0) or "-"
+        except Exception:
+            latest["imported_contests"] = "-"
+        try:
+            latest["lotofacil_official_history"] = int(session.execute(text("SELECT COALESCE(MAX(contest_number), 0) FROM lotofacil_official_history")).scalar() or 0) or "-"
+        except Exception:
+            latest["lotofacil_official_history"] = "-"
     return {"counts": counts, "latest": latest, "backend": "sqlite", "source": "clean_core"}
 
 
@@ -178,7 +191,10 @@ def _persist_clean_law15_generation_history(
     }
     target_contest = None
     with get_session(DB_PATH) as session:
-        latest_imported = session.execute("SELECT COALESCE(MAX(contest_number), NULL) FROM imported_contests").scalar()
+        try:
+            latest_imported = session.execute(text("SELECT COALESCE(MAX(contest_number), NULL) FROM imported_contests")).scalar()
+        except Exception:
+            latest_imported = None
         if latest_imported:
             target_contest = int(latest_imported)
     return _persist_generation_snapshot(
