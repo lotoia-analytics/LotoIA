@@ -8844,13 +8844,9 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             )
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
-                " | ".join(
-                    [
-                        f"Núcleo Lei 15={len(games[0].get('core_numbers', games[0].get('numbers', [])))}",
-                        f"Reservas auditadas={len(games[0].get('audited_reserve_numbers', []))}",
-                        f"Cartão final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}",
-                    ]
-                )
+                f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
+                f"reservas_auditadas={len(games[0].get('audited_reserve_numbers', []))} | "
+                f"cartão_final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}"
             )
         with st.expander("Diagnóstico da página limpa", expanded=False):
             st.write(f"requested_count={result.get('requested_count', '-')}")
