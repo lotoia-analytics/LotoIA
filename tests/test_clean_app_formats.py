@@ -1,4 +1,4 @@
-from dashboard.institutional_app import _expand_official_card, _expand_generation_games_for_format
+from dashboard.clean_core import _expand_official_card, _expand_generation_games_for_format
 
 
 def test_expand_official_card_15_keeps_core() -> None:
