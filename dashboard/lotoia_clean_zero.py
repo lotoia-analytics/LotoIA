@@ -181,80 +181,122 @@ def _render_generator_block() -> dict[str, Any]:
             )
     return result
 
+def _render_metric_row(metrics: list[tuple[str, Any]]) -> None:
+    columns = st.columns(len(metrics))
+    for column, (label, value) in zip(columns, metrics, strict=False):
+        with column:
+            st.metric(label, value)
+
 
 def _render_conferir_resultados() -> None:
     st.markdown("### Conferir Resultados")
     games = _load_generated_games_for_reconciliation()
     results = _load_official_results()
-    if not games:
-        st.info("Ainda nao ha jogos persistidos no Clean Zero.")
-        return
+    reconciliations = _load_clean_institutional_events()
+    _render_metric_row(
+        [
+            ("IMPORTED_CONTESTS", len(results)),
+            ("GENERATED_GAMES", len(games)),
+            ("RECONCILIATION_RUNS", sum(1 for event in reconciliations if event.get("event_type") == "Confer?ncia institucional")),
+        ]
+    )
+    st.caption("Compare os jogos gerados com o concurso selecionado no banco.")
+    result_numbers: list[int] = []
     if results:
         contest_map = {f"{row['contest_number']} - {row.get('data', '')}": row for row in results}
-        selected_label = st.selectbox("Resultado oficial", list(contest_map.keys()), index=0, key="zero_conferir_resultado")
+        selected_label = st.selectbox(
+            "Selecionar concurso",
+            list(contest_map.keys()),
+            index=0,
+            key="zero_conferir_resultado",
+        )
         result_numbers = contest_map[selected_label]["numbers"]
         st.caption(f"Dezenas oficiais: {_numbers_to_text(result_numbers)}")
     else:
         manual = st.text_input("Resultado oficial (15 dezenas)", key="zero_conferir_manual")
         result_numbers = _parse_numbers_from_text(manual)
         if len(result_numbers) != 15:
-            st.warning("Resultado indisponivel ou incompleto.")
+            st.warning("Resultado indispon?vel ou incompleto.")
+    if st.button("Conferir Resultados", type="primary", key="zero_conferir_button"):
+        if len(result_numbers) != 15:
+            st.warning("Resultado indispon?vel ou incompleto.")
             return
-    rows = []
-    for index, game in enumerate(games, start=1):
-        final_card = list(game.get("final_card_numbers") or game.get("numbers") or [])
-        core_numbers = list(game.get("core_numbers") or [])
-        reserves = list(game.get("audited_reserve_numbers") or [])
-        hits = _hits(final_card, result_numbers)
-        rows.append(
-            {
-                "jogo": index,
-                "núcleo_lei_15": _numbers_to_text(core_numbers),
-                "reservas_auditadas": " ".join(f"+{int(n):02d}" for n in reserves) or "-",
-                "cartão_final": _numbers_to_text(final_card),
-                "acertos": hits,
-            }
+        if not games:
+            st.info("Ainda n?o h? jogos persistidos no Clean Zero.")
+            return
+        rows = []
+        for index, game in enumerate(games, start=1):
+            final_card = list(game.get("final_card_numbers") or game.get("numbers") or [])
+            core_numbers = list(game.get("core_numbers") or [])
+            reserves = list(game.get("audited_reserve_numbers") or [])
+            hits = _hits(final_card, result_numbers)
+            rows.append(
+                {
+                    "jogo": index,
+                    "n?cleo_lei_15": _numbers_to_text(core_numbers),
+                    "reservas_auditadas": " ".join(f"+{int(n):02d}" for n in reserves) or "-",
+                    "cart?o_final": _numbers_to_text(final_card),
+                    "acertos": hits,
+                }
+            )
+        df = pd.DataFrame(rows).sort_values(["acertos", "jogo"], ascending=[False, True])
+        st.dataframe(df, hide_index=True, use_container_width=True)
+        summary = df["acertos"].value_counts().reindex([11, 12, 13, 14, 15], fill_value=0)
+        cards = st.columns(5)
+        for column, hits in zip(cards, [11, 12, 13, 14, 15], strict=False):
+            with column:
+                st.metric(f"{hits} ACERTOS", int(summary.loc[hits]))
+        st.caption(
+            " | ".join(
+                [
+                    f"11+={int((df['acertos'] >= 11).sum())}",
+                    f"12+={int((df['acertos'] >= 12).sum())}",
+                    f"13+={int((df['acertos'] >= 13).sum())}",
+                    f"14={int((df['acertos'] == 14).sum())}",
+                    f"15={int((df['acertos'] == 15).sum())}",
+                ]
+            )
         )
-    df = pd.DataFrame(rows).sort_values(["acertos", "jogo"], ascending=[False, True])
-    st.dataframe(df, hide_index=True, use_container_width=True)
-    summary = df["acertos"].value_counts().reindex([11, 12, 13, 14, 15], fill_value=0)
-    st.caption(
-        " | ".join(
-            [
-                f"11+={int((df['acertos'] >= 11).sum())}",
-                f"12+={int((df['acertos'] >= 12).sum())}",
-                f"13+={int((df['acertos'] >= 13).sum())}",
-                f"14={int((df['acertos'] == 14).sum())}",
-                f"15={int((df['acertos'] == 15).sum())}",
-            ]
-        )
-    )
 
 
 def _render_simular_resultados() -> None:
     st.markdown("### Simular Resultados")
     games = _load_generated_games_for_reconciliation()
-    if not games:
-        st.info("Ainda nao ha jogos persistidos no Clean Zero.")
-        return
+    reconciliations = _load_clean_institutional_events()
+    last_event = reconciliations[0]["headline"] if reconciliations else "-"
+    _render_metric_row(
+        [
+            ("GENERATED_GAMES", len(games)),
+            ("IMPORTED_CONTESTS", len(_load_official_results())),
+            ("LAST_EVENT", last_event),
+            ("RUNTIME", "idle"),
+        ]
+    )
+    st.caption("Digite as dezenas sorteadas para comparar com os jogos persistidos.")
     manual = st.text_area("Simular resultado de 15 dezenas", key="zero_simular_manual", height=80)
     result_numbers = _parse_numbers_from_text(manual)
     if len(result_numbers) != 15:
-        st.warning("Digite 15 dezenas validas para simular.")
-        return
-    rows = []
-    for index, game in enumerate(games, start=1):
-        final_card = list(game.get("final_card_numbers") or game.get("numbers") or [])
-        hits = _hits(final_card, result_numbers)
-        rows.append(
-            {
-                "jogo": index,
-                "cartão_final": _numbers_to_text(final_card),
-                "acertos": hits,
-            }
-        )
-    df = pd.DataFrame(rows).sort_values(["acertos", "jogo"], ascending=[False, True])
-    st.dataframe(df, hide_index=True, use_container_width=True)
+        st.warning("Digite 15 dezenas v?lidas para simular.")
+    if st.button("Simular Resultados", type="primary", key="zero_simular_button"):
+        if len(result_numbers) != 15:
+            st.warning("Digite 15 dezenas v?lidas para simular.")
+            return
+        if not games:
+            st.info("Nenhum jogo encontrado para simula??o.")
+            return
+        rows = []
+        for index, game in enumerate(games, start=1):
+            final_card = list(game.get("final_card_numbers") or game.get("numbers") or [])
+            hits = _hits(final_card, result_numbers)
+            rows.append(
+                {
+                    "jogo": index,
+                    "cart?o_final": _numbers_to_text(final_card),
+                    "acertos": hits,
+                }
+            )
+        df = pd.DataFrame(rows).sort_values(["acertos", "jogo"], ascending=[False, True])
+        st.dataframe(df, hide_index=True, use_container_width=True)
 
 
 def _render_historico_analitico() -> None:
@@ -314,7 +356,7 @@ def _render_historico_institucional() -> None:
 
 def _render_limpar_historico() -> None:
     st.markdown("### Limpar Histórico")
-    if st.button("Limpar visualizacao / filtros", key="zero_clear_session"):
+    if st.button("Limpar visualiza??o / filtros", key="zero_clear_session"):
         for key in [
             "zero_generation_result",
             "zero_requested_count",
