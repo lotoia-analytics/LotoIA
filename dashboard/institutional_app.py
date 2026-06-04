@@ -10085,15 +10085,15 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     diag_cols[4].metric("generation_event_id_mais_antigo", min(generation_options) if generation_options else "-")
     diag_cols[5].metric("generation_event_id_mais_recente", max(generation_options) if generation_options else "-")
 
-    st.markdown("##### Jogos completos historicos conferiveis")
-    if not display_games.empty:
-        st.dataframe(display_games, hide_index=True, use_container_width=True, height=560)
-    else:
-        st.info("Nenhum jogo conferivel encontrado com os filtros atuais.")
+    with st.expander("Jogos completos históricos conferíveis — detalhes avançados", expanded=False):
+        if not display_games.empty:
+            st.dataframe(display_games, hide_index=True, use_container_width=True, height=560)
+        else:
+            st.info("Nenhum jogo conferível encontrado com os filtros atuais.")
 
     st.markdown("##### Top jogos historicos conferiveis")
     if not top_df.empty:
-        st.dataframe(top_df, hide_index=True, use_container_width=True, height=520)
+        st.dataframe(top_df.head(20), hide_index=True, use_container_width=True, height=520)
     else:
         st.info("Nenhum top jogo conferivel encontrado com os filtros atuais.")
 
