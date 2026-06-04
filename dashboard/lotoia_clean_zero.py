@@ -287,11 +287,29 @@ def _render_historico_analitico() -> None:
 
 def _render_historico_institucional() -> None:
     st.markdown("### Histórico Institucional")
-    events = _load_clean_institutional_events()
-    if not events:
+    rows = _load_official_results()
+    if not rows:
         st.info("Histórico institucional indisponível ou vazio.")
         return
-    st.dataframe(pd.DataFrame(events), hide_index=True, use_container_width=True)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        st.info("Histórico institucional indisponível ou vazio.")
+        return
+    df = df.rename(
+        columns={
+            "contest_number": "concurso",
+            "data": "data",
+            "dezenas": "dezenas_sorteadas",
+            "source": "fonte",
+        }
+    )
+    df["concurso"] = df["concurso"].astype(int)
+    st.caption(f"Total de concursos: {len(df)} | Primeiro concurso: {df['concurso'].min()} | Último concurso: {df['concurso'].max()}")
+    st.dataframe(
+        df[["concurso", "data", "dezenas_sorteadas", "fonte"]],
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def _render_limpar_historico() -> None:
@@ -362,16 +380,25 @@ def _render_apagar_historicos() -> None:
 
 def _render_navigation() -> str:
     st.sidebar.title("LotoIA Clean Zero")
+    if "zero_selected_menu" not in st.session_state:
+        st.session_state["zero_selected_menu"] = "Gerar Jogos"
+
+    def _nav_button(label: str, *, active: bool) -> None:
+        if st.button(
+            label,
+            key=f"zero_nav_{label}",
+            use_container_width=True,
+            type="primary" if active else "secondary",
+        ):
+            st.session_state["zero_selected_menu"] = label
+
     st.sidebar.markdown("#### OPERAÇÕES")
-    selected_operation = st.sidebar.radio(" ", OPERATIONS_ITEMS, index=0, key="zero_nav_operations", label_visibility="collapsed")
+    for label in OPERATIONS_ITEMS:
+        _nav_button(label, active=st.session_state["zero_selected_menu"] == label)
     st.sidebar.markdown("#### HISTÓRICOS")
-    selected_history = st.sidebar.radio(" ", HISTORY_ITEMS, index=0, key="zero_nav_histories", label_visibility="collapsed")
-    st.session_state["zero_selected_menu"] = st.session_state.get("zero_selected_menu", selected_operation)
-    if selected_operation != st.session_state.get("zero_selected_menu"):
-        st.session_state["zero_selected_menu"] = selected_operation
-    if selected_history != st.session_state.get("zero_selected_menu"):
-        st.session_state["zero_selected_menu"] = selected_history
-    return st.session_state.get("zero_selected_menu", "Gerar Jogos")
+    for label in HISTORY_ITEMS:
+        _nav_button(label, active=st.session_state["zero_selected_menu"] == label)
+    return st.session_state["zero_selected_menu"]
 
 
 def main() -> None:
