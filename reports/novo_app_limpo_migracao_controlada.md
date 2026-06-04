@@ -48,9 +48,11 @@ A criação do deploy separado foi tentada, mas a plataforma retornou limite de 
 O app limpo ficou criado no repositório e pronto para deploy assim que houver quota disponível.
 
 ## Desacoplamento do App Antigo
-O entrypoint `dashboard/clean_app.py` foi desacoplado do `dashboard/institutional_app.py` e passou a usar `dashboard/clean_core.py` com helpers neutros e funções puras necessárias para execução independente no Render.
+O entrypoint `dashboard/clean_app.py` foi desacoplado do `dashboard/institutional_app.py` e passou a renderizar suas próprias páginas.
 
-Com isso, o novo app não depende diretamente do entrypoint antigo como base de execução.
+O novo app usa `dashboard/clean_core.py` apenas como camada neutra de helpers e funções de dados.
+
+Com isso, o novo app não depende diretamente do entrypoint antigo como base de execução nem renderiza componentes institucionais legados.
 
 ## Comando de Execução
 ```bash
