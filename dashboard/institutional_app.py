@@ -7956,12 +7956,17 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     if section == "overview":
         _render_post_conference_monitoring_panel()
         return
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.json(POST_DRAW_MONITORING_PAYLOAD)
     if section == "conference":
-        st.markdown("##### Conferência por concurso")
-        st.info("Aqui a camada registra o desempenho por concurso e deixa a leitura pronta para auditoria manual.")
-        _render_post_conference_monitoring_panel()
+        st.markdown("##### Auditoria Observacional — Conferência por Concurso")
+        st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
+        with st.expander("Detalhes técnicos avançados", expanded=False):
+            st.json(POST_DRAW_MONITORING_PAYLOAD)
+        _render_signature_grid(
+            list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+            title="Dezenas organizadas no topo",
+            empty_label="Esta conferência não recebeu dezenas para exibir no topo.",
+        )
+        _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
     elif section == "group_performance":
         st.markdown("##### Desempenho por grupo")
         st.caption("Resultados por G50/G30/G20/G10 e análise por grupo ativo.")
