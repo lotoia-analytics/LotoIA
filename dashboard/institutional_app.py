@@ -84,6 +84,18 @@ OFFICIAL_15_GROUP_ROLES = {
     "G20": ("COMPACT_HIGH_CONCENTRATION", "G20 = compacto de alta concentração"),
     "G10": ("PREMIUM_BREAKTHROUGH", "G10 = premium de ruptura"),
 }
+POST_DRAW_MONITORING_PAYLOAD = {
+    "post_draw_monitoring_enabled": True,
+    "monitoring_role": "OBSERVER_REGISTRY",
+    "silent_recalibration_allowed": False,
+    "automatic_law_mutation_allowed": False,
+    "law_evolution_requires_audit": True,
+    "monitoring_15_threshold": "11_12_13_14_15",
+    "monitoring_17_threshold": "12_PLUS",
+    "monitoring_18_threshold": "13_PLUS",
+    "gold_target": 14,
+    "diamond_target": 15,
+}
 HISTORICAL_TEST_TABLES = (
     "generation_events",
     "generated_games",
@@ -7185,8 +7197,38 @@ def _official_15_generation_context(group: str | None) -> dict[str, Any]:
         "g30_role": OFFICIAL_15_GROUP_ROLES["G30"][0],
         "g20_role": OFFICIAL_15_GROUP_ROLES["G20"][0],
         "g10_role": OFFICIAL_15_GROUP_ROLES["G10"][0],
+        **POST_DRAW_MONITORING_PAYLOAD,
         "official_15_generation_model_label": "Modelo oficial 15 dezenas: G50 = auditoria e cobertura | G30 = operação principal | G20 = compacto de alta concentração | G10 = premium de ruptura",
     }
+
+
+def _render_post_conference_monitoring_panel() -> None:
+    st.markdown("##### Auditoria e Monitoramento")
+    st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar.")
+    cols = st.columns(4)
+    cols[0].metric("Monitoramento", "OBSERVER_REGISTRY")
+    cols[1].metric("Lei / mutação", "auditada")
+    cols[2].metric("Recalibração", "desativada")
+    cols[3].metric("Memória", "REGISTRY")
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "- Conferência por concurso\n"
+            "- Desempenho por grupo\n"
+            "- Dezenas faltantes\n"
+            "- Dezenas sobrando\n"
+            "- Vazamento lateral"
+        )
+    with right:
+        st.markdown(
+            "- Evolução 13 -> 14\n"
+            "- Evolução 14 -> 15\n"
+            "- Hipóteses para teste offline\n"
+            "- Não altera Lei\n"
+            "- Não recalibra"
+        )
+    with st.expander("Payload de monitoramento", expanded=False):
+        st.json(POST_DRAW_MONITORING_PAYLOAD)
 
 
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
@@ -7883,6 +7925,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
+    st.markdown("#### Auditoria e Monitoramento")
+    _render_post_conference_monitoring_panel()
     if latest_contest:
         contest_buttons[0].caption(
             f"Último concurso: {int(latest_contest['contest_number'])} | dezenas: {' '.join(f'{number:02d}' for number in latest_contest.get('dezenas', [])) or '-'}"
