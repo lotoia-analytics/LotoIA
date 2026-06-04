@@ -7094,23 +7094,22 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
     game_size = max(2, min(25, int(size or 15)))
     policy = _institutional_generation_policy(game_size)
     if game_size == 15:
-        official_label = (
-            "Geração direta de 15 dezenas pronta. Quantidade fechada pelo usuário."
-        )
+        official_label = "Runtime limpo ADM 15 pronto. Quantidade fechada pelo usuário."
         return {
             "policy": policy,
-            "strategy_label": "Geração direta de 15 dezenas",
-            "scientific_status": "DIRECT_15_GAME_GENERATION",
-            "status_visual": "DIRECT_15_GAME_GENERATION",
-            "mode": "DIRECT_15_GAME_GENERATION",
+            "strategy_label": "Runtime Limpo ADM 15",
+            "scientific_status": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "status_visual": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
             "main_reason": official_label,
-            "action_suggested": "usar geração direta para a próxima quantidade solicitada",
+            "action_suggested": "usar runtime limpo para a próxima quantidade solicitada",
             "summary": official_label,
-            "generation_mode": "DIRECT_15_GAME_GENERATION",
-            "policy_mode": "DIRECT_15_GAME_GENERATION",
+            "generation_mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "policy_mode": "CLEAN_DIRECT_15_LAW_RUNTIME",
             "historical_deduplication_mode": "AUDIT_ONLY",
             "official_package_preserved": False,
-            "official_15_generation_model_label": "Modo direto de 15 dezenas: 15 dezenas por jogo",
+            "legacy_generation_flow": "ARCHIVED",
+            "official_15_generation_model_label": "Runtime Limpo ADM 15: 15 dezenas por jogo",
         }
     if game_size == 17:
         return {
@@ -8504,7 +8503,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     controls_cols = st.columns([1.0, 1.0])
     selected_game_size = 15
     st.session_state["institutional_dezenas_per_game"] = selected_game_size
-    st.markdown("##### Geração oficial de 15 dezenas")
+    st.markdown("##### Gerador ADM - Lei 15")
     direct_cols = st.columns([1.4, 1.0, 1.0])
     selected_quantity = int(
         direct_cols[0].number_input(
@@ -8518,11 +8517,11 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     )
     requested_games = selected_quantity
     direct_cols[1].metric("Formato", "15 dezenas por jogo")
-    direct_cols[2].metric("Modo", "DIRETO")
+    direct_cols[2].metric("Modo", "Runtime Limpo ADM 15")
     controls_cols[0].metric("Quantidade de jogos", requested_games)
     controls_cols[0].caption("Fonte única de verdade: quantidade digitada pelo usuário.")
-    controls_cols[1].metric("Modelo", "Direto 15 dezenas")
-    controls_cols[1].caption("Sem grupo oficial, sem registry e sem pacote fechado.")
+    controls_cols[1].metric("Modelo", "Lei 15")
+    controls_cols[1].caption("Sem fluxo legado, sem registry e sem pacote fechado.")
 
     strategy_display = _generation_strategy_display(selected_game_size)
     strategy_policy = dict(strategy_display.get("policy") or {})
@@ -8534,15 +8533,16 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     strategy_cols[1].metric("Status científico", str(strategy_display.get("scientific_status", "-") or "-"))
     strategy_cols[2].metric("Status visual", str(strategy_display.get("status_visual", "-") or "-"))
     st.success(str(strategy_display.get("summary", "-") or "-"))
-    st.caption("Geração direta de 15 dezenas | Quantidade de jogos definida pelo usuário")
+    st.caption("Runtime Limpo ADM 15 | Quantidade de jogos definida pelo usuário")
     if selected_game_size == 15:
         st.caption(
             " | ".join(
                 [
-                    f"generation_mode={strategy_display.get('generation_mode', 'DIRECT_15_GAME_GENERATION')}",
-                    f"policy_mode={strategy_display.get('policy_mode', 'DIRECT_15_GAME_GENERATION')}",
+                    f"generation_mode={strategy_display.get('generation_mode', 'CLEAN_DIRECT_15_LAW_RUNTIME')}",
+                    f"policy_mode={strategy_display.get('policy_mode', 'CLEAN_DIRECT_15_LAW_RUNTIME')}",
                     f"historical_deduplication_mode={strategy_display.get('historical_deduplication_mode', 'AUDIT_ONLY')}",
                     f"official_package_preserved={str(strategy_display.get('official_package_preserved', False)).lower()}",
+                    f"legacy_generation_flow={strategy_display.get('legacy_generation_flow', 'ARCHIVED')}",
                 ]
             )
         )
@@ -8552,18 +8552,26 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     with st.expander("Auditoria técnica ADM", expanded=False):
         diagnostic_payload = {
             "runtime_commit": BUILD_MARKER,
+            "selected_quantity": int(selected_quantity),
             "selected_quantity_from_ui": int(selected_quantity),
             "selected_quantity_from_state": int(st.session_state.get("institutional_total_games", selected_quantity) or selected_quantity),
-            "selected_group_from_ui": "DIRECT_15_GAME_GENERATION",
-            "selected_group_from_state": "DIRECT_15_GAME_GENERATION",
+            "dezenas_por_jogo": 15,
+            "selected_group_from_ui": "CLEAN_DIRECT_15_LAW_RUNTIME",
+            "selected_group_from_state": "CLEAN_DIRECT_15_LAW_RUNTIME",
             "generation_mode_resolved": str(strategy_display.get("generation_mode", strategy_policy.get("policy_mode", "")) or ""),
             "policy_mode_resolved": str(strategy_display.get("policy_mode", strategy_policy.get("policy_mode", "")) or ""),
+            "scientific_law_role": "COMMANDER",
+            "clean_adm_runtime_role": "EXECUTOR",
+            "output_commander_role": "AUDITOR",
+            "historical_deduplication_mode": str(strategy_display.get("historical_deduplication_mode", "AUDIT_ONLY" if selected_game_size == 15 else "BLOCK") or ""),
+            "historical_duplicates_removed": int(summary_result.get("historical_duplicates_removed", 0) or 0),
+            "legacy_generation_flow": "ARCHIVED",
+            "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
+            "calibration_engine_role": "DISABLED",
             "direct_generation_called": True,
             "materialization_called": False,
             "official_package_size_loaded": 0,
-            "historical_deduplication_mode": str(strategy_display.get("historical_deduplication_mode", "AUDIT_ONLY" if selected_game_size == 15 else "BLOCK") or ""),
             "historical_duplicates_found": int(summary_result.get("historical_duplicates_found", 0) or 0),
-            "historical_duplicates_removed": int(summary_result.get("historical_duplicates_removed", 0) or 0),
             "official_package_preserved": bool(summary_result.get("official_package_preserved", selected_game_size == 15)),
             "output_commander_status": str(summary_result.get("status_comandante_saida", "") or ""),
             "final_generated_count": int(summary_result.get("quantidade_jogos_real_gerada", 0) or 0),
