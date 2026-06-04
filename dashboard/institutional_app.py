@@ -84,6 +84,13 @@ OFFICIAL_15_GROUP_ROLES = {
     "G20": ("COMPACT_HIGH_CONCENTRATION", "G20 = compacto de alta concentração"),
     "G10": ("PREMIUM_BREAKTHROUGH", "G10 = premium de ruptura"),
 }
+OFFICIAL_15_QUANTITY_TO_GROUP = {
+    10: "G10",
+    20: "G20",
+    30: "G30",
+    50: "G50",
+}
+OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL_15_QUANTITY_TO_GROUP.items()}
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
     "monitoring_role": "OBSERVER_REGISTRY",
@@ -7208,8 +7215,11 @@ def _official_15_generation_context(group: str | None) -> dict[str, Any]:
     group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
     return {
         "official_15_generation_model": "G50_G30_G20_G10_ONLY",
+        "generation_mode": "OFFICIAL_GROUP_MATERIALIZATION",
         "allowed_15_groups": list(OFFICIAL_15_GROUPS),
+        "selected_quantity": int(OFFICIAL_15_GROUP_TO_QUANTITY.get(selected_group, 30)),
         "selected_15_group": selected_group,
+        "selected_group": selected_group,
         "selected_15_group_role": group_role,
         "selected_15_group_label": group_label,
         "g50_role": OFFICIAL_15_GROUP_ROLES["G50"][0],
@@ -8260,22 +8270,24 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     st.session_state["institutional_dezenas_per_game"] = selected_game_size
     st.markdown("##### Modelo oficial 15 dezenas")
     official_model_cols = st.columns([1.4, 1.0, 1.0])
-    selected_official_group = str(
+    quantity_options = [10, 20, 30, 50]
+    selected_quantity = int(
         official_model_cols[0].selectbox(
-            "Grupo oficial",
-            list(OFFICIAL_15_GROUPS),
-            index=list(OFFICIAL_15_GROUPS).index(str(st.session_state.get("institutional_official_15_group", "G30") or "G30"))
-            if str(st.session_state.get("institutional_official_15_group", "G30") or "G30") in OFFICIAL_15_GROUPS
-            else 1,
-            key="institutional_official_15_group",
+            "Quantidade oficial",
+            quantity_options,
+            index=quantity_options.index(int(st.session_state.get("institutional_total_games", 30) or 30))
+            if int(st.session_state.get("institutional_total_games", 30) or 30) in quantity_options
+            else 2,
+            key="institutional_total_games",
         )
     )
-    requested_games = int(selected_official_group[1:]) if selected_official_group[1:].isdigit() else int(st.session_state.get("institutional_total_games", 30) or 30)
-    st.session_state["institutional_total_games"] = requested_games
+    selected_official_group = OFFICIAL_15_QUANTITY_TO_GROUP.get(selected_quantity, "G30")
+    st.session_state["institutional_official_15_group"] = selected_official_group
+    requested_games = selected_quantity
     official_model_cols[1].metric("Formato fechado", "15 dezenas")
-    official_model_cols[2].metric("Jogos por grupo", requested_games)
-    st.caption("G50 = 50 jogos de 15 dezenas | G30 = 30 jogos de 15 dezenas | G20 = 20 jogos de 15 dezenas | G10 = 10 jogos de 15 dezenas")
-    controls_cols[0].metric("Quantidade de jogos", requested_games)
+    official_model_cols[2].metric("Grupo oficial", selected_official_group)
+    st.caption("10 = G10 | 20 = G20 | 30 = G30 | 50 = G50")
+    controls_cols[0].metric("Quantidade oficial", requested_games)
     controls_cols[0].caption("Seleção travada pelo modelo oficial. Não há quantidade livre nesta fase.")
     controls_cols[1].metric("Modelo selecionado", selected_official_group)
     controls_cols[1].caption("15 dezenas fixas por jogo. Fases 17/18 continuam inativas.")
