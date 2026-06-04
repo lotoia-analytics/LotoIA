@@ -2044,7 +2044,7 @@ def _render_scientific_memory_block() -> None:
         post_plus_cols[4].metric("count_15", int(post_hit_decomposition.get("count_15", 0) or 0))
         post_detail_cols = st.columns(4)
         post_detail_cols[0].markdown(f"**Classificação local**  \n{post_reconciliation_memory.get('scientific_classification', '-') or '-'}")
-        post_detail_cols[1].markdown(f"**Ação sugerida**  \n{post_reconciliation_memory.get('recommended_action', '-') or '-'}")
+        post_detail_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
         post_detail_cols[2].markdown(
             f"**Nível de confiança**  \n{cross_validation_summary.get('confidence_level', '-') or '-'}"
         )
@@ -2064,14 +2064,15 @@ def _render_scientific_memory_block() -> None:
                     f"Janela {label}",
                     int(window_payload.get("contest_count", 0) or 0),
                 )
-            with st.expander("Ver memória pós-conferência completa", expanded=False):
+            with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
+                st.caption("Registro técnico legado preservado para auditoria histórica.")
                 st.json(post_reconciliation_memory)
         batch_reconciliation_memory = next(
             (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
             {},
         )
     if batch_reconciliation_memory:
-        batch_title = "###### Histórico antigo / memória anterior à baseline oficial - Memória consolidada da bateria conferida" if official_15_memory else "###### Memória consolidada da bateria conferida"
+        batch_title = "###### Histórico institucional / memória consolidada da bateria conferida" if official_15_memory else "###### Memória consolidada da bateria conferida"
         st.markdown(batch_title)
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
         batch_components = dict(batch_reconciliation_memory.get("scientific_score_components") or {})
@@ -2119,11 +2120,11 @@ def _render_scientific_memory_block() -> None:
         identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
         role_cols = st.columns(3)
         role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
-        role_cols[1].markdown(f"**dominant_memory**  \n{batch_dominant_memory}")
-        role_cols[2].markdown(f"**selection_variant**  \n{batch_selection_variant}")
+        role_cols[1].markdown("**dominant_memory**  \nRegistro legado para auditoria histórica")
+        role_cols[2].markdown("**selection_variant**  \nRegistro legado para auditoria histórica")
         control_cols = st.columns(2)
         control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
-        control_cols[1].markdown(f"**recommended_action**  \n{batch_reconciliation_memory.get('recommended_action', '-') or '-'}")
+        control_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
         batch_cols = st.columns(6)
         batch_cols[0].metric(
             "Última bateria conferida",
@@ -2152,14 +2153,14 @@ def _render_scientific_memory_block() -> None:
         batch_plus_cols[4].metric("count_15", int(batch_hit_decomposition.get("count_15", 0) or 0))
         batch_detail_cols = st.columns(4)
         batch_detail_cols[0].markdown(f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
-        batch_detail_cols[1].markdown(f"**Ação recomendada**  \n{batch_reconciliation_memory.get('recommended_action', '-') or '-'}")
+        batch_detail_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
         batch_detail_cols[2].markdown(
-            f"**Confiança**  \n{batch_reconciliation_memory.get('confidence_level', '-') or '-'}"
+            f"**Validação histórica**  \n{batch_reconciliation_memory.get('confidence_level', '-') or '-'}"
         )
         batch_detail_cols[3].markdown(
             f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
         )
-        st.markdown("###### Validação histórica")
+        st.markdown("###### Validação histórica observacional")
         if batch_cross_windows:
             for label in ("10", "30", "60"):
                 window_payload = dict(batch_cross_windows.get(label, {}) or {})
@@ -5821,7 +5822,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
     source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
     source_cols[4].metric("institutional_output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
-    source_cols[5].metric("scientific_calibration_decisions", int(live_counts.get("scientific_calibration_decisions", 0)))
+    source_cols[5].metric("Registros científicos legados", int(live_counts.get("scientific_calibration_decisions", 0)))
     source_cols[6].metric("lotofacil_official_history", int(live_counts.get("lotofacil_official_history", 0)))
     source_cols[7].metric("scientific_institutional_memory", int(live_counts.get("scientific_institutional_memory", 0)))
     st.caption(
@@ -5925,7 +5926,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         else:
             scientific_state = None
             scientific_recommendation = None
-        with st.expander("Diagnóstico histórico observacional", expanded=False):
+        st.markdown("##### Diagnóstico histórico observacional")
+        st.info("Esta seção observa a memória consolidada. Os registros científicos sensíveis ficam recolhidos na quarentena documental.")
+        with st.expander("Memória científica legada — quarentena documental", expanded=False):
+            st.caption("Registro técnico legado preservado para auditoria histórica. Não atua como comando, seleção ou recalibração.")
             _render_scientific_policy_panel(
                 policy=history_policy,
                 strategy_size=int(scientific_game_size),
@@ -5944,9 +5948,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             )
             latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
             if latest_scientific_decisions:
-                with st.expander("Memória científica legada — quarentena documental", expanded=False):
-                    st.caption("Conteúdo apenas documental. Não atua como comando, seleção ou recalibração.")
-                    st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
 
 
 
