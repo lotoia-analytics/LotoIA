@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 
-from dashboard.clean_core import (
+CURRENT_DIR = Path(__file__).resolve().parent
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
+
+from clean_core import (
     _database_snapshot,
     _ensure_analytical_games_schema,
     _ensure_official_history_seeded,

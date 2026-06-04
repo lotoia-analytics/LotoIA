@@ -54,6 +54,13 @@ O novo app usa `dashboard/clean_core.py` apenas como camada neutra de helpers e 
 
 Com isso, o novo app não depende diretamente do entrypoint antigo como base de execução nem renderiza componentes institucionais legados.
 
+## Ajuste de Import para o Render
+O `clean_app.py` passou a usar import local com `sys.path` apontando para a pasta `dashboard`, permitindo execução direta no Render via:
+
+```bash
+streamlit run dashboard/clean_app.py --server.port $PORT --server.address 0.0.0.0
+```
+
 ## Comando de Execução
 ```bash
 streamlit run dashboard/clean_app.py --server.port $PORT --server.address 0.0.0.0

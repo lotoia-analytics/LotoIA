@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
-from dashboard.institutional_app import (
+CURRENT_DIR = Path(__file__).resolve().parent
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
+
+from institutional_app import (  # type: ignore
     _database_snapshot,
     _ensure_official_history_seeded,
     _ensure_analytical_games_schema,
