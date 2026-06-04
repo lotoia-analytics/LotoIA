@@ -3,6 +3,7 @@
 ## Causa identificada
 - Divergência entre rótulos exibidos na sidebar e chaves internas do roteador, especialmente com variações de acento.
 - A página histórica podia cair no fallback por não bater exatamente com a chave esperada.
+- Em algumas sessões, a carga leve podia chegar vazia antes do recarregamento controlado, criando uma impressão de página indisponível.
 
 ## Rotas afetadas
 - `history_analytical`
@@ -27,6 +28,7 @@
 - `Histórico Institucional` continua acessível.
 - Ambas as rotas renderizam suas próprias telas.
 - O fallback seguro continua ativo para rotas desconhecidas.
+- Se a amostra leve vier vazia, a página tenta recarregamento controlado antes de exibir estado vazio.
 
 ## Confirmação do Gerador
 - O Gerador não é mais fallback para histórico ou rota desconhecida.

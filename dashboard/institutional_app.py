@@ -5832,6 +5832,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             ]
         )
     )
+    if int(live_counts.get("generation_events", 0) or 0) > 0 and not generation_rows:
+        generation_rows = _load_accumulated_institutional_rows()
+        generation_df = pd.DataFrame(generation_rows)
     st.markdown("##### Resumo institucional")
     summary_cols = st.columns(10)
     total_generation_events = len(generation_df)
@@ -9860,6 +9863,9 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     generation_history = _load_generation_history_light(limit=25)
     historical_rows = _load_accumulated_analytical_rows_light(limit=25)
+    if (not generation_history or not historical_rows) and int(snapshot["counts"].get("generation_events", 0) or 0) > 0:
+        generation_history = _load_generation_history(limit=50)
+        historical_rows = _load_accumulated_analytical_rows()
     if not generation_history or not historical_rows:
         st.info("Ainda nao ha geracoes persistidas para reconstruir o historico analitico.")
         return
