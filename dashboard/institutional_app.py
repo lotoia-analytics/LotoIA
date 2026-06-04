@@ -7913,28 +7913,29 @@ def _official_15_group_registry_found() -> bool:
 
 def _render_post_conference_monitoring_panel() -> None:
     st.markdown("##### Auditoria e Monitoramento")
-    st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar.")
+    st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar a Lei.")
     cols = st.columns(4)
-    cols[0].metric("Monitoramento", "OBSERVER_REGISTRY")
-    cols[1].metric("Lei / mutação", "auditada")
-    cols[2].metric("Recalibração", "desativada")
+    cols[0].metric("Modo", "Observação pós-conferência")
+    cols[1].metric("Papel da tela", "Auditoria / Registro")
+    cols[2].metric("Lei 15", "Comando soberano")
     cols[3].metric("Memória", "REGISTRY")
     left, right = st.columns(2)
     with left:
+        st.markdown("###### Status Institucional da Auditoria")
         st.markdown(
-            "- Conferência por concurso\n"
-            "- Desempenho por grupo\n"
-            "- Dezenas faltantes\n"
-            "- Dezenas sobrando\n"
-            "- Vazamento lateral"
+            "- Modo: Observação pós-conferência\n"
+            "- Papel da tela: Auditoria / Registro\n"
+            "- Recalibração silenciosa: Bloqueada\n"
+            "- Mutação automática da Lei: Bloqueada\n"
+            "- Evolução de Lei: Exige auditoria"
         )
     with right:
         st.markdown(
-            "- Evolução 13 -> 14\n"
-            "- Evolução 14 -> 15\n"
-            "- Hipóteses para teste offline\n"
-            "- Não altera Lei\n"
-            "- Não recalibra"
+            "- Lei 15: Comando soberano da geração\n"
+            "- Lei 17: Validação / referência\n"
+            "- Lei 18: Validação / referência\n"
+            "- Meta ouro: 14 pontos\n"
+            "- Meta diamante: 15 pontos"
         )
     _render_signature_grid(
         list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
@@ -7942,7 +7943,7 @@ def _render_post_conference_monitoring_panel() -> None:
         empty_label="Este painel não recebeu dezenas para exibir no topo.",
     )
     _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
-    with st.expander("Payload de monitoramento", expanded=False):
+    with st.expander("Detalhes técnicos avançados", expanded=False):
         st.json(POST_DRAW_MONITORING_PAYLOAD)
 
 
@@ -7951,10 +7952,11 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     st.subheader("Auditoria e Monitoramento")
     st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
+    st.info("Sem recalibrar a Lei. Sem mutação automática. Sem comando de geração nesta camada.")
     if section == "overview":
         _render_post_conference_monitoring_panel()
         return
-    with st.expander("Contexto institucional", expanded=False):
+    with st.expander("Detalhes técnicos avançados", expanded=False):
         st.json(POST_DRAW_MONITORING_PAYLOAD)
     if section == "conference":
         st.markdown("##### Conferência por concurso")
