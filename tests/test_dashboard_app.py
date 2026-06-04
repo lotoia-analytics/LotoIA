@@ -181,3 +181,77 @@ def test_clean_runtime_strategy_avoids_legacy_group_materialization() -> None:
 
     assert strategy["generation_mode"] != "OFFICIAL_GROUP_MATERIALIZATION"
     assert strategy["policy_mode"] != "OFFICIAL_GROUP_MATERIALIZATION"
+
+
+def test_clean_law15_generation_payload_is_isolated(monkeypatch) -> None:
+    monkeypatch.setattr(ia, "_history_number_frequency", lambda: {})
+    monkeypatch.setattr(ia, "_load_latest_contest_summary", lambda: {"dezenas": []})
+    monkeypatch.setattr(ia, "load_all_output_signatures", lambda: [])
+    monkeypatch.setattr(
+        ia,
+        "_generate_direct_15_games",
+        lambda **kwargs: [
+            {"numbers": list(range(1, 16))},
+            {"numbers": list(range(2, 17))},
+        ],
+    )
+    monkeypatch.setattr(
+        ia,
+        "output_commander_validate_games",
+        lambda games, **kwargs: {
+            "status_comandante_saida": "APROVADO",
+            "quantidade_jogos_rejeitados": 0,
+            "quantidade_jogos_aprovados": len(games),
+            "quantidade_jogos_unicos": len(games),
+            "historical_deduplication_mode": "AUDIT_ONLY",
+            "historical_duplicates_removed": 0,
+        },
+    )
+
+    result = ia._run_clean_law15_generation(requested_count=10)
+
+    assert result["generation_mode"] == "CLEAN_LAW15_ISOLATED_PAGE"
+    assert result["policy_mode"] == "CLEAN_LAW15_ISOLATED_PAGE"
+    assert result["selected_quantity"] == 10
+    assert result["dezenas_por_jogo"] == 15
+    assert result["batch_fill_strategy"] == "FILL_UNTIL_REQUESTED_QUANTITY"
+    assert result["scientific_law_role"] == "COMMANDER"
+    assert result["clean_adm_runtime_role"] == "EXECUTOR"
+    assert result["output_commander_role"] == "AUDITOR"
+    assert result["historical_deduplication_mode"] == "AUDIT_ONLY"
+    assert result["historical_duplicates_removed"] == 0
+    assert result["legacy_generation_flow"] == "ARCHIVED"
+    assert result["legacy_dashboard_generation"] == "BYPASSED"
+    assert result["legacy_calibrator_role"] == "REMOVED_FROM_RUNTIME"
+    assert result["calibration_engine_role"] == "DISABLED"
+
+
+@pytest.mark.parametrize("requested_count", [10, 20, 30, 50])
+def test_clean_law15_generation_page_requests_operational_sizes(monkeypatch, requested_count: int) -> None:
+    monkeypatch.setattr(ia, "_history_number_frequency", lambda: {})
+    monkeypatch.setattr(ia, "_load_latest_contest_summary", lambda: {"dezenas": []})
+    monkeypatch.setattr(ia, "load_all_output_signatures", lambda: [])
+
+    def fake_generate_direct_15_games(**kwargs):
+        total_games = int(kwargs.get("total_games", 0) or 0)
+        return [{"numbers": list(range(1, 16))} for _ in range(total_games)]
+
+    monkeypatch.setattr(ia, "_generate_direct_15_games", fake_generate_direct_15_games)
+    monkeypatch.setattr(
+        ia,
+        "output_commander_validate_games",
+        lambda games, **kwargs: {
+            "status_comandante_saida": "APROVADO",
+            "quantidade_jogos_rejeitados": 0,
+            "quantidade_jogos_aprovados": len(games),
+            "quantidade_jogos_unicos": len(games),
+            "historical_deduplication_mode": "AUDIT_ONLY",
+            "historical_duplicates_removed": 0,
+        },
+    )
+
+    result = ia._run_clean_law15_generation(requested_count=requested_count)
+
+    assert len(result["games"]) == requested_count
+    assert result["fill_diagnostics"]["fill_completed"] is True
+    assert result["fill_diagnostics"]["insufficient_reason"] == "none"

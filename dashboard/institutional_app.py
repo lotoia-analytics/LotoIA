@@ -144,6 +144,7 @@ PAGE_TARGETS = {
     "Benchmark resumido": "summary_benchmark",
     "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
+    "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
@@ -3420,7 +3421,7 @@ def _generate_direct_15_games(
         ultra_relaxed_coverage_min = 0.0
         ultra_relaxed_entropy_min = 0.0
         relaxed_attempt = 0
-        relaxed_attempt_limit = max(total_games * 60, len(ranked_candidates) * 3, 300)
+        relaxed_attempt_limit = max(total_games * 120, len(ranked_candidates) * 6, 600)
         while len(games) < total_games and relaxed_attempt < relaxed_attempt_limit:
             candidate = ranked_candidates[(attempt + relaxed_attempt) % len(ranked_candidates)] if ranked_candidates else {}
             relaxed_attempt += 1
@@ -3436,13 +3437,13 @@ def _generate_direct_15_games(
                 batch_profile_usage=batch_profile_usage,
                 core_numbers=core_numbers,
                 discouraged_numbers=discouraged_numbers,
-                max_frequency_ratio=max_frequency_ratio,
+                max_frequency_ratio=max(max_frequency_ratio, 2.0),
                 min_frequency_ratio=min_frequency_ratio,
                 preferred_profile_ratios=preferred_profile_ratios,
-                odd_min=1,
-                odd_max=14,
-                even_min=1,
-                even_max=14,
+                odd_min=0,
+                odd_max=15,
+                even_min=0,
+                even_max=15,
                 sequence_max=ultra_relaxed_sequence_max,
                 coverage_min=ultra_relaxed_coverage_min,
                 entropy_min=ultra_relaxed_entropy_min,
@@ -3461,12 +3462,12 @@ def _generate_direct_15_games(
                     batch_profile_usage=batch_profile_usage,
                     core_numbers=core_numbers,
                     discouraged_numbers=discouraged_numbers,
-                    max_frequency_ratio=max_frequency_ratio,
+                    max_frequency_ratio=max(max_frequency_ratio, 2.0),
                     min_frequency_ratio=min_frequency_ratio,
-                    odd_min=1,
-                    odd_max=14,
-                    even_min=1,
-                    even_max=14,
+                    odd_min=0,
+                    odd_max=15,
+                    even_min=0,
+                    even_max=15,
                     preferred_parity_pairs=preferred_parity_pairs,
                     preferred_profile_ratios=preferred_profile_ratios,
                     repeat_min=ultra_relaxed_repeat_min,
@@ -3477,6 +3478,65 @@ def _generate_direct_15_games(
                     allowed_parity_pairs=allowed_parity_pairs,
                     offset=seed + attempt + relaxed_attempt,
                 )
+            if not selected_numbers:
+                diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
+                continue
+            diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
+            signature = _game_signature(selected_numbers)
+            if signature in used_signatures:
+                diagnostics["rejected_by_internal_duplicate"] = int(diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
+                diagnostics["rejected_by_repeated_pattern"] = int(diagnostics.get("rejected_by_repeated_pattern", 0) or 0) + 1
+                continue
+            games.append(
+                _build_institutional_game_record(
+                    selected_numbers=selected_numbers,
+                    candidate=dict(candidate),
+                    history_frequency=history_frequency,
+                    dezenas_per_game=15,
+                )
+            )
+            used_signatures.add(signature)
+            diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
+            profile_pair = (
+                sum(1 for number in selected_numbers if number % 2 != 0),
+                sum(1 for number in selected_numbers if number % 2 == 0),
+            )
+            batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+            for number in selected_numbers:
+                batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+    if len(games) < total_games:
+        exhaustive_attempt_limit = max(total_games * 200, 1000)
+        exhaustive_attempt = 0
+        while len(games) < total_games and exhaustive_attempt < exhaustive_attempt_limit:
+            candidate = ranked_candidates[(attempt + relaxed_attempt + exhaustive_attempt) % len(ranked_candidates)] if ranked_candidates else {}
+            exhaustive_attempt += 1
+            diagnostics["candidate_pool_generated"] = int(diagnostics.get("candidate_pool_generated", 0) or 0) + 1
+            diagnostics["attempts_used"] = int(diagnostics.get("attempts_used", 0) or 0) + 1
+            selected_numbers = _force_subset_from_universe(
+                target_size=15,
+                frequency_map=history_frequency,
+                latest_numbers=latest_numbers,
+                batch_number_usage=batch_number_usage,
+                batch_total_games=batch_total_games,
+                batch_profile_usage=batch_profile_usage,
+                core_numbers=core_numbers,
+                discouraged_numbers=discouraged_numbers,
+                max_frequency_ratio=max(max_frequency_ratio, 2.5),
+                min_frequency_ratio=0.0,
+                odd_min=0,
+                odd_max=15,
+                even_min=0,
+                even_max=15,
+                preferred_parity_pairs=preferred_parity_pairs,
+                preferred_profile_ratios=preferred_profile_ratios,
+                repeat_min=0,
+                repeat_max=15,
+                sequence_max=max(sequence_max, 15),
+                coverage_min=0.0,
+                entropy_min=0.0,
+                allowed_parity_pairs=allowed_parity_pairs,
+                offset=seed + attempt + relaxed_attempt + exhaustive_attempt,
+            )
             if not selected_numbers:
                 diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
                 continue
@@ -8504,10 +8564,155 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             )
         elif check_result.get("status") == "waiting_contest":
             st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
-        elif check_result.get("status") == "checked":
-            st.info("Conferência executada, mas nenhum resultado foi renderizado.")
+    elif check_result.get("status") == "checked":
+        st.info("Conferência executada, mas nenhum resultado foi renderizado.")
     elif not latest_contest:
         st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
+
+
+def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
+    fill_diagnostics: dict[str, Any] = {}
+    total_games = int(requested_count)
+    seed = int(time.time()) % 1_000_000
+    latest_contest = _load_latest_contest_summary()
+    history_frequency = _history_number_frequency()
+    latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
+    batch_number_usage: dict[int, int] = {}
+    batch_profile_usage: dict[tuple[int, int], int] = {}
+    games = _generate_direct_15_games(
+        total_games=total_games,
+        seed=seed,
+        history_frequency=history_frequency,
+        latest_numbers=latest_numbers,
+        batch_number_usage=batch_number_usage,
+        batch_profile_usage=batch_profile_usage,
+        batch_total_games=total_games,
+        core_numbers=[],
+        discouraged_numbers=[],
+        max_frequency_ratio=1.0,
+        min_frequency_ratio=0.0,
+        preferred_profile_ratios={},
+        odd_min=5,
+        odd_max=10,
+        even_min=5,
+        even_max=10,
+        sequence_max=15,
+        coverage_min=0.0,
+        entropy_min=0.0,
+        repeat_min=0,
+        repeat_max=15,
+        preferred_parity_pairs=[],
+        allowed_parity_pairs=[],
+        fill_diagnostics=fill_diagnostics,
+    )
+    commander_report = output_commander_validate_games(
+        games,
+        batch_id=f"clean-law15-{seed}",
+        generation_event_id=None,
+        target_size=15,
+        required_total=total_games,
+        candidate_total=total_games,
+        persisted_signatures=set(load_all_output_signatures()),
+        historical_deduplication_mode="AUDIT_ONLY",
+    )
+    if len(games) < total_games:
+        commander_report = {
+            **commander_report,
+            "status_comandante_saida": "BLOQUEADO",
+            "motivo_bloqueio": "INSUFFICIENT_VALID_CANDIDATES",
+            "error_message": "INSUFFICIENT_VALID_CANDIDATES",
+        }
+    fill_diagnostics["rejected_by_output_commander"] = int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0)
+    fill_diagnostics["fill_completed"] = len(games) >= total_games
+    fill_diagnostics["insufficient_reason"] = "none" if len(games) >= total_games else "INSUFFICIENT_VALID_CANDIDATES"
+    return {
+        "requested_count": total_games,
+        "games": games,
+        "commander_report": commander_report,
+        "fill_diagnostics": fill_diagnostics,
+        "batch_fill_strategy": "FILL_UNTIL_REQUESTED_QUANTITY",
+        "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "policy_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "selected_quantity": total_games,
+        "dezenas_por_jogo": 15,
+        "scientific_law_role": "COMMANDER",
+        "clean_adm_runtime_role": "EXECUTOR",
+        "output_commander_role": "AUDITOR",
+        "historical_deduplication_mode": "AUDIT_ONLY",
+        "historical_duplicates_removed": 0,
+        "legacy_generation_flow": "ARCHIVED",
+        "legacy_dashboard_generation": "BYPASSED",
+        "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
+        "calibration_engine_role": "DISABLED",
+        "automatic_law_mutation_allowed": False,
+        "silent_recalibration_allowed": False,
+        "law_evolution_requires_audit": True,
+    }
+
+
+def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Gerador ADM - Lei 15 Limpo")
+    st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
+    st.markdown("##### Runtime Limpo ADM 15")
+    requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
+    left, right = st.columns(2)
+    left.metric("Formato", "15 dezenas por jogo")
+    right.metric("Estratégia ativa", "Lei 15")
+    if st.button("Gerar jogos", type="primary", key="clean_law15_generate_button"):
+        st.session_state["clean_law15_generation_result"] = _run_clean_law15_generation(requested_count=requested_count)
+        st.rerun()
+    result = st.session_state.get("clean_law15_generation_result") or {}
+    diagnostics = dict(result.get("fill_diagnostics") or {})
+    if result:
+        st.success(
+            f"Quantidade solicitada={result.get('requested_count', '-')}"
+            f" | gerados={len(result.get('games') or [])}"
+            f" | dezenas/jogo={result.get('dezenas_por_jogo', '-')}"
+        )
+        st.caption(
+            " | ".join(
+                [
+                    f"generation_mode={result.get('generation_mode', '-')}",
+                    f"policy_mode={result.get('policy_mode', '-')}",
+                    f"batch_fill_strategy={result.get('batch_fill_strategy', '-')}",
+                    f"scientific_law_role={result.get('scientific_law_role', '-')}",
+                    f"clean_adm_runtime_role={result.get('clean_adm_runtime_role', '-')}",
+                    f"output_commander_role={result.get('output_commander_role', '-')}",
+                ]
+            )
+        )
+        st.caption(
+            " | ".join(
+                [
+                    f"historical_deduplication_mode={result.get('historical_deduplication_mode', '-')}",
+                    f"historical_duplicates_removed={result.get('historical_duplicates_removed', '-')}",
+                    f"legacy_generation_flow={result.get('legacy_generation_flow', '-')}",
+                    f"legacy_dashboard_generation={result.get('legacy_dashboard_generation', '-')}",
+                    f"legacy_calibrator_role={result.get('legacy_calibrator_role', '-')}",
+                    f"calibration_engine_role={result.get('calibration_engine_role', '-')}",
+                ]
+            )
+        )
+        diag_cols = st.columns(4)
+        diag_cols[0].metric("accepted_games", int(diagnostics.get("accepted_games", 0) or 0))
+        diag_cols[1].metric("valid_candidates", int(diagnostics.get("valid_candidates_found", 0) or 0))
+        diag_cols[2].metric("attempts_used", int(diagnostics.get("attempts_used", 0) or 0))
+        diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
+        with st.expander("Diagnóstico da página limpa", expanded=False):
+            st.write(f"requested_count={result.get('requested_count', '-')}")
+            st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
+            st.write(f"valid_candidates_found={diagnostics.get('valid_candidates_found', 0)}")
+            st.write(f"accepted_games={diagnostics.get('accepted_games', 0)}")
+            st.write(f"rejected_by_internal_duplicate={diagnostics.get('rejected_by_internal_duplicate', 0)}")
+            st.write(f"rejected_by_invalid_size={diagnostics.get('rejected_by_invalid_size', 0)}")
+            st.write(f"rejected_by_repeated_pattern={diagnostics.get('rejected_by_repeated_pattern', 0)}")
+            st.write(f"rejected_by_output_commander={diagnostics.get('rejected_by_output_commander', 0)}")
+            st.write(f"attempts_used={diagnostics.get('attempts_used', 0)}")
+            st.write(f"fill_completed={diagnostics.get('fill_completed', False)}")
+            st.write(f"insufficient_reason={diagnostics.get('insufficient_reason', 'none')}")
+        if result.get("commander_report"):
+            st.json(result["commander_report"])
 
 
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
@@ -9417,6 +9622,8 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "offline_hypotheses")
     elif page == "generation":
         _render_generator_page(snapshot)
+    elif page == "clean_law15_generation":
+        _render_clean_law15_generation_page(snapshot)
     elif page == "conference":
         _render_conference_page(snapshot)
     elif page == "simulation":
