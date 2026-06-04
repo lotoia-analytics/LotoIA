@@ -3303,9 +3303,20 @@ def _generate_direct_15_games(
     repeat_max: int,
     preferred_parity_pairs: list[tuple[int, int]],
     allowed_parity_pairs: list[tuple[int, int]],
+    fill_diagnostics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set()
+    diagnostics = fill_diagnostics if fill_diagnostics is not None else {}
+    diagnostics.setdefault("candidate_pool_generated", 0)
+    diagnostics.setdefault("valid_candidates_found", 0)
+    diagnostics.setdefault("accepted_games", 0)
+    diagnostics.setdefault("rejected_by_internal_duplicate", 0)
+    diagnostics.setdefault("rejected_by_invalid_size", 0)
+    diagnostics.setdefault("rejected_by_repeated_pattern", 0)
+    diagnostics.setdefault("rejected_by_output_commander", 0)
+    diagnostics.setdefault("attempts_used", 0)
+    diagnostics.setdefault("fill_completed", False)
     relaxed_repeat_min = 0
     relaxed_repeat_max = max(15, repeat_max)
     relaxed_sequence_max = max(sequence_max, 10)
@@ -3323,6 +3334,8 @@ def _generate_direct_15_games(
     while len(games) < total_games and attempt < attempt_limit:
         candidate = ranked_candidates[attempt % len(ranked_candidates)] if ranked_candidates else {}
         attempt += 1
+        diagnostics["candidate_pool_generated"] = int(diagnostics.get("candidate_pool_generated", 0) or 0) + 1
+        diagnostics["attempts_used"] = int(diagnostics.get("attempts_used", 0) or 0) + 1
         selected_numbers = _select_subset_from_candidate(
             list(candidate.get("numbers", [])),
             target_size=15,
@@ -3375,9 +3388,13 @@ def _generate_direct_15_games(
                 offset=seed + attempt,
             )
         if not selected_numbers:
+            diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
             continue
+        diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
         signature = _game_signature(selected_numbers)
         if signature in used_signatures:
+            diagnostics["rejected_by_internal_duplicate"] = int(diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
+            diagnostics["rejected_by_repeated_pattern"] = int(diagnostics.get("rejected_by_repeated_pattern", 0) or 0) + 1
             continue
         games.append(
             _build_institutional_game_record(
@@ -3388,6 +3405,7 @@ def _generate_direct_15_games(
             )
         )
         used_signatures.add(signature)
+        diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
         profile_pair = (
             sum(1 for number in selected_numbers if number % 2 != 0),
             sum(1 for number in selected_numbers if number % 2 == 0),
@@ -3395,6 +3413,97 @@ def _generate_direct_15_games(
         batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
         for number in selected_numbers:
             batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+    if len(games) < total_games:
+        ultra_relaxed_repeat_min = 0
+        ultra_relaxed_repeat_max = 15
+        ultra_relaxed_sequence_max = max(sequence_max, 15)
+        ultra_relaxed_coverage_min = 0.0
+        ultra_relaxed_entropy_min = 0.0
+        relaxed_attempt = 0
+        relaxed_attempt_limit = max(total_games * 60, len(ranked_candidates) * 3, 300)
+        while len(games) < total_games and relaxed_attempt < relaxed_attempt_limit:
+            candidate = ranked_candidates[(attempt + relaxed_attempt) % len(ranked_candidates)] if ranked_candidates else {}
+            relaxed_attempt += 1
+            diagnostics["candidate_pool_generated"] = int(diagnostics.get("candidate_pool_generated", 0) or 0) + 1
+            diagnostics["attempts_used"] = int(diagnostics.get("attempts_used", 0) or 0) + 1
+            selected_numbers = _select_subset_from_candidate(
+                list(candidate.get("numbers", [])),
+                target_size=15,
+                frequency_map=history_frequency,
+                latest_numbers=latest_numbers,
+                batch_number_usage=batch_number_usage,
+                batch_total_games=batch_total_games,
+                batch_profile_usage=batch_profile_usage,
+                core_numbers=core_numbers,
+                discouraged_numbers=discouraged_numbers,
+                max_frequency_ratio=max_frequency_ratio,
+                min_frequency_ratio=min_frequency_ratio,
+                preferred_profile_ratios=preferred_profile_ratios,
+                odd_min=1,
+                odd_max=14,
+                even_min=1,
+                even_max=14,
+                sequence_max=ultra_relaxed_sequence_max,
+                coverage_min=ultra_relaxed_coverage_min,
+                entropy_min=ultra_relaxed_entropy_min,
+                repeat_min=ultra_relaxed_repeat_min,
+                repeat_max=ultra_relaxed_repeat_max,
+                preferred_parity_pairs=preferred_parity_pairs,
+                allowed_parity_pairs=allowed_parity_pairs,
+            )
+            if not selected_numbers:
+                selected_numbers = _force_subset_from_universe(
+                    target_size=15,
+                    frequency_map=history_frequency,
+                    latest_numbers=latest_numbers,
+                    batch_number_usage=batch_number_usage,
+                    batch_total_games=batch_total_games,
+                    batch_profile_usage=batch_profile_usage,
+                    core_numbers=core_numbers,
+                    discouraged_numbers=discouraged_numbers,
+                    max_frequency_ratio=max_frequency_ratio,
+                    min_frequency_ratio=min_frequency_ratio,
+                    odd_min=1,
+                    odd_max=14,
+                    even_min=1,
+                    even_max=14,
+                    preferred_parity_pairs=preferred_parity_pairs,
+                    preferred_profile_ratios=preferred_profile_ratios,
+                    repeat_min=ultra_relaxed_repeat_min,
+                    repeat_max=ultra_relaxed_repeat_max,
+                    sequence_max=ultra_relaxed_sequence_max,
+                    coverage_min=ultra_relaxed_coverage_min,
+                    entropy_min=ultra_relaxed_entropy_min,
+                    allowed_parity_pairs=allowed_parity_pairs,
+                    offset=seed + attempt + relaxed_attempt,
+                )
+            if not selected_numbers:
+                diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
+                continue
+            diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
+            signature = _game_signature(selected_numbers)
+            if signature in used_signatures:
+                diagnostics["rejected_by_internal_duplicate"] = int(diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
+                diagnostics["rejected_by_repeated_pattern"] = int(diagnostics.get("rejected_by_repeated_pattern", 0) or 0) + 1
+                continue
+            games.append(
+                _build_institutional_game_record(
+                    selected_numbers=selected_numbers,
+                    candidate=dict(candidate),
+                    history_frequency=history_frequency,
+                    dezenas_per_game=15,
+                )
+            )
+            used_signatures.add(signature)
+            diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
+            profile_pair = (
+                sum(1 for number in selected_numbers if number % 2 != 0),
+                sum(1 for number in selected_numbers if number % 2 == 0),
+            )
+            batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+            for number in selected_numbers:
+                batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+    diagnostics["fill_completed"] = len(games) >= total_games
     return games
 
 
@@ -3615,6 +3724,7 @@ def _run_institutional_generation(
     official_package_size_loaded = 0
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set()
+    fill_diagnostics: dict[str, Any] = {}
     direct_generation_mode = int(dezenas_per_game or 0) == 15
     if direct_generation_mode:
         games = _generate_direct_15_games(
@@ -3641,6 +3751,7 @@ def _run_institutional_generation(
             repeat_max=repeat_max,
             preferred_parity_pairs=preferred_parity_pairs,
             allowed_parity_pairs=allowed_parity_pairs,
+            fill_diagnostics=fill_diagnostics,
         )
     else:
         candidate_count = max(total_games * 20, 200 if use_top50 else 120)
@@ -3798,6 +3909,7 @@ def _run_institutional_generation(
             "motivo_bloqueio": "INSUFFICIENT_VALID_CANDIDATES",
             "error_message": "INSUFFICIENT_VALID_CANDIDATES",
         }
+    fill_diagnostics["rejected_by_output_commander"] = int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0)
     if commander_report.get("status_comandante_saida") != "APROVADO" or int(commander_report.get("quantidade_jogos_unicos", 0) or 0) != int(total_games):
         approved_total = int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games))
         rejected_total = int(commander_report.get("quantidade_jogos_rejeitados", max(0, total_games - approved_total)) or max(0, total_games - approved_total))
@@ -3844,6 +3956,15 @@ def _run_institutional_generation(
             "output_commander_role": "AUDITOR",
             "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
             "calibration_engine_role": "DISABLED",
+            "candidate_pool_generated": int(fill_diagnostics.get("candidate_pool_generated", 0) or 0),
+            "valid_candidates_found": int(fill_diagnostics.get("valid_candidates_found", 0) or 0),
+            "accepted_games": int(fill_diagnostics.get("accepted_games", 0) or 0),
+            "rejected_by_internal_duplicate": int(fill_diagnostics.get("rejected_by_internal_duplicate", 0) or 0),
+            "rejected_by_invalid_size": int(fill_diagnostics.get("rejected_by_invalid_size", 0) or 0),
+            "rejected_by_repeated_pattern": int(fill_diagnostics.get("rejected_by_repeated_pattern", 0) or 0),
+            "rejected_by_output_commander": int(fill_diagnostics.get("rejected_by_output_commander", 0) or 0),
+            "attempts_used": int(fill_diagnostics.get("attempts_used", 0) or 0),
+            "fill_completed": bool(fill_diagnostics.get("fill_completed", False)),
             "perfis_paridade_preferenciais": preferred_parity_pairs,
             "perfis_paridade_permitidos": allowed_parity_pairs,
             "limite_sequencia_max": effective_sequence_max,
@@ -3887,6 +4008,15 @@ def _run_institutional_generation(
             "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
             "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
             "official_package_preserved": bool(official_group_games),
+            "candidate_pool_generated": int(fill_diagnostics.get("candidate_pool_generated", 0) or 0),
+            "valid_candidates_found": int(fill_diagnostics.get("valid_candidates_found", 0) or 0),
+            "accepted_games": int(fill_diagnostics.get("accepted_games", 0) or 0),
+            "rejected_by_internal_duplicate": int(fill_diagnostics.get("rejected_by_internal_duplicate", 0) or 0),
+            "rejected_by_invalid_size": int(fill_diagnostics.get("rejected_by_invalid_size", 0) or 0),
+            "rejected_by_repeated_pattern": int(fill_diagnostics.get("rejected_by_repeated_pattern", 0) or 0),
+            "rejected_by_output_commander": int(fill_diagnostics.get("rejected_by_output_commander", 0) or 0),
+            "attempts_used": int(fill_diagnostics.get("attempts_used", 0) or 0),
+            "fill_completed": bool(fill_diagnostics.get("fill_completed", False)),
         }
         _store_active_batch_state(
             batch_id=batch_id,
