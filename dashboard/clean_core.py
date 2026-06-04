@@ -306,7 +306,7 @@ def _persist_generation_snapshot(
     return {"generation_event_id": generation_event_id, "seed": seed, "games_count": len(games), "target_contest": target_contest, "batch_id": batch_id}
 
 
-def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
+def _run_clean_law15_generation(*, requested_count: int, selected_card_format: int = 15) -> dict[str, Any]:
     fill_diagnostics: dict[str, Any] = {}
     total_games = int(requested_count)
     seed = int(time.time()) % 1_000_000
@@ -370,11 +370,32 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "automatic_law_mutation_allowed": False,
         "silent_recalibration_allowed": False,
         "law_evolution_requires_audit": True,
+        "selected_card_format": int(selected_card_format or 15),
     }
 
 
-def run_clean_generation(*, requested_count: int) -> dict[str, Any]:
-    return _run_clean_law15_generation(requested_count=requested_count)
+def run_clean_generation(*, requested_count: int, selected_card_format: int = 15) -> dict[str, Any]:
+    base_result = _run_clean_law15_generation(requested_count=requested_count, selected_card_format=selected_card_format)
+    games = list(base_result.get("games") or [])
+    expanded_games = _expand_generation_games_for_format(games, int(selected_card_format or 15))
+    persisted_result = _persist_clean_law15_generation_history(
+        result={**base_result, "games": expanded_games, "selected_card_format": int(selected_card_format or 15)},
+        selected_card_format=int(selected_card_format or 15),
+    )
+    if isinstance(persisted_result, dict) and persisted_result:
+        return {
+            **base_result,
+            **persisted_result,
+            "selected_card_format": int(selected_card_format or 15),
+            "games": expanded_games,
+            "display_games": expanded_games,
+        }
+    return {
+        **base_result,
+        "selected_card_format": int(selected_card_format or 15),
+        "games": expanded_games,
+        "display_games": expanded_games,
+    }
 
 
 def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
