@@ -66,7 +66,7 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
-BUILD_MARKER = "institutional-clean-runtime-v1"
+BUILD_MARKER = "institutional-clean-runtime-v2-95a0bdb"
 APP_BUILD = BUILD_MARKER
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
