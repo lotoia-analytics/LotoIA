@@ -39,3 +39,12 @@ Cada jogo passou a ser apresentado com separação explícita entre:
 
 ## Conclusão
 Os formatos 17 e 18 dezenas foram implementados como expansão auditada do núcleo de 15 dezenas da Lei 15, sem transformar a Lei 17 ou a Lei 18 em geradores, sem recalibração, sem uso de legado e sem substituição da Lei 15.
+
+## STATUS INSTITUCIONAL CONSOLIDADO
+A implementação 15/17/18 no gerador limpo foi publicada com sucesso.
+A Lei 15 continua como única comandante da geração.
+Os formatos 17 e 18 permanecem como expansão auditada do núcleo de 15 dezenas.
+A Lei 17 e a Lei 18 seguem como validações pós-geração.
+Nenhuma lógica institucional foi alterada.
+Nenhum fluxo legado foi conectado.
+Validação técnica concluída com 26 testes aprovados.
