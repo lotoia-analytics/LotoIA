@@ -5373,6 +5373,11 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
         created_at = str(generation.get("created_at", "") or "")
         strategy = str(generation.get("strategy", "") or "")
         for game in generation.get("games", []) or []:
+            context_json = dict(game.get("generation_context") or {})
+            core_numbers = list(context_json.get("core_numbers") or game.get("numbers", []) or [])
+            reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+            final_card_numbers = list(context_json.get("final_card_numbers") or game.get("numbers", []) or [])
+            card_format = int(context_json.get("selected_card_format", context_json.get("card_format", 15)) or 15)
             hits_value = game.get("hits")
             rows.append(
                 {
@@ -5382,6 +5387,13 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
                     "data/hora": created_at,
                     "jogo n°": int(game.get("game_index", 0) or 0),
                     "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                    "formato_cartao": card_format,
+                    "núcleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers),
+                    "reservas_auditadas": " ".join(f"+{number:02d}" for number in reserve_numbers) or "-",
+                    "cartão_final": " ".join(f"{number:02d}" for number in final_card_numbers),
+                    "quantidade_nucleo": int(context_json.get("quantidade_nucleo", len(core_numbers)) or len(core_numbers)),
+                    "quantidade_reservas": int(context_json.get("quantidade_reservas", len(reserve_numbers)) or len(reserve_numbers)),
+                    "quantidade_final": int(context_json.get("quantidade_final", len(final_card_numbers)) or len(final_card_numbers)),
                     "estratégia": strategy or "-",
                     "score": round(float(game.get("score", 0.0) or 0.0), 4),
                     "origem/modelo": str(game.get("origin", "") or "institutional"),
@@ -5423,6 +5435,13 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
                 "data/hora",
                 "jogo n°",
                 "dezenas",
+                "formato_cartao",
+                "núcleo_lei_15",
+                "reservas_auditadas",
+                "cartão_final",
+                "quantidade_nucleo",
+                "quantidade_reservas",
+                "quantidade_final",
                 "estratégia",
                 "score",
                 "origem/modelo",
@@ -5470,6 +5489,9 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
             df[target] = df[source]
     if "estratégia" not in df.columns:
         df["estratégia"] = "não informado"
+    for column in ("formato_cartao", "quantidade_nucleo", "quantidade_reservas", "quantidade_final"):
+        if column not in df.columns:
+            df[column] = 0
     if "geração" not in df.columns and "generation_event_id" in df.columns:
         df["geração"] = df["generation_event_id"].apply(lambda value: f"Geração {int(value)}" if pd.notna(value) else "Geração -")
     if "jogo n°" not in df.columns:
@@ -5498,7 +5520,7 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
     ):
         if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
-    for column in ("data/hora", "reconciled_at", "estratégia", "origem/modelo", "status de conferência", "premiação", "observações", "tipo visual", "motivo rejeição", "policy_id", "policy_origin", "policy_variant", "classificação científica", "ação sugerida", "status comandante saída", "status científico"):
+    for column in ("data/hora", "reconciled_at", "estratégia", "origem/modelo", "status de conferência", "premiação", "observações", "tipo visual", "motivo rejeição", "policy_id", "policy_origin", "policy_variant", "classificação científica", "ação sugerida", "status comandante saída", "status científico", "núcleo_lei_15", "reservas_auditadas", "cartão_final"):
         if column in df.columns:
             df[column] = df[column].fillna("").astype(str)
     if "status de conferência" in df.columns:
@@ -6548,6 +6570,22 @@ def _persist_generation_snapshot(
             numbers = list(game.get("numbers", []))
             signature = _game_signature(numbers)
             game_signatures.append(signature)
+            per_game_context = {
+                "card_format": int(game.get("card_format", 15) or 15),
+                "selected_card_format": int(game.get("selected_card_format", game.get("card_format", 15)) or 15),
+                "format_cartao": int(game.get("card_format", 15) or 15),
+                "quantidade_nucleo": 15,
+                "quantidade_reservas": len(game.get("audited_reserve_numbers", []) or []),
+                "quantidade_final": len(game.get("final_card_numbers", numbers) or numbers),
+                "core_numbers": list(game.get("core_numbers", numbers) or numbers),
+                "audited_reserve_numbers": list(game.get("audited_reserve_numbers", []) or []),
+                "final_card_numbers": list(game.get("final_card_numbers", numbers) or numbers),
+                "display_core_numbers": str(game.get("display_core_numbers", "") or ""),
+                "display_audited_reserve_numbers": str(game.get("display_audited_reserve_numbers", "") or ""),
+                "display_final_card_numbers": str(game.get("display_final_card_numbers", "") or ""),
+                "validation_status_lei_17": str(game.get("validation_status_lei_17", "") or ""),
+                "validation_status_lei_18": str(game.get("validation_status_lei_18", "") or ""),
+            }
             session.add(
                 GeneratedGame(
                     generation_event_id=generation_event_id,
@@ -6562,6 +6600,7 @@ def _persist_generation_snapshot(
                     quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
                     context_json={
                         **context_payload,
+                    **per_game_context,
                     "generation_hierarchy": "LOTOIA_LAW_ONLY",
                     "scientific_law_role": "COMMANDER",
                     "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
@@ -6608,6 +6647,7 @@ def _persist_generation_snapshot(
                     payload={
                         "game_index": index,
                         "numbers": numbers,
+                        **per_game_context,
                         "source": "institutional_app",
                         "build_marker": BUILD_MARKER,
                         "generation_hierarchy": "LOTOIA_LAW_ONLY",
@@ -7750,6 +7790,71 @@ def _expand_generation_games_for_format(
     return expanded_games
 
 
+def _format_numbers_for_history(values: Sequence[int] | None) -> str:
+    numbers = [int(value) for value in (values or []) if 1 <= int(value) <= 25]
+    return " ".join(f"{number:02d}" for number in numbers)
+
+
+def _persist_clean_law15_generation_history(
+    *,
+    result: dict[str, Any],
+    selected_card_format: int,
+) -> dict[str, Any]:
+    games = list(result.get("games") or [])
+    if not games:
+        return {}
+    formatted_games = _expand_generation_games_for_format(games, selected_card_format)
+    payload_games: list[dict[str, Any]] = []
+    for game in formatted_games:
+        core_numbers = list(game.get("core_numbers", game.get("numbers", [])) or [])
+        reserves = list(game.get("audited_reserve_numbers", []) or [])
+        final_card = list(game.get("final_card_numbers", game.get("numbers", [])) or [])
+        payload_games.append(
+            {
+                **dict(game),
+                "numbers": core_numbers,
+                "card_format": int(selected_card_format),
+                "selected_card_format": int(selected_card_format),
+                "core_numbers": core_numbers,
+                "audited_reserve_numbers": reserves,
+                "final_card_numbers": final_card,
+                "display_core_numbers": _format_numbers_for_history(core_numbers),
+                "display_audited_reserve_numbers": _format_numbers_for_history(reserves),
+                "display_final_card_numbers": _format_numbers_for_history(final_card),
+            }
+        )
+    generation_context = {
+        "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "policy_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "selected_card_format": int(selected_card_format),
+        "format_cartao": int(selected_card_format),
+        "selected_quantity": int(result.get("requested_count", 0) or 0),
+        "quantidade_nucleo": 15,
+        "quantidade_reservas": 0 if int(selected_card_format) == 15 else 2 if int(selected_card_format) == 17 else 3,
+        "quantidade_final": int(selected_card_format),
+        "núcleo_lei_15": _format_numbers_for_history(payload_games[0].get("core_numbers", [])),
+        "reservas_auditadas": _format_numbers_for_history(payload_games[0].get("audited_reserve_numbers", [])),
+        "cartão_final": _format_numbers_for_history(payload_games[0].get("final_card_numbers", [])),
+        "format_label": str(result.get("card_format_label", "")),
+        "scientific_law_role": "COMMANDER",
+        "clean_adm_runtime_role": "EXECUTOR",
+        "output_commander_role": "AUDITOR",
+        "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
+        "calibration_engine_role": "DISABLED",
+        "historical_deduplication_mode": str(result.get("historical_deduplication_mode", "AUDIT_ONLY") or "AUDIT_ONLY"),
+        "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
+        "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
+        "card_format": int(selected_card_format),
+    }
+    return _persist_generation_snapshot(
+        games=payload_games,
+        seed=int(result.get("seed", 0) or 0),
+        target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
+        batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
+        generation_context=generation_context,
+    )
+
+
 def _official_15_group_registry_found() -> bool:
     return bool(OFFICIAL_15_GROUPS_REGISTRY)
 
@@ -8723,6 +8828,8 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     fill_diagnostics["fill_completed"] = len(games) >= total_games
     fill_diagnostics["insufficient_reason"] = "none" if len(games) >= total_games else "INSUFFICIENT_VALID_CANDIDATES"
     return {
+        "seed": seed,
+        "batch_id": f"clean-law15-{seed}",
         "requested_count": total_games,
         "games": games,
         "commander_report": commander_report,
@@ -8788,7 +8895,15 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             18: "18 dezenas — Lei 15 + 3 reservas auditadas",
         }.get(int(selected_card_format), f"{int(selected_card_format)} dezenas")
         result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
+        result["validation_status_lei_17"] = "VALIDA_12_PLUS" if int(selected_card_format) in (17, 18) else "N_A"
+        result["validation_status_lei_18"] = "VALIDA_13_PLUS" if int(selected_card_format) == 18 else "N_A"
         st.session_state["clean_law15_generation_result"] = result
+        persisted_snapshot = _persist_clean_law15_generation_history(
+            result=result,
+            selected_card_format=selected_card_format,
+        )
+        if persisted_snapshot:
+            st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
         st.rerun()
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
@@ -9524,6 +9639,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 "data/hora",
                 "jogo n°",
                 "dezenas",
+                "formato_cartao",
+                "núcleo_lei_15",
+                "reservas_auditadas",
+                "cartão_final",
+                "quantidade_nucleo",
+                "quantidade_reservas",
+                "quantidade_final",
                 "estratégia",
                 "score",
                 "tipo visual",
@@ -9560,6 +9682,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 "data/hora",
                 "jogo n°",
                 "dezenas",
+                "formato_cartao",
+                "núcleo_lei_15",
+                "reservas_auditadas",
+                "cartão_final",
+                "quantidade_nucleo",
+                "quantidade_reservas",
+                "quantidade_final",
                 "estratégia",
                 "score",
                 "tipo visual",
