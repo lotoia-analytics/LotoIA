@@ -7387,8 +7387,26 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "hb_metrics",
         "structural_coverage",
     }
-    if choice not in allowed_pages:
+    blocked_pages = {
+        "audit_monitoring_side_leak",
+        "audit_monitoring_13_to_14",
+        "audit_monitoring_14_to_15",
+        "audit_monitoring_offline_hypotheses",
+        "strategies_analysis",
+        "strategies_test",
+        "strategies_simulation",
+        "institutional_replay",
+        "hb_geometry",
+        "clear_histories",
+        "delete_history",
+    }
+    if choice in blocked_pages:
+        st.sidebar.warning("P?gina bloqueada por pol?tica institucional.")
+        choice = "generation"
+    elif choice not in allowed_pages:
         choice = _canonical_page_id(page)
+    if choice not in allowed_pages:
+        choice = "generation"
     st.session_state["institutional_page_id"] = choice
     st.sidebar.divider()
     st.sidebar.caption("DATABASE_URL conectada")
