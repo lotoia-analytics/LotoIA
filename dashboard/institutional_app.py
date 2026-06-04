@@ -5153,6 +5153,10 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
     return history
 
 
+def _load_generation_history_light(limit: int | None = 25) -> list[dict[str, Any]]:
+    return _load_generation_history(limit=limit)
+
+
 def _load_reconciliation_history(limit: int = 12) -> list[dict[str, Any]]:
     history: list[dict[str, Any]] = []
     with get_session(DB_PATH) as session:
@@ -5187,6 +5191,10 @@ def _load_reconciliation_history(limit: int = 12) -> list[dict[str, Any]]:
                 }
             )
     return history
+
+
+def _load_reconciliation_history_light(limit: int = 25) -> list[dict[str, Any]]:
+    return _load_reconciliation_history(limit=limit)
 
 
 def _load_operational_logs_history(limit: int = 20) -> list[dict[str, Any]]:
@@ -5320,6 +5328,10 @@ def _load_institutional_timeline(limit: int = 30) -> list[dict[str, Any]]:
     )[:limit]
 
 
+def _load_institutional_timeline_light(limit: int = 25) -> list[dict[str, Any]]:
+    return _load_institutional_timeline(limit=limit)
+
+
 def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for entry in _load_generation_history(limit=limit):
@@ -5369,7 +5381,66 @@ def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
 
 def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for generation in _load_generation_history(limit=None):
+    for generation in _load_generation_history_light(limit=25):
+        generation_label = f"Geração {generation.get('generation_event_id', '-')}"
+        created_at = str(generation.get("created_at", "") or "")
+        strategy = str(generation.get("strategy", "") or "")
+        for game in generation.get("games", []) or []:
+            context_json = dict(game.get("generation_context") or {})
+            core_numbers = list(context_json.get("core_numbers") or game.get("numbers", []) or [])
+            reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+            final_card_numbers = list(context_json.get("final_card_numbers") or game.get("numbers", []) or [])
+            card_format = int(context_json.get("selected_card_format", context_json.get("card_format", 15)) or 15)
+            hits_value = game.get("hits")
+            rows.append(
+                {
+                    "geração": generation_label,
+                    "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
+                    "batch_id": str(generation.get("batch_id", "") or ""),
+                    "data/hora": created_at,
+                    "jogo n°": int(game.get("game_index", 0) or 0),
+                    "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                    "formato_cartao": card_format,
+                    "núcleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers),
+                    "reservas_auditadas": " ".join(f"+{number:02d}" for number in reserve_numbers) or "-",
+                    "cartão_final": " ".join(f"{number:02d}" for number in final_card_numbers),
+                    "quantidade_nucleo": int(context_json.get("quantidade_nucleo", len(core_numbers)) or len(core_numbers)),
+                    "quantidade_reservas": int(context_json.get("quantidade_reservas", len(reserve_numbers)) or len(reserve_numbers)),
+                    "quantidade_final": int(context_json.get("quantidade_final", len(final_card_numbers)) or len(final_card_numbers)),
+                    "estratégia": strategy or "-",
+                    "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                    "origem/modelo": str(game.get("origin", "") or "institutional"),
+                    "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
+                    "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
+                    "acertos": int(hits_value) if hits_value is not None else None,
+                    "premiação": str(game.get("prize_status", "") or "") or "—",
+                    "observações": str(game.get("prize_tier", "") or "") or "-",
+                    "generation_mode": str(game.get("generation_mode", "") or ""),
+                    "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
+                    "reconciled_at": str(game.get("reconciled_at", "") or ""),
+                    "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                    "status científico": str(generation.get("scientific_status", "-") or "-"),
+                    "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
+                    "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
+                    "tipo visual": str(generation.get("visibility_label", "Conferível") or "Conferível"),
+                    "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
+                    "policy_id": str(generation.get("policy_id", "") or ""),
+                    "policy_origin": str(generation.get("policy_origin", "") or ""),
+                    "policy_variant": str(generation.get("policy_variant", "") or ""),
+                    "is_conferible": bool(generation.get("is_conferible", False)),
+                    "is_rejected_policy": bool(generation.get("is_rejected_policy", False)),
+                    "is_candidate": bool(generation.get("is_candidate", False)),
+                    "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
+                    "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
+                    "is_calibration_only": bool(generation.get("is_calibration_only", False)),
+                }
+            )
+    return rows
+
+
+def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for generation in _load_generation_history_light(limit=limit):
         generation_label = f"Geração {generation.get('generation_event_id', '-')}"
         created_at = str(generation.get("created_at", "") or "")
         strategy = str(generation.get("strategy", "") or "")
@@ -6123,7 +6194,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     st.dataframe(_make_arrow_safe(pd.DataFrame(table_rows)), hide_index=True, use_container_width=True)
 
     with st.expander("Timeline secundária", expanded=False):
-        timeline = _load_institutional_timeline(limit=30)
+        timeline = _load_institutional_timeline_light(limit=25)
         if timeline:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
@@ -9779,8 +9850,8 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Hist?rico Anal?tico")
     st.write("Visao acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
 
-    generation_history = _load_generation_history(limit=None)
-    historical_rows = _load_accumulated_analytical_rows()
+    generation_history = _load_generation_history_light(limit=25)
+    historical_rows = _load_accumulated_analytical_rows_light(limit=25)
     if not generation_history or not historical_rows:
         st.info("Ainda nao ha geracoes persistidas para reconstruir o historico analitico.")
         return
@@ -10044,7 +10115,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 st.info("Nenhum jogo rejeitado com os filtros atuais.")
 
     with st.expander("Linha do tempo secundaria", expanded=False):
-        timeline = _load_analytical_timeline(limit=30)
+        timeline = _load_analytical_timeline(limit=25)
         if timeline:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
