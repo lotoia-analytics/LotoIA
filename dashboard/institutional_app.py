@@ -7954,7 +7954,67 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
     st.info("Sem recalibrar a Lei. Sem mutação automática. Sem comando de geração nesta camada.")
     if section == "overview":
-        _render_post_conference_monitoring_panel()
+        st.markdown("##### Função da camada")
+        st.write(
+            "Esta camada observa resultados após a conferência. Ela registra, organiza e apresenta sinais de "
+            "monitoramento, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar o histórico institucional."
+        )
+        st.markdown("##### Status institucional")
+        cols = st.columns(4)
+        cols[0].metric("Monitoramento", "Ativo")
+        cols[1].metric("Papel", "Observador / Registro")
+        cols[2].metric("Recalibração", "Bloqueada")
+        cols[3].metric("Memória institucional", "Registro")
+        cols2 = st.columns(4)
+        cols2[0].metric("Lei 15", "Comando soberano")
+        cols2[1].metric("Lei 17", "Validação / referência")
+        cols2[2].metric("Lei 18", "Validação / referência")
+        cols2[3].metric("Dados", "Disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "Indisponível")
+        st.markdown("##### Resumo de monitoramento")
+        monitoring_cols = st.columns(5)
+        monitoring_cols[0].metric(
+            "Último concurso monitorado",
+            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_contest", POST_DRAW_MONITORING_PAYLOAD.get("contest_number", "-")) or "-"),
+        )
+        monitoring_cols[1].metric(
+            "Total de concursos avaliados",
+            int(POST_DRAW_MONITORING_PAYLOAD.get("evaluated_contests", POST_DRAW_MONITORING_PAYLOAD.get("contests_evaluated", 0)) or 0),
+        )
+        monitoring_cols[2].metric(
+            "Total de gerações analisadas",
+            int(POST_DRAW_MONITORING_PAYLOAD.get("analyzed_generations", POST_DRAW_MONITORING_PAYLOAD.get("generations_analyzed", 0)) or 0),
+        )
+        monitoring_cols[3].metric(
+            "Última conferência registrada",
+            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_conference", POST_DRAW_MONITORING_PAYLOAD.get("last_conference", "-")) or "-"),
+        )
+        monitoring_cols[4].metric(
+            "Status dos dados",
+            "disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "indisponível",
+        )
+        if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")):
+            _render_signature_grid(
+                list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+                title="Dezenas organizadas no topo",
+                empty_label="Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.",
+            )
+            _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
+        else:
+            st.info("Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.")
+        st.markdown("##### Acessos de auditoria")
+        st.markdown(
+            "- Conferência por concurso\n"
+            "- Desempenho por grupo\n"
+            "- Dezenas faltantes\n"
+            "- Dezenas sobrando"
+        )
+        st.markdown("##### Quarentena")
+        st.caption("Vazamento lateral permanece isolado e restrito como indicador experimental.")
+        with st.expander("Indicador experimental isolado", expanded=False):
+            st.info("Indicador experimental isolado. Não comanda geração nem recalibra Lei 15.")
+            st.markdown("status: restrito / quarentena")
+        with st.expander("Detalhes técnicos avançados", expanded=False):
+            st.json(POST_DRAW_MONITORING_PAYLOAD)
         return
     if section == "conference":
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
