@@ -3700,6 +3700,13 @@ def _run_institutional_generation(
             for number in fallback_numbers:
                 batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
             used_signatures.add(signature)
+    historical_deduplication_mode = "AUDIT_ONLY" if official_group_games else "BLOCK"
+    historical_duplicates_found = 0
+    if official_group_games:
+        historical_signatures = set(load_all_output_signatures())
+        historical_duplicates_found = sum(
+            1 for game in games if _game_signature(game.get("numbers", [])) in historical_signatures
+        )
     commander_report = output_commander_validate_games(
         games,
         batch_id=batch_id,
@@ -3708,6 +3715,7 @@ def _run_institutional_generation(
         required_total=total_games,
         candidate_total=total_games,
         persisted_signatures=set(load_all_output_signatures()),
+        historical_deduplication_mode=historical_deduplication_mode,
     )
     if commander_report.get("status_comandante_saida") != "APROVADO" or int(commander_report.get("quantidade_jogos_unicos", 0) or 0) != int(total_games):
         approved_total = int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games))
@@ -3719,6 +3727,8 @@ def _run_institutional_generation(
         )
         if int(commander_report.get("quantidade_jogos_aprovados", 0) or 0) < int(commander_report.get("quantidade_jogos_solicitada", total_games) or total_games):
             blocked_reason = "Pacote bloqueado por não atingir a quantidade solicitada."
+        if official_group_games and int(commander_report.get("historical_duplicates_found", 0) or 0) > 0:
+            blocked_reason = "Aviso: há jogos do pacote oficial já presentes no histórico. O pacote foi preservado por se tratar de grupo oficial fechado."
         st.session_state["institutional_generation"] = {
             "seed": seed,
             "games": [],
@@ -3784,6 +3794,10 @@ def _run_institutional_generation(
             "error_message": blocked_reason,
             "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
             "invalid_games": list(commander_report.get("invalid_games", []) or []),
+            "historical_deduplication_mode": str(commander_report.get("historical_deduplication_mode", historical_deduplication_mode) or historical_deduplication_mode),
+            "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
+            "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
+            "official_package_preserved": bool(official_group_games),
         }
         _store_active_batch_state(
             batch_id=batch_id,
@@ -3870,6 +3884,10 @@ def _run_institutional_generation(
             "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
             "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
             "status_comandante_saida": str(commander_report.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+            "historical_deduplication_mode": str(commander_report.get("historical_deduplication_mode", historical_deduplication_mode) or historical_deduplication_mode),
+            "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
+            "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
+            "official_package_preserved": bool(official_group_games),
         },
     )
     st.session_state["institutional_generation"] = {
@@ -3939,6 +3957,10 @@ def _run_institutional_generation(
         "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
         "duplicate_hashes": list(commander_report.get("duplicate_hashes", []) or []),
         "invalid_games": list(commander_report.get("invalid_games", []) or []),
+        "historical_deduplication_mode": str(commander_report.get("historical_deduplication_mode", historical_deduplication_mode) or historical_deduplication_mode),
+        "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
+        "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
+        "official_package_preserved": bool(official_group_games),
     }
     _store_active_batch_state(
         batch_id=batch_id,
@@ -8512,6 +8534,11 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
                 ]
             )
         )
+        if bool(summary_result.get("official_package_preserved")) and int(summary_result.get("historical_duplicates_found", 0) or 0) > 0:
+            st.warning(
+                "Aviso: há jogos do pacote oficial já presentes no histórico. "
+                "O pacote foi preservado por se tratar de grupo oficial fechado."
+            )
         if batch_status != "APROVADO":
             st.error(
                 "Comandante de Saída bloqueou a geração. "

@@ -78,6 +78,7 @@ def output_commander_validate_games(
     candidate_total: int | None = None,
     db_path: Any = DEFAULT_DATABASE_PATH,
     persisted_signatures: Iterable[str] | None = None,
+    historical_deduplication_mode: str = "BLOCK",
 ) -> dict[str, Any]:
     resolved_batch_id = str(batch_id or "").strip() or "global"
     existing_signatures = set(str(signature) for signature in (persisted_signatures or load_batch_output_signatures(batch_id, db_path)))
@@ -85,6 +86,7 @@ def output_commander_validate_games(
     accepted_signatures: list[str] = []
     duplicate_hashes: list[str] = []
     invalid_games: list[dict[str, Any]] = []
+    historical_duplicates_found = 0
 
     for index, game in enumerate(games, start=1):
         raw_numbers = _raw_numbers(game.get("numbers", []))
@@ -101,7 +103,9 @@ def output_commander_validate_games(
             game_errors.append("jogo_vazio")
         if signature in existing_signatures:
             duplicate_hashes.append(signature)
-            game_errors.append("duplicado_na_bateria")
+            historical_duplicates_found += 1
+            if str(historical_deduplication_mode or "BLOCK").upper() != "AUDIT_ONLY":
+                game_errors.append("duplicado_na_bateria")
         if game_errors:
             invalid_games.append(
                 {
@@ -129,6 +133,8 @@ def output_commander_validate_games(
         blocked_reasons.append("jogos_invalidos_ou_duplicados")
     if total_duplicates:
         blocked_reasons.append("duplicidade_na_bateria")
+    if historical_duplicates_found and str(historical_deduplication_mode or "BLOCK").upper() != "AUDIT_ONLY":
+        blocked_reasons.append("duplicidade_historica")
     if approved_total < requested_total:
         blocked_reasons.append("nao_atingiu_quantidade_solicitada")
     status = "APROVADO" if not blocked_reasons and approved_total == requested_total else "BLOQUEADO"
@@ -163,6 +169,9 @@ def output_commander_validate_games(
         "natural_approvable_candidate": natural_approvable_candidate,
         "candidate_reason": candidate_reason,
         "duplicate_hashes": duplicate_hashes,
+        "historical_duplicates_found": historical_duplicates_found,
+        "historical_duplicates_removed": 0 if str(historical_deduplication_mode or "BLOCK").upper() == "AUDIT_ONLY" else historical_duplicates_found,
+        "historical_deduplication_mode": str(historical_deduplication_mode or "BLOCK").upper(),
         "invalid_games": invalid_games,
         "accepted_games": accepted_games,
         "accepted_signatures": accepted_signatures,
