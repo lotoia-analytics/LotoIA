@@ -7252,6 +7252,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _sidebar_nav_button("Evolução 14 -> 15", "Evolução 14 -> 15", page)
     _sidebar_nav_button("Hipóteses para teste offline", "Hipóteses para teste offline", page)
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Gerador ADM - Lei 15 Limpo", "Gerador ADM - Lei 15 Limpo", page)
     _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
     _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
     _sidebar_nav_button("Simular Resultados", "Simular Resultados", page)
