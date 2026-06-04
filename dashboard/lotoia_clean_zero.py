@@ -12,19 +12,16 @@ if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
 from clean_core import (  # type: ignore
-    _database_snapshot,
     _ensure_analytical_games_schema,
-    _ensure_official_history_seeded,
     _expand_generation_games_for_format,
     _load_accumulated_analytical_rows,
-    get_clean_snapshot,
     run_clean_generation,
 )
 
 OFFICIAL_CARD_FORMATS = (15, 17, 18)
 
 
-def _render_home(snapshot: dict[str, Any]) -> None:
+def _render_home() -> None:
     st.subheader("LotoIA Clean")
     st.write("Gerador limpo 15/17/18")
     cols = st.columns(4)
@@ -34,10 +31,9 @@ def _render_home(snapshot: dict[str, Any]) -> None:
     cols[3].metric("Formato", "15 / 17 / 18")
     st.info("Lei 15 gera base 11+ com busca por 14/15. Lei 17 valida 12+ com busca por 14/15. Lei 18 valida 13+ com busca por 14/15.")
     st.caption("17/18 dezenas são apenas expansão auditada: 15 + 2 reservas auditadas | 15 + 3 reservas auditadas.")
-    st.caption(f"Backend: {snapshot.get('backend', '-')}")
 
 
-def _render_clean_generator_page(snapshot: dict[str, Any]) -> None:
+def _render_clean_generator_page() -> None:
     st.subheader("Gerador Limpo 15/17/18")
     st.caption("Entry point zero, independente do dashboard antigo.")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="zero_requested_count"))
@@ -129,9 +125,19 @@ def _render_clean_generator_page(snapshot: dict[str, Any]) -> None:
             )
 
 
-def _render_analytical_page(snapshot: dict[str, Any]) -> None:
+def _load_safe_analytical_rows() -> tuple[list[dict[str, Any]], str]:
+    try:
+        return _load_accumulated_analytical_rows(), "ok"
+    except Exception:
+        return [], "indisponível"
+
+
+def _render_analytical_page() -> None:
     st.subheader("Histórico Analítico")
-    rows = _load_accumulated_analytical_rows()
+    rows, source_status = _load_safe_analytical_rows()
+    if source_status != "ok":
+        st.warning("Histórico indisponível")
+        return
     if not rows:
         st.info("Ainda não há gerações persistidas para reconstruir o histórico analítico.")
         return
@@ -139,7 +145,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     if df.empty:
         st.info("Ainda não há jogos persistidos para reconstruir o histórico analítico.")
         return
-    st.caption(f"Total de linhas: {len(df)} | backend: {snapshot.get('backend', '-')}")
+    st.caption(f"Total de linhas: {len(df)}")
     st.dataframe(
         df[
             [
@@ -162,16 +168,14 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA Clean Zero", layout="wide")
-    _ensure_official_history_seeded()
-    snapshot = get_clean_snapshot()
     st.sidebar.title("LotoIA Clean Zero")
     page = st.sidebar.radio("Navegação", ["Início", "Gerador Limpo", "Histórico Analítico"], index=0)
     if page == "Início":
-        _render_home(snapshot)
+        _render_home()
     elif page == "Gerador Limpo":
-        _render_clean_generator_page(snapshot)
+        _render_clean_generator_page()
     elif page == "Histórico Analítico":
-        _render_analytical_page(snapshot)
+        _render_analytical_page()
 
 
 if __name__ == "__main__":
