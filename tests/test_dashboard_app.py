@@ -1,3 +1,5 @@
+import pytest
+
 from lotoia.backtesting import BacktestResult
 
 from dashboard.app import (
@@ -101,13 +103,49 @@ def test_clean_runtime_strategy_display_is_archived_and_direct() -> None:
     assert "Runtime Limpo ADM 15" in strategy["strategy_label"]
 
 
-def test_clean_runtime_generates_requested_quantity(monkeypatch) -> None:
+@pytest.mark.parametrize("requested_count", [10, 20, 30, 50])
+def test_clean_runtime_generates_requested_quantity(monkeypatch, requested_count: int) -> None:
     candidates = [
         {"numbers": list(range(1, 26))},
         {"numbers": list(range(2, 26)) + [1]},
         {"numbers": list(range(3, 26)) + [1, 2]},
     ]
     monkeypatch.setattr(ia, "generate_ranked_games", lambda **kwargs: candidates * 4)
+
+    games = ia._generate_direct_15_games(
+        total_games=requested_count,
+        seed=123,
+        history_frequency={},
+        latest_numbers=set(),
+        batch_number_usage={},
+        batch_profile_usage={},
+        batch_total_games=requested_count,
+        core_numbers=[],
+        discouraged_numbers=[],
+        max_frequency_ratio=1.0,
+        min_frequency_ratio=0.0,
+        preferred_profile_ratios={},
+        odd_min=5,
+        odd_max=10,
+        even_min=5,
+        even_max=10,
+        sequence_max=15,
+        coverage_min=0.0,
+        entropy_min=0.0,
+        repeat_min=0,
+        repeat_max=15,
+        preferred_parity_pairs=[],
+        allowed_parity_pairs=[],
+    )
+
+    assert len(games) == requested_count
+    assert all(len(game["numbers"]) == 15 for game in games)
+
+
+def test_clean_runtime_reports_insufficient_candidates_when_fill_fails(monkeypatch) -> None:
+    monkeypatch.setattr(ia, "generate_ranked_games", lambda **kwargs: [])
+    monkeypatch.setattr(ia, "_select_subset_from_candidate", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ia, "_force_subset_from_universe", lambda *args, **kwargs: [])
 
     games = ia._generate_direct_15_games(
         total_games=10,
@@ -135,8 +173,7 @@ def test_clean_runtime_generates_requested_quantity(monkeypatch) -> None:
         allowed_parity_pairs=[],
     )
 
-    assert len(games) == 10
-    assert all(len(game["numbers"]) == 15 for game in games)
+    assert games == []
 
 
 def test_clean_runtime_strategy_avoids_legacy_group_materialization() -> None:
