@@ -6838,19 +6838,15 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
     _sidebar_nav_button("Auditoria e Monitoramento", "Auditoria e Monitoramento", page)
     pages = list(PAGE_TARGETS.values())
-    st.sidebar.markdown(
-        '<div style="padding-left:0.9rem;margin-top:-0.35rem;margin-bottom:0.2rem;color:#6b7280;font-size:0.78rem;line-height:1.45;">'
-        '└── Conferência por concurso<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Desempenho por grupo<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas faltantes<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas sobrando<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Vazamento lateral<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Evolução 13 -> 14<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;├── Evolução 14 -> 15<br>'
-        '&nbsp;&nbsp;&nbsp;&nbsp;└── Hipóteses para teste offline'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Auditoria e Monitoramento</div>', unsafe_allow_html=True)
+    _sidebar_nav_button("Conferência por concurso", "Conferência por concurso", page)
+    _sidebar_nav_button("Desempenho por grupo", "Desempenho por grupo", page)
+    _sidebar_nav_button("Dezenas faltantes", "Dezenas faltantes", page)
+    _sidebar_nav_button("Dezenas sobrando", "Dezenas sobrando", page)
+    _sidebar_nav_button("Vazamento lateral", "Vazamento lateral", page)
+    _sidebar_nav_button("Evolução 13 -> 14", "Evolução 13 -> 14", page)
+    _sidebar_nav_button("Evolução 14 -> 15", "Evolução 14 -> 15", page)
+    _sidebar_nav_button("Hipóteses para teste offline", "Hipóteses para teste offline", page)
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
     _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
