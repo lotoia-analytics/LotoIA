@@ -77,6 +77,13 @@ HB_GEOMETRY_CSV_FILE = HB_GEOMETRY_DIR / "hb_geometry_audit.csv"
 SYNC_DIAGNOSTIC_FILE = REPORTS_DIR / "institutional_sync_diagnostics.json"
 DB_PATH = DEFAULT_DATABASE_PATH
 MAX_INSTITUTIONAL_DEZENAS_PER_GAME = 23
+OFFICIAL_15_GROUPS = ("G50", "G30", "G20", "G10")
+OFFICIAL_15_GROUP_ROLES = {
+    "G50": ("AUDIT_COVERAGE", "G50 = auditoria e cobertura"),
+    "G30": ("MAIN_OPERATIONAL", "G30 = operação principal"),
+    "G20": ("COMPACT_HIGH_CONCENTRATION", "G20 = compacto de alta concentração"),
+    "G10": ("PREMIUM_BREAKTHROUGH", "G10 = premium de ruptura"),
+}
 HISTORICAL_TEST_TABLES = (
     "generation_events",
     "generated_games",
@@ -3375,6 +3382,7 @@ def _run_institutional_generation(
     seed = int(time.time()) % 1_000_000
     batch_id = _institutional_output_batch_id()
     policy = _institutional_generation_policy(dezenas_per_game)
+    official_15_context = _official_15_generation_context(st.session_state.get("institutional_official_15_group", "G30")) if int(dezenas_per_game or 0) == 15 else {}
     compact_adjustment = _compact_small_batch_adjustment(game_size=dezenas_per_game, total_games=total_games)
     if compact_adjustment:
         policy = dict(policy)
@@ -3688,6 +3696,7 @@ def _run_institutional_generation(
         target_contest=target_contest,
         batch_id=batch_id,
         generation_context={
+            **official_15_context,
             "policy_mode": str(policy.get("policy_mode", "") or ""),
             "validation_threshold": int(policy.get("validation_threshold", 0) or 0),
             "target_band": str(policy.get("target_band", "") or ""),
@@ -3764,6 +3773,7 @@ def _run_institutional_generation(
         "games": games,
         "total_games": total_games,
         "dezenas_per_game": dezenas_per_game,
+        **official_15_context,
         "use_top50": use_top50,
         "core_numbers": core_numbers,
         "discouraged_numbers": discouraged_numbers,
@@ -6844,6 +6854,10 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
     game_size = max(2, min(25, int(size or 15)))
     policy = _institutional_generation_policy(game_size)
     if game_size == 15:
+        selected_group = str(st.session_state.get("institutional_official_15_group", "G30") or "G30").strip().upper()
+        if selected_group not in OFFICIAL_15_GROUPS:
+            selected_group = "G30"
+        group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
         official_label = _official_15_policy_status_label(policy) or (
             "Política 15 validada nível 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos. "
             "Ouro 14 e diamante 15 seguem como metas futuras."
@@ -6852,6 +6866,11 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
         return {
             "policy": policy,
             "strategy_label": "Política 15 validada nível 3",
+            "official_15_generation_model": "G50_G30_G20_G10_ONLY",
+            "allowed_15_groups": list(OFFICIAL_15_GROUPS),
+            "selected_15_group": selected_group,
+            "selected_15_group_role": group_role,
+            "selected_15_group_label": group_label,
             "scientific_status": scientific_status,
             "status_visual": "BASELINE OFICIAL",
             "mode": "BASELINE VALIDADA",
@@ -7148,6 +7167,25 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         "compactation_duplicate_rejection_rule": "strict_internal_and_history_deduplication",
         "compactation_law_role": "observed_operational_child_of_scientific_mother_law",
         "compactation_operational_law": "Lei de Compactação 15 - faixa 50: baseline validada com amplitude operacional máxima",
+    }
+
+
+def _official_15_generation_context(group: str | None) -> dict[str, Any]:
+    selected_group = str(group or "G30").strip().upper()
+    if selected_group not in OFFICIAL_15_GROUPS:
+        selected_group = "G30"
+    group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
+    return {
+        "official_15_generation_model": "G50_G30_G20_G10_ONLY",
+        "allowed_15_groups": list(OFFICIAL_15_GROUPS),
+        "selected_15_group": selected_group,
+        "selected_15_group_role": group_role,
+        "selected_15_group_label": group_label,
+        "g50_role": OFFICIAL_15_GROUP_ROLES["G50"][0],
+        "g30_role": OFFICIAL_15_GROUP_ROLES["G30"][0],
+        "g20_role": OFFICIAL_15_GROUP_ROLES["G20"][0],
+        "g10_role": OFFICIAL_15_GROUP_ROLES["G10"][0],
+        "official_15_generation_model_label": "Modelo oficial 15 dezenas: G50 = auditoria e cobertura | G30 = operação principal | G20 = compacto de alta concentração | G10 = premium de ruptura",
     }
 
 
@@ -8131,16 +8169,19 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         )
     )
     controls_cols[0].caption("Atalhos comuns: 2, 10, 20, 50")
-    selected_game_size = int(
+    selected_game_size = 15
+    selected_official_group = str(
         controls_cols[1].selectbox(
-            "Quantidade de dezenas por jogo",
-            [15, 17, 18],
-            index=[15, 17, 18].index(int(st.session_state.get("institutional_dezenas_per_game", 15) or 15))
-            if int(st.session_state.get("institutional_dezenas_per_game", 15) or 15) in {15, 17, 18}
-            else 0,
-            key="institutional_dezenas_per_game",
+            "Modelo oficial 15 dezenas",
+            list(OFFICIAL_15_GROUPS),
+            index=list(OFFICIAL_15_GROUPS).index(str(st.session_state.get("institutional_official_15_group", "G30") or "G30"))
+            if str(st.session_state.get("institutional_official_15_group", "G30") or "G30") in OFFICIAL_15_GROUPS
+            else 1,
+            key="institutional_official_15_group",
         )
     )
+    st.session_state["institutional_dezenas_per_game"] = selected_game_size
+    controls_cols[1].caption("15 dezenas oficiais fechadas no modelo G50/G30/G20/G10. Fases 17/18 ficam futuras e inativas nesta tela.")
 
     strategy_display = _generation_strategy_display(selected_game_size)
     strategy_policy = dict(strategy_display.get("policy") or {})
@@ -8151,10 +8192,11 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     )
     strategy_cols[1].metric("Status científico", str(strategy_display.get("scientific_status", "-") or "-"))
     strategy_cols[2].metric("Status visual", str(strategy_display.get("status_visual", "-") or "-"))
-    if selected_game_size == 15:
-        st.success(str(strategy_display.get("summary", "-") or "-"))
-    else:
-        st.info(str(strategy_display.get("summary", "-") or "-"))
+    st.success(str(strategy_display.get("summary", "-") or "-"))
+    st.caption(
+        f"Modelo oficial 15 dezenas: {selected_official_group} | "
+        f"{str(strategy_display.get('selected_15_group_label', '') or '').strip()}"
+    )
 
     natural_quantity_mode = str(strategy_policy.get("natural_quantity_mode", "") or "")
     natural_generated_games = int(strategy_policy.get("natural_generated_games", 0) or 0)
