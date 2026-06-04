@@ -8158,21 +8158,13 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         top_cols[1].caption("Fonte: banco vazio")
 
     controls_cols = st.columns([1.0, 1.0])
-    requested_games = int(
-        controls_cols[0].number_input(
-            "Quantidade de jogos (1 a 100)",
-            min_value=1,
-            max_value=100,
-            value=int(st.session_state.get("institutional_total_games", 10) or 10),
-            step=1,
-            key="institutional_total_games",
-        )
-    )
-    controls_cols[0].caption("Atalhos comuns: 2, 10, 20, 50")
     selected_game_size = 15
+    st.session_state["institutional_dezenas_per_game"] = selected_game_size
+    st.markdown("##### Modelo oficial 15 dezenas")
+    official_model_cols = st.columns([1.4, 1.0, 1.0])
     selected_official_group = str(
-        controls_cols[1].selectbox(
-            "Modelo oficial 15 dezenas",
+        official_model_cols[0].selectbox(
+            "Grupo oficial",
             list(OFFICIAL_15_GROUPS),
             index=list(OFFICIAL_15_GROUPS).index(str(st.session_state.get("institutional_official_15_group", "G30") or "G30"))
             if str(st.session_state.get("institutional_official_15_group", "G30") or "G30") in OFFICIAL_15_GROUPS
@@ -8180,8 +8172,15 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             key="institutional_official_15_group",
         )
     )
-    st.session_state["institutional_dezenas_per_game"] = selected_game_size
-    controls_cols[1].caption("15 dezenas oficiais fechadas no modelo G50/G30/G20/G10. Fases 17/18 ficam futuras e inativas nesta tela.")
+    requested_games = int(selected_official_group[1:]) if selected_official_group[1:].isdigit() else int(st.session_state.get("institutional_total_games", 30) or 30)
+    st.session_state["institutional_total_games"] = requested_games
+    official_model_cols[1].metric("Formato fechado", "15 dezenas")
+    official_model_cols[2].metric("Jogos por grupo", requested_games)
+    st.caption("G50 = 50 jogos de 15 dezenas | G30 = 30 jogos de 15 dezenas | G20 = 20 jogos de 15 dezenas | G10 = 10 jogos de 15 dezenas")
+    controls_cols[0].metric("Quantidade de jogos", requested_games)
+    controls_cols[0].caption("Seleção travada pelo modelo oficial. Não há quantidade livre nesta fase.")
+    controls_cols[1].metric("Modelo selecionado", selected_official_group)
+    controls_cols[1].caption("15 dezenas fixas por jogo. Fases 17/18 continuam inativas.")
 
     strategy_display = _generation_strategy_display(selected_game_size)
     strategy_policy = dict(strategy_display.get("policy") or {})
