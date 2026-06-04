@@ -7,6 +7,7 @@ from dashboard.app import (
     _games_dataframe,
     _score_correlation_chart,
 )
+from dashboard.institutional_app import OFFICIAL_15_GROUPS_REGISTRY, OFFICIAL_15_QUANTITY_TO_GROUP, _official_15_group_games_for_quantity
 
 
 def test_format_numbers_uses_two_digits() -> None:
@@ -72,3 +73,18 @@ def test_backtest_dataframe_and_charts_are_created() -> None:
     assert dataframe.loc[0, "acertos"] == 11
     assert distribution_chart.data
     assert correlation_chart.data
+
+
+def test_official_group_registry_has_expected_sizes() -> None:
+    assert {group: len(games) for group, games in OFFICIAL_15_GROUPS_REGISTRY.items()} == {
+        "G50": 50,
+        "G30": 30,
+        "G20": 20,
+        "G10": 10,
+    }
+
+
+def test_official_quantity_maps_to_group_and_package_size() -> None:
+    for quantity, expected_group in ((10, "G10"), (20, "G20"), (30, "G30"), (50, "G50")):
+        assert OFFICIAL_15_QUANTITY_TO_GROUP[quantity] == expected_group
+        assert len(_official_15_group_games_for_quantity(quantity)) == quantity

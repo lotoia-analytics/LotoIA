@@ -7543,8 +7543,8 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     scientific_policy_discovery: dict[str, Any] | None = None
     official_generation_policy: dict[str, Any] = {}
     if current_dezenas_size == 15:
-        st.session_state["institutional_total_games"] = 10
-        st.session_state["institutional_generation_runs"] = 10
+        st.session_state.setdefault("institutional_operational_total_games", 10)
+        st.session_state.setdefault("institutional_operational_generation_runs", 10)
         st.session_state["institutional_repeat_limit"] = int(official_generation_policy.get("repeat_max", 10) or 10)
     controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
     total_games = int(
@@ -7552,9 +7552,9 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             "Quantidade de jogos por geração",
             min_value=1,
             max_value=100,
-            value=int(st.session_state.get("institutional_total_games", 10 if current_dezenas_size == 15 else 15) or (10 if current_dezenas_size == 15 else 15)),
+            value=int(st.session_state.get("institutional_operational_total_games", 10 if current_dezenas_size == 15 else 15) or (10 if current_dezenas_size == 15 else 15)),
             step=1,
-            key="institutional_total_games",
+            key="institutional_operational_total_games",
         )
     )
     generation_runs = int(
@@ -7562,9 +7562,9 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             "Quantidade de gerações na bateria",
             min_value=1,
             max_value=60,
-            value=int(st.session_state.get("institutional_generation_runs", 10 if current_dezenas_size == 15 else 1) or (10 if current_dezenas_size == 15 else 1)),
+            value=int(st.session_state.get("institutional_operational_generation_runs", 10 if current_dezenas_size == 15 else 1) or (10 if current_dezenas_size == 15 else 1)),
             step=1,
-            key="institutional_generation_runs",
+            key="institutional_operational_generation_runs",
         )
     )
     dezenas_per_game = int(
