@@ -3489,11 +3489,14 @@ def _run_institutional_generation(
     batch_number_usage = batch_number_usage if batch_number_usage is not None else {}
     batch_profile_usage = batch_profile_usage if batch_profile_usage is not None else {}
     batch_total_games = max(1, int(batch_total_games or total_games))
+    official_package_registry_found = _official_15_group_registry_found() if int(dezenas_per_game or 0) == 15 else False
+    official_package_group_key = str(OFFICIAL_15_QUANTITY_TO_GROUP.get(int(total_games or 0), "") or "")
     official_group_games = _official_15_group_games_for_quantity(total_games) if int(dezenas_per_game or 0) == 15 else []
+    official_package_size_loaded = len(official_group_games)
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set() if official_group_games else set(load_all_output_signatures())
-    if official_group_games:
-        if len(official_group_games) != int(total_games):
+    if int(dezenas_per_game or 0) == 15:
+        if not official_package_registry_found or not official_group_games:
             st.session_state["institutional_generation"] = {
                 "seed": seed,
                 "games": [],
@@ -3507,7 +3510,7 @@ def _run_institutional_generation(
                 "batch_id": batch_id,
                 "output_commander": {
                     "status_comandante_saida": "BLOQUEADO",
-                    "motivo_bloqueio": "Grupo oficial fechado não encontrado com a quantidade solicitada.",
+                    "motivo_bloqueio": "OFFICIAL_PACKAGE_NOT_FOUND",
                 },
             }
             st.session_state["institutional_generation_result"] = {
@@ -3525,8 +3528,67 @@ def _run_institutional_generation(
                 "total_jogos_unicos": 0,
                 "total_jogos_duplicados": 0,
                 "total_jogos_rejeitados": total_games,
-                "motivo_bloqueio": "Grupo oficial fechado não encontrado com a quantidade solicitada.",
-                "error_message": "Grupo oficial fechado não encontrado com a quantidade solicitada.",
+                "motivo_bloqueio": "OFFICIAL_PACKAGE_NOT_FOUND",
+                "error_message": "OFFICIAL_PACKAGE_NOT_FOUND",
+                "official_package_registry_found": bool(official_package_registry_found),
+                "official_package_group_key": official_package_group_key,
+                "official_package_size_loaded": int(official_package_size_loaded),
+                "official_package_size_before_output_commander": 0,
+                "official_package_size_after_output_commander": 0,
+                "fallback_dynamic_used": False,
+                "official_package_error": "OFFICIAL_PACKAGE_NOT_FOUND",
+            }
+            _store_active_batch_state(
+                batch_id=batch_id,
+                generation_event_ids=[],
+                policy_id="",
+                generated_at=st.session_state["institutional_generation"].get("created_at", datetime.now(UTC).isoformat()),
+                game_size=dezenas_per_game,
+                total_games=total_games,
+            )
+            return
+    if official_group_games:
+        if len(official_group_games) != int(total_games):
+            st.session_state["institutional_generation"] = {
+                "seed": seed,
+                "games": [],
+                "total_games": total_games,
+                "dezenas_per_game": dezenas_per_game,
+                "use_top50": use_top50,
+                "core_numbers": core_numbers,
+                "discouraged_numbers": discouraged_numbers,
+                "runtime_status": "critical_error",
+                "elapsed_time": round(time.monotonic() - started, 3),
+                "batch_id": batch_id,
+                "output_commander": {
+                    "status_comandante_saida": "BLOQUEADO",
+                    "motivo_bloqueio": "OFFICIAL_PACKAGE_NOT_FOUND",
+                },
+            }
+            st.session_state["institutional_generation_result"] = {
+                "generation_event_id": None,
+                "seed": seed,
+                "jogos": [],
+                "quantidade_jogos_solicitada": total_games,
+                "quantidade_dezenas_solicitada": dezenas_per_game,
+                "quantidade_jogos_candidatos": 0,
+                "quantidade_jogos_aprovados": 0,
+                "quantidade_jogos_real_gerada": 0,
+                "quantidade_jogos_persistida": 0,
+                "batch_id": batch_id,
+                "status_comandante_saida": "BLOQUEADO",
+                "total_jogos_unicos": 0,
+                "total_jogos_duplicados": 0,
+                "total_jogos_rejeitados": total_games,
+                "motivo_bloqueio": "OFFICIAL_PACKAGE_NOT_FOUND",
+                "error_message": "OFFICIAL_PACKAGE_NOT_FOUND",
+                "official_package_registry_found": bool(official_package_registry_found),
+                "official_package_group_key": official_package_group_key,
+                "official_package_size_loaded": int(official_package_size_loaded),
+                "official_package_size_before_output_commander": 0,
+                "official_package_size_after_output_commander": 0,
+                "fallback_dynamic_used": False,
+                "official_package_error": "OFFICIAL_PACKAGE_NOT_FOUND",
             }
             _store_active_batch_state(
                 batch_id=batch_id,
@@ -3888,6 +3950,13 @@ def _run_institutional_generation(
             "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
             "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
             "official_package_preserved": bool(official_group_games),
+            "official_package_registry_found": bool(official_package_registry_found),
+            "official_package_group_key": official_package_group_key,
+            "official_package_size_loaded": int(official_package_size_loaded),
+            "official_package_size_before_output_commander": int(len(games)),
+            "official_package_size_after_output_commander": int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games)),
+            "fallback_dynamic_used": False,
+            "official_package_error": "none",
         },
     )
     st.session_state["institutional_generation"] = {
@@ -3961,6 +4030,13 @@ def _run_institutional_generation(
         "historical_duplicates_found": int(commander_report.get("historical_duplicates_found", historical_duplicates_found) or historical_duplicates_found),
         "historical_duplicates_removed": int(commander_report.get("historical_duplicates_removed", 0) or 0),
         "official_package_preserved": bool(official_group_games),
+        "official_package_registry_found": bool(official_package_registry_found),
+        "official_package_group_key": official_package_group_key,
+        "official_package_size_loaded": int(official_package_size_loaded),
+        "official_package_size_before_output_commander": int(len(games)),
+        "official_package_size_after_output_commander": int(commander_report.get("quantidade_jogos_aprovados", len(games)) or len(games)),
+        "fallback_dynamic_used": False,
+        "official_package_error": "none",
     }
     _store_active_batch_state(
         batch_id=batch_id,
@@ -7363,6 +7439,10 @@ def _official_15_group_games_for_quantity(quantity: int) -> list[tuple[int, ...]
     if not group:
         return []
     return list(_load_official_15_group_games().get(group, []))
+
+
+def _official_15_group_registry_found() -> bool:
+    return bool(_load_official_15_group_games())
 
 
 def _render_post_conference_monitoring_panel() -> None:
