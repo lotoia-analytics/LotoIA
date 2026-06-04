@@ -8743,6 +8743,19 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         diag_cols[1].metric("valid_candidates", int(diagnostics.get("valid_candidates_found", 0) or 0))
         diag_cols[2].metric("attempts_used", int(diagnostics.get("attempts_used", 0) or 0))
         diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
+        games = list(result.get("games") or [])
+        if games:
+            st.markdown("#### Jogos gerados")
+            games_df = pd.DataFrame(
+                [
+                    {
+                        "jogo": index + 1,
+                        "dezenas": " ".join(f"{int(number):02d}" for number in game.get("numbers", [])),
+                    }
+                    for index, game in enumerate(games)
+                ]
+            )
+            st.dataframe(games_df, hide_index=True, use_container_width=True)
         with st.expander("Diagnóstico da página limpa", expanded=False):
             st.write(f"requested_count={result.get('requested_count', '-')}")
             st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
