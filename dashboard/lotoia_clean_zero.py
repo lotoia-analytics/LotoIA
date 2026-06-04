@@ -34,10 +34,10 @@ OFFICIAL_CARD_FORMATS = (15, 17, 18)
 MENU_ITEMS = [
     "Conferir Resultados",
     "Simular Resultados",
-    "Historico Analitico",
-    "Historico Institucional",
-    "Limpar Historico",
-    "Apagar Historicos",
+    "Histórico Analítico",
+    "Histórico Institucional",
+    "Limpar Histórico",
+    "Apagar Históricos",
 ]
 
 
@@ -92,7 +92,7 @@ def _render_generator_block() -> dict[str, Any]:
             options=list(OFFICIAL_CARD_FORMATS),
             index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
             format_func=lambda value: {
-                15: "15 dezenas - Nucleo Lei 15",
+                15: "15 dezenas - Núcleo Lei 15",
                 17: "17 dezenas - Lei 15 + 2 reservas auditadas",
                 18: "18 dezenas - Lei 15 + 3 reservas auditadas",
             }.get(int(value), f"{int(value)} dezenas"),
@@ -158,18 +158,18 @@ def _render_generator_block() -> dict[str, Any]:
                 [
                     {
                         "jogo": index + 1,
-                        "nucleo_lei_15": _numbers_to_text(game.get("core_numbers", game.get("numbers", []))),
+                        "núcleo_lei_15": _numbers_to_text(game.get("core_numbers", game.get("numbers", []))),
                         "reservas_auditadas": " ".join(f"+{int(number):02d}" for number in game.get("audited_reserve_numbers", [])) or "-",
-                        "cartao_final": _numbers_to_text(game.get("final_card_numbers", game.get("numbers", []))),
+                        "cartão_final": _numbers_to_text(game.get("final_card_numbers", game.get("numbers", []))),
                     }
                     for index, game in enumerate(games)
                 ]
             )
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
-                f"nucleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
+                f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
                 f"reservas_auditadas={len(games[0].get('audited_reserve_numbers', []))} | "
-                f"cartao_final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}"
+                f"cartão_final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}"
             )
     return result
 
@@ -201,14 +201,26 @@ def _render_conferir_resultados() -> None:
         rows.append(
             {
                 "jogo": index,
-                "nucleo_lei_15": _numbers_to_text(core_numbers),
+                "núcleo_lei_15": _numbers_to_text(core_numbers),
                 "reservas_auditadas": " ".join(f"+{int(n):02d}" for n in reserves) or "-",
-                "cartao_final": _numbers_to_text(final_card),
+                "cartão_final": _numbers_to_text(final_card),
                 "acertos": hits,
             }
         )
     df = pd.DataFrame(rows).sort_values(["acertos", "jogo"], ascending=[False, True])
     st.dataframe(df, hide_index=True, use_container_width=True)
+    summary = df["acertos"].value_counts().reindex([11, 12, 13, 14, 15], fill_value=0)
+    st.caption(
+        " | ".join(
+            [
+                f"11+={int((df['acertos'] >= 11).sum())}",
+                f"12+={int((df['acertos'] >= 12).sum())}",
+                f"13+={int((df['acertos'] >= 13).sum())}",
+                f"14={int((df['acertos'] == 14).sum())}",
+                f"15={int((df['acertos'] == 15).sum())}",
+            ]
+        )
+    )
 
 
 def _render_simular_resultados() -> None:
@@ -229,7 +241,7 @@ def _render_simular_resultados() -> None:
         rows.append(
             {
                 "jogo": index,
-                "cartao_final": _numbers_to_text(final_card),
+                "cartão_final": _numbers_to_text(final_card),
                 "acertos": hits,
             }
         )
@@ -238,26 +250,26 @@ def _render_simular_resultados() -> None:
 
 
 def _render_historico_analitico() -> None:
-    st.markdown("### Historico Analitico")
+    st.markdown("### Histórico Analítico")
     rows = _load_accumulated_analytical_rows()
     if not rows:
-        st.info("Historico indisponivel ou vazio.")
+        st.info("Histórico indisponível ou vazio.")
         return
     df = _ensure_analytical_games_schema(pd.DataFrame(rows))
     if df.empty:
-        st.info("Historico indisponivel ou vazio.")
+        st.info("Histórico indisponível ou vazio.")
         return
     st.dataframe(
         df[
             [
                 "data/hora",
                 "formato_cartao",
-                "nucleo_lei_15",
+                "núcleo_lei_15",
                 "reservas_auditadas",
-                "cartao_final",
+                "cartão_final",
                 "quantidade_final",
                 "batch_id",
-                "estrategia",
+                "estratégia",
             ]
         ],
         hide_index=True,
@@ -266,16 +278,16 @@ def _render_historico_analitico() -> None:
 
 
 def _render_historico_institucional() -> None:
-    st.markdown("### Historico Institucional")
+    st.markdown("### Histórico Institucional")
     events = _load_clean_institutional_events()
     if not events:
-        st.info("Historico institucional indisponivel ou vazio.")
+        st.info("Histórico institucional indisponível ou vazio.")
         return
     st.dataframe(pd.DataFrame(events), hide_index=True, use_container_width=True)
 
 
 def _render_limpar_historico() -> None:
-    st.markdown("### Limpar Historico")
+    st.markdown("### Limpar Histórico")
     if st.button("Limpar visualizacao / filtros", key="zero_clear_session"):
         for key in [
             "zero_generation_result",
@@ -286,7 +298,7 @@ def _render_limpar_historico() -> None:
             "zero_simular_manual",
         ]:
             st.session_state.pop(key, None)
-        st.success("Sessao limpa.")
+        st.success("Sessão limpa.")
 
 
 def _count_rows(table_name: str) -> int:
@@ -314,10 +326,10 @@ def _delete_history_table(table_name: str) -> int:
 
 
 def _render_apagar_historicos() -> None:
-    st.markdown("### Apagar Historicos")
+    st.markdown("### Apagar Históricos")
     scope = st.radio(
         "Escopo",
-        ["Historico Analitico", "Historico Institucional", "Ambos"],
+        ["Histórico Analítico", "Histórico Institucional", "Ambos"],
         horizontal=True,
         key="zero_delete_scope",
     )
@@ -328,11 +340,11 @@ def _render_apagar_historicos() -> None:
             return
         deleted_analytical = 0
         deleted_institutional = 0
-        if scope in {"Historico Analitico", "Ambos"}:
+        if scope in {"Histórico Analítico", "Ambos"}:
             deleted_analytical = _delete_history_table("generated_games")
             _delete_history_table("generation_events")
             _delete_history_table("institutional_output_signatures")
-        if scope in {"Historico Institucional", "Ambos"}:
+        if scope in {"Histórico Institucional", "Ambos"}:
             deleted_institutional = _delete_history_table("reconciliation_runs")
             _delete_history_table("reconciliation_games")
         st.warning(
@@ -350,20 +362,27 @@ def _render_navigation() -> str:
 def main() -> None:
     st.set_page_config(page_title="LotoIA Clean Zero", layout="wide")
     menu = _render_navigation()
-    _render_header()
-    _render_generator_block()
     if menu == "Conferir Resultados":
+        _render_header()
         _render_conferir_resultados()
     elif menu == "Simular Resultados":
+        _render_header()
         _render_simular_resultados()
-    elif menu == "Historico Analitico":
+    elif menu == "Histórico Analítico":
+        _render_header()
         _render_historico_analitico()
-    elif menu == "Historico Institucional":
+    elif menu == "Histórico Institucional":
+        _render_header()
         _render_historico_institucional()
-    elif menu == "Limpar Historico":
+    elif menu == "Limpar Histórico":
+        _render_header()
         _render_limpar_historico()
-    elif menu == "Apagar Historicos":
+    elif menu == "Apagar Históricos":
+        _render_header()
         _render_apagar_historicos()
+    else:
+        _render_header()
+        _render_generator_block()
 
 
 if __name__ == "__main__":
