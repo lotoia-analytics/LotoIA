@@ -93,6 +93,8 @@ OFFICIAL_15_QUANTITY_TO_GROUP = {
 }
 OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL_15_QUANTITY_TO_GROUP.items()}
 OFFICIAL_15_GROUP_SOURCE_REPORT = Path(__file__).resolve().parent.parent / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
+OFFICIAL_CARD_FORMATS = (15, 17, 18)
+AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 9, 5, 6, 8, 14, 18, 20, 24, 25)
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
     "monitoring_role": "OBSERVER_REGISTRY",
@@ -7695,6 +7697,59 @@ def _official_15_group_games_for_quantity(quantity: int) -> list[tuple[int, ...]
     return list(OFFICIAL_15_GROUPS_REGISTRY.get(group, []))
 
 
+def _expand_official_card(
+    core_numbers: Sequence[int],
+    card_format: int,
+    *,
+    game_index: int = 0,
+) -> tuple[list[int], list[int], list[int]]:
+    core = sorted({int(number) for number in core_numbers if 1 <= int(number) <= 25})
+    target_size = int(card_format or 15)
+    if target_size <= len(core):
+        return core, [], core[:target_size]
+    needed = target_size - len(core)
+    reserves: list[int] = []
+    priority = list(AUDITED_RESERVE_PRIORITY)
+    if priority and game_index:
+        offset = int(game_index - 1) % len(priority)
+        priority = priority[offset:] + priority[:offset]
+    for number in priority:
+        if number in core or number in reserves:
+            continue
+        reserves.append(int(number))
+        if len(reserves) >= needed:
+            break
+    if len(reserves) < needed:
+        for number in range(1, 26):
+            if number in core or number in reserves:
+                continue
+            reserves.append(int(number))
+            if len(reserves) >= needed:
+                break
+    final_card = sorted(core + reserves[:needed])
+    return core, reserves[:needed], final_card
+
+
+def _expand_generation_games_for_format(
+    games: Sequence[dict[str, Any]],
+    card_format: int,
+) -> list[dict[str, Any]]:
+    expanded_games: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        core_numbers = list(game.get("numbers", []) or [])
+        core, reserves, final_card = _expand_official_card(core_numbers, card_format, game_index=index)
+        expanded_games.append(
+            {
+                **dict(game),
+                "card_format": int(card_format or 15),
+                "core_numbers": core,
+                "audited_reserve_numbers": reserves,
+                "final_card_numbers": final_card,
+            }
+        )
+    return expanded_games
+
+
 def _official_15_group_registry_found() -> bool:
     return bool(OFFICIAL_15_GROUPS_REGISTRY)
 
@@ -7796,10 +7851,10 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         top_cols[0].caption("Último concurso: -")
         top_cols[1].caption("Fonte: banco vazio")
 
-    current_dezenas_size = int(st.session_state.get("institutional_dezenas_per_game", 15) or 15)
+    current_card_format = int(st.session_state.get("institutional_card_format", 15) or 15)
     scientific_policy_discovery: dict[str, Any] | None = None
     official_generation_policy: dict[str, Any] = {}
-    if current_dezenas_size == 15:
+    if current_card_format == 15:
         st.session_state.setdefault("institutional_operational_total_games", 10)
         st.session_state.setdefault("institutional_operational_generation_runs", 10)
         st.session_state["institutional_repeat_limit"] = int(official_generation_policy.get("repeat_max", 10) or 10)
@@ -7809,7 +7864,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             "Quantidade de jogos por geração",
             min_value=1,
             max_value=100,
-            value=int(st.session_state.get("institutional_operational_total_games", 10 if current_dezenas_size == 15 else 15) or (10 if current_dezenas_size == 15 else 15)),
+            value=int(st.session_state.get("institutional_operational_total_games", 10 if current_card_format == 15 else 15) or (10 if current_card_format == 15 else 15)),
             step=1,
             key="institutional_operational_total_games",
         )
@@ -7819,26 +7874,26 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             "Quantidade de gerações na bateria",
             min_value=1,
             max_value=60,
-            value=int(st.session_state.get("institutional_operational_generation_runs", 10 if current_dezenas_size == 15 else 1) or (10 if current_dezenas_size == 15 else 1)),
+            value=int(st.session_state.get("institutional_operational_generation_runs", 10 if current_card_format == 15 else 1) or (10 if current_card_format == 15 else 1)),
             step=1,
             key="institutional_operational_generation_runs",
         )
     )
-    dezenas_per_game = int(
-        controls_cols[2].number_input(
-            "Quantidade de dezenas por jogo",
-            min_value=2,
-            max_value=MAX_INSTITUTIONAL_DEZENAS_PER_GAME,
-            value=int(
-                min(
-                    MAX_INSTITUTIONAL_DEZENAS_PER_GAME,
-                    max(2, int(st.session_state.get("institutional_dezenas_per_game", 15) or 15)),
-                )
-            ),
-            step=1,
-            key="institutional_dezenas_per_game",
+    selected_card_format = int(
+        controls_cols[2].selectbox(
+            "Formato do cartão",
+            options=list(OFFICIAL_CARD_FORMATS),
+            index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
+            format_func=lambda value: {
+                15: "15 dezenas — Núcleo Lei 15",
+                17: "17 dezenas — Lei 15 + 2 reservas auditadas",
+                18: "18 dezenas — Lei 15 + 3 reservas auditadas",
+            }.get(int(value), f"{int(value)} dezenas"),
+            key="institutional_card_format",
         )
     )
+    st.session_state["institutional_card_format"] = selected_card_format
+    dezenas_per_game = 15
     geometry_profile = _sync_hb_geometry_controls(dezenas_per_game)
     use_top50 = bool(
         controls_cols[3].checkbox(
@@ -7933,10 +7988,8 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     resume_cols = st.columns(4)
     resume_cols[0].metric("jogos por geração", int(total_games))
     resume_cols[1].metric("gerações na bateria", int(generation_runs))
-    resume_cols[2].metric("dezenas por jogo", int(dezenas_per_game))
+    resume_cols[2].metric("Formato do cartão", f"{selected_card_format} dezenas")
     resume_cols[3].metric("total esperado de jogos", total_jogos_esperados)
-    if generation_runs > 1 and dezenas_per_game != 15:
-        st.error("Nesta fase, a bateria oficial precisa usar 15 dezenas por jogo para manter a calibração institucional.")
     batch_result = st.session_state.get("institutional_generation_batch_result") or {}
     generation_state = st.session_state.get("institutional_generation") or {}
     generation_result = st.session_state.get("institutional_generation_result") or {}
@@ -7973,7 +8026,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         )
     _render_scientific_policy_panel(
         policy=official_generation_policy,
-        strategy_size=int(dezenas_per_game),
+        strategy_size=15,
         total_expected_games=int(total_jogos_esperados),
         games_per_generation=int(total_games),
         generations_in_batch=int(generation_runs),
@@ -8004,14 +8057,14 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     with st.expander("Diagnóstico institucional", expanded=False):
         _render_scientific_policy_panel(
             policy=official_generation_policy,
-            strategy_size=int(dezenas_per_game),
+            strategy_size=15,
             total_expected_games=int(total_jogos_esperados),
             games_per_generation=int(total_games),
             generations_in_batch=int(generation_runs),
             policy_discovery=scientific_policy_discovery,
         )
         _render_scientific_calibration_panel(
-            strategy_size=int(dezenas_per_game),
+            strategy_size=15,
             scientific_state=scientific_state,
             scientific_recommendation=scientific_recommendation,
             technical_payload=scientific_batch if scientific_batch else None,
@@ -8608,7 +8661,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             )
         elif check_result.get("status") == "waiting_contest":
             st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
-    elif check_result.get("status") == "checked":
+    elif isinstance(check_result, dict) and check_result.get("status") == "checked":
         st.info("Conferência executada, mas nenhum resultado foi renderizado.")
     elif not latest_contest:
         st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
