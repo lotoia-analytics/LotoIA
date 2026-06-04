@@ -7314,46 +7314,80 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _apply_institutional_styles()
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional limpo")
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
-    _sidebar_nav_button("Auditoria e Monitoramento", "Auditoria e Monitoramento", page)
-    pages = list(PAGE_TARGETS.values())
-    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Auditoria e Monitoramento</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Conferência por concurso", "Conferência por concurso", page)
-    _sidebar_nav_button("Desempenho por grupo", "Desempenho por grupo", page)
-    _sidebar_nav_button("Dezenas faltantes", "Dezenas faltantes", page)
-    _sidebar_nav_button("Dezenas sobrando", "Dezenas sobrando", page)
-    _sidebar_nav_button("Vazamento lateral", "Vazamento lateral", page)
-    _sidebar_nav_button("Evolução 13 -> 14", "Evolução 13 -> 14", page)
-    _sidebar_nav_button("Evolução 14 -> 15", "Evolução 14 -> 15", page)
-    _sidebar_nav_button("Hipóteses para teste offline", "Hipóteses para teste offline", page)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Gerador ADM - Lei 15 Limpo", "Gerador ADM - Lei 15 Limpo", page)
-    _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
-    _sidebar_nav_button("Conferir Resultados", "Conferir Resultados", page)
-    _sidebar_nav_button("Simular Resultados", "Simular Resultados", page)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Histórico Analítico", "Histórico Analítico", page)
-    _sidebar_nav_button("Histórico Institucional", "Histórico Institucional", page)
-    _sidebar_nav_button("Limpar Históricos", "Limpar Históricos", page)
-    _sidebar_nav_button("Apagar Histórico", "Apagar Histórico", page)
-    _sidebar_nav_button("Comparativos histórico", "Comparativos histórico", page)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Estratégias</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Análises Estratégicas", "Análises Estratégicas", page)
-    _sidebar_nav_button("Testar Estratégias", "Testar Estratégias", page)
-    _sidebar_nav_button("Simular Estratégias", "Simular Estratégias", page)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico</div>', unsafe_allow_html=True)
-    _sidebar_nav_button("Métricas HB", "Métricas HB", page)
-    _sidebar_nav_button("Cobertura estrutural", "Cobertura estrutural", page)
-    _sidebar_nav_button("Replay institucional", "Replay institucional", page)
-    _sidebar_nav_button("Benchmark resumido", "Benchmark resumido", page)
-    _sidebar_nav_button("Estatísticas operacionais", "Estatísticas operacionais", page)
-    _sidebar_nav_button("HB Geometry", "HB Geometry", page)
+
+    def _nav_entry(label: str, *, disabled: bool = False) -> None:
+        if st.sidebar.button(label, key=f"nav_{PAGE_TARGETS.get(label, label)}", disabled=disabled):
+            page_id = _canonical_page_id(label)
+            st.session_state["institutional_page_id"] = page_id
+            st.rerun()
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
+    for label in ["Gerador ADM - Lei 15 Limpo", "Gerar Jogos", "Conferir Resultados", "Simular Resultados"]:
+        _nav_entry(label)
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
+    for label in ["Hist?rico Anal?tico", "Hist?rico Institucional", "Comparativos hist?rico"]:
+        _nav_entry(label)
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
+    for label in [
+        "Auditoria Runtime",
+        "Auditoria e Monitoramento",
+        "Confer?ncia por concurso",
+        "Desempenho por grupo",
+        "Dezenas faltantes",
+        "Dezenas sobrando",
+    ]:
+        _nav_entry(label)
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
+    for label in ["Benchmark resumido", "Estat?sticas operacionais", "M?tricas HB", "Cobertura estrutural"]:
+        _nav_entry(label)
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
+    for label in [
+        "Vazamento lateral",
+        "Evolu??o 13 -> 14",
+        "Evolu??o 14 -> 15",
+        "Hip?teses para teste offline",
+        "An?lises Estrat?gicas",
+        "Testar Estrat?gias",
+        "Simular Estrat?gias",
+        "Replay institucional",
+        "HB Geometry",
+    ]:
+        _nav_entry(label, disabled=True)
+    st.sidebar.caption("Itens de quarentena permanecem vis?veis apenas como refer?ncia institucional.")
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
+    for label in ["Limpar Hist?ricos", "Apagar Hist?rico"]:
+        _nav_entry(label, disabled=True)
+    st.sidebar.caption("A??es destrutivas ficam bloqueadas at? defini??o de trava institucional.")
+
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
-    if choice not in pages:
+    allowed_pages = {
+        "generation",
+        "clean_law15_generation",
+        "conference",
+        "simulation",
+        "history_analytical",
+        "history_institutional",
+        "comparative_history",
+        "audit",
+        "audit_monitoring",
+        "audit_monitoring_conference",
+        "audit_monitoring_group_performance",
+        "audit_monitoring_missing_numbers",
+        "audit_monitoring_extra_numbers",
+        "summary_benchmark",
+        "operational_statistics",
+        "hb_metrics",
+        "structural_coverage",
+    }
+    if choice not in allowed_pages:
         choice = _canonical_page_id(page)
     st.session_state["institutional_page_id"] = choice
     st.sidebar.divider()
