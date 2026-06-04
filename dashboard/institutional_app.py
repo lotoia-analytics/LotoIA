@@ -3278,6 +3278,47 @@ def _force_subset_from_universe(
     return []
 
 
+def _generate_direct_15_games(
+    *,
+    total_games: int,
+    seed: int,
+    history_frequency: dict[int, int],
+    batch_number_usage: dict[int, int],
+    batch_profile_usage: dict[tuple[int, int], int],
+    batch_total_games: int,
+) -> list[dict[str, Any]]:
+    universe = list(range(1, 26))
+    games: list[dict[str, Any]] = []
+    used_signatures: set[str] = set()
+    attempt = 0
+    attempt_limit = max(total_games * 40, 200)
+    while len(games) < total_games and attempt < attempt_limit:
+        rng = random.Random(seed + attempt * 97)
+        numbers = universe[:]
+        rng.shuffle(numbers)
+        selected_numbers = sorted(numbers[:15])
+        signature = _game_signature(selected_numbers)
+        attempt += 1
+        if signature in used_signatures:
+            continue
+        game_record = _build_institutional_game_record(
+            selected_numbers=selected_numbers,
+            candidate={},
+            history_frequency=history_frequency,
+            dezenas_per_game=15,
+        )
+        games.append(game_record)
+        used_signatures.add(signature)
+        profile_pair = (
+            sum(1 for number in selected_numbers if number % 2 != 0),
+            sum(1 for number in selected_numbers if number % 2 == 0),
+        )
+        batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+        for number in selected_numbers:
+            batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+    return games
+
+
 def _build_institutional_game_record(
     *,
     selected_numbers: list[int],
@@ -3495,40 +3536,106 @@ def _run_institutional_generation(
     official_package_size_loaded = 0
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set()
-    candidate_count = max(total_games * 20, 200 if use_top50 else 120)
-    compact_candidate_multiplier = int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0)
-    if compact_candidate_multiplier > 0:
-        candidate_count = max(candidate_count, total_games * compact_candidate_multiplier)
-    compact_attempt_limit = int(policy.get("compactation_adjustment_attempt_limit", 0) or 0)
-    ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
-    for candidate in ranked_candidates:
-        selected_numbers = _select_subset_from_candidate(
-            list(candidate.get("numbers", [])),
-            target_size=dezenas_per_game,
-            frequency_map=history_frequency,
-            latest_numbers=latest_numbers,
+    direct_generation_mode = int(dezenas_per_game or 0) == 15
+    if direct_generation_mode:
+        games = _generate_direct_15_games(
+            total_games=total_games,
+            seed=seed,
+            history_frequency=history_frequency,
             batch_number_usage=batch_number_usage,
-            batch_total_games=batch_total_games,
             batch_profile_usage=batch_profile_usage,
-            core_numbers=core_numbers,
-            discouraged_numbers=discouraged_numbers,
-            max_frequency_ratio=max_frequency_ratio,
-            min_frequency_ratio=min_frequency_ratio,
-            preferred_profile_ratios=preferred_profile_ratios,
-            odd_min=effective_odd_min,
-            odd_max=effective_odd_max,
-            even_min=effective_even_min,
-            even_max=effective_even_max,
-            sequence_max=effective_sequence_max,
-            coverage_min=effective_coverage_min,
-            entropy_min=effective_entropy_min,
-            repeat_min=repeat_min,
-            repeat_max=repeat_max,
-            preferred_parity_pairs=preferred_parity_pairs,
-            allowed_parity_pairs=allowed_parity_pairs,
+            batch_total_games=batch_total_games,
         )
-        if not selected_numbers:
-            selected_numbers = _force_subset_from_universe(
+    else:
+        candidate_count = max(total_games * 20, 200 if use_top50 else 120)
+        compact_candidate_multiplier = int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0)
+        if compact_candidate_multiplier > 0:
+            candidate_count = max(candidate_count, total_games * compact_candidate_multiplier)
+        compact_attempt_limit = int(policy.get("compactation_adjustment_attempt_limit", 0) or 0)
+        ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
+        for candidate in ranked_candidates:
+            selected_numbers = _select_subset_from_candidate(
+                list(candidate.get("numbers", [])),
+                target_size=dezenas_per_game,
+                frequency_map=history_frequency,
+                latest_numbers=latest_numbers,
+                batch_number_usage=batch_number_usage,
+                batch_total_games=batch_total_games,
+                batch_profile_usage=batch_profile_usage,
+                core_numbers=core_numbers,
+                discouraged_numbers=discouraged_numbers,
+                max_frequency_ratio=max_frequency_ratio,
+                min_frequency_ratio=min_frequency_ratio,
+                preferred_profile_ratios=preferred_profile_ratios,
+                odd_min=effective_odd_min,
+                odd_max=effective_odd_max,
+                even_min=effective_even_min,
+                even_max=effective_even_max,
+                sequence_max=effective_sequence_max,
+                coverage_min=effective_coverage_min,
+                entropy_min=effective_entropy_min,
+                repeat_min=repeat_min,
+                repeat_max=repeat_max,
+                preferred_parity_pairs=preferred_parity_pairs,
+                allowed_parity_pairs=allowed_parity_pairs,
+            )
+            if not selected_numbers:
+                selected_numbers = _force_subset_from_universe(
+                    target_size=dezenas_per_game,
+                    frequency_map=history_frequency,
+                    latest_numbers=latest_numbers,
+                    batch_number_usage=batch_number_usage,
+                    batch_total_games=batch_total_games,
+                    batch_profile_usage=batch_profile_usage,
+                    core_numbers=core_numbers,
+                    discouraged_numbers=discouraged_numbers,
+                    max_frequency_ratio=max_frequency_ratio,
+                    min_frequency_ratio=min_frequency_ratio,
+                    preferred_profile_ratios=preferred_profile_ratios,
+                    odd_min=effective_odd_min,
+                    odd_max=effective_odd_max,
+                    even_min=effective_even_min,
+                    even_max=effective_even_max,
+                    preferred_parity_pairs=preferred_parity_pairs,
+                    repeat_min=repeat_min,
+                    repeat_max=repeat_max,
+                    sequence_max=effective_sequence_max,
+                    coverage_min=effective_coverage_min,
+                    entropy_min=effective_entropy_min,
+                    allowed_parity_pairs=allowed_parity_pairs,
+                    offset=len(games),
+                )
+            if not selected_numbers:
+                continue
+            signature = _game_signature(selected_numbers)
+            if signature in used_signatures:
+                continue
+            games.append(
+                _build_institutional_game_record(
+                    selected_numbers=selected_numbers,
+                    candidate=dict(candidate),
+                    history_frequency=history_frequency,
+                    dezenas_per_game=dezenas_per_game,
+                )
+            )
+            profile_pair = (
+                sum(1 for number in selected_numbers if number % 2 != 0),
+                sum(1 for number in selected_numbers if number % 2 == 0),
+            )
+            batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+            for number in selected_numbers:
+                batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+            used_signatures.add(signature)
+            if len(games) >= total_games:
+                break
+
+        fallback_attempt = 0
+        fallback_attempt_limit = max(total_games * 25, 50)
+        if compact_attempt_limit > 0:
+            fallback_attempt_limit = max(fallback_attempt_limit, compact_attempt_limit)
+        while len(games) < total_games and fallback_attempt < fallback_attempt_limit:
+            candidate = ranked_candidates[fallback_attempt % len(ranked_candidates)] if ranked_candidates else {}
+            fallback_numbers = _force_subset_from_universe(
                 target_size=dezenas_per_game,
                 frequency_map=history_frequency,
                 latest_numbers=latest_numbers,
@@ -3551,85 +3658,30 @@ def _run_institutional_generation(
                 coverage_min=effective_coverage_min,
                 entropy_min=effective_entropy_min,
                 allowed_parity_pairs=allowed_parity_pairs,
-                offset=len(games),
+                offset=seed + fallback_attempt,
             )
-        if not selected_numbers:
-            continue
-        signature = _game_signature(selected_numbers)
-        if signature in used_signatures:
-            continue
-        games.append(
-            _build_institutional_game_record(
-                selected_numbers=selected_numbers,
-                candidate=dict(candidate),
-                history_frequency=history_frequency,
-                dezenas_per_game=dezenas_per_game,
+            fallback_attempt += 1
+            if not fallback_numbers:
+                continue
+            signature = _game_signature(fallback_numbers)
+            if signature in used_signatures:
+                continue
+            games.append(
+                _build_institutional_game_record(
+                    selected_numbers=fallback_numbers,
+                    candidate=dict(candidate),
+                    history_frequency=history_frequency,
+                    dezenas_per_game=dezenas_per_game,
+                )
             )
-        )
-        profile_pair = (
-            sum(1 for number in selected_numbers if number % 2 != 0),
-            sum(1 for number in selected_numbers if number % 2 == 0),
-        )
-        batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
-        for number in selected_numbers:
-            batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
-        used_signatures.add(signature)
-        if len(games) >= total_games:
-            break
-
-    fallback_attempt = 0
-    fallback_attempt_limit = max(total_games * 25, 50)
-    if compact_attempt_limit > 0:
-        fallback_attempt_limit = max(fallback_attempt_limit, compact_attempt_limit)
-    while len(games) < total_games and fallback_attempt < fallback_attempt_limit:
-        candidate = ranked_candidates[fallback_attempt % len(ranked_candidates)] if ranked_candidates else {}
-        fallback_numbers = _force_subset_from_universe(
-            target_size=dezenas_per_game,
-            frequency_map=history_frequency,
-            latest_numbers=latest_numbers,
-            batch_number_usage=batch_number_usage,
-            batch_total_games=batch_total_games,
-            batch_profile_usage=batch_profile_usage,
-            core_numbers=core_numbers,
-            discouraged_numbers=discouraged_numbers,
-            max_frequency_ratio=max_frequency_ratio,
-            min_frequency_ratio=min_frequency_ratio,
-            preferred_profile_ratios=preferred_profile_ratios,
-            odd_min=effective_odd_min,
-            odd_max=effective_odd_max,
-            even_min=effective_even_min,
-            even_max=effective_even_max,
-            preferred_parity_pairs=preferred_parity_pairs,
-            repeat_min=repeat_min,
-            repeat_max=repeat_max,
-            sequence_max=effective_sequence_max,
-            coverage_min=effective_coverage_min,
-            entropy_min=effective_entropy_min,
-            allowed_parity_pairs=allowed_parity_pairs,
-            offset=seed + fallback_attempt,
-        )
-        fallback_attempt += 1
-        if not fallback_numbers:
-            continue
-        signature = _game_signature(fallback_numbers)
-        if signature in used_signatures:
-            continue
-        games.append(
-            _build_institutional_game_record(
-                selected_numbers=fallback_numbers,
-                candidate=dict(candidate),
-                history_frequency=history_frequency,
-                dezenas_per_game=dezenas_per_game,
+            profile_pair = (
+                sum(1 for number in fallback_numbers if number % 2 != 0),
+                sum(1 for number in fallback_numbers if number % 2 == 0),
             )
-        )
-        profile_pair = (
-            sum(1 for number in fallback_numbers if number % 2 != 0),
-            sum(1 for number in fallback_numbers if number % 2 == 0),
-        )
-        batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
-        for number in fallback_numbers:
-            batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
-        used_signatures.add(signature)
+            batch_profile_usage[profile_pair] = int(batch_profile_usage.get(profile_pair, 0) or 0) + 1
+            for number in fallback_numbers:
+                batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
+            used_signatures.add(signature)
     historical_deduplication_mode = "AUDIT_ONLY"
     historical_duplicates_found = 0
     commander_report = output_commander_validate_games(
@@ -8393,8 +8445,9 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             "selected_group_from_state": "DIRECT_15_GAME_GENERATION",
             "generation_mode_resolved": str(strategy_display.get("generation_mode", strategy_policy.get("policy_mode", "")) or ""),
             "policy_mode_resolved": str(strategy_display.get("policy_mode", strategy_policy.get("policy_mode", "")) or ""),
-            "materialization_called": bool(selected_game_size == 15),
-            "official_package_size_loaded": int(len(_official_15_group_games_for_quantity(requested_games)) if selected_game_size == 15 else 0),
+            "direct_generation_called": True,
+            "materialization_called": False,
+            "official_package_size_loaded": 0,
             "historical_deduplication_mode": str(strategy_display.get("historical_deduplication_mode", "AUDIT_ONLY" if selected_game_size == 15 else "BLOCK") or ""),
             "historical_duplicates_found": int(summary_result.get("historical_duplicates_found", 0) or 0),
             "historical_duplicates_removed": int(summary_result.get("historical_duplicates_removed", 0) or 0),
