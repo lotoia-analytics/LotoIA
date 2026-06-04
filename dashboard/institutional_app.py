@@ -6994,25 +6994,28 @@ def _generation_strategy_display(size: int) -> dict[str, Any]:
         if selected_group not in OFFICIAL_15_GROUPS:
             selected_group = "G30"
         group_role, group_label = OFFICIAL_15_GROUP_ROLES.get(selected_group, OFFICIAL_15_GROUP_ROLES["G30"])
-        official_label = _official_15_policy_status_label(policy) or (
-            "Política 15 validada nível 3. Estabilizou 11+, atingiu 12+ em volume e produziu 13 acertos. "
-            "Ouro 14 e diamante 15 seguem como metas futuras."
+        official_label = (
+            "Materialização oficial 15 dezenas pronta. Quantidade fechada por grupo oficial."
         )
         scientific_status = str(policy.get("policy_validation_status") or "VALIDATED_15_POLICY_LEVEL_3")
         return {
             "policy": policy,
-            "strategy_label": "Política 15 validada nível 3",
-            "official_15_generation_model": "G50_G30_G20_G10_ONLY",
+            "strategy_label": "Materialização oficial 15 dezenas",
+            "official_15_generation_model": "OFFICIAL_GROUP_MATERIALIZATION",
             "allowed_15_groups": list(OFFICIAL_15_GROUPS),
             "selected_15_group": selected_group,
             "selected_15_group_role": group_role,
             "selected_15_group_label": group_label,
             "scientific_status": scientific_status,
-            "status_visual": "BASELINE OFICIAL",
-            "mode": "BASELINE VALIDADA",
+            "status_visual": "OFFICIAL_GROUP_MATERIALIZATION",
+            "mode": "OFFICIAL_GROUP_MATERIALIZATION",
             "main_reason": official_label,
-            "action_suggested": "usar baseline oficial validada nível 3 para próxima geração compacta",
+            "action_suggested": "usar materialização oficial fechada para próxima geração compacta",
             "summary": official_label,
+            "generation_mode": "OFFICIAL_GROUP_MATERIALIZATION",
+            "policy_mode": "OFFICIAL_GROUP_MATERIALIZATION",
+            "historical_deduplication_mode": "AUDIT_ONLY",
+            "official_package_preserved": True,
         }
     if game_size == 17:
         return {
@@ -7658,7 +7661,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
     else:
         scientific_state = None
         scientific_recommendation = None
-    with st.expander("Diagnóstico histórico", expanded=False):
+    with st.expander("Diagnóstico institucional", expanded=False):
         _render_scientific_policy_panel(
             policy=official_generation_policy,
             strategy_size=int(dezenas_per_game),
@@ -8437,6 +8440,17 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         f"Modelo oficial 15 dezenas: {selected_official_group} | "
         f"{str(strategy_display.get('selected_15_group_label', '') or '').strip()}"
     )
+    if selected_game_size == 15:
+        st.caption(
+            " | ".join(
+                [
+                    f"generation_mode={strategy_display.get('generation_mode', 'OFFICIAL_GROUP_MATERIALIZATION')}",
+                    f"policy_mode={strategy_display.get('policy_mode', 'OFFICIAL_GROUP_MATERIALIZATION')}",
+                    f"historical_deduplication_mode={strategy_display.get('historical_deduplication_mode', 'AUDIT_ONLY')}",
+                    f"official_package_preserved={str(strategy_display.get('official_package_preserved', True)).lower()}",
+                ]
+            )
+        )
 
     natural_quantity_mode = str(strategy_policy.get("natural_quantity_mode", "") or "")
     natural_generated_games = int(strategy_policy.get("natural_generated_games", 0) or 0)
@@ -8527,7 +8541,9 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
             " | ".join(
                 [
                     f"policy_used={strategy_display.get('strategy_label', '-')}",
-                    f"policy_mode={strategy_policy.get('policy_mode', '-')}",
+                    f"generation_mode={strategy_display.get('generation_mode', strategy_policy.get('policy_mode', '-'))}",
+                    f"policy_mode={strategy_display.get('policy_mode', strategy_policy.get('policy_mode', '-'))}",
+                    f"historical_deduplication_mode={strategy_display.get('historical_deduplication_mode', 'AUDIT_ONLY' if bool(summary_result.get('official_package_preserved')) else 'BLOCK')}",
                     f"status_comandante_saida={batch_status}",
                     f"persistidos={persisted_count}",
                     f"batch_id={summary_result.get('batch_id', '-')}",

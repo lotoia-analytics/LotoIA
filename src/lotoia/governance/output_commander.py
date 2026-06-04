@@ -172,6 +172,7 @@ def output_commander_validate_games(
         "historical_duplicates_found": historical_duplicates_found,
         "historical_duplicates_removed": 0 if str(historical_deduplication_mode or "BLOCK").upper() == "AUDIT_ONLY" else historical_duplicates_found,
         "historical_deduplication_mode": str(historical_deduplication_mode or "BLOCK").upper(),
+        "official_package_preserved": str(historical_deduplication_mode or "BLOCK").upper() == "AUDIT_ONLY",
         "invalid_games": invalid_games,
         "accepted_games": accepted_games,
         "accepted_signatures": accepted_signatures,
