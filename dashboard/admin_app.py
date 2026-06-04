@@ -55,6 +55,7 @@ import tempfile
 import textwrap
 import traceback
 import contextvars
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,14 @@ SCIENTIFIC_EXPANSION_LIMITS = {
 
 _PAGE_SQL_PROFILE: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("PAGE_SQL_PROFILE", default=None)
 _HB_GEOMETRY_THREAD_STATE: dict[str, Any] = {}
+OFFICIAL_15_GROUPS = ("G50", "G30", "G20", "G10")
+OFFICIAL_15_QUANTITY_TO_GROUP = {
+    10: "G10",
+    20: "G20",
+    30: "G30",
+    50: "G50",
+}
+OFFICIAL_15_GROUP_SOURCE_REPORT = PROJECT_ROOT / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
 
 
 class _LazyImportedAttr:
@@ -208,6 +217,34 @@ def _page_sql_profile_snapshot() -> dict[str, Any] | None:
     if profile is None:
         return None
     return dict(profile)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def _load_official_15_group_registry() -> dict[str, list[tuple[int, ...]]]:
+    if not OFFICIAL_15_GROUP_SOURCE_REPORT.exists():
+        return {}
+    text = OFFICIAL_15_GROUP_SOURCE_REPORT.read_text(encoding="utf-8", errors="replace")
+    parsed: dict[str, list[tuple[int, ...]]] = {}
+    for group in OFFICIAL_15_GROUPS:
+        block_match = re.search(rf"## {re.escape(group)}\s+.*?(?=\n## |\Z)", text, re.S)
+        if not block_match:
+            continue
+        numbers: list[tuple[int, ...]] = []
+        for line in block_match.group(0).splitlines():
+            if not re.match(r"\| B\d-J\d{2} \|", line):
+                continue
+            parts = [part.strip() for part in line.strip("|").split("|")]
+            if len(parts) < 3:
+                continue
+            dezenas = tuple(int(value) for value in parts[2].split() if value.isdigit())
+            if len(dezenas) == 15:
+                numbers.append(tuple(sorted(dezenas)))
+        if numbers:
+            parsed[group] = numbers
+    return parsed
+
+
+OFFICIAL_15_GROUPS_REGISTRY = _load_official_15_group_registry()
 
 
 build_walk_forward_splits = _LazyImportedAttr("lotoia.experiments.temporal_governance", "build_walk_forward_splits")
@@ -6835,6 +6872,11 @@ def render_generation_page() -> None:
         _runtime_audit("generate.page.start")
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
         st.caption("Formulario operacional priorizado; contexto institucional permanece opcional.")
+        st.caption(
+            "registry_oficial_15="
+            f"{'carregado' if bool(OFFICIAL_15_GROUPS_REGISTRY) else 'ausente'}"
+            f" | grupos={', '.join(f'{group}:{len(games)}' for group, games in OFFICIAL_15_GROUPS_REGISTRY.items()) or '-'}"
+        )
         show_generation_context = st.toggle(
             "Exibir contexto institucional",
             value=bool(st.session_state.get("_admin_show_generation_context", False)),
