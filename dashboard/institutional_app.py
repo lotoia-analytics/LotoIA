@@ -7954,6 +7954,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
     st.info("Sem recalibrar a Lei. Sem mutação automática. Sem comando de geração nesta camada.")
     if section == "overview":
+        st.markdown("###### Página-mãe institucional da camada observacional")
         st.markdown("##### Função da camada")
         st.write(
             "Esta camada observa resultados após a conferência. Ela registra, organiza e apresenta sinais de "
@@ -8019,6 +8020,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     if section == "conference":
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
+        st.markdown("###### Camada observacional isolada")
         with st.expander("Detalhes técnicos avançados", expanded=False):
             st.json(POST_DRAW_MONITORING_PAYLOAD)
         _render_signature_grid(
