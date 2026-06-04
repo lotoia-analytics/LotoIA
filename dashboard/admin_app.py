@@ -6871,12 +6871,7 @@ def render_generation_page() -> None:
     with st.container(border=True):
         _runtime_audit("generate.page.start")
         _section_header("Gerar Jogos", "Geracao institucional com o fluxo operacional atual preservado.")
-        st.caption("Formulario operacional priorizado; contexto institucional permanece opcional.")
-        st.caption(
-            "registry_oficial_15="
-            f"{'carregado' if bool(OFFICIAL_15_GROUPS_REGISTRY) else 'ausente'}"
-            f" | grupos={', '.join(f'{group}:{len(games)}' for group, games in OFFICIAL_15_GROUPS_REGISTRY.items()) or '-'}"
-        )
+        st.caption("Geração oficial de 15 dezenas em modo direto.")
         show_generation_context = st.toggle(
             "Exibir contexto institucional",
             value=bool(st.session_state.get("_admin_show_generation_context", False)),
@@ -6904,66 +6899,25 @@ def render_generation_page() -> None:
         else:
             st.info("Identificador opcional no ADM. A geracao pode seguir sem captura comercial.")
         st.markdown('<div class="lotoia-operational-hint">Campos opcionais no ADM para rastreio operacional interno.</div>', unsafe_allow_html=True)
-        selected_size = int(
-            st.selectbox(
-                "Quantidade de dezenas",
-                options=[15, 16, 17, 18],
-                index=0,
-                key="admin_generation_selected_size",
+        selected_count = int(
+            st.number_input(
+                "Quantidade de jogos",
+                min_value=1,
+                max_value=100,
+                value=int(st.session_state.get("admin_generation_count", 30) or 30),
+                step=1,
+                key="admin_generation_count",
             )
         )
-        premium_mode = selected_size in (16, 17, 18)
+        st.caption("15 dezenas por jogo")
         package_summary: dict[str, Any] = {}
-        premium_generation_package: dict[str, Any] | None = None
         _runtime_audit("generate.form.inputs")
-        generation_mode_options = ["HB", "IA"]
-        generation_mode = st.session_state.get("admin_generation_mode", "HB")
-        if generation_mode not in generation_mode_options:
-            generation_mode = generation_mode_options[0]
-        mode_col, button_col = st.columns([3, 1])
-        with mode_col:
-            generation_mode = st.radio(
-                "Modo operacional",
-                generation_mode_options,
-                horizontal=True,
-                index=generation_mode_options.index(generation_mode),
-                key="admin_generation_mode",
-            )
+        generation_mode = "DIRECT_15_GAME_GENERATION"
+        button_col = st.columns([1])[0]
         with button_col:
             generate_clicked = st.button("Gerar jogos", type="primary", use_container_width=True)
-        if premium_mode:
-            st.info(
-                "Pacote premium científico ativo. O motor seleciona automaticamente as dezenas-base com maior prioridade probabilística."
-            )
-            package_summary = {
-                "package_size": selected_size,
-                "generated_internal_bets": int(math.comb(selected_size, 15)),
-                "theoretical_internal_bets": int(math.comb(selected_size, 15)),
-                "premium_score": 0.0,
-                "diversity_score": 0.0,
-                "coverage_score": 0.0,
-                "package_entropy": 0.0,
-                "overlap_mean": 0.0,
-                "unique_ratio": 0.0,
-                "rerank_entropy": 0.0,
-                "structural_diversity_score": 0.0,
-                "profile_distribution": {},
-                "dominant_profile": "indefinido",
-            }
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Dezenas-base", selected_size)
-            col2.metric("Capacidade teórica", f"{package_summary['generated_internal_bets']:,}".replace(",", "."))
-            col3.metric("Preview", f"top {min(ADMIN_EXPANSION_PAGE_SIZE, package_summary['generated_internal_bets'])}")
-            st.caption("A base premium sera curada pelo nucleo cientifico e o preview mostrara apenas as apostas priorizadas.")
-        else:
-            col1, col2, col3, col4 = st.columns(4)
-            count = col1.number_input("Quantidade de jogos", min_value=1, max_value=50, value=10)
-            pool_size = col2.number_input("Quantidade de Concursos", min_value=count, max_value=500, value=max(30, count))
-            max_repeated = col3.number_input("Repeticao maxima", min_value=0, max_value=15, value=9)
-            st.caption("O seletor de modo permanece ao lado do botao para manter o fluxo visivel em qualquer tamanho.")
-            st.caption("Modo 15 dezenas preserva o comportamento atual do gerador principal.")
         if generate_clicked:
-            st.session_state["_admin_last_ui_event"] = f"generation:{generation_mode}:{selected_size}"
+            st.session_state["_admin_last_ui_event"] = f"generation:{generation_mode}:{selected_count}"
             _runtime_audit("generate.submit")
             start_time = time.monotonic()
             with st.spinner("Gerando jogos e anexando scores..."):
@@ -6972,56 +6926,16 @@ def render_generation_page() -> None:
                 except Exception as exc:
                     st.warning(str(exc))
                     return
-                candidate_pool: list[dict[str, Any]] = []
-                if premium_mode:
-                    premium_generation_package = _build_premium_generation_package(selected_size, generation_mode)
-                    games = premium_generation_package["premium_games"]
-                    candidate_pool = list(games)
-                    payload = {
-                        "games": games,
-                        "profile_counts": dict(premium_generation_package["summary"].get("profile_distribution", {})),
-                        "package_summary": dict(premium_generation_package["summary"]),
-                        "package_base_numbers": list(premium_generation_package["base_numbers"]),
-                    }
-                    strategy = f"Premium {selected_size}"
-                else:
-                    if generation_mode == "HB":
-                        payload = _cached_generate_best_games(int(count), int(pool_size))
-                        games = payload["games"]
-                        candidate_pool = list(games)
-                    elif generation_mode == "IA":
-                        games = _cached_generate_multiple_games(int(count), int(max_repeated))
-                        candidate_pool = list(games)
-                        payload = {
-                            "games": games,
-                            "profile_counts": {
-                                profile: sum(1 for game in games if game.get("profile_type") == profile)
-                                for profile in GENERATION_PROFILE_RATIOS
-                            },
-                        }
-                    else:
-                        hb_payload = _cached_generate_best_games(int(count), int(pool_size))
-                        ia_games = _cached_generate_multiple_games(int(count), int(max_repeated))
-                        games = _merge_unique_games(hb_payload["games"], ia_games, int(count))
-                        candidate_pool = list(hb_payload["games"]) + list(ia_games)
-                        payload = {
-                            "games": games,
-                            "profile_counts": {
-                                profile: sum(1 for game in games if game.get("profile_type") == profile)
-                                for profile in GENERATION_PROFILE_RATIOS
-                            },
-                            "composition": {
-                                "hb_games": len(hb_payload["games"]),
-                                "ia_games": len(ia_games),
-                                "merged_games": len(games),
-                            },
-                        }
-                    strategy = generation_mode
-                requested_games = len(games)
+                pool_size = max(30, int(selected_count))
+                payload = _cached_generate_best_games(int(selected_count), int(pool_size))
+                games = list(payload.get("games", []))
+                candidate_pool = list(games)
+                strategy = generation_mode
+                requested_games = int(selected_count)
                 games, dedup_report = _deduplicate_structural_games(
                     games,
                     source_mode=strategy,
-                    package_size=selected_size if premium_mode else None,
+                    package_size=None,
                     generation_cycle="operational_generation",
                 )
                 games, output_gate_report = _apply_output_gate(
@@ -7029,7 +6943,7 @@ def render_generation_page() -> None:
                     requested_games=requested_games,
                     candidate_pool=candidate_pool,
                     generation_mode=strategy,
-                    package_size=selected_size if premium_mode else None,
+                    package_size=None,
                     generation_cycle="operational_generation",
                 )
                 games = [
@@ -7048,27 +6962,6 @@ def render_generation_page() -> None:
                 payload = dict(payload)
                 payload["deduplication"] = dict(dedup_report)
                 payload["output_gate"] = dict(output_gate_report)
-                if premium_generation_package is not None:
-                    premium_generation_package["summary"].update(
-                        {
-                            "duplicate_games_detected": int(dedup_report.get("duplicate_games_detected", 0)),
-                            "duplicate_source": list(dedup_report.get("duplicate_source", [])),
-                            "collision_details": list(dedup_report.get("collision_details", [])),
-                            "duplicate_rate": float(dedup_report.get("duplicate_rate", 0.0)),
-                            "unique_ratio_real": float(dedup_report.get("unique_ratio_real", 0.0)),
-                        }
-                    )
-                    premium_generation_package["summary"].update(
-                        {
-                            "requested_games": int(output_gate_report.get("requested_games", requested_games)),
-                            "delivered_games": int(output_gate_report.get("delivered_games", len(games))),
-                            "duplicate_blocked": int(output_gate_report.get("duplicate_blocked", 0)),
-                            "duplicate_hashes": list(output_gate_report.get("duplicate_hashes", [])),
-                            "replacement_attempts": int(output_gate_report.get("replacement_attempts", 0)),
-                            "output_gate_status": str(output_gate_report.get("output_gate_status", "passed")),
-                            "final_gate_count": int(output_gate_report.get("delivered_games", len(games))),
-                        }
-                    )
                 games = [
                     _ensure_generation_profile_metadata(
                         game,
