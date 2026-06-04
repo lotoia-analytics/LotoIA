@@ -8768,10 +8768,6 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             st.write(f"attempts_used={diagnostics.get('attempts_used', 0)}")
             st.write(f"fill_completed={diagnostics.get('fill_completed', False)}")
             st.write(f"insufficient_reason={diagnostics.get('insufficient_reason', 'none')}")
-        if result.get("commander_report"):
-            st.json(result["commander_report"])
-
-
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
