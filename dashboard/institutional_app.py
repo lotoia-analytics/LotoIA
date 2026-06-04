@@ -664,6 +664,8 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     official_cols[1].metric("último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
     official_cols[2].metric("faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
     official_cols[3].metric("status", str(official_history.get("status_base_oficial", "-") or "-"))
+    st.markdown("##### Auditoria e Monitoramento")
+    _render_post_conference_monitoring_panel()
     st.markdown("##### SELECT COUNT(*) no runtime")
     audit_rows: list[dict[str, Any]] = []
     with _get_engine_cached().begin() as connection:
@@ -6827,6 +6829,20 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.caption("Painel institucional limpo")
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Auditoria Runtime", "Auditoria Runtime", page)
+    st.sidebar.markdown(
+        '<div style="padding-left:0.9rem;margin-top:0.25rem;color:#6b7280;font-size:0.78rem;line-height:1.45;">'
+        '└── Auditoria e Monitoramento<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Conferência por concurso<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Desempenho por grupo<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas faltantes<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Dezenas sobrando<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Vazamento lateral<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Evolução 13 -> 14<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;├── Evolução 14 -> 15<br>'
+        '&nbsp;&nbsp;&nbsp;&nbsp;└── Hipóteses para teste offline'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     pages = list(PAGE_TARGETS.values())
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Operações</div>', unsafe_allow_html=True)
     _sidebar_nav_button("Gerar Jogos", "Gerar Jogos", page)
@@ -7925,8 +7941,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
-    st.markdown("#### Auditoria e Monitoramento")
-    _render_post_conference_monitoring_panel()
     if latest_contest:
         contest_buttons[0].caption(
             f"Último concurso: {int(latest_contest['contest_number'])} | dezenas: {' '.join(f'{number:02d}' for number in latest_contest.get('dezenas', [])) or '-'}"
