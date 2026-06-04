@@ -7325,7 +7325,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.rerun()
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
-    for label in ["Gerador ADM - Lei 15 Limpo", "Gerar Jogos", "Conferir Resultados", "Simular Resultados"]:
+    for label in ["Gerador ADM - Lei 15 Limpo", "Conferir Resultados", "Simular Resultados"]:
         _nav_entry(label)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
