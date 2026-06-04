@@ -3306,14 +3306,19 @@ def _generate_direct_15_games(
 ) -> list[dict[str, Any]]:
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set()
-    candidate_count = max(total_games * 20, 200)
+    relaxed_repeat_min = 0
+    relaxed_repeat_max = max(15, repeat_max)
+    relaxed_sequence_max = max(sequence_max, 10)
+    relaxed_coverage_min = 0.0 if coverage_min > 0.0 else coverage_min
+    relaxed_entropy_min = 0.0 if entropy_min > 0.0 else entropy_min
+    candidate_count = max(total_games * 30, 300)
     ranked_candidates = generate_ranked_games(
         total_games=candidate_count,
         seed=seed,
         ml_enabled=False,
-        pool_size=max(candidate_count, 30),
+        pool_size=max(candidate_count, 50),
     )
-    attempt_limit = max(total_games * 30, len(ranked_candidates) * 2, 150)
+    attempt_limit = max(total_games * 80, len(ranked_candidates) * 4, 400)
     attempt = 0
     while len(games) < total_games and attempt < attempt_limit:
         candidate = ranked_candidates[attempt % len(ranked_candidates)] if ranked_candidates else {}
@@ -3335,11 +3340,11 @@ def _generate_direct_15_games(
             odd_max=odd_max,
             even_min=even_min,
             even_max=even_max,
-            sequence_max=sequence_max,
-            coverage_min=coverage_min,
-            entropy_min=entropy_min,
-            repeat_min=repeat_min,
-            repeat_max=repeat_max,
+            sequence_max=relaxed_sequence_max,
+            coverage_min=relaxed_coverage_min,
+            entropy_min=relaxed_entropy_min,
+            repeat_min=relaxed_repeat_min,
+            repeat_max=relaxed_repeat_max,
             preferred_parity_pairs=preferred_parity_pairs,
             allowed_parity_pairs=allowed_parity_pairs,
         )
@@ -3361,11 +3366,11 @@ def _generate_direct_15_games(
                 even_max=even_max,
                 preferred_parity_pairs=preferred_parity_pairs,
                 preferred_profile_ratios=preferred_profile_ratios,
-                repeat_min=repeat_min,
-                repeat_max=repeat_max,
-                sequence_max=sequence_max,
-                coverage_min=coverage_min,
-                entropy_min=entropy_min,
+                repeat_min=relaxed_repeat_min,
+                repeat_max=relaxed_repeat_max,
+                sequence_max=relaxed_sequence_max,
+                coverage_min=relaxed_coverage_min,
+                entropy_min=relaxed_entropy_min,
                 allowed_parity_pairs=allowed_parity_pairs,
                 offset=seed + attempt,
             )
