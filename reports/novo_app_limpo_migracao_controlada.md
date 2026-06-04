@@ -47,5 +47,15 @@ Validações executadas com sucesso:
 A criação do deploy separado foi tentada, mas a plataforma retornou limite de quota para criação de novo projeto.
 O app limpo ficou criado no repositório e pronto para deploy assim que houver quota disponível.
 
+## Desacoplamento do App Antigo
+O entrypoint `dashboard/clean_app.py` foi desacoplado do `dashboard/institutional_app.py` e passou a usar `dashboard/clean_core.py` com helpers neutros e funções puras necessárias para execução independente no Render.
+
+Com isso, o novo app não depende diretamente do entrypoint antigo como base de execução.
+
+## Comando de Execução
+```bash
+streamlit run dashboard/clean_app.py --server.port $PORT --server.address 0.0.0.0
+```
+
 ## Conclusão
 O novo app limpo foi criado em ambiente separado, preservando o app atual como backup operacional. A Lei 15 permanece como única comandante da geração, Lei 17 e Lei 18 permanecem como validações pós-geração, e os formatos 17/18 são apenas expansão auditada do núcleo 15, sem recalibração, sem legado ativo e sem redesenho arquitetural.

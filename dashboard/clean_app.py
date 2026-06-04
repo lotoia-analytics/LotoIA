@@ -4,7 +4,12 @@ from typing import Any
 
 import streamlit as st
 
-from dashboard import institutional_app as base_app
+from dashboard.clean_core import (
+    _ensure_official_history_seeded,
+    _render_analytical_page,
+    _render_clean_law15_generation_page,
+    get_clean_snapshot,
+)
 
 
 def _render_home(snapshot: dict[str, Any]) -> None:
@@ -24,9 +29,9 @@ def _render_home(snapshot: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    snapshot = base_app._live_institutional_snapshot(base_app._database_snapshot())  # type: ignore[attr-defined]
     st.set_page_config(page_title="LotoIA Clean", layout="wide")
-    base_app._ensure_official_history_seeded()  # type: ignore[attr-defined]
+    snapshot = get_clean_snapshot()
+    _ensure_official_history_seeded()
 
     st.sidebar.title("LotoIA Clean")
     page = st.sidebar.radio(
@@ -38,9 +43,9 @@ def main() -> None:
     if page == "Início":
         _render_home(snapshot)
     elif page == "Gerador Limpo":
-        base_app._render_clean_law15_generation_page(snapshot)  # type: ignore[attr-defined]
+        _render_clean_law15_generation_page(snapshot)
     elif page == "Histórico Analítico":
-        base_app._render_analytical_page(snapshot)  # type: ignore[attr-defined]
+        _render_analytical_page(snapshot)
 
 
 if __name__ == "__main__":
