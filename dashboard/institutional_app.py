@@ -2434,6 +2434,7 @@ def _render_scientific_policy_panel(
     games_per_generation: int,
     generations_in_batch: int,
     policy_discovery: dict[str, Any] | None = None,
+    use_expander: bool = True,
 ) -> None:
     st.markdown("##### Lei Científica da Geração")
     discovery_ready = _scientific_policy_is_ready(policy_discovery)
@@ -2619,7 +2620,8 @@ def _render_scientific_policy_panel(
         with rationale_cols[1]:
             for label, text in rationale_right:
                 st.markdown(f"**{label}**  \n{text}")
-    with st.expander("Ver payload t?cnico completo", expanded=False):
+    policy_context = st.expander("Ver payload t?cnico completo", expanded=False) if use_expander else st.container()
+    with policy_context:
         st.json({"policy": policy, "policy_discovery": policy_discovery})
 def _render_scientific_calibration_panel(
     *,
@@ -5804,8 +5806,8 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
-    st.subheader("Hist?rico Institucional")
-    st.write("Visão macro acumulativa de gerações, conferências e integridade operacional.")
+    st.subheader("Histórico Institucional")
+    st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
 
     source_map = _institutional_source_map(snapshot)
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
@@ -5835,7 +5837,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     if int(live_counts.get("generation_events", 0) or 0) > 0 and not generation_rows:
         generation_rows = _load_accumulated_institutional_rows()
         generation_df = pd.DataFrame(generation_rows)
-    st.markdown("##### Resumo institucional")
+    st.markdown("##### Rastreabilidade institucional principal")
     summary_cols = st.columns(10)
     total_generation_events = len(generation_df)
     total_requested = int(generation_df["quantidade solicitada"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
@@ -5861,7 +5863,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
     if not generation_df.empty:
         latest_commander = generation_df.iloc[0]
-        st.markdown("##### Comandante de Saída")
+        st.markdown("##### Status operacional da última memória consolidada")
         commander_cols = st.columns(6)
         commander_cols[0].metric("total_jogos_solicitados", int(latest_commander.get("quantidade solicitada", 0) or 0))
         commander_cols[1].metric("total_jogos_gerados", int(latest_commander.get("quantidade real gerada", 0) or 0))
@@ -5923,7 +5925,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         else:
             scientific_state = None
             scientific_recommendation = None
-        with st.expander("Diagnóstico histórico", expanded=False):
+        with st.expander("Diagnóstico histórico observacional", expanded=False):
             _render_scientific_policy_panel(
                 policy=history_policy,
                 strategy_size=int(scientific_game_size),
@@ -5931,6 +5933,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
                 generations_in_batch=1,
                 policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
+                use_expander=False,
             )
             _render_scientific_calibration_panel(
                 strategy_size=int(scientific_game_size),
@@ -5941,8 +5944,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             )
             latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
             if latest_scientific_decisions:
-                st.markdown("##### Memória histórica")
-                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+                with st.expander("Memória científica legada — quarentena documental", expanded=False):
+                    st.caption("Conteúdo apenas documental. Não atua como comando, seleção ou recalibração.")
+                    st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
 
 
 
