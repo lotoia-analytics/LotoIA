@@ -170,6 +170,45 @@ def _format_block_numbers(numbers: list[int]) -> dict[str, str]:
         values = [number for number in numbers if number in block_range]
         formatted[label] = ", ".join(f"{number:02d}" for number in values) if values else "-"
     return formatted
+
+
+def _safe_count_games(value: object) -> int:
+    """Retorna uma contagem segura de jogos para uso visual em percentuais."""
+    if value is None:
+        return 0
+
+    if isinstance(value, bool):
+        return int(value)
+
+    if isinstance(value, (int, float)):
+        return int(value)
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return 0
+        try:
+            return int(float(stripped))
+        except ValueError:
+            return 0
+
+    if isinstance(value, (list, tuple, set)):
+        return len(value)
+
+    try:
+        import pandas as pd
+
+        if isinstance(value, pd.DataFrame):
+            return len(value.index)
+        if isinstance(value, pd.Series):
+            return len(value)
+    except Exception:
+        pass
+
+    try:
+        return len(value)  # type: ignore[arg-type]
+    except Exception:
+        return 0
 HISTORICAL_TEST_TABLES = (
     "generation_events",
     "generated_games",
@@ -6646,6 +6685,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     st.write("Leitura observacional da distribuição, concentração e recorrência das dezenas na bateria persistida.")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     games = _institutional_generation_games()
+    games_count = _safe_count_games(games)
     stats = _summarize_games_structurally(games)
     cobertura_labels = {
         "GAMES": "Jogos analisados",
@@ -6654,7 +6694,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         "DOMINANT_NUMBERS": "Dezenas dominantes",
     }
     cols = st.columns(4)
-    cols[0].metric(cobertura_labels["GAMES"], stats.get("games", 0))
+    cols[0].metric(cobertura_labels["GAMES"], games_count)
     cols[1].metric(cobertura_labels["AVERAGE_OVERLAP"], f"{stats.get('average_overlap', 0.0):.4f}")
     cols[2].metric(cobertura_labels["AVERAGE_UNIQUE_NUMBERS"], f"{stats.get('average_unique_numbers', 0.0):.4f}")
     cols[3].metric(cobertura_labels["DOMINANT_NUMBERS"], len(stats.get("dominant_numbers") or []))
@@ -6666,14 +6706,14 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
             dominant_display_df = dominant_display_df.rename(columns={"number": "Dezena"})
         if "frequency" in dominant_display_df.columns:
             dominant_display_df = dominant_display_df.rename(columns={"frequency": "Frequência nos jogos"})
-        if "Frequência nos jogos" in dominant_display_df.columns and games:
-            dominant_display_df["Percentual"] = (
-                dominant_display_df["Frequência nos jogos"].astype(float) / float(games) * 100
-            ).round(2).astype(str) + "%"
-        elif "frequency" in dominant_display_df.columns and games:
-            dominant_display_df["Percentual"] = (
-                dominant_display_df["frequency"].astype(float) / float(games) * 100
-            ).round(2).astype(str) + "%"
+        if games_count > 0 and "Frequência nos jogos" in dominant_display_df.columns:
+            frequency_values = pd.to_numeric(dominant_display_df["Frequência nos jogos"], errors="coerce").fillna(0)
+            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
+        elif games_count > 0 and "frequency" in dominant_display_df.columns:
+            frequency_values = pd.to_numeric(dominant_display_df["frequency"], errors="coerce").fillna(0)
+            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
+        else:
+            dominant_display_df["Percentual"] = "-"
         display_columns = [column for column in ["Dezena", "Frequência nos jogos", "Percentual"] if column in dominant_display_df.columns]
         st.dataframe(dominant_display_df[display_columns], hide_index=True, use_container_width=True)
         st.markdown("##### Interpretação observacional")
