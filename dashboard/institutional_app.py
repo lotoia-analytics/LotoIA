@@ -10184,6 +10184,14 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    analytic_labels = {
+        "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
+        "TOTAL_JOGOS_HISTORICOS_CARREGADOS": "Jogos históricos carregados",
+        "JOGOS_CONFERIVEIS": "Jogos conferíveis",
+        "JOGOS_DIAGNOSTICO": "Jogos em diagnóstico",
+        "GENERATION_EVENT_ID_MAIS_ANTIGO": "Geração mais antiga",
+        "GENERATION_EVENT_ID_MAIS_RECENTE": "Geração mais recente",
+    }
 
     generation_history = _load_generation_history_light(limit=25)
     historical_rows = _load_accumulated_analytical_rows_light(limit=25)
@@ -10388,24 +10396,72 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     diagnostic_summary_df = pd.DataFrame(diagnostic_summary_rows)
 
     diag_cols = st.columns(6)
-    diag_cols[0].metric("total_generation_events_carregados", len(generation_history))
-    diag_cols[1].metric("total_jogos_historicos_carregados", len(games_df))
-    diag_cols[2].metric("jogos_conferiveis", len(conferiveis_df))
-    diag_cols[3].metric("jogos_diagnostico", len(diagnostic_df))
-    diag_cols[4].metric("generation_event_id_mais_antigo", min(generation_options) if generation_options else "-")
-    diag_cols[5].metric("generation_event_id_mais_recente", max(generation_options) if generation_options else "-")
+    diag_cols[0].metric(analytic_labels["TOTAL_GENERATION_EVENTS_CARREGADOS"], len(generation_history))
+    diag_cols[1].metric(analytic_labels["TOTAL_JOGOS_HISTORICOS_CARREGADOS"], len(games_df))
+    diag_cols[2].metric(analytic_labels["JOGOS_CONFERIVEIS"], len(conferiveis_df))
+    diag_cols[3].metric(analytic_labels["JOGOS_DIAGNOSTICO"], len(diagnostic_df))
+    diag_cols[4].metric(analytic_labels["GENERATION_EVENT_ID_MAIS_ANTIGO"], min(generation_options) if generation_options else "-")
+    diag_cols[5].metric(analytic_labels["GENERATION_EVENT_ID_MAIS_RECENTE"], max(generation_options) if generation_options else "-")
 
     with st.expander("Jogos completos históricos conferíveis — detalhes avançados", expanded=False):
         if not display_games.empty:
-            st.dataframe(display_games, hide_index=True, use_container_width=True, height=560)
+            visible_display_games = display_games.rename(
+                columns={
+                    "generation_event_id": "ID da geração",
+                    "batch_id": "Bateria",
+                    "data/hora": "Data/hora",
+                    "jogo n°": "Jogo",
+                    "dezenas": "Dezenas",
+                    "formato_cartao": "Formato",
+                    "núcleo_lei_15": "Núcleo Lei 15",
+                    "reservas_auditadas": "Reservas auditadas",
+                    "cartão_final": "Cartão final",
+                    "quantidade_nucleo": "Núcleo",
+                    "quantidade_reservas": "Reservas",
+                    "quantidade_final": "Total final",
+                    "estratégia": "Estratégia",
+                    "score": "Score",
+                    "tipo visual": "Tipo",
+                    "origem/modelo": "Origem/modelo",
+                    "status de conferência": "Status de conferência",
+                    "concurso conferido": "Concurso conferido",
+                    "acertos": "Acertos",
+                    "premiação": "Premiação",
+                }
+            )
+            st.dataframe(visible_display_games, hide_index=True, use_container_width=True, height=560)
         else:
             st.info("Nenhum jogo conferível encontrado com os filtros atuais.")
 
     st.markdown("##### Top jogos históricos conferíveis")
     if not top_df.empty:
-        st.dataframe(top_df.head(20), hide_index=True, use_container_width=True, height=520)
+        visible_top_df = top_df.head(20).rename(
+            columns={
+                "generation_event_id": "ID da geração",
+                "batch_id": "Bateria",
+                "data/hora": "Data/hora",
+                "jogo n°": "Jogo",
+                "dezenas": "Dezenas",
+                "formato_cartao": "Formato",
+                "núcleo_lei_15": "Núcleo Lei 15",
+                "reservas_auditadas": "Reservas auditadas",
+                "cartão_final": "Cartão final",
+                "quantidade_nucleo": "Núcleo",
+                "quantidade_reservas": "Reservas",
+                "quantidade_final": "Total final",
+                "estratégia": "Estratégia",
+                "score": "Score",
+                "tipo visual": "Tipo",
+                "origem/modelo": "Origem/modelo",
+                "status de conferência": "Status de conferência",
+                "concurso conferido": "Concurso conferido",
+                "acertos": "Acertos",
+                "premiação": "Premiação",
+            }
+        )
+        st.dataframe(visible_top_df, hide_index=True, use_container_width=True, height=520)
     else:
-            st.info("Nenhum top jogo conferível encontrado com os filtros atuais.")
+        st.info("Nenhum top jogo conferível encontrado com os filtros atuais.")
 
     if not diagnostic_summary_df.empty:
         structural_alerts = int(
