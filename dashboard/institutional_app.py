@@ -2246,8 +2246,9 @@ def _render_scientific_memory_block() -> None:
                 "A memória possui suporte histórico cruzado, mas ainda depende de validação prospectiva. "
                 f"O uso recomendado é condicional/híbrido até produzir {batch_hit_decomposition.get('validation_threshold', 11)}+ na próxima bateria limpa."
             )
-        with st.expander("Ver memória consolidada da bateria completa", expanded=False):
-            st.json(batch_reconciliation_memory)
+        with st.expander("Memória consolidada da bateria conferida — detalhes", expanded=False):
+            if st.checkbox("Carregar memória consolidada", value=False, key="load_batch_reconciliation_memory"):
+                st.json(batch_reconciliation_memory)
     strong_near_miss_memory = next(
         (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_strong_near_miss"),
         {},
@@ -2295,36 +2296,39 @@ def _render_scientific_memory_block() -> None:
                 ]
             )
         )
-        with st.expander("Ver memória near miss forte completa", expanded=False):
-            st.json(strong_near_miss_memory)
-    st.markdown("##### Hist?rico Oficial Lotof?cil")
-    official_rows = _load_official_history_rows()
-    if official_rows:
-        filter_cols = st.columns([2, 2, 1])
-        search_term = filter_cols[0].text_input("Buscar concurso", value="")
-        order_mode = filter_cols[1].selectbox("Ordem", ["Mais recentes", "Mais antigos"], index=0)
-        limit_value = int(filter_cols[2].number_input("Linhas", min_value=5, max_value=50, value=10, step=1))
-        filtered_rows = official_rows
-        if search_term.strip():
-            term = search_term.strip().lower()
-            filtered_rows = [
-                row for row in filtered_rows
-                if term in str(row.get("concurso", "")).lower()
-                or term in str(row.get("data", "")).lower()
-                or term in str(row.get("dezenas_sorteadas", "")).lower()
-                or term in str(row.get("numbers_signature", "")).lower()
-            ]
-        if order_mode == "Mais recentes":
-            filtered_rows = list(reversed(filtered_rows))
-        table_rows = filtered_rows[:limit_value]
-        official_df = pd.DataFrame(table_rows)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
-        st.dataframe(
-            _make_streamlit_dataframe_safe(official_df),
-            hide_index=True,
-            use_container_width=True,
-        )
+        with st.expander("Melhores near miss — detalhes", expanded=False):
+            if st.checkbox("Carregar near miss", value=False, key="load_strong_near_miss_memory"):
+                st.json(strong_near_miss_memory)
+    st.markdown("##### Histórico Oficial Lotofácil")
+    official_rows_summary = _load_official_history_rows(limit=10)
+    if official_rows_summary:
+        st.caption("Resumo inicial com 10 linhas. A tabela completa é carregada sob demanda.")
+        summary_df = pd.DataFrame(official_rows_summary)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
+        st.dataframe(_make_streamlit_dataframe_safe(summary_df), hide_index=True, use_container_width=True)
+        show_official_history = st.checkbox("Carregar histórico oficial Lotofácil", value=False, key="show_official_history")
+        if show_official_history:
+            filter_cols = st.columns([2, 2, 1])
+            search_term = filter_cols[0].text_input("Buscar concurso", value="", key="official_history_search")
+            order_mode = filter_cols[1].selectbox("Ordem", ["Mais recentes", "Mais antigos"], index=0, key="official_history_order")
+            limit_value = int(filter_cols[2].number_input("Linhas", min_value=5, max_value=50, value=25, step=1, key="official_history_limit"))
+            official_rows = _load_official_history_rows()
+            filtered_rows = official_rows
+            if search_term.strip():
+                term = search_term.strip().lower()
+                filtered_rows = [
+                    row for row in filtered_rows
+                    if term in str(row.get("concurso", "")).lower()
+                    or term in str(row.get("data", "")).lower()
+                    or term in str(row.get("dezenas_sorteadas", "")).lower()
+                    or term in str(row.get("numbers_signature", "")).lower()
+                ]
+            if order_mode == "Mais recentes":
+                filtered_rows = list(reversed(filtered_rows))
+            table_rows = filtered_rows[:limit_value]
+            official_df = pd.DataFrame(table_rows)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
+            st.dataframe(_make_streamlit_dataframe_safe(official_df), hide_index=True, use_container_width=True)
     else:
-        st.info("Hist?rico oficial vazio. Aguarde a sincroniza??o da base oficial.")
+        st.info("Histórico oficial vazio. Aguarde a sincronização da base oficial.")
     scientific_cols = st.columns(4)
     scientific_cols[0].metric("Lei Científica LotoIA", "COMMANDER")
     scientific_cols[1].metric("Gerador ADM", "EXECUTOR")
@@ -2345,7 +2349,7 @@ def _render_scientific_memory_block() -> None:
         )
     )
     if scientific_memory:
-        with st.expander("Mem?ria cient?fica completa", expanded=False):
+        with st.expander("Memória científica legada — quarentena documental", expanded=False):
             if official_15_memory:
                 st.caption(
                     "Baseline oficial 15 validada nível 3 | official_15_search_standard=true | "
@@ -2358,12 +2362,13 @@ def _render_scientific_memory_block() -> None:
                     "validação cruzada histórica favorável | historical_view_only=true"
                 )
                 display_rows = scientific_memory
-            scientific_memory_listing = _format_scientific_memory_listing(display_rows)
-            st.dataframe(
-                _make_streamlit_dataframe_safe(scientific_memory_listing),
-                hide_index=True,
-                use_container_width=True,
-            )
+            if st.checkbox("Carregar payload científico legado", value=False, key="load_scientific_legacy_payload_listing"):
+                scientific_memory_listing = _format_scientific_memory_listing(display_rows)
+                st.dataframe(
+                    _make_streamlit_dataframe_safe(scientific_memory_listing),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
 
 def _format_scientific_number_list(values: Sequence[int] | None) -> str:
@@ -5908,51 +5913,32 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
             }
         )
-        if scientific_batch:
-            scientific_state = {
-                "mode": "AUTONOMIA SUPERVISIONADA"
-                if str(scientific_batch.get("status_comandante_cientifico", "")).upper() == "APROVADO"
-                else "OBSERVA??O",
-                "structural_status": str(latest_commander.get("status comandante sa?da", "BLOQUEADO") or "BLOQUEADO"),
-                "scientific_status": str(scientific_batch.get("status_comandante_cientifico", "-") or "-"),
-                "classification": str(scientific_batch.get("classificacao_cientifica", "-") or "-"),
-                "main_reason": str(scientific_batch.get("main_reason", scientific_batch.get("motivo_cientifico", "-")) or "-"),
-                "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
-                "reference_window": scientific_batch.get("reference_window", []),
-                "source_batch_id": scientific_batch_id,
-            }
-            scientific_recommendation = {
-                "action_suggested": str(
-                    scientific_batch.get("action_suggested", scientific_batch.get("recommended_action", "-") ) or "-"
-                ),
-                "status_visual": str(scientific_batch.get("status_visual", "-") or "-"),
-            }
-        else:
-            scientific_state = None
-            scientific_recommendation = None
+        scientific_state = None
+        scientific_recommendation = None
         st.markdown("##### Diagnóstico histórico observacional")
         st.info("Esta seção observa a memória consolidada. Os registros científicos sensíveis ficam recolhidos na quarentena documental.")
         with st.expander("Memória científica legada — quarentena documental", expanded=False):
             st.caption("Registro técnico legado preservado para auditoria histórica. Não atua como comando, seleção ou recalibração.")
-            _render_scientific_policy_panel(
-                policy=history_policy,
-                strategy_size=int(scientific_game_size),
-                total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
-                games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
-                generations_in_batch=1,
-                policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
-                use_expander=False,
-            )
-            _render_scientific_calibration_panel(
-                strategy_size=int(scientific_game_size),
-                scientific_state=scientific_state,
-                scientific_recommendation=scientific_recommendation,
-                technical_payload=scientific_batch if scientific_batch else None,
-                use_expander=False,
-            )
-            latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
-            if latest_scientific_decisions:
-                st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
+            if st.checkbox("Carregar payload científico legado", value=False, key="load_scientific_legacy_payload"):
+                _render_scientific_policy_panel(
+                    policy=history_policy,
+                    strategy_size=int(scientific_game_size),
+                    total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
+                    games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
+                    generations_in_batch=1,
+                    policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
+                    use_expander=False,
+                )
+                _render_scientific_calibration_panel(
+                    strategy_size=int(scientific_game_size),
+                    scientific_state=scientific_state,
+                    scientific_recommendation=scientific_recommendation,
+                    technical_payload=scientific_batch if scientific_batch else None,
+                    use_expander=False,
+                )
+                latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
+                if latest_scientific_decisions:
+                    st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
 
 
 
