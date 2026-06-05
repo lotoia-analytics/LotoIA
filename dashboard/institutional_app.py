@@ -2276,7 +2276,10 @@ def _render_scientific_memory_block() -> None:
         )
         near_miss_cols[3].metric("Melhor acerto", int(near_miss_window.get("best_generation_best_hits", 0) or strong_near_miss_memory.get("best_hit", 0) or 0))
         near_miss_cols[4].metric("Classificação", str(strong_near_miss_memory.get("scientific_classification", "-") or "-"))
-        near_miss_cols[5].metric("Ação", str(strong_near_miss_memory.get("recommended_action", "-") or "-"))
+        near_miss_cols[5].metric(
+            "Registro técnico legado",
+            _institutional_safe_action_label(strong_near_miss_memory.get("recommended_action", "-")),
+        )
         near_miss_exact_cols = st.columns(6)
         near_miss_exact_cols[0].metric("count_10_exact", int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0))
         near_miss_exact_cols[1].metric("count_11_exact", int(near_miss_hit_decomposition.get("count_11_exact", 0) or 0))
@@ -2307,7 +2310,7 @@ def _render_scientific_memory_block() -> None:
     st.markdown("##### Histórico Oficial Lotofácil")
     official_rows_summary = _load_official_history_rows(limit=10, descending=True)
     if official_rows_summary:
-        st.caption("Resumo inicial com 10 linhas mais recentes. A tabela completa é carregada sob demanda.")
+        st.caption("Últimos 10 concursos oficiais persistidos no banco. A tabela completa é carregada sob demanda.")
         summary_df = pd.DataFrame(official_rows_summary)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
         st.dataframe(_make_streamlit_dataframe_safe(summary_df), hide_index=True, use_container_width=True)
         show_official_history = st.checkbox("Carregar histórico oficial Lotofácil", value=False, key="show_official_history")
@@ -7038,6 +7041,15 @@ def _scientific_hit_decomposition(payload: dict[str, Any] | None) -> dict[str, A
         ),
         "count_15": int(data.get("count_15") or generation_range.get("global_count_15") or scientific_components.get("count_15") or count_15_exact),
     }
+
+
+def _institutional_safe_action_label(raw_action: object) -> str:
+    action = str(raw_action or "").strip()
+    if action.startswith("recalibrate_from"):
+        return "Preservado em quarentena documental"
+    if not action or action in {"-", "None", "null"}:
+        return "Sem ação operacional"
+    return "Registro técnico legado"
 
 
 def _official_15_policy_status_label(payload: dict[str, Any] | None) -> str:
