@@ -1915,7 +1915,7 @@ def _ensure_official_history_seeded() -> dict[str, Any]:
     try:
         repository = ContestRepository(DB_PATH)
         inserted = 0
-        if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) <= 0:
+        if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) <= 0 or int(diagnostics.get("total_concursos_faltantes", 0) or 0) > 0:
             inserted += int(repository.bootstrap_official_history_from_csv())
         inserted += int(repository.sync_official_history_from_imported_contests())
         diagnostics = _load_official_history_diagnostics()
