@@ -88,21 +88,22 @@ Arquivo auditado:
 - `data/raw/historico_lotofacil.csv`
 
 Resultado atual:
-- ?ltimo concurso no CSV = **3702**
-- total de linhas no CSV = **5** neste recorte local sincronizado
-- `3701` presente no CSV = **n?o**
-- `3702` presente no CSV = **sim**
+- último concurso no CSV = **3700**
+- total de linhas no CSV = **3699**
+- `3701` presente no CSV = **não**
+- `3702` presente no CSV = **não**
 
 ### Classifica??o institucional do CSV
 
-O CSV ? tratado como:
-- **espelho versionado/seed documental** da base oficial;
-- n?o ? a fonte viva/runtime;
-- a fonte viva/runtime ? o **PostgreSQL institucional**.
+O CSV é tratado como:
+- **seed/documentação histórica** da base oficial;
+- não é a fonte viva/runtime;
+- a fonte viva/runtime é o **PostgreSQL institucional**.
 
-Conclus?o institucional:
-- CSV deve ser mantido sincronizado com o banco como artefato versionado.
-- a diverg?ncia observada no GitHub era de versionamento, n?o de l?gica da Lei 15.
+Conclusão institucional:
+- o CSV permanece como artefato histórico/versionado, mas não é a fonte viva do runtime;
+- a divergência observada no GitHub era de artefato desatualizado, não de lógica da Lei 15;
+- por ausência de payload oficial válido para `3701`, o CSV não foi expandido com concursos inventados.
 
 ## Diagn?stico da API Caixa
 
@@ -114,22 +115,22 @@ Estado observado na sincroniza??o:
 
 ## Valida??o no ADM
 
-A se??o **Hist?rico Oficial Lotof?cil** foi corrigida para mostrar:
-- ?ltimos concursos persistidos no banco;
-- ordem padr?o `concurso DESC`;
-- texto institucional expl?cito de que o CSV ? seed/documenta??o e o runtime oficial ? PostgreSQL.
+A seção **Histórico Oficial Lotofácil** foi corrigida para mostrar:
+- últimos concursos persistidos no banco;
+- ordem padrão `concurso DESC`;
+- texto institucional explícito de que o CSV é seed/documentação e o runtime oficial é PostgreSQL.
 
-Confirma??o visual/funcional esperada:
+Confirmação visual/funcional esperada:
 - `3702` aparece no ADM = **sim**
-- `3701` aparece no ADM = **n?o**
+- `3701` aparece no ADM = **não**
 - `3700` aparece no ADM = **sim**
-- ordena??o = **concurso DESC**
+- ordenação = **concurso DESC**
 
 ## Corre??o aplicada
 
-- atualiza??o do arquivo versionado `data/raw/historico_lotofacil.csv` a partir da base persistida;
-- ajuste do texto da camada de fontes no ADM para explicitar o papel de seed/documenta??o do CSV;
-- manuten??o da sincronia entre exporta??o de hist?rico e banco.
+- reversão do arquivo versionado `data/raw/historico_lotofacil.csv` para preservar o histórico completo;
+- ajuste do texto da camada de fontes no ADM para explicitar o papel de seed/documentação do CSV;
+- manutenção da sincronia entre exportação de histórico e banco, sem tratar o CSV como runtime.
 
 ## Testes executados
 
