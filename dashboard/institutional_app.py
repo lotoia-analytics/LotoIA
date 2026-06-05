@@ -3600,9 +3600,10 @@ def _generate_direct_15_games(
     preferred_parity_pairs: list[tuple[int, int]],
     allowed_parity_pairs: list[tuple[int, int]],
     fill_diagnostics: dict[str, Any] | None = None,
+    seen_signatures: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     games: list[dict[str, Any]] = []
-    used_signatures: set[str] = set()
+    used_signatures: set[str] = set(seen_signatures or set())
     diagnostics = fill_diagnostics if fill_diagnostics is not None else {}
     diagnostics.setdefault("candidate_pool_generated", 0)
     diagnostics.setdefault("valid_candidates_found", 0)
@@ -3701,6 +3702,8 @@ def _generate_direct_15_games(
             )
         )
         used_signatures.add(signature)
+        if seen_signatures is not None:
+            seen_signatures.add(signature)
         diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
         profile_pair = (
             sum(1 for number in selected_numbers if number % 2 != 0),
@@ -3791,6 +3794,8 @@ def _generate_direct_15_games(
                 )
             )
             used_signatures.add(signature)
+            if seen_signatures is not None:
+                seen_signatures.add(signature)
             diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
             profile_pair = (
                 sum(1 for number in selected_numbers if number % 2 != 0),
@@ -3850,6 +3855,8 @@ def _generate_direct_15_games(
                 )
             )
             used_signatures.add(signature)
+            if seen_signatures is not None:
+                seen_signatures.add(signature)
             diagnostics["accepted_games"] = int(diagnostics.get("accepted_games", 0) or 0) + 1
             profile_pair = (
                 sum(1 for number in selected_numbers if number % 2 != 0),
@@ -3989,6 +3996,7 @@ def _run_institutional_generation(
     batch_number_usage: dict[int, int] | None = None,
     batch_profile_usage: dict[tuple[int, int], int] | None = None,
     batch_total_games: int | None = None,
+    seen_signatures: set[str] | None = None,
 ) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     st.session_state.pop("institutional_generation_batch_result", None)
@@ -4078,7 +4086,7 @@ def _run_institutional_generation(
     official_group_games: list[tuple[int, ...]] = []
     official_package_size_loaded = 0
     games: list[dict[str, Any]] = []
-    used_signatures: set[str] = set()
+    used_signatures: set[str] = set(seen_signatures or set())
     fill_diagnostics: dict[str, Any] = {}
     direct_generation_mode = int(dezenas_per_game or 0) == 15
     if direct_generation_mode:
@@ -4171,6 +4179,8 @@ def _run_institutional_generation(
                 continue
             signature = _game_signature(selected_numbers)
             if signature in used_signatures:
+                fill_diagnostics["rejected_by_internal_duplicate"] = int(fill_diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
+                fill_diagnostics["rejected_by_repeated_pattern"] = int(fill_diagnostics.get("rejected_by_repeated_pattern", 0) or 0) + 1
                 continue
             games.append(
                 _build_institutional_game_record(
@@ -4188,6 +4198,8 @@ def _run_institutional_generation(
             for number in selected_numbers:
                 batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
             used_signatures.add(signature)
+            if seen_signatures is not None:
+                seen_signatures.add(signature)
             if len(games) >= total_games:
                 break
 
@@ -4227,6 +4239,8 @@ def _run_institutional_generation(
                 continue
             signature = _game_signature(fallback_numbers)
             if signature in used_signatures:
+                fill_diagnostics["rejected_by_internal_duplicate"] = int(fill_diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
+                fill_diagnostics["rejected_by_repeated_pattern"] = int(fill_diagnostics.get("rejected_by_repeated_pattern", 0) or 0) + 1
                 continue
             games.append(
                 _build_institutional_game_record(
@@ -4244,6 +4258,8 @@ def _run_institutional_generation(
             for number in fallback_numbers:
                 batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
             used_signatures.add(signature)
+            if seen_signatures is not None:
+                seen_signatures.add(signature)
     historical_deduplication_mode = "AUDIT_ONLY"
     historical_duplicates_found = 0
     batch_fill_strategy = "FILL_UNTIL_REQUESTED_QUANTITY" if direct_generation_mode else "STRUCTURAL_SELECTION"
@@ -4587,6 +4603,7 @@ def _run_institutional_generation_batch(
 ) -> None:
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
+    batch_seen_signatures: set[str] = set(load_batch_output_signatures(batch_id))
     policy = _institutional_generation_policy(dezenas_per_game)
     repeat_min = int(policy.get("repeat_min", 0) or 0)
     repeat_max = int(policy.get("repeat_max", repeat_limit) or repeat_limit)
@@ -4620,6 +4637,7 @@ def _run_institutional_generation_batch(
             batch_number_usage=batch_number_usage,
             batch_profile_usage=batch_profile_usage,
             batch_total_games=batch_total_games,
+            seen_signatures=batch_seen_signatures,
         )
         generation_result = dict(st.session_state.get("institutional_generation_result") or {})
         run_summaries.append(generation_result)
