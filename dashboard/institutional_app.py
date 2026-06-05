@@ -6849,28 +6849,83 @@ def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
 def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Benchmark resumido")
-    st.write("Snapshot curto dos indicadores institucionais atuais.")
+    st.write("Resumo institucional dos principais indicadores operacionais persistidos.")
+    st.info("Esta página é observacional e institucional. Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 e não modifica histórico.")
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    generated_games = int(snapshot["counts"].get("generated_games", 0))
+    reconciliation_runs = int(snapshot["counts"].get("reconciliation_runs", 0))
+    imported_contests = int(snapshot["counts"].get("imported_contests", 0))
+    latest_generation_value = latest_generation.get("generation_event_id", "-")
+    st.markdown(
+        "O Benchmark Resumido apresenta uma visão sintética dos registros atuais da operação: jogos persistidos, "
+        "conferências realizadas, concursos oficiais importados e última geração registrada. Esta leitura serve "
+        "para acompanhamento do ADM, sem comando operacional direto."
+    )
+    benchmark_card_label_map = {
+        "GENERATED_GAMES": "Jogos gerados",
+        "RECONCILIATION_RUNS": "Conferências realizadas",
+        "IMPORTED_CONTESTS": "Concursos oficiais importados",
+        "LATEST_GENERATION": "Última geração registrada",
+    }
     cols = st.columns(4)
-    cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
-    cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    cols[3].metric("latest_generation", latest_generation.get("generation_event_id", "-"))
-    summary_cols = st.columns(2)
-    with summary_cols[0]:
-        st.markdown("##### Última geração")
-        st.json(
-            {
-                "generation_event_id": latest_generation.get("generation_event_id", "-"),
-                "seed": latest_generation.get("seed", "-"),
-                "total_games": latest_generation.get("total_games", 0),
-                "target_contest": latest_generation.get("target_contest", "-"),
-            }
-        )
-    with summary_cols[1]:
-        st.markdown("##### Última reconciliação")
-        st.json(latest_reconciliation or {"status": "sem_reconciliação"})
+    cols[0].metric(benchmark_card_label_map["GENERATED_GAMES"], generated_games)
+    cols[1].metric(benchmark_card_label_map["RECONCILIATION_RUNS"], reconciliation_runs)
+    cols[2].metric(benchmark_card_label_map["IMPORTED_CONTESTS"], imported_contests)
+    cols[3].metric(benchmark_card_label_map["LATEST_GENERATION"], latest_generation_value)
+    st.subheader("Última geração registrada")
+    latest_generation_display = {
+        "Identificador da geração": latest_generation.get("generation_event_id", "-"),
+        "Seed registrada": latest_generation.get("seed", "-"),
+        "Total de jogos": latest_generation.get("total_games", "-"),
+        "Concurso alvo": latest_generation.get("target_contest", "-"),
+    }
+    st.table([{ "Campo": key, "Valor": value } for key, value in latest_generation_display.items()])
+    st.subheader("Última conferência registrada")
+    latest_reconciliation_display = {
+        "Identificador da conferência": latest_reconciliation.get("id", "-"),
+        "Concurso conferido": latest_reconciliation.get("contest_id", "-"),
+        "Geração conferida": latest_reconciliation.get("generation_event_id", "-"),
+        "Status": latest_reconciliation.get("status", "-"),
+        "Faixas premiadas": latest_reconciliation.get("prize_count", "-"),
+        "Total de acertos somados": latest_reconciliation.get("total_hits", "-"),
+        "Maior acerto": latest_reconciliation.get("best_hits", "-"),
+        "Jogos conferidos": latest_reconciliation.get("games_count", "-"),
+    }
+    st.table([{ "Campo": key, "Valor": value } for key, value in latest_reconciliation_display.items()])
+    matched_numbers = latest_reconciliation.get("matched_numbers") or []
+    if matched_numbers:
+        st.markdown("**Dezenas conferidas:**")
+        st.write(", ".join(f"{int(number):02d}" for number in matched_numbers))
+    else:
+        st.caption("Dezenas conferidas indisponíveis para esta conferência.")
+    hit_distribution = latest_reconciliation.get("hit_distribution") or {}
+    if hit_distribution:
+        def _safe_hit_key(item: tuple[Any, Any]) -> int:
+            try:
+                return int(item[0])
+            except Exception:
+                return 999
+
+        hit_distribution_rows = [
+            {"Faixa de acertos": str(key), "Quantidade de jogos": value}
+            for key, value in sorted(hit_distribution.items(), key=_safe_hit_key)
+        ]
+        st.markdown("**Distribuição de acertos:**")
+        st.dataframe(hit_distribution_rows, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Distribuição de acertos indisponível para esta conferência.")
+    st.subheader("Interpretação institucional")
+    st.markdown(
+        "O benchmark resumido consolida os principais sinais operacionais persistidos do ADM. Ele permite verificar "
+        "volume gerado, conferências realizadas, concursos oficiais importados e último vínculo entre geração e "
+        "conferência. Esta leitura não substitui auditoria detalhada e não executa qualquer ação sobre a geração."
+    )
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.markdown("**Última geração — dados brutos**")
+        st.json(latest_generation)
+        st.markdown("**Última conferência — dados brutos**")
+        st.json(latest_reconciliation)
 
 
 def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
