@@ -88,22 +88,22 @@ Arquivo auditado:
 - `data/raw/historico_lotofacil.csv`
 
 Resultado atual:
-- último concurso no CSV = **3700**
-- total de linhas no CSV = **3699**
-- `3701` presente no CSV = **não**
-- `3702` presente no CSV = **não**
+- último concurso no CSV = **3702**
+- total de linhas no CSV = **3701**
+- `3701` presente no CSV = **sim**
+- `3702` presente no CSV = **sim**
 
 ### Classifica??o institucional do CSV
 
 O CSV é tratado como:
-- **seed/documentação histórica** da base oficial;
+- **espelho versionado/seed documental** da base oficial;
 - não é a fonte viva/runtime;
 - a fonte viva/runtime é o **PostgreSQL institucional**.
 
 Conclusão institucional:
-- o CSV permanece como artefato histórico/versionado, mas não é a fonte viva do runtime;
+- o CSV foi atualizado como artefato versionado para refletir os concursos recentes já persistidos/validados;
 - a divergência observada no GitHub era de artefato desatualizado, não de lógica da Lei 15;
-- por ausência de payload oficial válido para `3701`, o CSV não foi expandido com concursos inventados.
+- o histórico antigo foi preservado integralmente e os concursos recentes foram anexados no fim do arquivo, sem reordenar a série histórica.
 
 ## Diagn?stico da API Caixa
 
@@ -128,7 +128,7 @@ Confirmação visual/funcional esperada:
 
 ## Corre??o aplicada
 
-- reversão do arquivo versionado `data/raw/historico_lotofacil.csv` para preservar o histórico completo;
+- atualização do arquivo versionado `data/raw/historico_lotofacil.csv` ao final da série histórica, preservando o histórico completo;
 - ajuste do texto da camada de fontes no ADM para explicitar o papel de seed/documentação do CSV;
 - manutenção da sincronia entre exportação de histórico e banco, sem tratar o CSV como runtime.
 
