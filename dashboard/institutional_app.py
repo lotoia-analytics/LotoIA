@@ -2163,6 +2163,7 @@ def _render_scientific_memory_block() -> None:
     if synthesized_batch_memory:
         st.session_state["institutional_batch_reconciliation_memory"] = dict(synthesized_batch_memory)
     scientific_memory = _load_latest_scientific_memory(limit=20)
+    batch_reconciliation_memory: dict[str, Any] = {}
     official_15_memory = next((row for row in scientific_memory if _scientific_15_is_official_baseline(row)), {})
     historical_scientific_memory = [row for row in scientific_memory if not _scientific_15_is_official_baseline(row)]
     active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
@@ -2482,6 +2483,8 @@ def _render_scientific_memory_block() -> None:
         with st.expander("Memória consolidada da bateria conferida — detalhes", expanded=False):
             if st.checkbox("Carregar memória consolidada", value=False, key="load_batch_reconciliation_memory"):
                 st.json(batch_reconciliation_memory)
+    else:
+        st.caption("Memória de reconciliação em lote indisponível ou ainda não registrada para esta sessão.")
     strong_near_miss_memory = next(
         (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_strong_near_miss"),
         {},
