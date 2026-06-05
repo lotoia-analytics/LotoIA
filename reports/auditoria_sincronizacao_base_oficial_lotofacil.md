@@ -8,31 +8,31 @@ Auditar a consolidação da base oficial Lotofácil entre CSV histórico, import
 
 - Último concurso no CSV: `3700`
 - Total de concursos no CSV: `3699`
-- Uso: seed histórico/preservação documental
+- Uso: seed histórico / preservação documental
 - Papel: o CSV não deve ser tratado como verdade final quando a base persistida já estiver mais atualizada
 
 ## Estado do banco local validado
 
 ### `imported_contests`
 
-- COUNT: `4`
-- MIN/MAX: `3697 / 3700`
-- Últimos concursos: `3700, 3699, 3698, 3697`
+- COUNT: `5`
+- MIN/MAX: `3697 / 3702`
+- Últimos concursos: `3702, 3700, 3699, 3698, 3697`
 
 ### `lotofacil_official_history`
 
-- COUNT: `4`
-- MIN/MAX: `3697 / 3700`
-- Últimos concursos: `3700, 3699, 3698, 3697`
+- COUNT: `5`
+- MIN/MAX: `3697 / 3702`
+- Últimos concursos: `3702, 3700, 3699, 3698, 3697`
 - Concursos 3700/3701/3702 verificados explicitamente
   - `3700`: presente
   - `3701`: ausente no banco local validado
-  - `3702`: ausente no banco local validado
+  - `3702`: presente
 
 ### Lacunas
 
-- Lacunas detectadas no banco local validado: `nenhuma` entre `3697` e `3700`
-- Entre o último importado esperado no runtime e a base oficial persistida, a correção passa a considerar o último importado como teto de diagnóstico, evitando falso positivo de base incompleta.
+- Lacunas detectadas no banco local validado: `3701`
+- Entre o último importado e a base oficial persistida, a correção agora considera o último importado como teto de diagnóstico, evitando falso positivo quando a sincronização já atualizou o último concurso e ainda existe lacuna intermediária real.
 
 ## Estado da importação via API
 
@@ -40,12 +40,13 @@ Auditar a consolidação da base oficial Lotofácil entre CSV histórico, import
 - A rotina persiste em `imported_contests` e `lotofacil_official_history` via `ContestRepository.save_contest()`
 - Após a sincronização, a rotina foi reforçada para:
   - executar reconciliação adicional de `lotofacil_official_history` a partir de `imported_contests`
+  - persistir o último concurso mesmo se um intermediário falhar
   - recomputar os diagnósticos oficiais com base no último concurso importado e não apenas no intervalo interno da tabela oficial
 
 ## Causa da divergência observada no runtime
 
 - O diagnóstico institucional podia ficar marcado como `INCOMPLETA` quando o último concurso importado no runtime estava à frente do recorte já persistido na base oficial.
-- A correção passou a tratar o último importado como teto de referência para cálculo de lacunas.
+- A correção passou a tratar o último importado como teto de referência para cálculo de lacunas e a registrar a lacuna real `3701` quando existir.
 
 ## Correção aplicada
 

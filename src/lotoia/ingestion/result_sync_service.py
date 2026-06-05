@@ -108,15 +108,20 @@ class ResultSyncService:
                 contests_to_sync = list(range(last_imported + 1, latest_contest + 1))
 
             provider_payload_count = len(contests_to_sync)
-            with self.repository.transaction() as tx:
-                for contest_number in contests_to_sync:
+            for contest_number in contests_to_sync:
+                try:
                     contest = latest if contest_number == latest_contest else self.client.fetch_contest(contest_number)
-                    self.repository.save_contest(
-                        contest.to_contest_record(),
-                        commit=False,
-                        session=tx,
-                    )
+                    with self.repository.transaction() as tx:
+                        self.repository.save_contest(
+                            contest.to_contest_record(),
+                            commit=False,
+                            session=tx,
+                        )
                     synced_contests.append(contest.contest_number)
+                except Exception:
+                    if contest_number == latest_contest:
+                        raise
+                    continue
 
             latest_record = self.repository.get_latest_contest_record()
             persisted_contest = int(latest_record["concurso"]) if latest_record else None

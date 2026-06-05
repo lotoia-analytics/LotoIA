@@ -6496,6 +6496,7 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
+        payload["official_history_record"] = _load_official_history_summary().get("latest_contest", {})
         payload["official_history_diagnostics"] = _load_official_history_diagnostics()
         _persist_official_sync_diagnostics(
             {
