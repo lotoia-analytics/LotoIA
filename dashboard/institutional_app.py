@@ -6676,25 +6676,87 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
-    st.write("Resumo HB do replay estrutural incremental.")
+    st.write("Leitura observacional de acertos, recorrência e dispersão estrutural da bateria analisada.")
+    st.info(
+        "Esta página é analítica e observacional. "
+        "Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 "
+        "e não modifica histórico."
+    )
+    st.markdown(
+        "Nesta página, **HB** representa uma camada observacional de métricas "
+        "estruturais da bateria analisada. Ela resume acertos, sobreposição, "
+        "dispersão e volume analisado, sem atuar como comando de geração ou "
+        "recalibração."
+    )
     state = _hb_geometry_state()
     summary = state["summary"] or {}
     baseline = summary.get("hb_baseline", {})
+    avg_hits = round(float(baseline.get("average_hits", 0.0)), 4)
+    hits_11_plus = int(baseline.get("hits_11_plus", 0))
+    hits_12_plus = int(baseline.get("hits_12_plus", 0))
+    entropy = round(float(baseline.get("entropy", 0.0)), 4)
+    average_overlap = round(float(baseline.get("average_overlap", 0.0)), 4)
+    dominant_numbers = list(baseline.get("dominant_numbers", []) or [])
+    contests_analyzed = int(summary.get("contests_analyzed", 0) or 0)
+    games_count = int(summary.get("games_count", 0) or 0)
+    pool_size = int(summary.get("pool_size", 0) or 0)
     cols = st.columns(4)
-    cols[0].metric("avg_hits", round(float(baseline.get("average_hits", 0.0)), 4))
-    cols[1].metric("11+", int(baseline.get("hits_11_plus", 0)))
-    cols[2].metric("12+", int(baseline.get("hits_12_plus", 0)))
-    cols[3].metric("entropy", round(float(baseline.get("entropy", 0.0)), 4))
+    cols[0].metric("Média de acertos", avg_hits)
+    cols[1].metric("Jogos com 11+ acertos", hits_11_plus)
+    cols[2].metric("Jogos com 12+ acertos", hits_12_plus)
+    cols[3].metric("Entropia estrutural", entropy)
+    st.caption(
+        "As métricas acima resumem o comportamento estrutural da bateria analisada. "
+        "Elas não representam recomendação automática, alteração de estratégia "
+        "ou mudança da governança soberana."
+    )
+    st.subheader("Resumo observacional HB")
+    st.caption("Indicadores estruturais derivados da bateria analisada.")
     metrics_df = pd.DataFrame(
         [
-            {"métrica": "average_overlap", "valor": round(float(baseline.get("average_overlap", 0.0)), 4)},
-            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in baseline.get("dominant_numbers", [])[:5]) or "-"},
-            {"métrica": "contests_analyzed", "valor": int(summary.get("contests_analyzed", 0) or 0)},
-            {"métrica": "games_count", "valor": int(summary.get("games_count", 0) or 0)},
-            {"métrica": "pool_size", "valor": int(summary.get("pool_size", 0) or 0)},
+            {"métrica": "average_overlap", "valor": average_overlap},
+            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in dominant_numbers[:5]) or "-"},
+            {"métrica": "contests_analyzed", "valor": contests_analyzed},
+            {"métrica": "games_count", "valor": games_count},
+            {"métrica": "pool_size", "valor": pool_size},
         ]
     )
-    st.dataframe(metrics_df, hide_index=True, use_container_width=True)
+    metric_label_map = {
+        "average_overlap": "Média de sobreposição",
+        "dominant_numbers": "Dezenas dominantes",
+        "contests_analyzed": "Concursos analisados",
+        "games_count": "Jogos analisados",
+        "pool_size": "Tamanho do conjunto",
+    }
+    metrics_display_df = metrics_df.copy()
+    if "métrica" in metrics_display_df.columns:
+        metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
+        metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
+    elif "metric" in metrics_display_df.columns:
+        metrics_display_df["metric"] = metrics_display_df["metric"].astype(str).replace(metric_label_map)
+        metrics_display_df = metrics_display_df.rename(columns={"metric": "Métrica", "value": "Valor"})
+    st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
+    st.subheader("Interpretação observacional")
+    st.markdown(
+        "As Métricas HB permitem observar a média de acertos, a concentração de dezenas, "
+        "a dispersão estrutural e o volume analisado. Esta leitura serve para auditoria "
+        "e acompanhamento institucional, sem gerar jogos, sem recalibrar leis e sem "
+        "alterar histórico."
+    )
+    with st.expander("Detalhes técnicos avançados"):
+        st.write(
+            {
+                "AVG_HITS": avg_hits,
+                "11+": hits_11_plus,
+                "12+": hits_12_plus,
+                "ENTROPY": entropy,
+                "average_overlap": average_overlap,
+                "dominant_numbers": dominant_numbers,
+                "contests_analyzed": contests_analyzed,
+                "games_count": games_count,
+                "pool_size": pool_size,
+            }
+        )
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
@@ -6814,17 +6876,64 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
 def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Estatísticas operacionais")
-    st.write("Fluxo operacional persistido e sessão corrente.")
+    st.write("Leitura institucional do fluxo operacional persistido, das conferências realizadas e do estado temporário da sessão.")
+    st.info("Esta página é operacional e observacional. Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 e não modifica histórico.")
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    generation_events = int(snapshot["counts"].get("generation_events", 0))
+    generated_games = int(snapshot["counts"].get("generated_games", 0))
+    reconciliation_runs = int(snapshot["counts"].get("reconciliation_runs", 0))
+    session_keys = len([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
+    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
+    latest_generation_event_id = latest_generation.get("generation_event_id", "-")
+    latest_reconciliation_id = latest_reconciliation.get("id", "-") if latest_reconciliation else "-"
+    st.markdown(
+        "Esta tela resume eventos persistidos da operação e informações temporárias da sessão atual. "
+        "Os indicadores abaixo servem para auditoria do funcionamento do ADM e não representam comando de geração, "
+        "conferência automática ou recalibração institucional."
+    )
+    operational_label_map = {
+        "GENERATION_EVENTS": "Eventos de geração",
+        "GENERATED_GAMES": "Jogos gerados",
+        "RECONCILIATION_RUNS": "Conferências realizadas",
+        "SESSION_KEYS": "Chaves de sessão",
+        "last_ui_event": "Último evento de interface",
+        "latest_generation_event_id": "Última geração registrada",
+        "latest_reconciliation_id": "Última conferência registrada",
+    }
+    raw_operational_stats = {
+        "GENERATION_EVENTS": generation_events,
+        "GENERATED_GAMES": generated_games,
+        "RECONCILIATION_RUNS": reconciliation_runs,
+        "SESSION_KEYS": session_keys,
+        "last_ui_event": last_ui_event,
+        "latest_generation_event_id": latest_generation_event_id,
+        "latest_reconciliation_id": latest_reconciliation_id,
+    }
     cols = st.columns(4)
-    cols[0].metric("generation_events", int(snapshot["counts"].get("generation_events", 0)))
-    cols[1].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    cols[2].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
-    cols[3].metric("session_keys", len([key for key in st.session_state.keys() if str(key).startswith("institutional_")]))
-    st.caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
-    st.caption(f"latest_generation_event_id: {latest_generation.get('generation_event_id', '-')}")
-    st.caption(f"latest_reconciliation_id: {latest_reconciliation.get('id', '-') if latest_reconciliation else '-'}")
+    cols[0].metric(operational_label_map["GENERATION_EVENTS"], generation_events)
+    cols[1].metric(operational_label_map["GENERATED_GAMES"], generated_games)
+    cols[2].metric(operational_label_map["RECONCILIATION_RUNS"], reconciliation_runs)
+    cols[3].metric(operational_label_map["SESSION_KEYS"], session_keys)
+    st.caption(
+        f"{operational_label_map['last_ui_event']}: {last_ui_event} | "
+        f"{operational_label_map['latest_generation_event_id']}: {latest_generation_event_id} | "
+        f"{operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
+    )
+    st.markdown("##### Últimos registros operacionais")
+    st.markdown(
+        f"- {operational_label_map['last_ui_event']}: {last_ui_event}\n"
+        f"- {operational_label_map['latest_generation_event_id']}: {latest_generation_event_id}\n"
+        f"- {operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
+    )
+    st.markdown("##### Interpretação operacional")
+    st.write(
+        "As estatísticas operacionais indicam a atividade recente do ADM, incluindo eventos de geração registrados, "
+        "jogos persistidos e conferências executadas. A leitura de sessão é temporária e não deve ser interpretada "
+        "como histórico oficial."
+    )
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.write(raw_operational_stats)
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
         repository = ContestRepository(DB_PATH)
@@ -7956,6 +8065,9 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "generated_candidates": 9,
             "valid_individual_games": 9,
             "persisted_games": 0,
+            "approved_total_less_than_requested": True,
+            "blocked_reason": "nao_atingiu_quantidade_solicitada",
+            "output_commander_status": "BLOQUEADO",
             "natural_approvable_candidate": True,
             "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
@@ -8006,6 +8118,9 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "generated_candidates": 12,
             "valid_individual_games": 12,
             "persisted_games": 0,
+            "approved_total_less_than_requested": True,
+            "blocked_reason": "nao_atingiu_quantidade_solicitada",
+            "output_commander_status": "BLOQUEADO",
             "natural_approvable_candidate": True,
             "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
@@ -8059,6 +8174,9 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
             "generated_candidates": 16,
             "valid_individual_games": 16,
             "persisted_games": 0,
+            "approved_total_less_than_requested": True,
+            "blocked_reason": "nao_atingiu_quantidade_solicitada",
+            "output_commander_status": "BLOQUEADO",
             "natural_approvable_candidate": True,
             "candidate_reason": "valid_individual_games_but_incomplete_requested_package",
             "natural_quantity_reason": "structural_saturation_under_scientific_law",
@@ -8167,6 +8285,9 @@ def _compact_small_batch_adjustment(*, game_size: int, total_games: int) -> dict
         "generated_candidates": 50,
         "valid_individual_games": 50,
         "persisted_games": 0,
+        "approved_total_less_than_requested": False,
+        "blocked_reason": "",
+        "output_commander_status": "APROVADO",
         "natural_approvable_candidate": False,
         "candidate_reason": "",
         "natural_quantity_reason": "validated_scientific_baseline",
@@ -9952,18 +10073,27 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     natural_quantity_status = str(strategy_policy.get("natural_quantity_status", "") or "")
     natural_candidate = bool(strategy_policy.get("natural_approvable_candidate", False))
     candidate_reason = str(strategy_policy.get("candidate_reason", "") or "")
+    blocked_reason = str(strategy_policy.get("blocked_reason", "") or "")
+    output_commander_status = str(strategy_policy.get("output_commander_status", "") or "")
     if selected_game_size == 15 and (natural_scientific_quantity or natural_candidate):
-        nat_cols = st.columns([1.1, 1.1, 1.3, 1.3])
+        nat_cols = st.columns([1.0, 1.1, 1.1, 1.2, 1.2])
         nat_cols[0].metric("Quantidade solicitada", int(requested_games))
         nat_cols[1].metric("Quantidade candidata observada", int(natural_generated_games or requested_games))
-        nat_cols[2].metric("Status da observação", natural_quantity_mode or "-")
+        nat_cols[2].metric(
+            "Quantidade natural aprovada",
+            int(natural_generated_games or requested_games) if natural_scientific_quantity else "-",
+        )
         if natural_candidate:
-            status_text = "Candidato observável encontrado."
-            if candidate_reason:
-                status_text = f"{status_text} {candidate_reason}"
+            status_text = "Candidata observada"
         else:
             status_text = "Quantidade natural aprovada"
-        nat_cols[3].metric("Status", status_text)
+        nat_cols[3].metric("Status do OutputCommander", output_commander_status or "-")
+        nat_cols[4].metric("Motivo do bloqueio", blocked_reason or "-")
+        st.caption(
+            "Quantidade candidata observada: jogos individualmente válidos, mas pacote solicitado incompleto."
+            if natural_candidate and candidate_reason
+            else "Quantidade natural aprovada: pacote solicitado, persistido e aprovado pelo OutputCommander."
+        )
 
     with st.expander("Diagnóstico histórico", expanded=False):
         _render_scientific_calibration_panel(
