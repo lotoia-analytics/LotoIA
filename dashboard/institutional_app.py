@@ -6642,17 +6642,47 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Cobertura estrutural")
-    st.write("Geometria e concentração do lote institucional persistido.")
+    st.subheader("Cobertura Estrutural")
+    st.write("Leitura observacional da distribuição, concentração e recorrência das dezenas na bateria persistida.")
+    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     games = _institutional_generation_games()
     stats = _summarize_games_structurally(games)
+    cobertura_labels = {
+        "GAMES": "Jogos analisados",
+        "AVERAGE_OVERLAP": "Média de sobreposição",
+        "AVERAGE_UNIQUE_NUMBERS": "Média de dezenas únicas",
+        "DOMINANT_NUMBERS": "Dezenas dominantes",
+    }
     cols = st.columns(4)
-    cols[0].metric("games", stats.get("games", 0))
-    cols[1].metric("average_overlap", f"{stats.get('average_overlap', 0.0):.4f}")
-    cols[2].metric("average_unique_numbers", f"{stats.get('average_unique_numbers', 0.0):.4f}")
-    cols[3].metric("dominant_numbers", len(stats.get("dominant_numbers") or []))
+    cols[0].metric(cobertura_labels["GAMES"], stats.get("games", 0))
+    cols[1].metric(cobertura_labels["AVERAGE_OVERLAP"], f"{stats.get('average_overlap', 0.0):.4f}")
+    cols[2].metric(cobertura_labels["AVERAGE_UNIQUE_NUMBERS"], f"{stats.get('average_unique_numbers', 0.0):.4f}")
+    cols[3].metric(cobertura_labels["DOMINANT_NUMBERS"], len(stats.get("dominant_numbers") or []))
     if stats.get("dominant_numbers"):
-        st.dataframe(pd.DataFrame(stats["dominant_numbers"]), hide_index=True, use_container_width=True)
+        st.markdown("##### Dezenas dominantes da bateria")
+        st.caption("As dezenas dominantes são as dezenas que mais apareceram nos jogos da bateria analisada. Esta leitura mede concentração estrutural e não representa recomendação automática.")
+        dominant_display_df = pd.DataFrame(stats["dominant_numbers"]).copy()
+        if "number" in dominant_display_df.columns:
+            dominant_display_df = dominant_display_df.rename(columns={"number": "Dezena"})
+        if "frequency" in dominant_display_df.columns:
+            dominant_display_df = dominant_display_df.rename(columns={"frequency": "Frequência nos jogos"})
+        if "Frequência nos jogos" in dominant_display_df.columns and games:
+            dominant_display_df["Percentual"] = (
+                dominant_display_df["Frequência nos jogos"].astype(float) / float(games) * 100
+            ).round(2).astype(str) + "%"
+        elif "frequency" in dominant_display_df.columns and games:
+            dominant_display_df["Percentual"] = (
+                dominant_display_df["frequency"].astype(float) / float(games) * 100
+            ).round(2).astype(str) + "%"
+        display_columns = [column for column in ["Dezena", "Frequência nos jogos", "Percentual"] if column in dominant_display_df.columns]
+        st.dataframe(dominant_display_df[display_columns], hide_index=True, use_container_width=True)
+        st.markdown("##### Interpretação observacional")
+        st.info("A cobertura estrutural mostra como as dezenas se distribuem dentro da bateria persistida. A frequência indica recorrência interna da bateria, enquanto a média de dezenas únicas indica diversidade estrutural. Esta leitura não comanda novas gerações, não recalibra a Lei 15 e não altera histórico.")
+        with st.expander("Detalhes técnicos avançados", expanded=False):
+            st.json(stats)
+            st.json(dominant_display_df.to_dict(orient="records"))
+    else:
+        st.info("Nenhuma dezena dominante encontrada na bateria atual.")
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
