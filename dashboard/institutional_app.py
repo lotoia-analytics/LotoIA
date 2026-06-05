@@ -6478,20 +6478,70 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
 
 def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Comparativos histórico")
-    st.write("Comparação resumida entre geração, reconciliação e base oficial.")
+    st.subheader("Comparativos Histórico")
+    st.write("Leitura comparativa entre geração persistida, conferência e concurso oficial.")
+    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     latest_generation = _load_latest_generated_games() or {}
     latest_contest = _load_imported_contest()
     structural_stats = _summarize_games_structurally(list(latest_generation.get("games") or []))
-    cols = st.columns(4)
-    cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    cols[1].metric("reconciliation_runs", int(snapshot["counts"].get("reconciliation_runs", 0)))
-    cols[2].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    cols[3].metric("average_overlap", f"{structural_stats.get('average_overlap', 0.0):.4f}")
-    comp_cols = st.columns([1, 1])
-    with comp_cols[0]:
-        st.markdown("##### Geração atual")
-        if latest_generation.get("games"):
+    st.markdown("##### Resumo da comparação")
+    summary_cols = st.columns(4)
+    summary_cols[0].metric("Jogos gerados", int(snapshot["counts"].get("generated_games", 0)))
+    summary_cols[1].metric("Conferências realizadas", int(snapshot["counts"].get("reconciliation_runs", 0)))
+    summary_cols[2].metric("Concursos oficiais importados", int(snapshot["counts"].get("imported_contests", 0)))
+    summary_cols[3].metric("Média de sobreposição", f"{structural_stats.get('average_overlap', 0.0):.4f}")
+
+    st.markdown("##### Leitura da geração analisada")
+    generation_cols = st.columns(4)
+    if latest_generation.get("games"):
+        generation_cols[0].metric("Geração", int(latest_generation.get("generation_event_id", 0) or 0) or "-")
+        generation_cols[1].metric("Seed", int(latest_generation.get("seed", 0) or 0) or "-")
+        generation_cols[2].metric("Total de jogos", int(latest_generation.get("total_games", 0) or 0))
+        generation_cols[3].metric("Concurso alvo", int(latest_generation.get("target_contest", 0) or 0) or "-")
+        st.caption(
+            f"A geração {latest_generation.get('generation_event_id', '-')} foi comparada ao concurso oficial {latest_contest.get('contest_number', '-') if latest_contest else '-'} com {len(list(latest_generation.get('games') or []))} jogos persistidos."
+        )
+    else:
+        st.info("Nenhuma geração persistida encontrada.")
+    st.markdown("##### Leitura do concurso oficial")
+    contest_cols = st.columns(4)
+    if latest_contest:
+        contest_cols[0].metric("Concurso", int(latest_contest.get("contest_number", 0) or 0) or "-")
+        contest_cols[1].metric("Data", str(latest_contest.get("data", "-") or "-"))
+        contest_cols[2].metric("Total de dezenas", len(list(latest_contest.get("dezenas", []) or [])))
+        contest_cols[3].metric("Fonte", str(latest_contest.get("source", "banco oficial") or "banco oficial"))
+        st.caption(" ".join(f"{int(number):02d}" for number in (latest_contest.get("dezenas", []) or [])) or "-")
+    else:
+        st.info("Nenhum concurso oficial importado ainda.")
+    st.markdown("##### Indicadores de sobreposição")
+    overlap_cols = st.columns(4)
+    overlap_cols[0].metric("Média de sobreposição", f"{structural_stats.get('average_overlap', 0.0):.4f}")
+    overlap_cols[1].metric("Maior recorrência observada", int(max((item.get("frequency", 0) for item in structural_stats.get("dominant_numbers", []) or []), default=0)))
+    overlap_cols[2].metric("Total de jogos avaliados", int(structural_stats.get("games", 0) or len(list(latest_generation.get("games") or []))))
+    overlap_cols[3].metric("Concurso comparado", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
+    st.markdown("##### Números dominantes")
+    dominant_numbers = list(structural_stats.get("dominant_numbers") or [])
+    if dominant_numbers:
+        dominant_df = pd.DataFrame(dominant_numbers).copy()
+        if "number" in dominant_df.columns:
+            dominant_df = dominant_df.rename(columns={"number": "Dezena", "frequency": "Frequência nos jogos"})
+        elif "Dezena" not in dominant_df.columns:
+            dominant_df = dominant_df.rename(columns={dominant_df.columns[0]: "Dezena"})
+        if "Frequência nos jogos" not in dominant_df.columns and "frequency" in dominant_df.columns:
+            dominant_df["Frequência nos jogos"] = dominant_df["frequency"]
+        total_games = max(1, int(structural_stats.get("games", 0) or len(list(latest_generation.get("games") or [])) or 1))
+        if "Frequência nos jogos" in dominant_df.columns:
+            dominant_df["Percentual"] = dominant_df["Frequência nos jogos"].apply(lambda value: f"{(float(value) / total_games) * 100:.0f}%")
+        display_columns = [column for column in ["Dezena", "Frequência nos jogos", "Percentual"] if column in dominant_df.columns]
+        st.dataframe(dominant_df[display_columns], hide_index=True, use_container_width=True)
+        st.caption("Números dominantes são dezenas que apareceram com maior frequência nos jogos da geração analisada. Esta leitura é observacional e não comanda novas gerações.")
+    else:
+        st.info("Nenhuma dezena dominante encontrada para a leitura atual.")
+    st.markdown("##### Interpretação observacional")
+    st.info("A tela compara a geração persistida com o concurso oficial selecionado. A frequência das dezenas mostra concentração dentro da bateria analisada, mas não representa recomendação automática, recalibração ou mudança da Lei 15.")
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.markdown("###### Geração atual")
+        if latest_generation:
             st.json(
                 {
                     "generation_event_id": latest_generation.get("generation_event_id", "-"),
@@ -6502,8 +6552,7 @@ def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
             )
         else:
             st.info("Nenhuma geração persistida encontrada.")
-    with comp_cols[1]:
-        st.markdown("##### Concurso oficial")
+        st.markdown("###### Concurso oficial")
         if latest_contest:
             st.json(
                 {
@@ -6514,9 +6563,9 @@ def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
             )
         else:
             st.info("Nenhum concurso oficial importado ainda.")
-    if structural_stats.get("dominant_numbers"):
-        st.markdown("##### Números dominantes")
-        st.dataframe(pd.DataFrame(structural_stats.get("dominant_numbers") or []), hide_index=True, use_container_width=True)
+        if structural_stats.get("dominant_numbers"):
+            st.markdown("###### Números dominantes técnicos")
+            st.dataframe(pd.DataFrame(structural_stats.get("dominant_numbers") or []), hide_index=True, use_container_width=True)
 
 
 def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
