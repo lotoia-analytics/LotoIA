@@ -145,6 +145,31 @@ def _render_block_distribution(block_distribution: list[int]) -> None:
     cols = st.columns(min(5, max(1, len(block_distribution))))
     for index, value in enumerate(block_distribution):
         cols[index % len(cols)].metric(f"Bloco {index}", int(value))
+
+
+def _block_distribution(numbers: list[int]) -> dict[str, int]:
+    return {
+        "01–05": sum(1 for number in numbers if 1 <= number <= 5),
+        "06–10": sum(1 for number in numbers if 6 <= number <= 10),
+        "11–15": sum(1 for number in numbers if 11 <= number <= 15),
+        "16–20": sum(1 for number in numbers if 16 <= number <= 20),
+        "21–25": sum(1 for number in numbers if 21 <= number <= 25),
+    }
+
+
+def _format_block_numbers(numbers: list[int]) -> dict[str, str]:
+    block_ranges = {
+        "01–05": range(1, 6),
+        "06–10": range(6, 11),
+        "11–15": range(11, 16),
+        "16–20": range(16, 21),
+        "21–25": range(21, 26),
+    }
+    formatted: dict[str, str] = {}
+    for label, block_range in block_ranges.items():
+        values = [number for number in numbers if number in block_range]
+        formatted[label] = ", ".join(f"{number:02d}" for number in values) if values else "-"
+    return formatted
 HISTORICAL_TEST_TABLES = (
     "generation_events",
     "generated_games",
@@ -8186,6 +8211,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
         st.markdown("###### Camada observacional isolada")
         latest_contest = _load_imported_contest()
+        latest_official_contest = _load_official_history_contest(_safe_int((latest_contest or {}).get("contest_number"), default=None)) if latest_contest else None
         latest_reconciliation = _load_latest_reconciliation_summary() or {}
         st.markdown("##### Status dos dados")
         data_cols = st.columns(5)
@@ -8213,7 +8239,21 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             title="Dezenas organizadas no topo",
             empty_label="Esta conferência não recebeu dezenas para exibir no topo.",
         )
-        _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
+        official_numbers = _extract_int_numbers(
+            (latest_official_contest or {}).get("dezenas", [])
+            or (latest_official_contest or {}).get("numbers", [])
+            or []
+        )
+        if official_numbers:
+            block_distribution = _block_distribution(official_numbers)
+            block_numbers = _format_block_numbers(official_numbers)
+            st.markdown("##### Distribuição por bloco")
+            block_cols = st.columns(5)
+            for index, (label, value) in enumerate(block_distribution.items()):
+                block_cols[index].metric(label, int(value))
+                block_cols[index].caption(block_numbers.get(label, "-"))
+        else:
+            st.caption("Distribuição indisponível: dezenas oficiais não encontradas para o concurso monitorado.")
     elif section == "group_performance":
         st.markdown("##### Auditoria Observacional — Desempenho por Grupo")
         st.write("Esta tela observa o desempenho dos grupos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
