@@ -811,20 +811,27 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     generation_history = _load_generation_history_light(limit=1)
     latest_generation = generation_history[0] if generation_history else {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_generation_event_id = int(latest_generation.get("generation_event_id", 0) or 0)
+    latest_reconciliation_event_id = int(latest_reconciliation.get("generation_event_id", 0) or 0)
+    operational_reconciliation = latest_reconciliation if latest_generation_event_id and latest_reconciliation_event_id == latest_generation_event_id else {}
+    operational_status = str(latest_generation.get("status de conferência", "não conferida") or "não conferida")
+    if operational_reconciliation:
+        operational_status = "conferida" if operational_status.lower() != "reconciliada" else operational_status
+    total_games_conferidos = int(operational_reconciliation.get("games_count", 0) or 0) if operational_reconciliation else 0
     operational_cols = st.columns(10)
-    operational_cols[0].metric("Última geração persistida", int(latest_generation.get("generation_event_id", 0) or 0) or "-")
+    operational_cols[0].metric("Última geração persistida", latest_generation_event_id or "-")
     operational_cols[1].metric("Quantidade solicitada", int(latest_generation.get("quantidade solicitada", 0) or 0))
     operational_cols[2].metric("Quantidade gerada", int(latest_generation.get("quantidade real gerada", 0) or 0))
     operational_cols[3].metric("Quantidade persistida", int(latest_generation.get("quantidade persistida", 0) or 0))
     operational_cols[4].metric("Quantidade recuperada", int(latest_generation.get("total de jogos recuperados", 0) or 0))
     operational_cols[5].metric("Status da geração", str(latest_generation.get("status da geração", "não conferida") or "não conferida"))
-    operational_cols[6].metric("Último concurso conferido", str(latest_generation.get("concurso conferido", latest_reconciliation.get("contest_number", "-")) or "-"))
-    operational_cols[7].metric("Status da conferência", str(latest_generation.get("status de conferência", "não conferida") or "não conferida"))
-    operational_cols[8].metric("Maior acerto", int(latest_generation.get("maior acerto", latest_reconciliation.get("best_hits", 0)) or 0))
+    operational_cols[6].metric("Último concurso conferido", str(latest_generation.get("concurso conferido", operational_reconciliation.get("contest_number", "-")) or "-"))
+    operational_cols[7].metric("Status da conferência", operational_status)
+    operational_cols[8].metric("Maior acerto", int(latest_generation.get("maior acerto", operational_reconciliation.get("best_hits", 0)) or 0))
     operational_cols[9].metric("Média de acertos", f"{float(latest_generation.get('média de acertos', latest_generation.get('media de acertos', 0.0)) or 0.0):.4f}")
     operational_detail_cols = st.columns(2)
-    operational_detail_cols[0].metric("Total de jogos conferidos", int(latest_generation.get("total de jogos recuperados", latest_reconciliation.get("games_count", 0)) or 0))
-    operational_detail_cols[1].metric("Status operacional", "Conferido" if str(latest_generation.get("status de conferência", "")).lower() == "conferido" else "não conferida")
+    operational_detail_cols[0].metric("Total de jogos conferidos", total_games_conferidos)
+    operational_detail_cols[1].metric("Status operacional", operational_status)
     st.markdown("##### Auditoria de integridade")
     integrity_rows = pd.DataFrame(
         [
