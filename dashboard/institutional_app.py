@@ -1839,9 +1839,10 @@ def _load_imported_contests_summary() -> dict[str, Any]:
     }
 
 
-def _load_official_history_rows(limit: int | None = None) -> list[dict[str, Any]]:
+def _load_official_history_rows(limit: int | None = None, *, descending: bool = False) -> list[dict[str, Any]]:
     with get_session(DB_PATH) as session:
-        query = session.query(LotofacilOfficialHistory).order_by(LotofacilOfficialHistory.contest_number.asc())
+        order_column = LotofacilOfficialHistory.contest_number.desc() if descending else LotofacilOfficialHistory.contest_number.asc()
+        query = session.query(LotofacilOfficialHistory).order_by(order_column)
         if limit is not None and int(limit) > 0:
             query = query.limit(int(limit))
         rows = query.all()
@@ -2300,9 +2301,9 @@ def _render_scientific_memory_block() -> None:
             if st.checkbox("Carregar near miss", value=False, key="load_strong_near_miss_memory"):
                 st.json(strong_near_miss_memory)
     st.markdown("##### Histórico Oficial Lotofácil")
-    official_rows_summary = _load_official_history_rows(limit=10)
+    official_rows_summary = _load_official_history_rows(limit=10, descending=True)
     if official_rows_summary:
-        st.caption("Resumo inicial com 10 linhas. A tabela completa é carregada sob demanda.")
+        st.caption("Resumo inicial com 10 linhas mais recentes. A tabela completa é carregada sob demanda.")
         summary_df = pd.DataFrame(official_rows_summary)[["concurso", "data", "dezenas_sorteadas", "numbers_signature", "fonte", "status", "importado_em"]]
         st.dataframe(_make_streamlit_dataframe_safe(summary_df), hide_index=True, use_container_width=True)
         show_official_history = st.checkbox("Carregar histórico oficial Lotofácil", value=False, key="show_official_history")

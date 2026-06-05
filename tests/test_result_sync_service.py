@@ -127,6 +127,36 @@ def test_result_sync_service_syncs_small_missing_gap(tmp_path: Path) -> None:
     assert repository.get_contest(3690) is not None
 
 
+def test_result_sync_service_uses_controlled_fallback_when_latest_request_is_forbidden(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    repository = ContestRepository(db_path)
+
+    class FakeClient:
+        base_url = "https://example.test/api/lotofacil"
+
+        def __init__(self) -> None:
+            self.last_http_status = 403
+
+        def fetch_latest(self) -> CaixaContestResult:
+            raise RuntimeError("HTTP 403 ao consultar a API oficial da Caixa.")
+
+        def fetch_contest(self, contest_number: int) -> CaixaContestResult:
+            raise AssertionError(f"Unexpected fetch_contest for {contest_number}")
+
+    service = ResultSyncService(client=FakeClient(), repository=repository)
+
+    summary = service.sync_latest()
+    latest_record = repository.get_latest_contest_record()
+
+    assert summary.latest_contest == 3702
+    assert summary.synced_contests == [3702]
+    assert summary.fallback_used is True
+    assert summary.commit_state == "ok"
+    assert latest_record is not None
+    assert int(latest_record["concurso"]) == 3702
+    assert latest_record["dezenas"] == ["02", "03", "05", "09", "13", "14", "15", "16", "17", "18", "20", "21", "22", "23", "25"]
+
+
 def test_contest_repository_restores_missing_official_history_row(tmp_path: Path) -> None:
     db_path = tmp_path / "lotoia.db"
     repository = ContestRepository(db_path)

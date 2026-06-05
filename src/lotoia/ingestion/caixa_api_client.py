@@ -115,6 +115,11 @@ class CaixaApiClient:
 
     @staticmethod
     def _raise_for_status(response: Response) -> None:
+        if int(getattr(response, "status_code", 0) or 0) == 403:
+            request_url = str(getattr(getattr(response, "request", None), "url", "") or "")
+            raise PermissionError(
+                f"HTTP 403 ao consultar a API oficial da Caixa em {request_url or 'URL desconhecida'}."
+            )
         response.raise_for_status()
 
     @staticmethod
