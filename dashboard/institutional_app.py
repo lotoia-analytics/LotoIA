@@ -7257,6 +7257,17 @@ def _institutional_safe_action_label(raw_action: object) -> str:
     return "Registro técnico legado"
 
 
+def _sanitize_legacy_scientific_value(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw or raw.lower() in {"none", "null", "-"}:
+        return "Registro observacional"
+    if raw.startswith("recalibrate_from"):
+        return "Preservado em quarentena documental"
+    if raw in {"REPROVADO", "NEAR_MISS_GLOBAL", "NEAR_MISS_FORTE"}:
+        return "Registro técnico legado"
+    return "Registro observacional"
+
+
 def _official_15_policy_status_label(payload: dict[str, Any] | None) -> str:
     data = dict(payload or {})
     generation_range = dict(data.get("generation_range") or {})
@@ -10121,8 +10132,9 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     )
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Hist?rico Anal?tico")
-    st.write("Visao acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    st.subheader("Histórico Analítico")
+    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
+    st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
 
     generation_history = _load_generation_history_light(limit=25)
     historical_rows = _load_accumulated_analytical_rows_light(limit=25)
@@ -10130,12 +10142,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         generation_history = _load_generation_history(limit=50)
         historical_rows = _load_accumulated_analytical_rows()
     if not generation_history or not historical_rows:
-        st.info("Ainda nao ha geracoes persistidas para reconstruir o historico analitico.")
+        st.info("Ainda não há gerações persistidas para reconstruir o histórico analítico.")
         return
 
     games_df = pd.DataFrame(historical_rows)
     if games_df.empty:
-        st.info("Ainda nao ha jogos persistidos para reconstruir o historico analitico.")
+        st.info("Ainda não há jogos persistidos para reconstruir o histórico analítico.")
         return
 
     games_df = _ensure_analytical_games_schema(games_df)
@@ -10340,11 +10352,11 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         else:
             st.info("Nenhum jogo conferível encontrado com os filtros atuais.")
 
-    st.markdown("##### Top jogos historicos conferiveis")
+    st.markdown("##### Top jogos históricos conferíveis")
     if not top_df.empty:
         st.dataframe(top_df.head(20), hide_index=True, use_container_width=True, height=520)
     else:
-        st.info("Nenhum top jogo conferivel encontrado com os filtros atuais.")
+            st.info("Nenhum top jogo conferível encontrado com os filtros atuais.")
 
     if not diagnostic_summary_df.empty:
         structural_alerts = int(
@@ -10356,10 +10368,29 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             )
         )
         if structural_alerts:
-            st.warning("Bateria estruturalmente aprovada, mas cientificamente reprovada. Disponível para diagnóstico/conferência supervisionada.")
-        st.markdown("##### Jogos rejeitados / Diagnóstico científico")
-        st.dataframe(diagnostic_summary_df, hide_index=True, use_container_width=True, height=260)
-        with st.expander("Detalhe dos jogos rejeitados / diagnóstico", expanded=False):
+            st.warning("Bateria estruturalmente conferível. Diagnóstico científico preservado apenas como registro observacional, sem comando operacional.")
+        st.markdown("##### Diagnóstico observacional legado")
+        st.caption("Registros preservados para auditoria histórica. Não rejeitam a geração operacional e não comandam recalibração.")
+        visible_diagnostic_summary_df = diagnostic_summary_df.copy()
+        for column in ("status científico", "classificação científica", "ação sugerida", "motivo rejeição"):
+            if column in visible_diagnostic_summary_df.columns:
+                visible_diagnostic_summary_df[column] = visible_diagnostic_summary_df[column].apply(_sanitize_legacy_scientific_value)
+        visible_diagnostic_summary_df["observação institucional"] = "Registro observacional legado, sem comando operacional."
+        visible_diagnostic_summary_df = visible_diagnostic_summary_df[
+            [
+                "generation_event_id",
+                "batch_id",
+                "status comandante saída",
+                "total jogos",
+                "total jogos únicos",
+                "duplicados",
+                "policy_origin",
+                "policy_variant",
+                "observação institucional",
+            ]
+        ]
+        st.dataframe(visible_diagnostic_summary_df, hide_index=True, use_container_width=True, height=260)
+        with st.expander("Detalhes técnicos avançados", expanded=False):
             if not diagnostic_df.empty:
                 rejected_view = diagnostic_df[
                     [
@@ -10381,6 +10412,9 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                         "premiação",
                     ]
                 ].copy()
+                for column in ("status científico", "classificação científica", "ação sugerida", "motivo rejeição"):
+                    if column in rejected_view.columns:
+                        rejected_view[column] = rejected_view[column].apply(_sanitize_legacy_scientific_value)
                 rejected_view["concurso conferido"] = rejected_view["concurso conferido"].apply(
                     lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
                 )
@@ -10391,12 +10425,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             else:
                 st.info("Nenhum jogo rejeitado com os filtros atuais.")
 
-    with st.expander("Linha do tempo secundaria", expanded=False):
+    with st.expander("Linha do tempo secundária", expanded=False):
         timeline = _load_analytical_timeline(limit=25)
         if timeline:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
-            st.info("Ainda nao ha eventos suficientes para montar a timeline analitica.")
+            st.info("Ainda não há eventos suficientes para montar a timeline analítica.")
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
     st.write("Auditoria incremental isolada do motor oficial.")
