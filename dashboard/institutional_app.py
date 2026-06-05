@@ -830,7 +830,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     operational_cols[8].metric("Maior acerto", int(latest_generation.get("maior acerto", operational_reconciliation.get("best_hits", 0)) or 0))
     operational_cols[9].metric("Média de acertos", f"{float(latest_generation.get('média de acertos', latest_generation.get('media de acertos', 0.0)) or 0.0):.4f}")
     operational_detail_cols = st.columns(2)
-    operational_detail_cols[0].metric("Total de jogos conferidos", total_games_conferidos)
+    operational_detail_cols[0].metric("Total de jogos conferidos", total_games_conferidos if operational_reconciliation else 0)
     operational_detail_cols[1].metric("Status operacional", operational_status)
     st.markdown("##### Auditoria de integridade")
     integrity_rows = pd.DataFrame(
