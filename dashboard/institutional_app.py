@@ -656,10 +656,14 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
     official_history = _load_official_history_diagnostics()
     return [
         {
-            "camada": "CSV local",
+            "camada": "CSV histórico versionado",
             "origem": "historico_lotofacil.csv",
             "tabelas": "data/raw/historico_lotofacil.csv",
-            "uso": f"último concurso CSV={latest_csv.get('contest_number', '-')}",
+            "uso": (
+                f"último concurso CSV={latest_csv.get('contest_number', '-')}"
+                f" | papel=seed/documentação"
+                f" | runtime=PostgreSQL"
+            ),
         },
         {
             "camada": "API oficial",

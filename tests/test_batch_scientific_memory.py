@@ -932,7 +932,7 @@ def test_latest_contest_sources_are_distinguished(tmp_path, monkeypatch) -> None
     latest_contest = _get_latest_contest()
 
     assert csv_summary is not None
-    assert csv_summary["contest_number"] == 3700
+    assert csv_summary["contest_number"] == 3702
     assert sync_summary is not None
     assert sync_summary["contest_number"] == 3700
     assert sync_summary["source"] == "api_caixa_sincronizada"
@@ -980,7 +980,7 @@ def test_institutional_source_map_separates_csv_api_and_persisted_history(tmp_pa
     source_map = _institutional_source_map(snapshot)
     source_by_layer = {row["camada"]: row for row in source_map}
 
-    assert source_by_layer["CSV local"]["uso"].endswith("3700")
+    assert source_by_layer["CSV histórico versionado"]["uso"].endswith("3702 | papel=seed/documentação | runtime=PostgreSQL")
     assert source_by_layer["API oficial"]["uso"].endswith("3700")
     assert "último concurso persistido=3700" in source_by_layer["Banco persistido"]["uso"]
     assert "lotofacil_official_history=4" in source_by_layer["Banco persistido"]["uso"]
