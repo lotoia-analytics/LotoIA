@@ -2597,7 +2597,8 @@ def _render_scientific_policy_panel(
                 str(int(window_decomposition.get(f"count_{panel_validation_threshold}_plus", 0) or 0)),
             )
             st.caption(window_decomposition.get("validation_zone_label", panel_validation_zone_label))
-            with st.expander(f"Ver detalhes da {label.lower()}", expanded=False):
+            window_context = st.expander(f"Ver detalhes da {label.lower()}", expanded=False) if use_expander else st.container()
+            with window_context:
                 st.json(window)
 
     if parameter_reasoning:
