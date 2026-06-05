@@ -1870,6 +1870,36 @@ def _load_official_history_rows(limit: int | None = None, *, descending: bool = 
     ]
 
 
+def _load_official_history_contest(contest_number: int | str | None) -> dict[str, Any] | None:
+    selected_contest = _safe_int(contest_number, default=None)
+    if selected_contest is None:
+        return None
+    with get_session(DB_PATH) as session:
+        row = (
+            session.query(LotofacilOfficialHistory)
+            .filter(LotofacilOfficialHistory.contest_number == int(selected_contest))
+            .limit(1)
+            .one_or_none()
+        )
+    if row is None:
+        return None
+    numbers = [
+        int(str(value).lstrip("0") or "0")
+        for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split()
+        if str(value).strip().isdigit()
+    ]
+    return {
+        "concurso": int(getattr(row, "contest_number", selected_contest) or selected_contest),
+        "data": str(getattr(row, "draw_date", "") or ""),
+        "dezenas": numbers,
+        "numbers_signature": str(getattr(row, "numbers_signature", "") or ""),
+        "fonte": str(getattr(row, "source", "") or ""),
+        "status": "OK" if int(getattr(row, "is_valid", 1) or 0) else "INVALIDO",
+        "importado_em": row.imported_at.isoformat() if getattr(row, "imported_at", None) else "",
+        "validado_em": row.validated_at.isoformat() if getattr(row, "validated_at", None) else "",
+    }
+
+
 def _load_official_history_diagnostics() -> dict[str, Any]:
     official_rows = _load_official_history_rows()
     imported_summary = _load_imported_contests_summary()
@@ -4605,13 +4635,27 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         st.session_state.get("active_reconciliation_generation_event_id"),
         default=None,
     )
-    latest_contest = _load_imported_contest(selected_contest) or _get_latest_contest()
-    if latest_contest is None:
-        st.session_state["institutional_check_result"] = {
-            "status": "waiting_contest",
-            "warning": "imported_contests ainda est? vazio. Sincronize o resultado oficial para habilitar a confer?ncia autom?tica.",
-        }
-        return
+    official_contest = _load_official_history_contest(selected_contest)
+    if official_contest is None:
+        imported_fallback = _load_imported_contest(selected_contest)
+        fallback_contest = _normalize_contest_record(imported_fallback)
+        if fallback_contest is not None and not fallback_contest.get("dezenas"):
+            fallback_contest["dezenas"] = _extract_int_numbers(
+                imported_fallback.get("numbers", imported_fallback.get("dezenas", [])) if isinstance(imported_fallback, dict) else []
+            )
+        if fallback_contest is not None:
+            official_contest = fallback_contest
+            st.session_state["institutional_check_result"] = {
+                "status": "fallback_imported_contest",
+                "warning": "Concurso não encontrado na base oficial. Usando o concurso importado disponível no banco.",
+                "selected_contest": int(selected_contest or 0),
+            }
+        else:
+            st.session_state["institutional_check_result"] = {
+                "status": "waiting_contest",
+                "warning": "Concurso não encontrado na base oficial. Escolha um concurso disponível no banco.",
+            }
+            return
     grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
     if not grouped_generations:
         st.session_state["institutional_check_result"] = {
@@ -4626,7 +4670,6 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     total_prizes = 0
     total_hits = 0
     best_hits_global = 0
-    latest_imported_contest_number = _safe_int(_safe_get(latest_contest, "contest_number"), default=None)
     selected_generation_groups = grouped_generations
     if selected_batch_id:
         selected_generation_groups = [
@@ -4651,10 +4694,10 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
 
     for group in selected_generation_groups:
         group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
-        contest_to_use = selected_contest or group_target_contest or latest_imported_contest_number
-        contest_payload = _load_imported_contest(contest_to_use) if contest_to_use else latest_contest
+        contest_to_use = selected_contest or group_target_contest or _safe_int(_safe_get(official_contest, "concurso"), default=None)
+        contest_payload = _load_official_history_contest(contest_to_use) if contest_to_use is not None else official_contest
         if contest_payload is None:
-            contest_payload = latest_contest
+            contest_payload = official_contest
         comparison = _compare_games_against_contest(
             generation_event_id=int(group.get("generation_event_id") or 0),
             games=list(group.get("games") or []),
@@ -4702,6 +4745,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         total_prizes += int(comparison.get("prize_count", 0) or 0)
         total_hits += int(comparison.get("total_hits", 0) or 0)
         best_hits_global = max(best_hits_global, int(comparison.get("best_hits", 0) or 0))
+    latest_contest = official_contest
     batch_hit_values = [
         int(result.get("hits", 0) or 0)
         for generation in generation_results
@@ -4749,8 +4793,8 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     batch_conference_result = {
         "runtime_status": "checked",
         "status": "checked",
-        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
-        "contest_date": str(latest_contest.get("data", "") or ""),
+        "contest_number": int(official_contest.get("concurso", 0) or 0),
+        "contest_date": str(official_contest.get("data", "") or ""),
         "batch_id": str(batch_reconciliation_payload.get("batch_id", selected_batch_id) or selected_batch_id or ""),
         "generation_event_ids": list(batch_generation_range.get("generation_event_ids", []) or [int(item.get("generation_event_id", 0) or 0) for item in generation_results if int(item.get("generation_event_id", 0) or 0) > 0]),
         "first_generation_event_id": batch_generation_range.get("first_generation_event_id"),
@@ -4803,15 +4847,16 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     st.session_state["institutional_check"] = {
         "runtime_status": "checked",
         "timestamp": datetime.now(UTC).isoformat(),
-        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
+        "contest_number": int(official_contest.get("concurso", 0) or 0),
         "best_hits": best_hits_global,
         "total_hits": total_hits,
     }
     st.session_state["institutional_check_result"] = {
         "status": "checked",
-        "contest_number": int(latest_contest.get("contest_number", 0) or 0),
-        "contest_date": str(latest_contest.get("data", "") or ""),
-        "dezenas": list(latest_contest.get("dezenas", []) or []),
+        "contest_number": int(official_contest.get("concurso", 0) or 0),
+        "contest_date": str(official_contest.get("data", "") or ""),
+        "dezenas": list(official_contest.get("dezenas", []) or []),
+        "official_numbers_from_db": list(official_contest.get("dezenas", []) or []),
         "generation_results": generation_results,
         "best_hits": best_hits_global,
         "total_hits": total_hits,
@@ -4832,6 +4877,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
         "batch_conference_result": batch_conference_result,
         "batch_reconciliation_memory": batch_reconciliation_payload,
         "strong_near_miss_memory": strong_near_miss_payload,
+        "selected_contest": int(official_contest.get("concurso", 0) or 0),
     }
 
 
@@ -8870,43 +8916,52 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     latest_contest = _get_latest_contest()
     latest_generation = _load_latest_generated_games() or {}
-    current_contest = (
+    official_diagnostics = _load_official_history_diagnostics()
+    min_official_contest = int(official_diagnostics.get("contest_number_min", 0) or 0)
+    max_official_contest = int(official_diagnostics.get("contest_number_max", 0) or 0)
+    default_contest = max_official_contest or (
         int(latest_contest["contest_number"])
         if latest_contest
         else int(latest_generation.get("target_contest") or 0)
         if str(latest_generation.get("target_contest") or "").isdigit()
         else 0
     )
-    if "institutional_contest_nav" not in st.session_state:
-        st.session_state["institutional_contest_nav"] = current_contest or 0
-    if current_contest and int(st.session_state.get("institutional_contest_nav", 0) or 0) != current_contest:
-        st.session_state["institutional_contest_nav"] = current_contest
-    nav_cols = st.columns([0.35, 1.0, 0.35, 1.35])
-    if nav_cols[0].button("−", use_container_width=True, disabled=not bool(current_contest)):
-        st.session_state["institutional_contest_nav"] = max(0, int(st.session_state.get("institutional_contest_nav", current_contest or 0)) - 1)
-    nav_cols[1].markdown(
-        f"<div style='padding-top:0.2rem;font-size:0.78rem;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;'>Último concurso</div>",
-        unsafe_allow_html=True,
-    )
-    if nav_cols[2].button("+", disabled=not bool(current_contest)):
-        st.session_state["institutional_contest_nav"] = int(st.session_state.get("institutional_contest_nav", current_contest or 0)) + 1
-    selected_contest = int(st.session_state.get("institutional_contest_nav", current_contest or 0) or 0) if current_contest else 0
-    if selected_contest:
-        nav_cols[3].metric("Último concurso", selected_contest)
+    if min_official_contest and max_official_contest and max_official_contest >= min_official_contest:
+        selected_contest = int(
+            st.number_input(
+                "Escolha o Concurso",
+                min_value=min_official_contest,
+                max_value=max_official_contest,
+                value=default_contest if min_official_contest <= default_contest <= max_official_contest else max_official_contest,
+                step=1,
+                key="conference_selected_contest",
+            )
+        )
     else:
-        nav_cols[3].caption("Último concurso: -")
+        selected_contest = int(default_contest or 0)
+        st.caption("Escolha o Concurso: aguardando base oficial disponível.")
+    selected_official = _load_official_history_contest(selected_contest) if selected_contest else None
+    if selected_official:
+        st.caption(
+            f"Concurso escolhido: {selected_official.get('concurso', '-')} | dezenas oficiais: {' '.join(f'{number:02d}' for number in selected_official.get('dezenas', []) or []) or '-'}"
+        )
+    elif selected_contest:
+        st.warning("Concurso não encontrado na base oficial. Escolha um concurso disponível no banco.")
+    if max_official_contest:
+        st.caption(f"Último concurso disponível no banco: {max_official_contest}")
     st.caption(
         " | ".join(
             [
                 f"Bateria ativa: {selected_batch_id or '-'}",
                 f"Geração ativa: {selected_generation_event_id or '-'}",
                 f"gerações ativas: {', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}",
+                f"concurso escolhido: {selected_contest or '-'}",
             ]
         )
     )
     contest_buttons = st.columns([0.48, 0.62, 0.66])
-    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_contest)):
-        _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
+    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_official)):
+        _run_institutional_conference(contest_number=selected_contest if selected_official else None)
         st.rerun()
     if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
         with st.status("Importando resultado oficial da Caixa...", expanded=True) as sync_status:
