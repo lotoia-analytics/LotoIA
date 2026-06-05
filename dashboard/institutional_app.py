@@ -1873,7 +1873,12 @@ def _load_official_history_diagnostics() -> dict[str, Any]:
         min_contest = contest_numbers[0]
         max_contest = contest_numbers[-1]
         official_set = set(contest_numbers)
-        missing = [contest for contest in range(min_contest, max_contest + 1) if contest not in official_set]
+        imported_last = imported_summary.get("last_contest")
+        target_max = max(
+            int(max_contest or 0),
+            int(imported_last or 0),
+        )
+        missing = [contest for contest in range(min_contest, target_max + 1) if contest not in official_set]
     else:
         min_contest = None
         max_contest = None
@@ -1883,8 +1888,6 @@ def _load_official_history_diagnostics() -> dict[str, Any]:
     if not contest_numbers:
         status = "INCOMPLETA"
     elif missing:
-        status = "INCOMPLETA"
-    elif imported_last is not None and max_contest is not None and int(imported_last) > int(max_contest):
         status = "INCOMPLETA"
     return {
         "total_lotofacil_official_history": len(official_rows),
@@ -6491,6 +6494,10 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         repository = ContestRepository(DB_PATH)
         service = ResultSyncService(repository=repository)
         summary = service.sync_latest()
+        try:
+            repository.sync_official_history_from_imported_contests()
+        except Exception:
+            pass
         payload = summary.to_dict()
         payload["status"] = "ok"
         payload["http_status"] = getattr(service.client, "last_http_status", None)
@@ -6503,6 +6510,7 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
+        payload["official_history_diagnostics"] = _load_official_history_diagnostics()
         _persist_official_sync_diagnostics(
             {
                 "sync_status": payload.get("status", "unknown"),
@@ -6516,6 +6524,7 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
                 "imported_contest": payload.get("latest_contest", None),
                 "imported_numbers": payload.get("imported_numbers", []),
                 "latest_contest_record": payload.get("latest_contest_record"),
+                "official_history_diagnostics": payload.get("official_history_diagnostics", {}),
                 "payload": payload,
             }
         )
