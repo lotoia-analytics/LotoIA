@@ -4202,6 +4202,27 @@ def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], i
     return [], expected_card_size, "indisponivel"
 
 
+def _select_conference_numbers(game: dict[str, Any]) -> dict[str, Any]:
+    """Seleciona as dezenas usadas na conferência institucional."""
+    conference_numbers, expected_card_size, origin_label = _extract_conference_card_numbers(game)
+    formato = _safe_int(
+        game.get("formato_cartao")
+        or game.get("format")
+        or game.get("card_size")
+        or game.get("total_final"),
+        default=None,
+    )
+    formato = int(formato or expected_card_size or len(conference_numbers) or 15)
+    return {
+        "conference_numbers": conference_numbers,
+        "origem_dezenas_conferencia": origin_label if conference_numbers else "indisponivel",
+        "dezenas_conferidas_count": len(conference_numbers),
+        "expected_card_size": formato,
+        "actual_card_size": len(conference_numbers),
+        "formato_cartao": formato,
+    }
+
+
 def _normalize_official_numbers(value: object) -> list[int]:
     if not value:
         return []
@@ -8274,8 +8295,11 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         }
     results: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
-        numbers, expected_card_size, origin_label = _extract_conference_card_numbers(game)
-        actual_card_size = len(numbers)
+        conference_info = _select_conference_numbers(game)
+        numbers = list(conference_info.get("conference_numbers") or [])
+        expected_card_size = int(conference_info.get("expected_card_size", len(numbers) or 15) or (len(numbers) or 15))
+        actual_card_size = int(conference_info.get("actual_card_size", len(numbers)) or len(numbers))
+        origin_label = str(conference_info.get("origem_dezenas_conferencia", "indisponivel") or "indisponivel")
         matched = sorted(set(numbers) & set(official_numbers))
         missing_draw_numbers = sorted(set(official_numbers) - set(numbers))
         extra_numbers = sorted(set(numbers) - set(official_numbers))
@@ -8324,33 +8348,11 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "official_numbers": official_numbers,
         "official_numbers_count": len(official_numbers),
         "generation_event_id": int(generation_event_id or 0),
-        "formato_cartao": int(
-            _safe_int(
-                games[0].get("formato_cartao")
-                or games[0].get("card_format")
-                or games[0].get("selected_card_format")
-                or games[0].get("quantidade_final"),
-                default=len(results[0]["numbers"]) if results else 15,
-            )
-            or (len(results[0]["numbers"]) if results else 15)
-        )
-        if games
-        else 15,
-        "dezenas_conferidas_count": int(len(results[0]["numbers"]) if results else 0),
+        "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+        "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
         "origem_dezenas_conferencia": comparison_source_labels[0] if comparison_source_labels else "indisponivel",
-        "expected_card_size": int(
-            _safe_int(
-                games[0].get("formato_cartao")
-                or games[0].get("card_format")
-                or games[0].get("selected_card_format")
-                or games[0].get("quantidade_final"),
-                default=len(results[0]["numbers"]) if results else 15,
-            )
-            or (len(results[0]["numbers"]) if results else 15)
-        )
-        if games
-        else 15,
-        "actual_card_size": int(len(results[0]["numbers"]) if results else 0),
+        "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+        "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
         "first_game": results[0]["numbers"] if results else [],
         "first_game_hits": int(results[0]["hits"]) if results else 0,
         "first_intersection": results[0]["matched_numbers"] if results else [],
@@ -8409,6 +8411,11 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "official_numbers": official_numbers,
         "results": results,
         "generation_event_id": int(generation_event_id or 0),
+        "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+        "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
+        "origem_dezenas_conferencia": str(results[0].get("origem_dezenas_conferencia", "indisponivel") if results else "indisponivel"),
+        "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+        "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
         "best_hits": best_hits,
         "total_hits": total_hits,
         "prize_count": prize_count,
@@ -9324,7 +9331,8 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
         data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            group_stats = _summarize_games_structurally([game.get("numbers", []) for game in latest_generation.get("games", [])])
+            conference_games = [_select_conference_numbers(game).get("conference_numbers", []) for game in latest_generation.get("games", [])]
+            group_stats = _summarize_games_structurally(conference_games)
             st.caption(
                 " | ".join(
                     [
@@ -9343,6 +9351,12 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                             "grupo": game.get("game_index", "-"),
                             "jogos": 1,
                             "acertos": game.get("hits", 0) if game.get("hits") is not None else "-",
+                            "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
+                            "núcleo_lei_15": " ".join(f"{number:02d}" for number in list(game.get("numbers", [])[:15])) or "-",
+                            "reservas_auditadas": " ".join(f"+{number:02d}" for number in list(game.get("numbers", [])[15:])) or "-",
+                            "cartão_final": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
+                            "dezenas_conferidas_count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
+                            "origem_dezenas_conferencia": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
                             "observação institucional": "grupo avaliado na conferência",
                         }
                         for game in latest_generation.get("games", [])
@@ -9375,6 +9389,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             missing_df = pd.DataFrame(
                 [
                     {
+                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
+                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
+                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
+                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
                         "dezenas ausentes": " ".join(f"{number:02d}" for number in game.get("matched_numbers", []) or []) or "-",
                         "frequência": int(game.get("hits", 0) or 0),
                         "grupo relacionado": game.get("game_index", "-"),
@@ -9409,6 +9427,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             extra_df = pd.DataFrame(
                 [
                     {
+                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
+                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
+                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
+                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
                         "dezenas sobrando": " ".join(f"{number:02d}" for number in game.get("numbers", [])[:5]) or "-",
                         "frequência": int(game.get("odd", 0) or 0) + int(game.get("even", 0) or 0),
                         "grupo relacionado": game.get("game_index", "-"),
