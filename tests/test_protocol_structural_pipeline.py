@@ -51,6 +51,37 @@ def test_rfe_without_target_uses_latest_official_persisted(monkeypatch) -> None:
     assert reference.source == "official_lotofacil_history"
 
 
+def test_official_contest_gateway_is_shared_between_conference_and_rfe(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_diagnostics",
+        lambda: {
+            "contest_number_max": 3703,
+        },
+    )
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_contest",
+        lambda contest_number: {
+            "concurso": contest_number,
+            "dezenas": [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25],
+        }
+        if contest_number == 3703
+        else None,
+    )
+
+    latest_official = admin_app.get_latest_official_contest()
+    previous_reference = admin_app.get_previous_official_contest(3704)
+
+    assert latest_official is not None
+    assert latest_official["official_contest_source"] == "official_lotofacil_history"
+    assert latest_official["official_contest_id"] == 3703
+    assert latest_official["official_contest_numbers"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert previous_reference.found is True
+    assert previous_reference.contest_id == 3703
+    assert previous_reference.source == "official_lotofacil_history"
+
+
 def test_rfe_previous_contest_numbers_must_have_15_numbers(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_app,
@@ -175,6 +206,9 @@ def test_clean_law15_generation_preserves_rfe_block_when_attempts_zero(monkeypat
         assert diagnostics.get("rfe_status") == "BLOQUEADO"
         assert diagnostics.get("rejected_by_output_commander") == 0
         assert diagnostics.get("insufficient_reason") == "RFE_PREVIOUS_CONTEST_NOT_FOUND"
+        assert result.get("official_contest_source") == "official_lotofacil_history"
+        assert result.get("official_contest_id") == 3703
+        assert result.get("official_contest_numbers") == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
         assert result.get("rfe_previous_contest_found") is True
         assert result.get("rfe_previous_contest_id") == 3703
         assert result.get("rfe_previous_contest_numbers") == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"

@@ -1054,6 +1054,91 @@ def _normalize_contest_record(record: dict[str, Any] | None) -> dict[str, Any] |
     }
 
 
+def get_official_contest(contest_id: int | str | None) -> dict[str, Any] | None:
+    """Gateway único para leitura de concurso oficial persistido."""
+    selected_contest = _safe_int(contest_id, default=None)
+    if selected_contest is None:
+        return None
+    contest = _load_official_history_contest(selected_contest)
+    if not contest:
+        return None
+    contest_numbers = _extract_official_numbers_from_record(contest)
+    contest = dict(contest)
+    contest["contest_number"] = int(selected_contest)
+    contest["official_contest_source"] = "official_lotofacil_history"
+    contest["official_contest_id"] = int(selected_contest)
+    contest["official_contest_numbers"] = " ".join(f"{number:02d}" for number in contest_numbers) or "-"
+    return contest
+
+
+def get_latest_official_contest() -> dict[str, Any] | None:
+    """Retorna o concurso oficial persistido mais recente, sem fallback silencioso."""
+    diagnostics = _load_official_history_diagnostics()
+    latest_contest_number = _safe_int(diagnostics.get("contest_number_max"), default=None)
+    if latest_contest_number is None or latest_contest_number <= 0:
+        return None
+    return get_official_contest(latest_contest_number)
+
+
+def get_previous_official_contest(target_contest: int | None) -> RFEPreviousContestReference:
+    """Retorna a referência anterior oficial usada pela RFE-01."""
+    if target_contest is not None and int(target_contest) > 1:
+        previous_contest_id = int(target_contest) - 1
+        previous_contest = get_official_contest(previous_contest_id)
+        if previous_contest:
+            numbers = _extract_official_numbers_from_record(previous_contest)
+            if numbers:
+                return RFEPreviousContestReference(
+                    found=True,
+                    contest_id=previous_contest_id,
+                    numbers=numbers,
+                    source="official_lotofacil_history",
+                    message=None,
+                )
+            return RFEPreviousContestReference(
+                found=False,
+                contest_id=previous_contest_id,
+                numbers=[],
+                source="official_lotofacil_history",
+                message="Concurso anterior encontrado, mas dezenas oficiais inválidas ou incompletas.",
+            )
+        return RFEPreviousContestReference(
+            found=False,
+            contest_id=previous_contest_id,
+            numbers=[],
+            source="official_lotofacil_history",
+            message="Concurso anterior não encontrado na base oficial persistida.",
+        )
+
+    latest_official_contest = get_latest_official_contest()
+    latest_contest_number = _safe_int((latest_official_contest or {}).get("contest_number"), default=None)
+    if latest_contest_number is not None and latest_contest_number > 0:
+        numbers = _extract_official_numbers_from_record(latest_official_contest)
+        if numbers:
+            return RFEPreviousContestReference(
+                found=True,
+                contest_id=latest_contest_number,
+                numbers=numbers,
+                source="official_lotofacil_history",
+                message=None,
+            )
+        return RFEPreviousContestReference(
+            found=False,
+            contest_id=latest_contest_number,
+            numbers=[],
+            source="official_lotofacil_history",
+            message="Último concurso oficial encontrado, mas dezenas oficiais inválidas ou incompletas.",
+        )
+
+    return RFEPreviousContestReference(
+        found=False,
+        contest_id=None,
+        numbers=[],
+        source="indisponivel",
+        message="Concurso anterior não encontrado na base oficial persistida.",
+    )
+
+
 def _load_imported_contest_numbers() -> list[int]:
     with get_session(DB_PATH) as session:
         rows = session.query(ImportedContest.contest_number).order_by(ImportedContest.contest_number.asc()).all()
@@ -4119,7 +4204,7 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
     """
     if target_contest is not None and int(target_contest) > 1:
         previous_contest_id = int(target_contest) - 1
-        previous_contest = _load_official_history_contest(previous_contest_id)
+        previous_contest = get_official_contest(previous_contest_id)
         if previous_contest:
             numbers = _extract_official_numbers_from_record(previous_contest)
             if numbers:
@@ -4145,13 +4230,10 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
             message="Concurso anterior não encontrado na base oficial persistida.",
         )
 
-    official_diagnostics = _load_official_history_diagnostics()
-    latest_contest_number = _safe_int(official_diagnostics.get("contest_number_max"), default=None)
-    if latest_contest_number is None or latest_contest_number <= 0:
-        latest_contest = _load_imported_contest() or _load_latest_contest_summary() or _get_latest_contest() or {}
-        latest_contest_number = _safe_int(latest_contest.get("contest_number"), default=None)
+    latest_contest = get_latest_official_contest()
+    latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
     if latest_contest_number is not None and latest_contest_number > 0:
-        previous_contest = _load_official_history_contest(int(latest_contest_number))
+        previous_contest = get_official_contest(int(latest_contest_number))
         if previous_contest:
             numbers = _extract_official_numbers_from_record(previous_contest)
             if numbers:
@@ -4174,7 +4256,7 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
         found=False,
         contest_id=None,
         numbers=[],
-        source="official_lotofacil_history",
+        source="indisponivel",
         message="Nenhum concurso oficial persistido disponível.",
     )
 
@@ -9814,7 +9896,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         runtime_query_imported_contests = None
         runtime_query_error = str(exc)
 
-    latest_contest = _get_latest_contest()
+    latest_contest = get_latest_official_contest()
     latest_generation = _load_latest_generated_games() or {}
     official_diagnostics = _load_official_history_diagnostics()
     min_official_contest = int(official_diagnostics.get("contest_number_min", 0) or 0)
@@ -9840,7 +9922,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     else:
         selected_contest = int(default_contest or 0)
         st.caption("Escolha o Concurso: aguardando base oficial disponível.")
-    selected_official = _load_official_history_contest(selected_contest) if selected_contest else None
+    selected_official = get_official_contest(selected_contest) if selected_contest else None
     if selected_official:
         st.caption(
             f"Concurso escolhido: {selected_official.get('concurso', '-')} | dezenas oficiais: {' '.join(f'{number:02d}' for number in selected_official.get('dezenas', []) or []) or '-'}"
@@ -10100,14 +10182,8 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     fill_diagnostics: dict[str, Any] = {}
     total_games = int(requested_count)
     seed = int(time.time()) % 1_000_000
-    official_diagnostics = _load_official_history_diagnostics()
-    latest_contest_number = _safe_int(official_diagnostics.get("contest_number_max"), default=None)
-    latest_contest = _load_imported_contest() or _load_latest_contest_summary() or _get_latest_contest() or {}
-    if latest_contest_number is not None and latest_contest_number > 0:
-        latest_contest = {
-            "contest_number": latest_contest_number,
-            "dezenas": (_load_official_history_contest(latest_contest_number) or {}).get("dezenas", []),
-        }
+    latest_contest = get_latest_official_contest() or {}
+    latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
     batch_number_usage: dict[int, int] = {}
@@ -10186,6 +10262,9 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "games": games,
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
+        "official_contest_source": str((latest_contest or {}).get("official_contest_source", "indisponivel") or "indisponivel"),
+        "official_contest_id": latest_contest_number,
+        "official_contest_numbers": " ".join(f"{number:02d}" for number in (latest_contest or {}).get("dezenas", [])) or "-",
         "rfe_previous_contest_found": bool(previous_contest_reference.found),
         "rfe_previous_contest_id": previous_contest_reference.contest_id,
         "rfe_previous_contest_numbers": " ".join(f"{number:02d}" for number in previous_contest_reference.numbers) or "-",
