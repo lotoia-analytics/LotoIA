@@ -1524,7 +1524,7 @@ def _format_scientific_memory_listing(memories: list[dict[str, Any]]) -> pd.Data
                 "leitura científica": scientific_reading,
                 "memory_id": int(row.get("id", 0) or 0),
                 "memory_kind": memory_kind,
-                "batch_id de origem": str(row.get("batch_id", "") or "-"),
+                "ID da geração de origem": str(row.get("batch_id", "") or "-"),
                 "classification": classification,
                 "memory_role": memory_role,
                 "dominant_memory": str(dominant_memory),
@@ -1540,7 +1540,7 @@ def _format_scientific_memory_listing(memories: list[dict[str, Any]]) -> pd.Data
             "leitura científica",
             "memory_id",
             "memory_kind",
-            "batch_id de origem",
+            "ID da geração de origem",
             "classification",
             "memory_role",
             "dominant_memory",
@@ -2442,7 +2442,7 @@ def _render_scientific_memory_block() -> None:
         identity_cols = st.columns(5)
         identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
         identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
-        identity_cols[2].markdown(f"**batch_id de origem**  \n{batch_reconciliation_memory.get('batch_id', '-') or '-'}")
+        identity_cols[2].markdown(f"**ID da geração de origem**  \n{batch_reconciliation_memory.get('batch_id', '-') or '-'}")
         identity_cols[3].markdown(f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
         identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
         role_cols = st.columns(3)
@@ -5253,10 +5253,10 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
     return groups
 
 
-def _run_institutional_conference(contest_number: int | None = None) -> None:
+def _run_institutional_conference(contest_number: int | None = None, generation_event_id: int | None = None, batch_id: str | None = None) -> None:
     selected_contest = _safe_int(contest_number, default=None)
-    selected_batch_id = str(st.session_state.get("institutional_active_batch_id", "") or "").strip()
-    selected_generation_event_id = _safe_int(
+    selected_batch_id = str(batch_id or st.session_state.get("institutional_active_batch_id", "") or "").strip()
+    selected_generation_event_id = _safe_int(generation_event_id, default=None) or _safe_int(
         st.session_state.get("active_reconciliation_generation_event_id"),
         default=None,
     )
@@ -5284,7 +5284,7 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
     if not grouped_generations:
         st.session_state["institutional_check_result"] = {
-            "warning": "Gere jogos na bateria ativa antes de conferir."
+            "warning": "Gere jogos em uma geração ativa antes de conferir."
         }
         return
     if selected_generation_event_id is None:
@@ -5296,24 +5296,18 @@ def _run_institutional_conference(contest_number: int | None = None) -> None:
     total_hits = 0
     best_hits_global = 0
     selected_generation_groups = grouped_generations
-    if selected_batch_id:
-        selected_generation_groups = [
-            group
-            for group in grouped_generations
-            if str(group.get("batch_id", "") or "").strip() == selected_batch_id
-        ]
-    elif selected_generation_event_id is not None:
+    if selected_generation_event_id is not None:
         selected_generation_groups = [
             group
             for group in grouped_generations
             if int(group.get("generation_event_id", 0) or 0) == int(selected_generation_event_id or 0)
         ]
-        if not selected_generation_groups:
-            selected_generation_groups = [
-                group
-                for group in grouped_generations
-                if not bool(group.get("is_conferida", False))
-            ]
+    elif selected_batch_id:
+        selected_generation_groups = [
+            group
+            for group in grouped_generations
+            if str(group.get("batch_id", "") or "").strip() == selected_batch_id
+        ]
     if not selected_generation_groups:
         selected_generation_groups = grouped_generations[:1]
 
@@ -9591,7 +9585,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         outcome_cols[5].metric("Status do OutputCommander", batch_status)
         st.caption(
             f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
-            f"batch_id={summary_result.get('batch_id', '-')}"
+            f"generation_event_id={summary_result.get('generation_event_id', '-')}"
         )
         if batch_status != "APROVADO":
             blocked_message = str(summary_result.get("motivo_bloqueio", "") or "")
@@ -9732,7 +9726,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     f"total_jogos_unicos={generation_result.get('total_jogos_unicos', '-')}",
                     f"total_jogos_duplicados={generation_result.get('total_jogos_duplicados', '-')}",
                     f"taxa_duplicidade={generation_result.get('taxa_duplicidade', 0.0):.4f}" if isinstance(generation_result.get("taxa_duplicidade"), (int, float)) else f"taxa_duplicidade={generation_result.get('taxa_duplicidade', '-')}",
-                    f"batch_id={generation_result.get('batch_id', '-')}",
+                    f"generation_event_id={generation_result.get('generation_event_id', '-')}",
                 ]
             )
         )
@@ -9753,7 +9747,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         )
         st.caption(
             f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
-            f"batch_id={generation_result.get('batch_id', '-')}"
+            f"generation_event_id={generation_result.get('generation_event_id', '-')}"
         )
         with st.expander("Diagnóstico do Comandante de Saída", expanded=True):
             commander_diag = pd.DataFrame(
@@ -9845,29 +9839,25 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
-    available_batches = _load_generation_batch_ids()
-    active_batch_id = _resolve_active_batch_id()
-    if active_batch_id and active_batch_id not in available_batches and available_batches:
-        active_batch_id = available_batches[0]
-    if available_batches:
-        selected_batch_index = available_batches.index(active_batch_id) if active_batch_id in available_batches else 0
-        selected_batch_id = st.selectbox(
-            "Selecionar bateria para conferência",
-            options=available_batches,
-            index=selected_batch_index,
-            help="Por padrão usamos a última bateria gerada. Baterias antigas entram apenas por seleção manual.",
-        )
-    else:
-        selected_batch_id = active_batch_id
-    st.session_state["institutional_active_batch_id"] = str(selected_batch_id or "").strip()
-    active_generation_event_ids = _load_generation_event_ids_for_batch(selected_batch_id)
-    active_generation_groups = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
-    selectable_generation_ids = [
-        int(group.get("generation_event_id", 0) or 0)
+    active_generation_groups = _load_persisted_generation_event_groups(batch_id=None)
+    active_generation_event_ids = sorted(
+        {
+            int(group.get("generation_event_id", 0) or 0)
+            for group in active_generation_groups
+            if int(group.get("generation_event_id", 0) or 0) > 0
+        },
+        reverse=True,
+    )
+    generation_group_by_id = {
+        int(group.get("generation_event_id", 0) or 0): group
         for group in active_generation_groups
         if int(group.get("generation_event_id", 0) or 0) > 0
+    }
+    selectable_generation_ids = [
+        generation_id
+        for generation_id in active_generation_event_ids
     ]
-    latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=selected_batch_id or None)
+    latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=None)
     if "active_reconciliation_generation_event_id" not in st.session_state:
         st.session_state["active_reconciliation_generation_event_id"] = (
             latest_unreconciled_generation_id if latest_unreconciled_generation_id is not None else (selectable_generation_ids[0] if selectable_generation_ids else None)
@@ -9879,11 +9869,14 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             "Selecionar geração para conferência",
             options=selectable_generation_ids,
             index=selected_generation_index,
-            help="Por padrão usamos a geração mais recente sem conferência dentro da bateria ativa.",
+            help="Por padrão usamos a geração mais recente sem conferência.",
         )
         st.session_state["active_reconciliation_generation_event_id"] = int(selected_generation_event_id)
     else:
         selected_generation_event_id = None
+    selected_generation_group = generation_group_by_id.get(int(selected_generation_event_id or 0), {}) if selected_generation_event_id else {}
+    selected_batch_id = str(selected_generation_group.get("batch_id", "") or "").strip()
+    st.session_state["institutional_active_batch_id"] = selected_batch_id
 
     live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
     try:
@@ -9934,7 +9927,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     st.caption(
         " | ".join(
             [
-                f"Bateria ativa: {selected_batch_id or '-'}",
                 f"Geração ativa: {selected_generation_event_id or '-'}",
                 f"gerações ativas: {', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}",
                 f"concurso escolhido: {selected_contest or '-'}",
@@ -9943,7 +9935,11 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     )
     contest_buttons = st.columns([0.48, 0.62, 0.66])
     if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_official)):
-        _run_institutional_conference(contest_number=selected_contest if selected_official else None)
+        _run_institutional_conference(
+            contest_number=selected_contest if selected_official else None,
+            generation_event_id=selected_generation_event_id,
+            batch_id=selected_batch_id or None,
+        )
         st.rerun()
     if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
         with st.status("Importando resultado oficial da Caixa...", expanded=True) as sync_status:
@@ -10971,7 +10967,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
 
     st.caption(
-        f"Bateria ativa: {selected_batch_id or '-'} | gerações ativas: "
+        f"Geração ativa: {selected_batch_id or '-'} | gerações ativas: "
         f"{', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}"
     )
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
@@ -11011,16 +11007,16 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     games_df["concurso conferido"] = pd.to_numeric(games_df["concurso conferido"], errors="coerce")
     games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
 
-    active_batch_id = _resolve_active_batch_id()
-    if active_batch_id and "batch_id" in games_df.columns:
-        active_mask = games_df["batch_id"].astype(str).fillna("").eq(str(active_batch_id))
+    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    if active_generation_event_id and "generation_event_id" in games_df.columns:
+        active_mask = games_df["generation_event_id"].astype("Int64").fillna(0).astype(int).eq(int(active_generation_event_id))
         if bool(active_mask.any()):
             games_df = games_df[active_mask].copy()
-            st.caption(f"Bateria ativa: {active_batch_id}")
+            st.caption(f"Geração ativa: {active_generation_event_id}")
         else:
-            st.caption(f"Bateria ativa: {active_batch_id} | sem jogos persistidos nessa bateria, exibindo histórico acumulado")
+            st.caption(f"Geração ativa: {active_generation_event_id} | sem jogos persistidos nessa geração, exibindo histórico acumulado")
     else:
-        st.caption("Bateria ativa: -")
+        st.caption("Geração ativa: -")
 
     filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
@@ -11100,7 +11096,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             [
                 "geração",
                 "generation_event_id",
-                "batch_id",
                 "data/hora",
                 "jogo n°",
                 "dezenas",
@@ -11143,7 +11138,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 "rank",
                 "geração",
                 "generation_event_id",
-                "batch_id",
                 "data/hora",
                 "jogo n°",
                 "dezenas",
@@ -11203,7 +11197,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             visible_display_games = display_games.rename(
                 columns={
                     "generation_event_id": "ID da geração",
-                    "batch_id": "Bateria",
                     "data/hora": "Data/hora",
                     "jogo n°": "Jogo",
                     "dezenas": "Dezenas",
@@ -11233,7 +11226,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         visible_top_df = top_df.head(20).rename(
             columns={
                 "generation_event_id": "ID da geração",
-                "batch_id": "Bateria",
                 "data/hora": "Data/hora",
                 "jogo n°": "Jogo",
                 "dezenas": "Dezenas",
@@ -11279,7 +11271,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         visible_diagnostic_summary_df = visible_diagnostic_summary_df[
             [
                 "generation_event_id",
-                "batch_id",
                 "status comandante saída",
                 "total jogos",
                 "total jogos únicos",
@@ -11295,7 +11286,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                 rejected_view = diagnostic_df[
                     [
                         "generation_event_id",
-                        "batch_id",
                         "jogo n°",
                         "dezenas",
                         "tipo visual",
