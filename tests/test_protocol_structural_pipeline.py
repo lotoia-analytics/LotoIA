@@ -85,6 +85,57 @@ def test_generation_stops_before_attempts_when_previous_contest_missing() -> Non
     assert diagnostics.get("insufficient_reason") == "RFE_PREVIOUS_CONTEST_NOT_FOUND"
 
 
+def test_clean_law15_generation_preserves_rfe_block_when_attempts_zero(monkeypatch) -> None:
+    def _generate_stub(**kwargs):
+        diagnostics = kwargs.get("fill_diagnostics")
+        if isinstance(diagnostics, dict):
+            diagnostics.update(
+                {
+                    "attempts_used": 0,
+                    "candidate_pool_generated": 0,
+                    "valid_candidates_found": 0,
+                    "accepted_games": 0,
+                    "rfe_enabled": True,
+                    "rfe_previous_contest_found": False,
+                    "rfe_previous_contest_id": None,
+                    "rfe_previous_contest_numbers": "-",
+                    "rfe_previous_contest_source": "indisponivel",
+                    "rfe_previous_contest_message": None,
+                    "rfe_status": "BLOQUEADO",
+                    "fill_completed": False,
+                    "insufficient_reason": "RFE_PREVIOUS_CONTEST_NOT_FOUND",
+                }
+            )
+        return []
+
+    monkeypatch.setattr(admin_app, "_generate_direct_15_games", _generate_stub)
+
+    original_output_commander = admin_app.output_commander_validate_games
+    try:
+        admin_app.output_commander_validate_games = lambda games, **kwargs: {
+            "status_comandante_saida": "BLOQUEADO",
+            "motivo_bloqueio": "INSUFFICIENT_VALID_CANDIDATES",
+            "error_message": "INSUFFICIENT_VALID_CANDIDATES",
+            "quantidade_jogos_rejeitados": 10,
+            "quantidade_jogos_aprovados": 0,
+            "quantidade_jogos_unicos": 0,
+        }
+
+        result = admin_app._run_clean_law15_generation(requested_count=10)
+
+        diagnostics = dict(result.get("fill_diagnostics") or {})
+        assert diagnostics.get("candidate_pool_generated") == 0
+        assert diagnostics.get("valid_candidates_found") == 0
+        assert diagnostics.get("attempts_used") == 0
+        assert diagnostics.get("rfe_status") == "BLOQUEADO"
+        assert diagnostics.get("rejected_by_output_commander") == 0
+        assert diagnostics.get("insufficient_reason") == "RFE_PREVIOUS_CONTEST_NOT_FOUND"
+        assert result.get("rfe_previous_contest_found") is False
+        assert result.get("rfe_previous_contest_source") == "indisponivel"
+    finally:
+        admin_app.output_commander_validate_games = original_output_commander
+
+
 def test_structural_rfe_rejects_invalid_card_before_acceptance(monkeypatch) -> None:
     call_counter = {"count": 0}
 

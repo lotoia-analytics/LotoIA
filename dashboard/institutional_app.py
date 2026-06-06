@@ -10138,16 +10138,32 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         persisted_signatures=set(load_all_output_signatures()),
         historical_deduplication_mode="AUDIT_ONLY",
     )
-    if len(games) < total_games:
+    rfe_blocked_reason = fill_diagnostics.get("insufficient_reason") in {
+        "RFE_PREVIOUS_CONTEST_NOT_FOUND",
+        "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS",
+        "INSUFFICIENT_RFE_APPROVED_CANDIDATES",
+    }
+    if len(games) < total_games and not rfe_blocked_reason:
         commander_report = {
             **commander_report,
             "status_comandante_saida": "BLOQUEADO",
             "motivo_bloqueio": "INSUFFICIENT_VALID_CANDIDATES",
             "error_message": "INSUFFICIENT_VALID_CANDIDATES",
         }
-    fill_diagnostics["rejected_by_output_commander"] = int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0)
+    if rfe_blocked_reason:
+        commander_report = {
+            **commander_report,
+            "status_comandante_saida": "BLOQUEADO",
+            "motivo_bloqueio": str(fill_diagnostics.get("insufficient_reason", "RFE_PREVIOUS_CONTEST_NOT_FOUND") or "RFE_PREVIOUS_CONTEST_NOT_FOUND"),
+            "error_message": str(fill_diagnostics.get("insufficient_reason", "RFE_PREVIOUS_CONTEST_NOT_FOUND") or "RFE_PREVIOUS_CONTEST_NOT_FOUND"),
+            "quantidade_jogos_rejeitados": 0,
+        }
+    fill_diagnostics["rejected_by_output_commander"] = 0 if rfe_blocked_reason else int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0)
     fill_diagnostics["fill_completed"] = len(games) >= total_games
-    fill_diagnostics["insufficient_reason"] = "none" if len(games) >= total_games else "INSUFFICIENT_VALID_CANDIDATES"
+    if len(games) >= total_games:
+        fill_diagnostics["insufficient_reason"] = "none"
+    elif not rfe_blocked_reason:
+        fill_diagnostics["insufficient_reason"] = "INSUFFICIENT_VALID_CANDIDATES"
     return {
         "seed": seed,
         "batch_id": f"clean-law15-{seed}",
@@ -10155,6 +10171,12 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "games": games,
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
+        "rfe_previous_contest_found": bool(fill_diagnostics.get("rfe_previous_contest_found", False)),
+        "rfe_previous_contest_id": fill_diagnostics.get("rfe_previous_contest_id"),
+        "rfe_previous_contest_numbers": str(fill_diagnostics.get("rfe_previous_contest_numbers", "-") or "-"),
+        "rfe_previous_contest_source": str(fill_diagnostics.get("rfe_previous_contest_source", "indisponivel") or "indisponivel"),
+        "rfe_previous_contest_message": str(fill_diagnostics.get("rfe_previous_contest_message", "") or ""),
+        "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
         "batch_fill_strategy": "FILL_UNTIL_REQUESTED_QUANTITY",
         "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
         "policy_mode": "CLEAN_LAW15_ISOLATED_PAGE",
@@ -10296,6 +10318,12 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             st.write(f"attempts_used={diagnostics.get('attempts_used', 0)}")
             st.write(f"fill_completed={diagnostics.get('fill_completed', False)}")
             st.write(f"insufficient_reason={diagnostics.get('insufficient_reason', 'none')}")
+            st.write(f"rfe_previous_contest_found={result.get('rfe_previous_contest_found', diagnostics.get('rfe_previous_contest_found', False))}")
+            st.write(f"rfe_previous_contest_id={result.get('rfe_previous_contest_id', diagnostics.get('rfe_previous_contest_id', '-'))}")
+            st.write(f"rfe_previous_contest_numbers={result.get('rfe_previous_contest_numbers', diagnostics.get('rfe_previous_contest_numbers', '-'))}")
+            st.write(f"rfe_previous_contest_source={result.get('rfe_previous_contest_source', diagnostics.get('rfe_previous_contest_source', '-'))}")
+            st.write(f"rfe_previous_contest_message={result.get('rfe_previous_contest_message', diagnostics.get('rfe_previous_contest_message', '-'))}")
+            st.write(f"rfe_status={result.get('rfe_status', diagnostics.get('rfe_status', '-'))}")
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
