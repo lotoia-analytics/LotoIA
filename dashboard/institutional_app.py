@@ -4173,6 +4173,35 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
     return []
 
 
+def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], int, str]:
+    """Extrai as dezenas que devem ser conferidas, priorizando o cartão final expandido."""
+    if not isinstance(game, dict):
+        return [], 15, "indisponivel"
+
+    core_numbers = _extract_int_numbers(game.get("numbers", []))
+    final_card_numbers = _extract_int_numbers(
+        game.get("final_card_numbers")
+        or game.get("cartao_final")
+        or game.get("cartão_final")
+        or []
+    )
+    card_format = _safe_int(
+        game.get("formato_cartao")
+        or game.get("card_format")
+        or game.get("selected_card_format")
+        or game.get("quantidade_final"),
+        default=None,
+    )
+    expected_card_size = int(card_format or len(final_card_numbers) or len(core_numbers) or 15)
+    if expected_card_size >= 16 and final_card_numbers:
+        return final_card_numbers, expected_card_size, "cartao_final"
+    if core_numbers:
+        return core_numbers, expected_card_size, "núcleo_lei_15"
+    if final_card_numbers:
+        return final_card_numbers, expected_card_size, "cartao_final"
+    return [], expected_card_size, "indisponivel"
+
+
 def _normalize_official_numbers(value: object) -> list[int]:
     if not value:
         return []
@@ -5341,6 +5370,7 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             games=list(group.get("games") or []),
             contest=contest_payload,
         )
+        comparison_diagnostics = dict(comparison.get("diagnostics") or {})
         group_games = list(group.get("games") or [])
         group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
         scientific_policy_snapshot = discover_scientific_generation_policy(
@@ -5375,6 +5405,11 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
                 "games": list(group.get("games") or []),
                 "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
                 "contest_date": str(comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""),
+                "formato_cartao": int(comparison_diagnostics.get("formato_cartao", group_game_size or 15) or (group_game_size or 15)),
+                "dezenas_conferidas_count": int(comparison_diagnostics.get("dezenas_conferidas_count", group_game_size or 0) or (group_game_size or 0)),
+                "origem_dezenas_conferencia": str(comparison_diagnostics.get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
+                "expected_card_size": int(comparison_diagnostics.get("expected_card_size", group_game_size or 15) or (group_game_size or 15)),
+                "actual_card_size": int(comparison_diagnostics.get("actual_card_size", group_game_size or 0) or (group_game_size or 0)),
                 "post_reconciliation_memory_id": int((persisted_scientific_memory or scientific_memory_payload).get("memory_id", 0) or 0),
                 "post_reconciliation_local_classification": str((persisted_scientific_memory or scientific_memory_payload).get("local_classification", "") or ""),
                 "post_reconciliation_recommended_action": str((persisted_scientific_memory or scientific_memory_payload).get("recommended_action", "") or ""),
@@ -5496,9 +5531,15 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
         "dezenas": list(official_contest.get("dezenas", []) or []),
         "official_numbers_from_db": list(official_contest.get("dezenas", []) or []),
         "generation_results": generation_results,
+        "generation_event_id": int(selected_generation_event_id or 0),
         "best_hits": best_hits_global,
         "total_hits": total_hits,
         "prize_count": total_prizes,
+        "formato_cartao": int(generation_results[0].get("formato_cartao", 15) if generation_results else 15),
+        "dezenas_conferidas_count": int(generation_results[0].get("dezenas_conferidas_count", 0) if generation_results else 0),
+        "origem_dezenas_conferencia": str(generation_results[0].get("origem_dezenas_conferencia", "indisponivel") if generation_results else "indisponivel"),
+        "expected_card_size": int(generation_results[0].get("expected_card_size", 15) if generation_results else 15),
+        "actual_card_size": int(generation_results[0].get("actual_card_size", 0) if generation_results else 0),
         "games_with_11_plus": list(batch_reconciliation_payload.get("games_with_11_plus", []) or []),
         "count_10_exact": int(batch_reconciliation_payload.get("count_10_exact", batch_hit_decomposition["count_10_exact"]) or batch_hit_decomposition["count_10_exact"]),
         "count_11_exact": int(batch_reconciliation_payload.get("count_11_exact", batch_hit_decomposition["count_11_exact"]) or batch_hit_decomposition["count_11_exact"]),
@@ -8176,6 +8217,7 @@ def _institutional_output_batch_id() -> str:
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
     contest_number = _extract_contest_number(contest)
     official_numbers = _extract_contest_numbers(contest)
+    comparison_source_labels = []
     if contest_number is None:
         return {
             "status": "error",
@@ -8232,17 +8274,33 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         }
     results: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
-        numbers = _extract_int_numbers(game.get("numbers", []))
+        numbers, expected_card_size, origin_label = _extract_conference_card_numbers(game)
+        actual_card_size = len(numbers)
         matched = sorted(set(numbers) & set(official_numbers))
         missing_draw_numbers = sorted(set(official_numbers) - set(numbers))
         extra_numbers = sorted(set(numbers) - set(official_numbers))
         score_original = float(game.get("score", 0.0) or 0.0)
+        comparison_source_labels.append(origin_label)
         results.append(
             {
                 "game_index": index,
                 "numbers": numbers,
                 "rank_original": int(game.get("game_index", index) or index),
                 "hits": len(matched),
+                "formato_cartao": int(
+                    _safe_int(
+                        game.get("formato_cartao")
+                        or game.get("card_format")
+                        or game.get("selected_card_format")
+                        or game.get("quantidade_final"),
+                        default=expected_card_size,
+                    )
+                    or expected_card_size
+                ),
+                "dezenas_conferidas_count": actual_card_size,
+                "origem_dezenas_conferencia": origin_label,
+                "expected_card_size": expected_card_size,
+                "actual_card_size": actual_card_size,
                 "hit_classification": (
                     f"EXACT_{len(matched)}"
                     if 11 <= len(matched) <= 15
@@ -8265,6 +8323,34 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
     diagnostics = {
         "official_numbers": official_numbers,
         "official_numbers_count": len(official_numbers),
+        "generation_event_id": int(generation_event_id or 0),
+        "formato_cartao": int(
+            _safe_int(
+                games[0].get("formato_cartao")
+                or games[0].get("card_format")
+                or games[0].get("selected_card_format")
+                or games[0].get("quantidade_final"),
+                default=len(results[0]["numbers"]) if results else 15,
+            )
+            or (len(results[0]["numbers"]) if results else 15)
+        )
+        if games
+        else 15,
+        "dezenas_conferidas_count": int(len(results[0]["numbers"]) if results else 0),
+        "origem_dezenas_conferencia": comparison_source_labels[0] if comparison_source_labels else "indisponivel",
+        "expected_card_size": int(
+            _safe_int(
+                games[0].get("formato_cartao")
+                or games[0].get("card_format")
+                or games[0].get("selected_card_format")
+                or games[0].get("quantidade_final"),
+                default=len(results[0]["numbers"]) if results else 15,
+            )
+            or (len(results[0]["numbers"]) if results else 15)
+        )
+        if games
+        else 15,
+        "actual_card_size": int(len(results[0]["numbers"]) if results else 0),
         "first_game": results[0]["numbers"] if results else [],
         "first_game_hits": int(results[0]["hits"]) if results else 0,
         "first_intersection": results[0]["matched_numbers"] if results else [],
@@ -8322,6 +8408,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "contest_date": str(contest.get("data", "")),
         "official_numbers": official_numbers,
         "results": results,
+        "generation_event_id": int(generation_event_id or 0),
         "best_hits": best_hits,
         "total_hits": total_hits,
         "prize_count": prize_count,
@@ -8497,6 +8584,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "operational_statistics",
         "hb_metrics",
         "structural_coverage",
+        "clear_histories",
+        "delete_history",
     }
     blocked_pages = {
         "audit_monitoring_side_leak",
@@ -10082,6 +10171,18 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
     if isinstance(check_result, dict):
+        st.caption(
+            " | ".join(
+                [
+                    f"generation_event_id={check_result.get('generation_event_id', '-')}",
+                    f"formato_cartao={check_result.get('formato_cartao', '-')}",
+                    f"dezenas_conferidas_count={check_result.get('dezenas_conferidas_count', '-')}",
+                    f"origem_dezenas_conferencia={check_result.get('origem_dezenas_conferencia', '-')}",
+                    f"expected_card_size={check_result.get('expected_card_size', '-')}",
+                    f"actual_card_size={check_result.get('actual_card_size', '-')}",
+                ]
+            )
+        )
         generation_results = list(check_result.get("generation_results") or [])
         if generation_results:
             st.markdown("#### Resumo geral")

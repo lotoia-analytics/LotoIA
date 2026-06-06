@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from dashboard import institutional_app as admin_app
 
 
@@ -104,6 +106,56 @@ def test_rfe_receives_normalized_previous_numbers_from_string() -> None:
     normalized = admin_app._normalize_official_numbers("01 03 05 07 08 09 10 14 15 17 21 22 23 24 25")
 
     assert normalized == [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+
+
+@pytest.mark.parametrize("card_format", list(range(15, 24)))
+def test_conference_uses_final_card_numbers_for_expanded_formats(card_format: int) -> None:
+    official_numbers = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    reserve_numbers = [2, 4, 6, 11, 12, 13, 16, 18, 19, 20]
+    final_card_numbers = sorted(official_numbers + reserve_numbers[: max(0, card_format - 15)])
+    game = {
+        "generation_event_id": 383,
+        "game_index": 1,
+        "formato_cartao": card_format,
+        "numbers": list(official_numbers),
+        "core_numbers": list(official_numbers),
+        "audited_reserve_numbers": list(reserve_numbers[: max(0, card_format - 15)]),
+        "final_card_numbers": list(final_card_numbers),
+        "quantidade_nucleo": 15,
+        "quantidade_reservas": max(0, card_format - 15),
+        "quantidade_final": card_format,
+        "game_signature": "signature-383-1",
+    }
+    contest = {
+        "concurso": 3702,
+        "data": "03/06/2026",
+        "dezenas": list(official_numbers),
+    }
+
+    comparison = admin_app._compare_games_against_contest(
+        generation_event_id=383,
+        games=[game],
+        contest=contest,
+    )
+
+    diagnostics = dict(comparison.get("diagnostics") or {})
+    result = dict(comparison.get("results", [{}])[0] or {})
+
+    assert comparison.get("generation_event_id") == 383
+    assert diagnostics.get("generation_event_id") == 383
+    assert diagnostics.get("formato_cartao") == card_format
+    assert diagnostics.get("dezenas_conferidas_count") == card_format
+    assert diagnostics.get("expected_card_size") == card_format
+    assert diagnostics.get("actual_card_size") == card_format
+    assert result.get("formato_cartao") == card_format
+    assert result.get("dezenas_conferidas_count") == card_format
+    assert result.get("expected_card_size") == card_format
+    assert result.get("actual_card_size") == card_format
+    assert result.get("hits") == 15
+    assert result.get("numbers") == final_card_numbers
+    assert result.get("matched_numbers") == official_numbers
+    assert result.get("game_signature") == "signature-383-1"
+    assert diagnostics.get("origem_dezenas_conferencia") == ("núcleo_lei_15" if card_format == 15 else "cartao_final")
 
 
 def test_generation_stops_before_attempts_when_previous_contest_missing() -> None:
