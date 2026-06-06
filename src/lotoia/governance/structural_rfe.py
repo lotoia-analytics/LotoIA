@@ -5,6 +5,15 @@ from typing import Iterable
 
 
 @dataclass(frozen=True)
+class RFEPreviousContestReference:
+    found: bool
+    contest_id: int | None
+    numbers: list[int]
+    source: str
+    message: str | None = None
+
+
+@dataclass(frozen=True)
 class RFEValidationResult:
     approved: bool
     blocked_reasons: list[str]

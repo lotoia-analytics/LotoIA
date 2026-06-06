@@ -61,7 +61,11 @@ from lotoia.governance.output_commander import (
     load_batch_output_signatures,
     output_commander_validate_games,
 )
-from lotoia.governance.structural_rfe import RFEValidationResult, validate_rfe_final_card
+from lotoia.governance.structural_rfe import (
+    RFEPreviousContestReference,
+    RFEValidationResult,
+    validate_rfe_final_card,
+)
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
@@ -3610,6 +3614,13 @@ def _generate_direct_15_games(
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(seen_signatures or set())
     diagnostics = fill_diagnostics if fill_diagnostics is not None else {}
+    normalized_previous_contest_numbers = sorted(
+        {
+            int(number)
+            for number in (previous_contest_numbers or [])
+            if isinstance(number, (int, str)) and str(number).strip().isdigit() and 1 <= int(number) <= 25
+        }
+    )
     diagnostics.setdefault("candidate_pool_generated", 0)
     diagnostics.setdefault("valid_candidates_found", 0)
     diagnostics.setdefault("accepted_games", 0)
@@ -3625,6 +3636,28 @@ def _generate_direct_15_games(
     diagnostics.setdefault("rfe_02_rejected_games", 0)
     diagnostics.setdefault("rfe_blocked_reasons", [])
     diagnostics.setdefault("rfe_status", "OK")
+    diagnostics.setdefault("rfe_previous_contest_found", bool(normalized_previous_contest_numbers) and len(normalized_previous_contest_numbers) == 15)
+    diagnostics.setdefault("rfe_previous_contest_id", None)
+    diagnostics.setdefault("rfe_previous_contest_numbers", " ".join(f"{number:02d}" for number in normalized_previous_contest_numbers) or "-")
+    diagnostics.setdefault("rfe_previous_contest_source", "official_lotofacil_history" if normalized_previous_contest_numbers else "indisponivel")
+    if len(normalized_previous_contest_numbers) != 15:
+        diagnostics["fill_completed"] = False
+        diagnostics["candidate_pool_generated"] = 0
+        diagnostics["valid_candidates_found"] = 0
+        diagnostics["accepted_games"] = 0
+        diagnostics["attempts_used"] = 0
+        diagnostics["rfe_enabled"] = True
+        diagnostics["rfe_status"] = "BLOQUEADO"
+        diagnostics["insufficient_reason"] = (
+            "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS"
+            if normalized_previous_contest_numbers
+            else "RFE_PREVIOUS_CONTEST_NOT_FOUND"
+        )
+        if normalized_previous_contest_numbers:
+            diagnostics["rfe_blocked_reasons"] = ["RFE-01: concurso anterior encontrado, mas dezenas oficiais inválidas ou incompletas."]
+        else:
+            diagnostics["rfe_blocked_reasons"] = ["RFE-01: concurso anterior indisponível para validação estrutural."]
+        return []
     relaxed_repeat_min = 0
     relaxed_repeat_max = max(15, repeat_max)
     relaxed_sequence_max = max(sequence_max, 10)
@@ -3893,6 +3926,9 @@ def _generate_direct_15_games(
         diagnostics["rfe_status"] = "OK"
     elif int(diagnostics.get("rfe_rejected_games", 0) or 0) > 0:
         diagnostics["rfe_status"] = "BLOQUEADO"
+        diagnostics["insufficient_reason"] = "INSUFFICIENT_RFE_APPROVED_CANDIDATES"
+    elif int(diagnostics.get("attempts_used", 0) or 0) > 0:
+        diagnostics["insufficient_reason"] = "INSUFFICIENT_VALID_CANDIDATES"
     return games
 
 
@@ -4033,7 +4069,46 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
     return []
 
 
-def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> list[int]:
+def _normalize_official_numbers(value: object) -> list[int]:
+    if not value:
+        return []
+
+    raw_items: list[Any] = []
+    if isinstance(value, str):
+        cleaned = value.replace(",", " ").replace(";", " ").replace("-", " ")
+        raw_items = cleaned.split()
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        return []
+
+    numbers: list[int] = []
+    for item in raw_items:
+        try:
+            number = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= number <= 25:
+            numbers.append(number)
+
+    unique_numbers = sorted(set(numbers))
+    if len(unique_numbers) != 15:
+        return []
+    return unique_numbers
+
+
+def _extract_official_numbers_from_record(record: dict[str, Any]) -> list[int]:
+    if not isinstance(record, dict):
+        return []
+
+    for key in ("numbers", "dezenas", "drawn_numbers", "resultado", "official_numbers"):
+        numbers = _normalize_official_numbers(record.get(key))
+        if numbers:
+            return numbers
+    return []
+
+
+def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPreviousContestReference:
     """
     Carrega as dezenas oficiais do concurso imediatamente anterior ao alvo.
 
@@ -4043,18 +4118,62 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> list[i
     Usa somente dados já persistidos no banco/snapshot.
     """
     if target_contest is not None and int(target_contest) > 1:
-        previous_contest = _load_official_history_contest(int(target_contest) - 1)
+        previous_contest_id = int(target_contest) - 1
+        previous_contest = _load_official_history_contest(previous_contest_id)
         if previous_contest:
-            return [int(number) for number in previous_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
+            numbers = _extract_official_numbers_from_record(previous_contest)
+            if numbers:
+                return RFEPreviousContestReference(
+                    found=True,
+                    contest_id=previous_contest_id,
+                    numbers=numbers,
+                    source="official_lotofacil_history",
+                    message=None,
+                )
+            return RFEPreviousContestReference(
+                found=False,
+                contest_id=previous_contest_id,
+                numbers=[],
+                source="official_lotofacil_history",
+                message="Concurso anterior encontrado, mas dezenas oficiais inválidas ou incompletas.",
+            )
+        return RFEPreviousContestReference(
+            found=False,
+            contest_id=previous_contest_id,
+            numbers=[],
+            source="official_lotofacil_history",
+            message="Concurso anterior não encontrado na base oficial persistida.",
+        )
 
     latest_contest = _load_latest_contest_summary() or _get_latest_contest() or {}
     latest_contest_number = _safe_int(latest_contest.get("contest_number"), default=None)
     if latest_contest_number is not None and latest_contest_number > 0:
         previous_contest = _load_official_history_contest(int(latest_contest_number))
         if previous_contest:
-            return [int(number) for number in previous_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
-        return [int(number) for number in latest_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
-    return []
+            numbers = _extract_official_numbers_from_record(previous_contest)
+            if numbers:
+                return RFEPreviousContestReference(
+                    found=True,
+                    contest_id=latest_contest_number,
+                    numbers=numbers,
+                    source="latest_official_available_without_target",
+                    message=None,
+                )
+            return RFEPreviousContestReference(
+                found=False,
+                contest_id=latest_contest_number,
+                numbers=[],
+                source="latest_official_available_without_target",
+                message="Último concurso oficial encontrado, mas dezenas oficiais inválidas ou incompletas.",
+            )
+
+    return RFEPreviousContestReference(
+        found=False,
+        contest_id=None,
+        numbers=[],
+        source="official_lotofacil_history",
+        message="Nenhum concurso oficial persistido disponível.",
+    )
 
 
 def _update_rfe_diagnostics(diagnostics: dict[str, Any], result: RFEValidationResult) -> None:
@@ -4194,13 +4313,9 @@ def _run_institutional_generation(
     )
     latest_contest = _load_latest_contest_summary()
     target_contest = int(latest_contest["contest_number"]) if latest_contest else None
-    previous_contest_numbers = _load_previous_contest_numbers_for_rfe(target_contest)
-    if target_contest is not None and target_contest > 1:
-        rfe_reference_source = f"contest_anterior_oficial={target_contest - 1}"
-    elif previous_contest_numbers:
-        rfe_reference_source = "ultimo_concurso_oficial_disponivel"
-    else:
-        rfe_reference_source = "indisponivel"
+    previous_contest_reference = _load_previous_contest_numbers_for_rfe(target_contest)
+    previous_contest_numbers = list(previous_contest_reference.numbers or [])
+    rfe_reference_source = str(previous_contest_reference.source or "indisponivel")
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
     batch_number_usage = batch_number_usage if batch_number_usage is not None else {}
@@ -4213,8 +4328,32 @@ def _run_institutional_generation(
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(seen_signatures or set())
     fill_diagnostics: dict[str, Any] = {}
+    fill_diagnostics["rfe_enabled"] = True
+    fill_diagnostics["rfe_previous_contest_found"] = bool(previous_contest_reference.found)
+    fill_diagnostics["rfe_previous_contest_id"] = previous_contest_reference.contest_id
+    fill_diagnostics["rfe_previous_contest_numbers"] = " ".join(f"{number:02d}" for number in previous_contest_numbers) or "-"
+    fill_diagnostics["rfe_previous_contest_source"] = rfe_reference_source
+    if previous_contest_reference.message:
+        fill_diagnostics["rfe_previous_contest_message"] = previous_contest_reference.message
     direct_generation_mode = int(dezenas_per_game or 0) == 15
-    if direct_generation_mode:
+    if not previous_contest_reference.found:
+        fill_diagnostics["fill_completed"] = False
+        fill_diagnostics["attempts_used"] = 0
+        fill_diagnostics["candidate_pool_generated"] = 0
+        fill_diagnostics["valid_candidates_found"] = 0
+        fill_diagnostics["accepted_games"] = 0
+        fill_diagnostics["rfe_status"] = "BLOQUEADO"
+        fill_diagnostics["insufficient_reason"] = (
+            "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS"
+            if previous_contest_reference.contest_id is not None
+            else "RFE_PREVIOUS_CONTEST_NOT_FOUND"
+        )
+        fill_diagnostics["rfe_blocked_reasons"] = [
+            previous_contest_reference.message
+            or "RFE-01: concurso anterior indisponível para validação estrutural."
+        ]
+        games = []
+    elif direct_generation_mode:
         games = _generate_direct_15_games(
             total_games=total_games,
             seed=seed,
@@ -4423,9 +4562,24 @@ def _run_institutional_generation(
             or commander_report.get("error_message")
             or "nao foi possivel gerar a quantidade solicitada de jogos unicos"
         )
-        if int(commander_report.get("quantidade_jogos_aprovados", 0) or 0) < int(commander_report.get("quantidade_jogos_solicitada", total_games) or total_games):
+        if fill_diagnostics.get("insufficient_reason") in {
+            "RFE_PREVIOUS_CONTEST_NOT_FOUND",
+            "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS",
+        }:
+            blocked_reason = str(fill_diagnostics.get("insufficient_reason"))
+        if (
+            int(commander_report.get("quantidade_jogos_aprovados", 0) or 0)
+            < int(commander_report.get("quantidade_jogos_solicitada", total_games) or total_games)
+            and fill_diagnostics.get("insufficient_reason") not in {
+                "RFE_PREVIOUS_CONTEST_NOT_FOUND",
+                "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS",
+            }
+        ):
             blocked_reason = "Pacote bloqueado por não atingir a quantidade solicitada."
-        if direct_generation_mode and len(games) < total_games:
+        if direct_generation_mode and len(games) < total_games and fill_diagnostics.get("insufficient_reason") not in {
+            "RFE_PREVIOUS_CONTEST_NOT_FOUND",
+            "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS",
+        }:
             blocked_reason = "INSUFFICIENT_VALID_CANDIDATES"
         if official_group_games and int(commander_report.get("historical_duplicates_found", 0) or 0) > 0:
             blocked_reason = "Aviso: há jogos do pacote oficial já presentes no histórico. O pacote foi preservado por se tratar de grupo oficial fechado."
@@ -4477,6 +4631,11 @@ def _run_institutional_generation(
             "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
             "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
             "rfe_reference_source": rfe_reference_source,
+            "rfe_previous_contest_found": bool(fill_diagnostics.get("rfe_previous_contest_found", False)),
+            "rfe_previous_contest_id": fill_diagnostics.get("rfe_previous_contest_id"),
+            "rfe_previous_contest_numbers": str(fill_diagnostics.get("rfe_previous_contest_numbers", "-") or "-"),
+            "rfe_previous_contest_message": str(fill_diagnostics.get("rfe_previous_contest_message", "") or ""),
+            "rfe_previous_contest_source": str(fill_diagnostics.get("rfe_previous_contest_source", rfe_reference_source) or rfe_reference_source),
             "perfis_paridade_preferenciais": preferred_parity_pairs,
             "perfis_paridade_permitidos": allowed_parity_pairs,
             "limite_sequencia_max": effective_sequence_max,
@@ -4536,6 +4695,11 @@ def _run_institutional_generation(
             "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
             "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
             "rfe_reference_source": rfe_reference_source,
+            "rfe_previous_contest_found": bool(fill_diagnostics.get("rfe_previous_contest_found", False)),
+            "rfe_previous_contest_id": fill_diagnostics.get("rfe_previous_contest_id"),
+            "rfe_previous_contest_numbers": str(fill_diagnostics.get("rfe_previous_contest_numbers", "-") or "-"),
+            "rfe_previous_contest_message": str(fill_diagnostics.get("rfe_previous_contest_message", "") or ""),
+            "rfe_previous_contest_source": str(fill_diagnostics.get("rfe_previous_contest_source", rfe_reference_source) or rfe_reference_source),
         }
         _store_active_batch_state(
             batch_id=batch_id,
@@ -4631,6 +4795,11 @@ def _run_institutional_generation(
             "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
             "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
             "rfe_reference_source": rfe_reference_source,
+            "rfe_previous_contest_found": bool(fill_diagnostics.get("rfe_previous_contest_found", False)),
+            "rfe_previous_contest_id": fill_diagnostics.get("rfe_previous_contest_id"),
+            "rfe_previous_contest_numbers": str(fill_diagnostics.get("rfe_previous_contest_numbers", "-") or "-"),
+            "rfe_previous_contest_message": str(fill_diagnostics.get("rfe_previous_contest_message", "") or ""),
+            "rfe_previous_contest_source": str(fill_diagnostics.get("rfe_previous_contest_source", rfe_reference_source) or rfe_reference_source),
             "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
             "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
             "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
