@@ -8310,6 +8310,18 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
                 "game_index": index,
                 "numbers": numbers,
                 "cartao_final": numbers,
+                "nucleo_lei_15": str(
+                    game.get("nucleo_lei_15")
+                    or game.get("nucleo")
+                    or game.get("lei_15")
+                    or ""
+                ),
+                "reservas_auditadas": str(
+                    game.get("reservas_auditadas")
+                    or game.get("reservas")
+                    or game.get("reservas_auditadas_texto")
+                    or ""
+                ),
                 "rank_original": int(game.get("game_index", index) or index),
                 "hits": len(matched),
                 "formato_cartao": int(
@@ -11098,9 +11110,13 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                     {
                         "jogo": row["game_index"],
                         "formato_cartao": row.get("formato_cartao", "-"),
+                        "nucleo_lei_15": row.get("nucleo_lei_15", "-"),
+                        "reservas_auditadas": row.get("reservas_auditadas", "-"),
                         "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
                         "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
                         "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
+                        "expected_card_size": row.get("expected_card_size", "-"),
+                        "actual_card_size": row.get("actual_card_size", "-"),
                         "hits": row["hits"],
                         "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
                         "premiado": row["prize_status"],
