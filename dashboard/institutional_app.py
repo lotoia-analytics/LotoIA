@@ -10267,10 +10267,17 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                         [
                             {
                                 "jogo": row["game_index"],
-                                "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                                "formato_cartao": row.get("formato_cartao", "-"),
+                                "nucleo_lei_15": row.get("nucleo_lei_15", "-"),
+                                "reservas_auditadas": row.get("reservas_auditadas", "-"),
+                                "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
+                                "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
+                                "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
+                                "expected_card_size": row.get("expected_card_size", "-"),
+                                "actual_card_size": row.get("actual_card_size", "-"),
                                 "hits": row["hits"],
-                                "premiado": row["prize_status"],
                                 "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
+                                "premiado": row["prize_status"],
                             }
                             for row in item.get("results", []) or []
                         ]
