@@ -965,7 +965,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         st.markdown("###### Memória pós-conferência científica")
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
         post_cols = st.columns(6)
-        post_cols[0].metric("Última geração registrada na memória científica", post_window.get("generation_event_id", post_reconciliation_memory.get("batch_id", "-")) or "-")
+        post_cols[0].metric("Última geração registrada na memória científica", post_window.get("generation_event_id", "-") or "-")
         post_cols[1].metric("Concurso conferido", post_window.get("contest_number", post_reconciliation_memory.get("official_history_last_contest", "-")) or "-")
         post_cols[2].metric("Jogos conferidos", int(post_reconciliation_memory.get("total_games", 0) or 0))
         post_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
@@ -977,7 +977,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
         batch_cols = st.columns(4)
         batch_cols[0].metric("Memória consolidada", str(batch_reconciliation_memory.get("memory_kind", "-") or "-"))
-        batch_cols[1].metric("Bateria", str(batch_reconciliation_memory.get("batch_id", batch_reconciliation_memory.get("source_batch_id", "-")) or "-"))
+        batch_cols[1].metric("generation_event_id", str(batch_window.get("generation_event_id", batch_reconciliation_memory.get("generation_event_id", "-")) or "-"))
         batch_cols[2].metric("Concurso conferido", batch_window.get("contest_number", batch_reconciliation_memory.get("contest_number", "-")) or "-")
         batch_cols[3].metric("Melhor acerto", int(batch_reconciliation_memory.get("best_hit", 0) or 0))
     strong_near_miss_memory = next(
@@ -1543,7 +1543,7 @@ def _format_scientific_memory_listing(memories: list[dict[str, Any]]) -> pd.Data
                 "leitura científica": scientific_reading,
                 "memory_id": int(row.get("id", 0) or 0),
                 "memory_kind": memory_kind,
-                "ID da geração de origem": str(row.get("batch_id", "") or "-"),
+                "generation_event_id": str(row.get("generation_event_id", row.get("batch_id", "")) or "-"),
                 "classification": classification,
                 "memory_role": memory_role,
                 "dominant_memory": str(dominant_memory),
@@ -1559,7 +1559,7 @@ def _format_scientific_memory_listing(memories: list[dict[str, Any]]) -> pd.Data
             "leitura científica",
             "memory_id",
             "memory_kind",
-            "ID da geração de origem",
+            "generation_event_id",
             "classification",
             "memory_role",
             "dominant_memory",
@@ -2461,7 +2461,7 @@ def _render_scientific_memory_block() -> None:
         identity_cols = st.columns(5)
         identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
         identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
-        identity_cols[2].markdown(f"**ID da geração de origem**  \n{batch_reconciliation_memory.get('batch_id', '-') or '-'}")
+        identity_cols[2].markdown(f"**generation_event_id**  \n{batch_reconciliation_memory.get('generation_event_id', '-') or '-'}")
         identity_cols[3].markdown(f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
         identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
         role_cols = st.columns(3)
@@ -2570,7 +2570,7 @@ def _render_scientific_memory_block() -> None:
         st.caption(
             " | ".join(
                 [
-                    f"batch_id={batch_reconciliation_memory.get('batch_id', '-')}",
+                    f"generation_event_id={batch_reconciliation_memory.get('generation_event_id', '-')}",
                     f"generation_event_ids={batch_window.get('generation_event_ids', [])}",
                     f"classification={batch_reconciliation_memory.get('scientific_classification', '-')}",
                     f"memory_role={batch_memory_role}",
@@ -10833,7 +10833,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
         total_duplicates = int(summary_result.get("total_jogos_duplicados", 0) or 0)
         duplicate_history = max(0, total_generated - total_unique)
         summary_cols = st.columns(6)
-        summary_cols[0].metric("batch_id", str(summary_result.get("batch_id", "-") or "-"))
+        summary_cols[0].metric("generation_event_id", str(summary_result.get("generation_event_id", "-") or "-"))
         summary_cols[1].metric("solicitados", total_requested)
         summary_cols[2].metric("gerados", total_generated)
         summary_cols[3].metric("dezenas/jogo", int(selected_game_size))
@@ -10848,7 +10848,7 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
                     f"historical_deduplication_mode={strategy_display.get('historical_deduplication_mode', 'AUDIT_ONLY' if bool(summary_result.get('official_package_preserved')) else 'BLOCK')}",
                     f"status_comandante_saida={batch_status}",
                     f"persistidos={persisted_count}",
-                    f"batch_id={summary_result.get('batch_id', '-')}",
+                    f"generation_event_id={summary_result.get('generation_event_id', '-')}",
                 ]
             )
         )
