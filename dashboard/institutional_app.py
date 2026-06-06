@@ -3957,6 +3957,52 @@ def _extract_int_numbers(raw_text: str) -> list[int]:
     return sorted(numbers)
 
 
+def _extract_contest_number(contest: dict[str, Any]) -> int | None:
+    """Extrai o número do concurso oficial aceitando variações de schema."""
+    if not isinstance(contest, dict):
+        return None
+
+    for key in ("contest_number", "contest_id", "id", "numero", "concurso", "draw_number"):
+        value = contest.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
+    """Extrai dezenas oficiais aceitando variações de schema."""
+    if not isinstance(contest, dict):
+        return []
+
+    for key in ("numbers", "dezenas", "drawn_numbers", "matched_numbers", "resultado"):
+        value = contest.get(key)
+        if not value:
+            continue
+        if isinstance(value, str):
+            parts = value.replace(",", " ").replace(";", " ").split()
+            numbers: list[int] = []
+            for part in parts:
+                try:
+                    numbers.append(int(part))
+                except ValueError:
+                    pass
+            return sorted(numbers)
+        if isinstance(value, (list, tuple, set)):
+            numbers = []
+            for item in value:
+                try:
+                    numbers.append(int(item))
+                except (TypeError, ValueError):
+                    pass
+            return sorted(numbers)
+
+    return []
+
+
 def _parse_draw_numbers(raw_text: str) -> list[int]:
     values: list[int] = []
     for token in str(raw_text or "").replace(",", " ").split():
@@ -7755,8 +7801,62 @@ def _institutional_output_batch_id() -> str:
 
 
 def _compare_games_against_contest(*, generation_event_id: int, games: list[dict[str, Any]], contest: dict[str, Any]) -> dict[str, Any]:
-    official_source = contest.get("dezenas", contest.get("numbers", contest.get("contest_numbers", [])))
-    official_numbers = _extract_int_numbers(official_source)
+    contest_number = _extract_contest_number(contest)
+    official_numbers = _extract_contest_numbers(contest)
+    if contest_number is None:
+        return {
+            "status": "error",
+            "message": "NÃºmero do concurso oficial nÃ£o identificado.",
+            "results": [],
+            "contest_number": None,
+            "official_numbers": official_numbers,
+            "official_numbers_count": len(official_numbers),
+            "first_game": [],
+            "first_game_hits": 0,
+            "first_intersection": [],
+            "total_games": 0,
+            "total_hits": 0,
+            "best_hits": 0,
+            "prize_count": 0,
+            "diagnostics": {
+                "official_numbers": official_numbers,
+                "official_numbers_count": len(official_numbers),
+                "first_game": [],
+                "first_game_hits": 0,
+                "first_intersection": [],
+                "total_games": 0,
+                "total_hits": 0,
+                "best_hits": 0,
+                "prize_count": 0,
+            },
+        }
+    if not official_numbers:
+        return {
+            "status": "error",
+            "message": "NÃ£o foi possÃ­vel identificar as dezenas oficiais do concurso selecionado.",
+            "results": [],
+            "contest_number": contest_number,
+            "official_numbers": [],
+            "official_numbers_count": 0,
+            "first_game": [],
+            "first_game_hits": 0,
+            "first_intersection": [],
+            "total_games": 0,
+            "total_hits": 0,
+            "best_hits": 0,
+            "prize_count": 0,
+            "diagnostics": {
+                "official_numbers": [],
+                "official_numbers_count": 0,
+                "first_game": [],
+                "first_game_hits": 0,
+                "first_intersection": [],
+                "total_games": 0,
+                "total_hits": 0,
+                "best_hits": 0,
+                "prize_count": 0,
+            },
+        }
     results: list[dict[str, Any]] = []
     for index, game in enumerate(games, start=1):
         numbers = _extract_int_numbers(game.get("numbers", []))
@@ -7845,14 +7945,14 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
             )
         session.commit()
     return {
-        "contest_number": int(contest["contest_number"]),
+        "contest_number": contest_number,
         "contest_date": str(contest.get("data", "")),
         "official_numbers": official_numbers,
         "results": results,
         "best_hits": best_hits,
         "total_hits": total_hits,
         "prize_count": prize_count,
-        "reconciliation": {"id": int(run.id), "contest_id": int(contest["contest_number"])},
+        "reconciliation": {"id": int(run.id), "contest_id": contest_number},
         "diagnostics": diagnostics,
     }
 
