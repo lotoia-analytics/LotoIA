@@ -7904,7 +7904,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         run = ReconciliationRun(
             generation_event_id=generation_event_id,
             lead_id=None,
-            contest_id=int(contest["contest_number"]),
+            contest_id=contest_number,
             source="institutional",
             status="reconciled" if results else "sem_jogos",
             prize_count=prize_count,
@@ -7912,7 +7912,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
             best_hits=best_hits,
             payload={
                 "source": "institutional",
-                "contest_id": int(contest["contest_number"]),
+                "contest_id": contest_number,
                 "best_hits": best_hits,
                 "total_hits": total_hits,
                 "prize_count": prize_count,
@@ -7926,7 +7926,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
                     reconciliation_run_id=run.id,
                     generation_event_id=generation_event_id,
                     lead_id=None,
-                    contest_id=int(contest["contest_number"]),
+                    contest_id=contest_number,
                     game_index=int(game["game_index"]),
                     numbers=list(game["numbers"]),
                     hits=int(game["hits"]),
