@@ -61,6 +61,7 @@ from lotoia.governance.output_commander import (
     load_batch_output_signatures,
     output_commander_validate_games,
 )
+from lotoia.governance.structural_rfe import RFEValidationResult, validate_rfe_final_card
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
@@ -3604,6 +3605,7 @@ def _generate_direct_15_games(
     allowed_parity_pairs: list[tuple[int, int]],
     fill_diagnostics: dict[str, Any] | None = None,
     seen_signatures: set[str] | None = None,
+    previous_contest_numbers: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(seen_signatures or set())
@@ -3617,6 +3619,12 @@ def _generate_direct_15_games(
     diagnostics.setdefault("rejected_by_output_commander", 0)
     diagnostics.setdefault("attempts_used", 0)
     diagnostics.setdefault("fill_completed", False)
+    diagnostics.setdefault("rfe_enabled", True)
+    diagnostics.setdefault("rfe_rejected_games", 0)
+    diagnostics.setdefault("rfe_01_rejected_games", 0)
+    diagnostics.setdefault("rfe_02_rejected_games", 0)
+    diagnostics.setdefault("rfe_blocked_reasons", [])
+    diagnostics.setdefault("rfe_status", "OK")
     relaxed_repeat_min = 0
     relaxed_repeat_max = max(15, repeat_max)
     relaxed_sequence_max = max(sequence_max, 10)
@@ -3689,6 +3697,10 @@ def _generate_direct_15_games(
             )
         if not selected_numbers:
             diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
+            continue
+        rfe_result = validate_rfe_final_card(selected_numbers, previous_contest_numbers or [])
+        if not rfe_result.approved:
+            _update_rfe_diagnostics(diagnostics, rfe_result)
             continue
         diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
         signature = _game_signature(selected_numbers)
@@ -3782,6 +3794,10 @@ def _generate_direct_15_games(
             if not selected_numbers:
                 diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
                 continue
+            rfe_result = validate_rfe_final_card(selected_numbers, previous_contest_numbers or [])
+            if not rfe_result.approved:
+                _update_rfe_diagnostics(diagnostics, rfe_result)
+                continue
             diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
             signature = _game_signature(selected_numbers)
             if signature in used_signatures:
@@ -3843,6 +3859,10 @@ def _generate_direct_15_games(
             if not selected_numbers:
                 diagnostics["rejected_by_invalid_size"] = int(diagnostics.get("rejected_by_invalid_size", 0) or 0) + 1
                 continue
+            rfe_result = validate_rfe_final_card(selected_numbers, previous_contest_numbers or [])
+            if not rfe_result.approved:
+                _update_rfe_diagnostics(diagnostics, rfe_result)
+                continue
             diagnostics["valid_candidates_found"] = int(diagnostics.get("valid_candidates_found", 0) or 0) + 1
             signature = _game_signature(selected_numbers)
             if signature in used_signatures:
@@ -3869,6 +3889,10 @@ def _generate_direct_15_games(
             for number in selected_numbers:
                 batch_number_usage[int(number)] = int(batch_number_usage.get(int(number), 0) or 0) + 1
     diagnostics["fill_completed"] = len(games) >= total_games
+    if diagnostics["fill_completed"]:
+        diagnostics["rfe_status"] = "OK"
+    elif int(diagnostics.get("rfe_rejected_games", 0) or 0) > 0:
+        diagnostics["rfe_status"] = "BLOQUEADO"
     return games
 
 
@@ -3903,6 +3927,12 @@ def _build_institutional_game_record(
     )
     return {
         "numbers": selected_numbers,
+        "core_numbers": list(selected_numbers),
+        "audited_reserve_numbers": [],
+        "final_card_numbers": list(selected_numbers),
+        "display_core_numbers": " ".join(f"{number:02d}" for number in selected_numbers),
+        "display_audited_reserve_numbers": "",
+        "display_final_card_numbers": " ".join(f"{number:02d}" for number in selected_numbers),
         "odd": odd_count,
         "even": even_count,
         "sum": sum(selected_numbers),
@@ -4001,6 +4031,45 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
             return sorted(numbers)
 
     return []
+
+
+def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> list[int]:
+    """
+    Carrega as dezenas oficiais do concurso imediatamente anterior ao alvo.
+
+    Não altera histórico.
+    Não importa concurso novo.
+    Não consulta API externa.
+    Usa somente dados já persistidos no banco/snapshot.
+    """
+    if target_contest is not None and int(target_contest) > 1:
+        previous_contest = _load_official_history_contest(int(target_contest) - 1)
+        if previous_contest:
+            return [int(number) for number in previous_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
+
+    latest_contest = _load_latest_contest_summary() or _get_latest_contest() or {}
+    latest_contest_number = _safe_int(latest_contest.get("contest_number"), default=None)
+    if latest_contest_number is not None and latest_contest_number > 0:
+        previous_contest = _load_official_history_contest(int(latest_contest_number))
+        if previous_contest:
+            return [int(number) for number in previous_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
+        return [int(number) for number in latest_contest.get("dezenas", []) or [] if 1 <= int(number) <= 25]
+    return []
+
+
+def _update_rfe_diagnostics(diagnostics: dict[str, Any], result: RFEValidationResult) -> None:
+    diagnostics["rfe_enabled"] = True
+    diagnostics["rfe_rejected_games"] = int(diagnostics.get("rfe_rejected_games", 0) or 0) + 1
+    diagnostics["rfe_01_rejected_games"] = int(diagnostics.get("rfe_01_rejected_games", 0) or 0) + (
+        1 if any(str(reason).startswith("RFE-01") for reason in result.blocked_reasons) else 0
+    )
+    diagnostics["rfe_02_rejected_games"] = int(diagnostics.get("rfe_02_rejected_games", 0) or 0) + (
+        1 if any(str(reason).startswith("RFE-02") for reason in result.blocked_reasons) else 0
+    )
+    blocked_reasons = list(diagnostics.get("rfe_blocked_reasons", []) or [])
+    blocked_reasons.extend(str(reason) for reason in result.blocked_reasons if reason)
+    diagnostics["rfe_blocked_reasons"] = blocked_reasons
+    diagnostics["rfe_status"] = "BLOQUEADO"
 
 
 def _parse_draw_numbers(raw_text: str) -> list[int]:
@@ -4125,6 +4194,13 @@ def _run_institutional_generation(
     )
     latest_contest = _load_latest_contest_summary()
     target_contest = int(latest_contest["contest_number"]) if latest_contest else None
+    previous_contest_numbers = _load_previous_contest_numbers_for_rfe(target_contest)
+    if target_contest is not None and target_contest > 1:
+        rfe_reference_source = f"contest_anterior_oficial={target_contest - 1}"
+    elif previous_contest_numbers:
+        rfe_reference_source = "ultimo_concurso_oficial_disponivel"
+    else:
+        rfe_reference_source = "indisponivel"
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
     batch_number_usage = batch_number_usage if batch_number_usage is not None else {}
@@ -4164,6 +4240,7 @@ def _run_institutional_generation(
             preferred_parity_pairs=preferred_parity_pairs,
             allowed_parity_pairs=allowed_parity_pairs,
             fill_diagnostics=fill_diagnostics,
+            previous_contest_numbers=previous_contest_numbers,
         )
     else:
         candidate_count = max(total_games * 20, 200 if use_top50 else 120)
@@ -4226,6 +4303,10 @@ def _run_institutional_generation(
                 )
             if not selected_numbers:
                 continue
+            rfe_result = validate_rfe_final_card(selected_numbers, previous_contest_numbers or [])
+            if not rfe_result.approved:
+                _update_rfe_diagnostics(fill_diagnostics, rfe_result)
+                continue
             signature = _game_signature(selected_numbers)
             if signature in used_signatures:
                 fill_diagnostics["rejected_by_internal_duplicate"] = int(fill_diagnostics.get("rejected_by_internal_duplicate", 0) or 0) + 1
@@ -4285,6 +4366,10 @@ def _run_institutional_generation(
             )
             fallback_attempt += 1
             if not fallback_numbers:
+                continue
+            rfe_result = validate_rfe_final_card(fallback_numbers, previous_contest_numbers or [])
+            if not rfe_result.approved:
+                _update_rfe_diagnostics(fill_diagnostics, rfe_result)
                 continue
             signature = _game_signature(fallback_numbers)
             if signature in used_signatures:
@@ -4385,6 +4470,13 @@ def _run_institutional_generation(
             "rejected_by_output_commander": int(fill_diagnostics.get("rejected_by_output_commander", 0) or 0),
             "attempts_used": int(fill_diagnostics.get("attempts_used", 0) or 0),
             "fill_completed": bool(fill_diagnostics.get("fill_completed", False)),
+            "rfe_enabled": bool(fill_diagnostics.get("rfe_enabled", True)),
+            "rfe_rejected_games": int(fill_diagnostics.get("rfe_rejected_games", 0) or 0),
+            "rfe_01_rejected_games": int(fill_diagnostics.get("rfe_01_rejected_games", 0) or 0),
+            "rfe_02_rejected_games": int(fill_diagnostics.get("rfe_02_rejected_games", 0) or 0),
+            "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
+            "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
+            "rfe_reference_source": rfe_reference_source,
             "perfis_paridade_preferenciais": preferred_parity_pairs,
             "perfis_paridade_permitidos": allowed_parity_pairs,
             "limite_sequencia_max": effective_sequence_max,
@@ -4437,6 +4529,13 @@ def _run_institutional_generation(
             "rejected_by_output_commander": int(fill_diagnostics.get("rejected_by_output_commander", 0) or 0),
             "attempts_used": int(fill_diagnostics.get("attempts_used", 0) or 0),
             "fill_completed": bool(fill_diagnostics.get("fill_completed", False)),
+            "rfe_enabled": bool(fill_diagnostics.get("rfe_enabled", True)),
+            "rfe_rejected_games": int(fill_diagnostics.get("rfe_rejected_games", 0) or 0),
+            "rfe_01_rejected_games": int(fill_diagnostics.get("rfe_01_rejected_games", 0) or 0),
+            "rfe_02_rejected_games": int(fill_diagnostics.get("rfe_02_rejected_games", 0) or 0),
+            "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
+            "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
+            "rfe_reference_source": rfe_reference_source,
         }
         _store_active_batch_state(
             batch_id=batch_id,
@@ -4525,6 +4624,13 @@ def _run_institutional_generation(
             "output_commander_role": "AUDITOR",
             "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
             "calibration_engine_role": "DISABLED",
+            "rfe_enabled": bool(fill_diagnostics.get("rfe_enabled", True)),
+            "rfe_rejected_games": int(fill_diagnostics.get("rfe_rejected_games", 0) or 0),
+            "rfe_01_rejected_games": int(fill_diagnostics.get("rfe_01_rejected_games", 0) or 0),
+            "rfe_02_rejected_games": int(fill_diagnostics.get("rfe_02_rejected_games", 0) or 0),
+            "rfe_blocked_reasons": list(fill_diagnostics.get("rfe_blocked_reasons", []) or []),
+            "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
+            "rfe_reference_source": rfe_reference_source,
             "total_jogos_unicos": int(commander_report.get("quantidade_jogos_unicos", len(games)) or len(games)),
             "total_jogos_duplicados": int(commander_report.get("quantidade_jogos_duplicados", 0) or 0),
             "taxa_duplicidade": float(commander_report.get("taxa_duplicidade", 0.0) or 0.0),
