@@ -8454,8 +8454,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
     for label, page_id in [("Limpar Hist?ricos", "clear_histories"), ("Apagar Hist?rico", "delete_history")]:
-        _nav_entry(label, page_id, disabled=True)
-    st.sidebar.caption("A??es destrutivas ficam bloqueadas at? defini??o de trava institucional.")
+        _nav_entry(label, page_id)
+    st.sidebar.caption("A??es destrutivas continuam protegidas pela confirma??o interna da tela.")
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
