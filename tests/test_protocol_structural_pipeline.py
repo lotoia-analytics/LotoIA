@@ -24,6 +24,33 @@ def test_rfe_previous_contest_reference_3704_uses_3703(monkeypatch) -> None:
     assert reference.message is None
 
 
+def test_rfe_without_target_uses_latest_official_persisted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_diagnostics",
+        lambda: {
+            "contest_number_max": 3703,
+        },
+    )
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_contest",
+        lambda contest_number: {
+            "concurso": contest_number,
+            "dezenas": [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25],
+        }
+        if contest_number == 3703
+        else None,
+    )
+
+    reference = admin_app._load_previous_contest_numbers_for_rfe(None)
+
+    assert reference.found is True
+    assert reference.contest_id == 3703
+    assert reference.numbers == [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    assert reference.source == "official_lotofacil_history"
+
+
 def test_rfe_previous_contest_numbers_must_have_15_numbers(monkeypatch) -> None:
     monkeypatch.setattr(
         admin_app,
@@ -86,6 +113,24 @@ def test_generation_stops_before_attempts_when_previous_contest_missing() -> Non
 
 
 def test_clean_law15_generation_preserves_rfe_block_when_attempts_zero(monkeypatch) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_diagnostics",
+        lambda: {
+            "contest_number_max": 3703,
+        },
+    )
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_history_contest",
+        lambda contest_number: {
+            "concurso": contest_number,
+            "dezenas": [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25],
+        }
+        if contest_number == 3703
+        else None,
+    )
+
     def _generate_stub(**kwargs):
         diagnostics = kwargs.get("fill_diagnostics")
         if isinstance(diagnostics, dict):
@@ -130,8 +175,10 @@ def test_clean_law15_generation_preserves_rfe_block_when_attempts_zero(monkeypat
         assert diagnostics.get("rfe_status") == "BLOQUEADO"
         assert diagnostics.get("rejected_by_output_commander") == 0
         assert diagnostics.get("insufficient_reason") == "RFE_PREVIOUS_CONTEST_NOT_FOUND"
-        assert result.get("rfe_previous_contest_found") is False
-        assert result.get("rfe_previous_contest_source") == "indisponivel"
+        assert result.get("rfe_previous_contest_found") is True
+        assert result.get("rfe_previous_contest_id") == 3703
+        assert result.get("rfe_previous_contest_numbers") == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+        assert result.get("rfe_previous_contest_source") == "official_lotofacil_history"
     finally:
         admin_app.output_commander_validate_games = original_output_commander
 

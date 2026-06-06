@@ -4145,8 +4145,11 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
             message="Concurso anterior não encontrado na base oficial persistida.",
         )
 
-    latest_contest = _load_latest_contest_summary() or _get_latest_contest() or {}
-    latest_contest_number = _safe_int(latest_contest.get("contest_number"), default=None)
+    official_diagnostics = _load_official_history_diagnostics()
+    latest_contest_number = _safe_int(official_diagnostics.get("contest_number_max"), default=None)
+    if latest_contest_number is None or latest_contest_number <= 0:
+        latest_contest = _load_imported_contest() or _load_latest_contest_summary() or _get_latest_contest() or {}
+        latest_contest_number = _safe_int(latest_contest.get("contest_number"), default=None)
     if latest_contest_number is not None and latest_contest_number > 0:
         previous_contest = _load_official_history_contest(int(latest_contest_number))
         if previous_contest:
@@ -4156,14 +4159,14 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
                     found=True,
                     contest_id=latest_contest_number,
                     numbers=numbers,
-                    source="latest_official_available_without_target",
+                    source="official_lotofacil_history",
                     message=None,
                 )
             return RFEPreviousContestReference(
                 found=False,
                 contest_id=latest_contest_number,
                 numbers=[],
-                source="latest_official_available_without_target",
+                source="official_lotofacil_history",
                 message="Último concurso oficial encontrado, mas dezenas oficiais inválidas ou incompletas.",
             )
 
@@ -10097,11 +10100,22 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     fill_diagnostics: dict[str, Any] = {}
     total_games = int(requested_count)
     seed = int(time.time()) % 1_000_000
-    latest_contest = _load_latest_contest_summary()
+    official_diagnostics = _load_official_history_diagnostics()
+    latest_contest_number = _safe_int(official_diagnostics.get("contest_number_max"), default=None)
+    latest_contest = _load_imported_contest() or _load_latest_contest_summary() or _get_latest_contest() or {}
+    if latest_contest_number is not None and latest_contest_number > 0:
+        latest_contest = {
+            "contest_number": latest_contest_number,
+            "dezenas": (_load_official_history_contest(latest_contest_number) or {}).get("dezenas", []),
+        }
     history_frequency = _history_number_frequency()
     latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
     batch_number_usage: dict[int, int] = {}
     batch_profile_usage: dict[tuple[int, int], int] = {}
+    target_contest = None
+    if latest_contest_number is not None and latest_contest_number > 0:
+        target_contest = int(latest_contest_number) + 1
+    previous_contest_reference = _load_previous_contest_numbers_for_rfe(target_contest)
     games = _generate_direct_15_games(
         total_games=total_games,
         seed=seed,
@@ -10127,6 +10141,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         preferred_parity_pairs=[],
         allowed_parity_pairs=[],
         fill_diagnostics=fill_diagnostics,
+        previous_contest_numbers=previous_contest_reference.numbers,
     )
     commander_report = output_commander_validate_games(
         games,
@@ -10171,11 +10186,11 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "games": games,
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
-        "rfe_previous_contest_found": bool(fill_diagnostics.get("rfe_previous_contest_found", False)),
-        "rfe_previous_contest_id": fill_diagnostics.get("rfe_previous_contest_id"),
-        "rfe_previous_contest_numbers": str(fill_diagnostics.get("rfe_previous_contest_numbers", "-") or "-"),
-        "rfe_previous_contest_source": str(fill_diagnostics.get("rfe_previous_contest_source", "indisponivel") or "indisponivel"),
-        "rfe_previous_contest_message": str(fill_diagnostics.get("rfe_previous_contest_message", "") or ""),
+        "rfe_previous_contest_found": bool(previous_contest_reference.found),
+        "rfe_previous_contest_id": previous_contest_reference.contest_id,
+        "rfe_previous_contest_numbers": " ".join(f"{number:02d}" for number in previous_contest_reference.numbers) or "-",
+        "rfe_previous_contest_source": previous_contest_reference.source,
+        "rfe_previous_contest_message": previous_contest_reference.message or "",
         "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
         "batch_fill_strategy": "FILL_UNTIL_REQUESTED_QUANTITY",
         "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
@@ -10194,6 +10209,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "automatic_law_mutation_allowed": False,
         "silent_recalibration_allowed": False,
         "law_evolution_requires_audit": True,
+        "target_contest": target_contest,
     }
 
 
