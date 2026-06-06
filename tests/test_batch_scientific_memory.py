@@ -1041,6 +1041,9 @@ def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
     assert adjustment["natural_generated_games"] == 16
     assert adjustment["requested_games"] == 20
     assert adjustment["persisted_games"] == 0
+    assert adjustment["approved_total_less_than_requested"] is True
+    assert adjustment["blocked_reason"] == "nao_atingiu_quantidade_solicitada"
+    assert adjustment["output_commander_status"] == "BLOQUEADO"
     assert adjustment["generated_candidates"] == 16
     assert adjustment["valid_individual_games"] == 16
     assert adjustment["natural_quantity_status"] == "CANDIDATE_OBSERVED"
@@ -1075,6 +1078,9 @@ def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
     assert compact_15["natural_generated_games"] == 12
     assert compact_15["requested_games"] == 15
     assert compact_15["persisted_games"] == 0
+    assert compact_15["approved_total_less_than_requested"] is True
+    assert compact_15["blocked_reason"] == "nao_atingiu_quantidade_solicitada"
+    assert compact_15["output_commander_status"] == "BLOQUEADO"
     assert compact_15["natural_quantity_status"] == "CANDIDATE_OBSERVED"
     assert compact_15["compactation_status"] == "OPERATIONAL_ACTIVE"
     assert compact_15["compactation_test_status"] == "OPERATIONAL_COMPACT_15"
@@ -1093,6 +1099,9 @@ def test_small_batch_compact_adjustment_enables_diversity_control() -> None:
     assert compact_50["natural_generated_games"] == 50
     assert compact_50["requested_games"] == 50
     assert compact_50["persisted_games"] == 0
+    assert compact_50["approved_total_less_than_requested"] is False
+    assert compact_50["blocked_reason"] == ""
+    assert compact_50["output_commander_status"] == "APROVADO"
     assert compact_50["natural_quantity_status"] == "NATURAL_APPROVED"
     assert compact_50["compactation_status"] == "VALIDATED_BASELINE"
     assert compact_50["compactation_adjustment_mode"] == "VALIDATED_BASELINE"
@@ -1109,6 +1118,9 @@ def test_small_batch_compact_adjustment_preserves_rigid_mode_for_10() -> None:
     assert adjustment["natural_generated_games"] == 9
     assert adjustment["requested_games"] == 10
     assert adjustment["persisted_games"] == 0
+    assert adjustment["approved_total_less_than_requested"] is True
+    assert adjustment["blocked_reason"] == "nao_atingiu_quantidade_solicitada"
+    assert adjustment["output_commander_status"] == "BLOQUEADO"
     assert adjustment["natural_quantity_status"] == "CANDIDATE_OBSERVED"
     assert adjustment["compactation_adjustment_mode"] == "EXTREME_COMPACT"
     assert adjustment["compactation_adjustment_boost_numbers"] == [17, 23]
