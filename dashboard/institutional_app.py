@@ -8580,11 +8580,17 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas liberadas</div>', unsafe_allow_html=True)
+    for label, page_id in [
+        ("Vazamento lateral — auditado", "audit_monitoring_side_leak"),
+        ("Evolução 13 -> 14 — auditado", "audit_monitoring_13_to_14"),
+        ("Evolução 14 -> 15 — auditado", "audit_monitoring_14_to_15"),
+    ]:
+        _nav_entry(label, page_id)
+    st.sidebar.caption("Camadas observacionais/auditadas. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
+
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Vazamento lateral", "audit_monitoring_side_leak"),
-        ("Evolu??o 13 -> 14", "audit_monitoring_13_to_14"),
-        ("Evolu??o 14 -> 15", "audit_monitoring_14_to_15"),
         ("Hip?teses para teste offline", "audit_monitoring_offline_hypotheses"),
         ("An?lises Estrat?gicas", "strategies_analysis"),
         ("Testar Estrat?gias", "strategies_test"),
@@ -8621,13 +8627,13 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "operational_statistics",
         "hb_metrics",
         "structural_coverage",
+        "audit_monitoring_side_leak",
+        "audit_monitoring_13_to_14",
+        "audit_monitoring_14_to_15",
         "clear_histories",
         "delete_history",
     }
     blocked_pages = {
-        "audit_monitoring_side_leak",
-        "audit_monitoring_13_to_14",
-        "audit_monitoring_14_to_15",
         "audit_monitoring_offline_hypotheses",
         "strategies_analysis",
         "strategies_test",
@@ -9284,11 +9290,11 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             "- Dezenas faltantes\n"
             "- Dezenas sobrando"
         )
-        st.markdown("##### Quarentena")
-        st.caption("Vazamento lateral permanece isolado e restrito como indicador experimental.")
-        with st.expander("Indicador experimental isolado", expanded=False):
-            st.info("Indicador experimental isolado. Não comanda geração nem recalibra Lei 15.")
-            st.markdown("status: restrito / quarentena")
+        st.markdown("##### Camadas auditadas liberadas")
+        st.caption("Vazamento lateral liberado como camada observacional/auditada.")
+        with st.expander("Indicador auditado observacional", expanded=False):
+            st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
+            st.markdown("status: LIBERADO / OBSERVACIONAL_AUDITADO")
         with st.expander("Detalhes técnicos avançados", expanded=False):
             st.json(POST_DRAW_MONITORING_PAYLOAD)
         return
@@ -9475,12 +9481,27 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
+        st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
+        st.caption(
+            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
+            "generation_command=False | recalibration_command=False"
+        )
         st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
     elif section == "13_to_14":
         st.markdown("##### Evolução 13 -> 14")
+        st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
+        st.caption(
+            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
+            "generation_command=False | recalibration_command=False"
+        )
         st.caption("Avalia hipóteses de conversão 13 para 14 sem recalibrar automaticamente.")
     elif section == "14_to_15":
         st.markdown("##### Evolução 14 -> 15")
+        st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
+        st.caption(
+            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
+            "generation_command=False | recalibration_command=False"
+        )
         st.caption("Avalia hipóteses de conversão 14 para 15 em modo observador.")
     elif section == "offline_hypotheses":
         st.markdown("##### Hipóteses para teste offline")
