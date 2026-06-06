@@ -72,7 +72,7 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
-BUILD_MARKER = "institutional-clean-runtime-v2-95a0bdb"
+BUILD_MARKER = "institutional-adm-runtime-v2"
 APP_BUILD = BUILD_MARKER
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
@@ -8535,7 +8535,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
-    st.sidebar.caption("Painel institucional limpo")
+    st.sidebar.caption("Painel institucional ADM")
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
         resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
