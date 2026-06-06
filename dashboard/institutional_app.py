@@ -5279,10 +5279,27 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                 numbers = [int(number) for number in (row.numbers or [])]
                 context_json = dict(row.context_json or {})
                 structural_metrics = dict(context_json.get("structural_metrics") or {})
+                core_numbers = list(context_json.get("core_numbers") or numbers or [])
+                audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+                final_card_numbers = list(context_json.get("final_card_numbers") or numbers or [])
+                card_format = _safe_int(
+                    context_json.get("selected_card_format")
+                    or context_json.get("card_format")
+                    or context_json.get("format_cartao")
+                    or context_json.get("formato_cartao"),
+                    default=None,
+                )
+                expected_card_size = int(card_format or len(final_card_numbers) or len(numbers) or 15)
                 games.append(
                     {
                         "game_index": int(row.game_index or 0),
                         "numbers": numbers,
+                        "formato_cartao": int(card_format or len(final_card_numbers) or len(numbers) or 15),
+                        "nucleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers) if core_numbers else "",
+                        "reservas_auditadas": " ".join(f"{number:02d}" for number in audited_reserve_numbers) if audited_reserve_numbers else "",
+                        "cartao_final": final_card_numbers,
+                        "expected_card_size": expected_card_size,
+                        "actual_card_size": len(final_card_numbers) if final_card_numbers else len(numbers),
                         "profile_type": str(row.profile_type or ""),
                         "perfil": str(row.profile_type or ""),
                         "game_signature": str(context_json.get("game_signature", "") or ""),
