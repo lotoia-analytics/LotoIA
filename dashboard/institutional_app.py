@@ -99,7 +99,7 @@ OFFICIAL_15_QUANTITY_TO_GROUP = {
 }
 OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL_15_QUANTITY_TO_GROUP.items()}
 OFFICIAL_15_GROUP_SOURCE_REPORT = Path(__file__).resolve().parent.parent / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
-OFFICIAL_CARD_FORMATS = (15, 17, 18)
+OFFICIAL_CARD_FORMATS = tuple(range(15, 24))
 AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 9, 5, 6, 8, 14, 18, 20, 24, 25)
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
@@ -113,6 +113,25 @@ POST_DRAW_MONITORING_PAYLOAD = {
     "gold_target": 14,
     "diamond_target": 15,
 }
+
+
+def _clean_law15_format_label(card_format: int) -> str:
+    format_labels = {
+        15: "15 dezenas — Núcleo Lei 15",
+        16: "16 dezenas — Lei 15 + 1 reserva auditada",
+        17: "17 dezenas — Lei 15 + 2 reservas auditadas",
+        18: "18 dezenas — Lei 15 + 3 reservas auditadas",
+        19: "19 dezenas — Lei 15 + 4 reservas auditadas",
+        20: "20 dezenas — Lei 15 + 5 reservas auditadas",
+        21: "21 dezenas — Lei 15 + 6 reservas auditadas",
+        22: "22 dezenas — Lei 15 + 7 reservas auditadas",
+        23: "23 dezenas — Lei 15 + 8 reservas auditadas",
+    }
+    return format_labels.get(int(card_format), f"{int(card_format)} dezenas")
+
+
+def _clean_law15_reserve_count(card_format: int) -> int:
+    return max(0, int(card_format or 15) - 15)
 
 
 def _render_signature_grid(signatures: list[str], *, title: str, empty_label: str = "Nenhuma assinatura disponível") -> None:
@@ -8489,8 +8508,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "strategies_simulation",
         "institutional_replay",
         "hb_geometry",
-        "clear_histories",
-        "delete_history",
     }
     if choice in blocked_pages:
         st.sidebar.warning("P?gina bloqueada por pol?tica institucional.")
@@ -8986,8 +9003,15 @@ def _persist_clean_law15_generation_history(
         "format_cartao": int(selected_card_format),
         "selected_quantity": int(result.get("requested_count", 0) or 0),
         "quantidade_nucleo": 15,
-        "quantidade_reservas": 0 if int(selected_card_format) == 15 else 2 if int(selected_card_format) == 17 else 3,
+        "nucleo_lei_15_size": 15,
+        "reservas_auditadas_count": _clean_law15_reserve_count(selected_card_format),
+        "quantidade_reservas": _clean_law15_reserve_count(selected_card_format),
         "quantidade_final": int(selected_card_format),
+        "cartao_final_size": int(selected_card_format),
+        "accepted_games": int((result.get("fill_diagnostics") or {}).get("accepted_games", 0) or 0),
+        "valid_candidates": int((result.get("fill_diagnostics") or {}).get("valid_candidates_found", 0) or 0),
+        "attempts_used": int((result.get("fill_diagnostics") or {}).get("attempts_used", 0) or 0),
+        "fill_completed": bool((result.get("fill_diagnostics") or {}).get("fill_completed", False)),
         "núcleo_lei_15": _format_numbers_for_history(payload_games[0].get("core_numbers", [])),
         "reservas_auditadas": _format_numbers_for_history(payload_games[0].get("audited_reserve_numbers", [])),
         "cartão_final": _format_numbers_for_history(payload_games[0].get("final_card_numbers", [])),
@@ -10301,11 +10325,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             "Formato do cartão",
             options=list(OFFICIAL_CARD_FORMATS),
             index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
-            format_func=lambda value: {
-                15: "15 dezenas — Núcleo Lei 15",
-                17: "17 dezenas — Lei 15 + 2 reservas auditadas",
-                18: "18 dezenas — Lei 15 + 3 reservas auditadas",
-            }.get(int(value), f"{int(value)} dezenas"),
+            format_func=_clean_law15_format_label,
             key="clean_law15_card_format",
         )
     )
@@ -10318,16 +10338,12 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         "Lei 18 valida 13+ com busca por 14/15."
     )
     st.caption(
-        "17/18 dezenas significam apenas expansão auditada do núcleo: 15 + 2 reservas auditadas | 15 + 3 reservas auditadas."
+        "16 a 23 dezenas significam apenas expansão auditada do núcleo: 15 + reservas auditadas."
     )
     if st.button("Gerar com Lei 15", type="primary", key="clean_law15_generate_button"):
         result = _run_clean_law15_generation(requested_count=requested_count)
         result["selected_card_format"] = int(selected_card_format)
-        result["card_format_label"] = {
-            15: "15 dezenas — Núcleo Lei 15",
-            17: "17 dezenas — Lei 15 + 2 reservas auditadas",
-            18: "18 dezenas — Lei 15 + 3 reservas auditadas",
-        }.get(int(selected_card_format), f"{int(selected_card_format)} dezenas")
+        result["card_format_label"] = _clean_law15_format_label(selected_card_format)
         result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
         result["validation_status_lei_17"] = "VALIDA_12_PLUS" if int(selected_card_format) in (17, 18) else "N_A"
         result["validation_status_lei_18"] = "VALIDA_13_PLUS" if int(selected_card_format) == 18 else "N_A"
@@ -10337,6 +10353,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             selected_card_format=selected_card_format,
         )
         if persisted_snapshot:
+            result.update(persisted_snapshot)
             st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
         st.rerun()
     result = st.session_state.get("clean_law15_generation_result") or {}
@@ -10357,6 +10374,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     f"scientific_law_role={result.get('scientific_law_role', '-')}",
                     f"clean_adm_runtime_role={result.get('clean_adm_runtime_role', '-')}",
                     f"output_commander_role={result.get('output_commander_role', '-')}",
+                    f"nucleo_lei_15_size={result.get('nucleo_lei_15_size', 15)}",
+                    f"reservas_auditadas_count={result.get('reservas_auditadas_count', 0)}",
+                    f"cartao_final_size={result.get('cartao_final_size', result.get('selected_card_format', 15))}",
+                    f"generation_event_id={result.get('generation_event_id', '-')}",
                 ]
             )
         )
@@ -10369,6 +10390,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     f"legacy_dashboard_generation={result.get('legacy_dashboard_generation', '-')}",
                     f"legacy_calibrator_role={result.get('legacy_calibrator_role', '-')}",
                     f"calibration_engine_role={result.get('calibration_engine_role', '-')}",
+                    f"accepted_games={result.get('accepted_games', 0)}",
+                    f"valid_candidates={result.get('valid_candidates', 0)}",
+                    f"attempts_used={result.get('attempts_used', 0)}",
+                    f"fill_completed={result.get('fill_completed', False)}",
                 ]
             )
         )
