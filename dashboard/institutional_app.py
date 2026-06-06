@@ -8309,6 +8309,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
             {
                 "game_index": index,
                 "numbers": numbers,
+                "cartao_final": numbers,
                 "rank_original": int(game.get("game_index", index) or index),
                 "hits": len(matched),
                 "formato_cartao": int(
@@ -11096,8 +11097,12 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                 [
                     {
                         "jogo": row["game_index"],
-                        "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                        "formato_cartao": row.get("formato_cartao", "-"),
+                        "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
+                        "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
+                        "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
                         "hits": row["hits"],
+                        "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
                         "premiado": row["prize_status"],
                     }
                     for row in check_result["results"]
