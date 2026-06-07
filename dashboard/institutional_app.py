@@ -8580,14 +8580,14 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas liberadas</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas disponíveis</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Vazamento lateral — auditado", "audit_monitoring_side_leak"),
-        ("Evolução 13 -> 14 — auditado", "audit_monitoring_13_to_14"),
-        ("Evolução 14 -> 15 — auditado", "audit_monitoring_14_to_15"),
+        ("Vazamento lateral", "audit_monitoring_side_leak"),
+        ("Evolução 13 -> 14", "audit_monitoring_13_to_14"),
+        ("Evolução 14 -> 15", "audit_monitoring_14_to_15"),
     ]:
         _nav_entry(label, page_id)
-    st.sidebar.caption("Camadas observacionais/auditadas. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
+    st.sidebar.caption("Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
     for label, page_id in [
