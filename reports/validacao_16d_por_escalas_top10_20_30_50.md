@@ -188,17 +188,21 @@ Conclusão conceitual:
 
 ## 15. Classificação institucional por escala
 
-Classificação preliminar:
+Nenhuma célula da matriz pode ser classificada como `Compatível`, `Suspeita`, `Conflitante` ou `Obsoleta` por desempenho sem:
 
-- `16D Top 10` = **Compatível**
-- `16D Top 20` = **Compatível**
-- `16D Top 30` = **Suspeito**
-- `16D Top 50` = **Suspeito**
+1. composição definida;
+2. fonte de reforço rastreada;
+3. métrica executada;
+4. comparação contra base anterior;
+5. justificativa documental;
+6. reversibilidade registrada.
 
-Justificativa:
+Classificação retificada:
 
-- Top 10 e Top 20 preservam melhor o equilíbrio observacional;
-- Top 30 e Top 50 ampliam cobertura, mas aumentam risco de redundância e clone.
+- `16D Top 10` = **Pendente de validação por célula**
+- `16D Top 20` = **Pendente de validação por célula**
+- `16D Top 30` = **Pendente de validação por célula**
+- `16D Top 50` = **Pendente de validação por célula**
 
 ## 16. Papel final de cada escala 16D
 
@@ -211,8 +215,8 @@ Esses papéis são institucionais e observacionais, não operacionais.
 
 ## 17. Respostas obrigatórias
 
-1. O 16D foi validado como 15 + 1? **Sim.**
-2. A 16ª dezena foi rastreada por fonte auditada? **Sim, como candidata; não como escolha definitiva.**
+1. O 16D foi validado como 15 + 1? **Sim, no plano conceitual.**
+2. A 16ª dezena foi rastreada por fonte auditada? **Não como escolha definitiva.**
 3. Grupo A permaneceu como núcleo estrutural? **Sim.**
 4. J12/J34 foram usados apenas como reservas condicionais auditadas? **Sim.**
 5. J71 permaneceu como reserva em vigilância auditada? **Sim.**
@@ -220,13 +224,13 @@ Esses papéis são institucionais e observacionais, não operacionais.
 7. Houve geração operacional? **Não.**
 8. Houve alteração da Lei 15? **Não.**
 9. Houve push? **Não.**
-10. `16D Top 10` está apto como observacional? **Sim.**
-11. `16D Top 20` está apto como observacional? **Sim.**
-12. `16D Top 30` está apto como observacional? **Sim, porém em vigilância.**
-13. `16D Top 50` está apto como observacional? **Sim, porém em vigilância.**
-14. Qual escala 16D é mais promissora? **16D Top 20.**
-15. O 16D pode ser considerado fechado institucionalmente? **Ainda não, apenas preparado para validação por escala.**
-16. Qual é o próximo passo antes de gerar jogos de teste? **Validar por escala e escolher a célula 16D mais equilibrada.**
+10. `16D Top 10` está apto como observacional? **Pendente de validação por célula.**
+11. `16D Top 20` está apto como observacional? **Pendente de validação por célula.**
+12. `16D Top 30` está apto como observacional? **Pendente de validação por célula.**
+13. `16D Top 50` está apto como observacional? **Pendente de validação por célula.**
+14. Qual escala 16D é mais promissora? **Indefinida nesta missão.**
+15. O 16D pode ser considerado fechado institucionalmente? **Ainda não, apenas preparado conceitualmente.**
+16. Qual é o próximo passo antes de gerar jogos de teste? **Executar validação própria por célula, com composição definida, 16ª dezena rastreada e métricas executadas.**
 
 ## 18. Decisão sobre fechamento do 16D
 
