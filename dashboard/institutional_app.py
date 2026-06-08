@@ -10705,6 +10705,24 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     f"escala_top={institutional_rows[0]['escala_top']} | "
                     "leitura_institucional_ativa=true"
                 )
+        st.markdown("##### Rastros institucionais")
+        trace_cols = st.columns(4)
+        trace_cols[0].metric("generation_event_id", str(result.get("generation_event_id", "-") or "-"))
+        trace_cols[1].metric("official_contest_source", str(result.get("official_contest_source", "indisponivel") or "indisponivel"))
+        trace_cols[2].metric("official_contest_id", str(result.get("official_contest_id", "-") or "-"))
+        trace_cols[3].metric("official_contest_numbers", str(result.get("official_contest_numbers", "-") or "-"))
+        st.caption(
+            " | ".join(
+                [
+                    f"rfe_previous_contest_found={result.get('rfe_previous_contest_found', diagnostics.get('rfe_previous_contest_found', False))}",
+                    f"rfe_previous_contest_id={result.get('rfe_previous_contest_id', diagnostics.get('rfe_previous_contest_id', '-'))}",
+                    f"rfe_previous_contest_numbers={result.get('rfe_previous_contest_numbers', diagnostics.get('rfe_previous_contest_numbers', '-'))}",
+                    f"rfe_previous_contest_source={result.get('rfe_previous_contest_source', diagnostics.get('rfe_previous_contest_source', '-'))}",
+                    f"rfe_status={result.get('rfe_status', diagnostics.get('rfe_status', '-'))}",
+                ]
+            )
+        )
+        st.markdown("##### Diagnóstico inferior")
         with st.expander("Diagnóstico da página limpa", expanded=False):
             st.write(f"requested_count={result.get('requested_count', '-')}")
             st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
@@ -10723,6 +10741,17 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             st.write(f"rfe_previous_contest_source={result.get('rfe_previous_contest_source', diagnostics.get('rfe_previous_contest_source', '-'))}")
             st.write(f"rfe_previous_contest_message={result.get('rfe_previous_contest_message', diagnostics.get('rfe_previous_contest_message', '-'))}")
             st.write(f"rfe_status={result.get('rfe_status', diagnostics.get('rfe_status', '-'))}")
+        st.markdown("##### Assinaturas e rastreabilidade final")
+        st.caption(
+            " | ".join(
+                [
+                    f"official_contest_source={result.get('official_contest_source', 'indisponivel')}",
+                    f"official_contest_id={result.get('official_contest_id', '-')}",
+                    f"official_contest_numbers={result.get('official_contest_numbers', '-')}",
+                    f"generation_event_id={result.get('generation_event_id', '-')}",
+                ]
+            )
+        )
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
