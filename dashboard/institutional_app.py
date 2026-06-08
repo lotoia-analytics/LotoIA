@@ -101,6 +101,9 @@ OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL
 OFFICIAL_15_GROUP_SOURCE_REPORT = Path(__file__).resolve().parent.parent / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
 OFFICIAL_CARD_FORMATS = tuple(range(15, 24))
 AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 9, 5, 6, 8, 14, 18, 20, 24, 25)
+INSTITUTIONAL_REFERENCE_J12 = (1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25)
+INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24, 25)
+INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
     "monitoring_role": "OBSERVER_REGISTRY",
@@ -9100,6 +9103,87 @@ def _format_numbers_for_history(values: Sequence[int] | None) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
 
 
+def infer_matrix_cell(formato_cartao: int | str | None, requested_count: int | str | None) -> dict[str, Any]:
+    """Infer a matrix cell label from the card format and requested quantity."""
+    dezenas_por_jogo = int(formato_cartao or 15)
+    quantidade_jogos = int(requested_count or 0)
+    escala_top = f"Top {quantidade_jogos}" if quantidade_jogos else "Top -"
+    celula_matriz = f"{dezenas_por_jogo}D {escala_top}".strip()
+    return {
+        "celula_matriz": celula_matriz,
+        "formato_d": f"{dezenas_por_jogo}D",
+        "escala_top": escala_top,
+        "dezenas_por_jogo": dezenas_por_jogo,
+        "quantidade_jogos": quantidade_jogos,
+    }
+
+
+def build_institutional_matrix_rows(
+    games: Sequence[dict[str, Any]],
+    formato_d: int | str | None,
+    escala_top: int | str | None,
+) -> list[dict[str, Any]]:
+    """Build the institutional matrix rows from already loaded games."""
+    dezenas_por_jogo = int(formato_d or 15)
+    quantidade_jogos = int(escala_top or 0)
+    celula_matriz = f"{dezenas_por_jogo}D Top {quantidade_jogos}" if quantidade_jogos else f"{dezenas_por_jogo}D Top -"
+    j12 = set(INSTITUTIONAL_REFERENCE_J12)
+    j34 = set(INSTITUTIONAL_REFERENCE_J34)
+    j71 = set(INSTITUTIONAL_REFERENCE_J71)
+    rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        final_card = _extract_int_numbers(
+            game.get("final_card_numbers")
+            or game.get("cartao_final")
+            or game.get("numbers")
+            or []
+        )
+        core_numbers = _extract_int_numbers(
+            game.get("core_numbers")
+            or game.get("nucleo_lei_15")
+            or game.get("numbers")
+            or final_card[:15]
+        )
+        if not core_numbers:
+            core_numbers = list(final_card[:15])
+        referencias_j12 = sorted(set(final_card).intersection(j12))
+        referencias_j34 = sorted(set(final_card).intersection(j34))
+        referencias_j12_j34 = sorted(set(final_card).intersection(j12.union(j34)))
+        vigilancia_j71 = sorted(set(final_card).intersection(j71))
+        if referencias_j12_j34 and vigilancia_j71:
+            status_institucional = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
+        elif referencias_j12_j34:
+            status_institucional = "NUCLEO_A_COM_REFERENCIA_AUDITADA"
+        elif vigilancia_j71:
+            status_institucional = "NUCLEO_A_COM_VIGILANCIA"
+        else:
+            status_institucional = "NUCLEO_A"
+        if dezenas_por_jogo == 15:
+            leitura_institucional = (
+                f"Jogo 15D da célula {celula_matriz}; cartao técnico preservado com 15 dezenas; "
+                "referências J12/J34 e J71 exibidas apenas como leitura institucional, sem reserva técnica adicional."
+            )
+        else:
+            leitura_institucional = (
+                f"Jogo {dezenas_por_jogo}D da célula {celula_matriz}; cartao técnico segue 15 + reservas auditadas; "
+                "reserva técnica deve ser rastreada pela regra executável correspondente."
+            )
+        rows.append(
+            {
+                "jogo": int(game.get("jogo", index) or index),
+                "celula_matriz": celula_matriz,
+                "formato_d": f"{dezenas_por_jogo}D",
+                "escala_top": f"Top {quantidade_jogos}" if quantidade_jogos else "Top -",
+                "nucleo_a_dezenas": _format_numbers_for_history(core_numbers) or "-",
+                "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
+                "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
+                "status_institucional": status_institucional,
+                "leitura_institucional": leitura_institucional,
+            }
+        )
+    return rows
+
+
 def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
@@ -10603,6 +10687,24 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 f"reservas_auditadas={len(games[0].get('audited_reserve_numbers', []))} | "
                 f"cartão_final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}"
             )
+            institutional_rows = build_institutional_matrix_rows(
+                games,
+                result.get("selected_card_format", 15),
+                result.get("requested_count", len(games)),
+            )
+            if institutional_rows:
+                institutional_df = pd.DataFrame(institutional_rows)
+                st.subheader("Leitura institucional da matriz")
+                st.caption(
+                    "Esta tabela não altera o cartão técnico. Ela apenas exibe a leitura institucional da célula executada."
+                )
+                st.dataframe(institutional_df, hide_index=True, use_container_width=True)
+                st.caption(
+                    f"celula_matriz={institutional_rows[0]['celula_matriz']} | "
+                    f"formato_d={institutional_rows[0]['formato_d']} | "
+                    f"escala_top={institutional_rows[0]['escala_top']} | "
+                    "leitura_institucional_ativa=true"
+                )
         with st.expander("Diagnóstico da página limpa", expanded=False):
             st.write(f"requested_count={result.get('requested_count', '-')}")
             st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
