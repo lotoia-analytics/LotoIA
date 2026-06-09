@@ -7,6 +7,7 @@ from random import Random
 from lotoia.data.loader import load_draws_csv
 from lotoia.database import save_backtest_run
 from lotoia.generator.basic_generator import _build_game, _is_valid_game
+from lotoia.generator.basic_generator import _compose_profiled_games, _generate_profile_candidate
 from lotoia.models.draw import Draw
 from lotoia.statistics.combinations import combo_score, combo_stats, rank_component_score
 from lotoia.statistics.scoring import (
@@ -20,9 +21,12 @@ from lotoia.statistics.temporal import (
     build_history_model,
     delay_component,
     frequency_component,
+    calculate_sequence_stats,
     sequence_component,
     sum_component,
 )
+from lotoia.statistics.historical_intelligence import GENERATION_PROFILE_RATIOS
+from lotoia.statistics.generation_trace import persist_stage_snapshot, stage_snapshot
 
 CandidateProvider = Callable[[list[Draw], Draw, int, int, int | None], list[list[int]]]
 
@@ -111,24 +115,91 @@ def _generate_candidate_pool(
     pool_size: int,
     seed: int | None,
 ) -> list[list[int]]:
-    del history
+    history_games = [tuple(draw.numbers) for draw in history]
     random = Random(seed + target_draw.contest if seed is not None else None)
     candidates: list[list[int]] = []
     seen: set[tuple[int, ...]] = set()
     attempts = 0
-    max_attempts = max(pool_size, games_count) * 1000
+    target_pool_size = max(pool_size, games_count)
+    max_attempts = max(target_pool_size * 1000, 5000)
 
-    while len(candidates) < pool_size and attempts < max_attempts:
+    strict_limits = [
+        (9, 240, 12, 7, 3),
+        (10, 245, 12, 7, 3),
+        (10, 250, 13, 8, 4),
+        (11, 255, 13, 8, 4),
+        (12, 260, 14, 9, 5),
+        (15, 270, 15, 15, 15),
+    ]
+
+    def _is_acceptable(game: dict[str, object], odd_min: int, sum_max: int, frame_max: int, center_max: int, sequence_max: int) -> bool:
+        sequence_stats = calculate_sequence_stats(game["numbers"])
+        return (
+            odd_min <= game["odd"] <= 15 - odd_min
+            and 160 <= game["sum"] <= sum_max
+            and 7 <= game["frame"] <= frame_max
+            and 1 <= game["center"] <= center_max
+            and sequence_stats["sequence_count"] <= sequence_max
+            and sequence_stats["largest_sequence"] <= sequence_max
+        )
+
+    profiles = list(GENERATION_PROFILE_RATIOS)
+    while len(candidates) < target_pool_size and attempts < max_attempts:
         attempts += 1
-        game = _build_game(random.sample(range(1, 26), 15))
+        profile_type = profiles[attempts % len(profiles)]
+        game = _generate_profile_candidate(random, profile_type, history)
         game_key = tuple(game["numbers"])
-        if game_key in seen or not _is_valid_game(game):
+        if game_key in seen:
             continue
         candidates.append(game["numbers"])
         seen.add(game_key)
 
-    if len(candidates) < pool_size:
-        raise RuntimeError("Nao foi possivel gerar candidatos suficientes para o backtest.")
+    if len(candidates) < games_count:
+        for odd_min, sum_max, frame_max, center_max, sequence_max in strict_limits:
+            if len(candidates) >= target_pool_size:
+                break
+            relaxed_attempts = 0
+            while len(candidates) < target_pool_size and relaxed_attempts < 3000:
+                relaxed_attempts += 1
+                game = _build_game(random.sample(range(1, 26), 15))
+                game_key = tuple(game["numbers"])
+                if game_key in seen or not _is_acceptable(game, odd_min, sum_max, frame_max, center_max, sequence_max):
+                    continue
+                candidates.append(game["numbers"])
+                seen.add(game_key)
+
+    if len(candidates) < games_count:
+        for game_key in reversed(history_games):
+            if game_key in seen:
+                continue
+            candidates.append(sorted(game_key))
+            seen.add(game_key)
+            if len(candidates) >= games_count:
+                break
+
+    fallback_templates = (
+        (1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 18, 20, 22, 24),
+        (1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 17, 19, 21, 23, 25),
+        (2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 22, 25),
+    )
+    for fallback_key in fallback_templates:
+        if len(candidates) >= games_count:
+            break
+        if fallback_key not in seen:
+            candidates.append(list(fallback_key))
+            seen.add(fallback_key)
+
+    if len(candidates) < games_count:
+        fallback_pool = []
+        for game_key in history_games:
+            if game_key not in seen:
+                fallback_pool.append(list(game_key))
+                seen.add(game_key)
+            if len(fallback_pool) + len(candidates) >= games_count:
+                break
+        candidates.extend(fallback_pool[: max(0, games_count - len(candidates))])
+    if len(candidates) < games_count:
+        raise RuntimeError("Nao foi possivel gerar o minimo operacional de candidatos para o backtest.")
 
     return candidates
 
@@ -137,7 +208,7 @@ def _hybrid_sort_key(game: dict[str, object]) -> tuple[float, int, float]:
     final_score = game["final_score"]
     quadra_score = game["quadra_score"]
     return (
-        -float(final_score["final_score"]),
+        -float(game.get("profile_score", final_score["final_score"])),
         -int(quadra_score["found_quadras"]),
         float(quadra_score["average_rank"]),
     )
@@ -211,6 +282,18 @@ def run_backtest(
             else _build_history_model(previous_history)
         )
         candidates = provider(previous_history, target, games_count, pool_size, seed)
+        persist_stage_snapshot(
+            stage_snapshot(
+                "backtest_raw_candidates",
+                [{"numbers": candidate} for candidate in candidates],
+                history=previous_history,
+                metadata={
+                    "engine_version": "historical_recalibrated_v2",
+                    "contest": target.contest,
+                    "profile_distribution": {},
+                },
+            )
+        )
         scored_games = []
         for candidate_numbers in candidates:
             score_data = _score_candidate(
@@ -227,7 +310,22 @@ def run_backtest(
                 }
             )
 
-        selected_games = sorted(scored_games, key=_hybrid_sort_key)[:games_count]
+        selected_games = _compose_profiled_games(scored_games, games_count)
+        persist_stage_snapshot(
+            stage_snapshot(
+                "backtest_final_output",
+                selected_games,
+                history=previous_history,
+                metadata={
+                    "engine_version": "historical_recalibrated_v2",
+                    "contest": target.contest,
+                    "profile_distribution": {
+                        profile: sum(1 for game in selected_games if game.get("profile_type") == profile)
+                        for profile in GENERATION_PROFILE_RATIOS
+                    },
+                },
+            )
+        )
         target_numbers = set(target.numbers)
         for game in selected_games:
             hits = len(set(game["numbers"]) & target_numbers)
@@ -248,10 +346,10 @@ def run_backtest(
             }
         )
 
-    hit_distribution = {str(points): 0 for points in range(11, 16)}
+    hit_distribution = {str(points): 0 for points in range(8, 16)}
     for game in all_games:
         hits = int(game["hits"])
-        if 11 <= hits <= 15:
+        if 8 <= hits <= 15:
             hit_distribution[str(hits)] += 1
 
     total_games = len(all_games)

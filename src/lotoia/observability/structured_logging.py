@@ -9,6 +9,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from lotoia.standards import EventCategory, Severity, iso_timestamp, operational_event
+
 
 class LogLevel(StrEnum):
     """Institutional structured log levels."""
@@ -20,6 +22,15 @@ class LogLevel(StrEnum):
     CRITICAL = "critical"
 
 
+_LEVEL_TO_SEVERITY = {
+    LogLevel.DEBUG: Severity.DEBUG,
+    LogLevel.INFO: Severity.INFO,
+    LogLevel.WARNING: Severity.WARNING,
+    LogLevel.ERROR: Severity.ERROR,
+    LogLevel.CRITICAL: Severity.CRITICAL,
+}
+
+
 @dataclass(frozen=True, slots=True)
 class StructuredLogEvent:
     """One JSON-ready structured log event."""
@@ -28,6 +39,8 @@ class StructuredLogEvent:
     level: LogLevel = LogLevel.INFO
     service: str = "lotoia"
     source: str = "runtime"
+    category: EventCategory = EventCategory.RUNTIME
+    event: str = "log_recorded"
     event_id: str = field(default_factory=lambda: f"log-{uuid4().hex}")
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     trace_id: str | None = None
@@ -37,7 +50,17 @@ class StructuredLogEvent:
     def to_dict(self) -> dict[str, Any]:
         """Return JSON-ready event data."""
 
-        return _to_jsonable(self)
+        payload = _to_jsonable(self)
+        payload["occurred_at"] = iso_timestamp(self.occurred_at)
+        payload["severity"] = _LEVEL_TO_SEVERITY[self.level].value
+        payload["standard_event"] = operational_event(
+            category=self.category,
+            event=self.event,
+            status="recorded",
+            severity=_LEVEL_TO_SEVERITY[self.level],
+            context={"source": self.source, **self.metadata},
+        )
+        return payload
 
     def to_json(self) -> str:
         """Return a compact JSON log line."""
@@ -58,6 +81,8 @@ class StructuredLogger:
         *,
         level: LogLevel = LogLevel.INFO,
         source: str = "runtime",
+        category: EventCategory = EventCategory.RUNTIME,
+        event: str = "log_recorded",
         trace_id: str | None = None,
         span_id: str | None = None,
         metadata: dict[str, Any] | None = None,
@@ -69,6 +94,8 @@ class StructuredLogger:
             level=level,
             service=self.service,
             source=source,
+            category=category,
+            event=event,
             trace_id=trace_id,
             span_id=span_id,
             metadata=metadata or {},

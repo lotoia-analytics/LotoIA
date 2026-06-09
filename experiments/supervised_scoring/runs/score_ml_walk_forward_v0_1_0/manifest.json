@@ -1,0 +1,48 @@
+{
+  "benchmark_reference": "experiments/temporal_benchmark/manifests/temporal_baseline_v0_1_0.json",
+  "created_at": "2026-05-20T20:59:19+00:00",
+  "csv_path": "reports/supervised_walk_forward/score_ml_v0_1_0/walk_forward_contests.csv",
+  "dataset_snapshot": {
+    "content_hash": "1d33a7232085e6b462ffe2c57d55c82db30860cd31d5d3958d5551108c2e9c16",
+    "contests_count": 3688,
+    "dataset_version": "lotofacil-historico-v0.1.0-2026-05-16",
+    "first_contest": 1,
+    "last_contest": 3688,
+    "source_path": "C:/Projetos/LotoIA/data/raw/historico_lotofacil.csv"
+  },
+  "dataset_version": "lotofacil-historico-v0.1.0-2026-05-16",
+  "experiment_id": "score-ml-walk-forward-v0.1.0",
+  "prohibitions": {
+    "benchmark_replacement": true,
+    "opaque_modeling": true,
+    "temporal_leakage": true
+  },
+  "report_path": "reports/supervised_walk_forward/score_ml_v0_1_0/walk_forward_result.json",
+  "reproducibility": {
+    "feature_schema_version": "score-ml-features-v0.1.0",
+    "model_version": "score-ml-linear-baseline-v0.1.0",
+    "random_seed_policy": "fixed_seed_42_plus_contest_id",
+    "reproducibility_hash": "b01d67bb9e33d9fc6889217d7de6fc1979d07f57217020e536613fb42841bd53"
+  },
+  "scientific_delta": {
+    "average_hit_delta": 0.0,
+    "benchmark_average_hits": 9.01,
+    "interpretation": "score_ml is evaluated only as an auxiliary rerank over the same candidate pools and temporal windows.",
+    "score_ml_average_hits": 9.01
+  },
+  "score_ml_manifest": "experiments/supervised_scoring/score_ml_manifest_v0_1_0.json",
+  "status": "executed_walk_forward_validation",
+  "walk_forward": {
+    "split_count": 1,
+    "splits": [
+      {
+        "split_id": "wf_001",
+        "test_end": 2010,
+        "test_start": 2001,
+        "train_end": 2000,
+        "train_start": 1
+      }
+    ],
+    "type": "expanding_window"
+  }
+}

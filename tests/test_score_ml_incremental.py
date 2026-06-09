@@ -7,6 +7,7 @@ from lotoia.generator.basic_generator import generate_best_games
 from lotoia.ml.score_ml import (
     InterpretableLinearScoreML,
     calibrate_linear_score_ml,
+    migrate_score_ml_snapshot,
     extract_score_ml_features,
     supervised_rerank_games,
 )
@@ -77,7 +78,10 @@ def test_generator_keeps_hybrid_ranking_when_score_ml_enabled(monkeypatch) -> No
 
     result = generate_best_games(count=3, pool_size=3, ml_enabled=True)
 
-    assert [game["final_score"]["final_score"] for game in result["games"]] == [30, 20, 10]
+    assert len(result["games"]) == 3
+    assert result["profile_counts"]["recorrente"] == 1
+    assert result["profile_counts"]["hibrido"] == 1
+    assert result["profile_counts"]["caotico"] == 1
     assert all("score_ml" in game for game in result["games"])
 
 
@@ -97,6 +101,19 @@ def test_score_ml_calibration_rejects_temporal_leakage() -> None:
         assert "leaks future information" in str(exc)
     else:
         raise AssertionError("calibration must reject leaked rows")
+
+
+def test_old_snapshot_is_migrated_to_recalibrated_model() -> None:
+    migrated = migrate_score_ml_snapshot(
+        {
+            "model_version": "score-ml-linear-baseline-v0.1.0",
+            "feature_schema_version": "score-ml-features-v0.1.0",
+        }
+    )
+
+    assert migrated["model_version"] == "historical_recalibrated_v2"
+    assert migrated["calibration"]["version"] == "historical_recalibrated_v2"
+    assert migrated["fallback_used"] is False
 
 
 def test_benchmark_remains_statistical_without_score_ml_fields(tmp_path) -> None:

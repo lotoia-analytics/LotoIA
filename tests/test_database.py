@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 from sqlalchemy import inspect
 
@@ -93,14 +94,22 @@ def test_create_database_schema(tmp_path: Path) -> None:
     create_database(db_path)
 
     inspector = inspect(get_engine(db_path))
-    assert set(inspector.get_table_names()) == {
+    assert {
         "benchmark_runs",
         "backtest_runs",
         "calibration_runs",
         "check_events",
+        "generated_games",
         "generation_events",
+        "imported_contests",
         "leads",
-    }
+        "reconciliation_games",
+        "reconciliation_runs",
+    } <= set(inspector.get_table_names())
+    imported_columns = {column["name"] for column in inspector.get_columns("imported_contests")}
+    assert {"contest_number", "created_at", "data", "dezenas", "metadata_json"} <= imported_columns
+    generated_columns = {column["name"] for column in inspector.get_columns("generated_games")}
+    assert {"generation_event_id", "lead_id", "target_contest", "origin", "generation_mode", "context_json"} <= generated_columns
     check_fks = inspector.get_foreign_keys("check_events")
     generation_fks = inspector.get_foreign_keys("generation_events")
     assert any(fk["referred_table"] == "leads" for fk in check_fks)
@@ -112,6 +121,63 @@ def test_create_database_schema(tmp_path: Path) -> None:
     assert {"ix_leads_created_at", "ix_leads_whatsapp", "ix_leads_source"} <= lead_indexes
     assert {"ix_generation_events_created_at", "ix_generation_events_lead_id"} <= generation_indexes
     assert {"ix_check_events_created_at", "ix_check_events_lead_id"} <= check_indexes
+
+
+def test_get_engine_reuses_engine_for_same_database_url(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+
+    assert get_engine(db_path) is get_engine(db_path)
+
+
+def test_create_database_migrates_lead_runtime_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy_lotoia.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                whatsapp TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.commit()
+
+    create_database(db_path)
+
+    inspector = inspect(get_engine(db_path))
+    lead_columns = {column["name"] for column in inspector.get_columns("leads")}
+    assert {"source", "ip_hash", "user_agent"} <= lead_columns
+
+
+def test_create_database_migrates_generation_event_payload_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy_generation_events.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE generation_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id INTEGER,
+                first_name TEXT NOT NULL DEFAULT '',
+                whatsapp TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                context_json JSON NOT NULL DEFAULT '{}',
+                ml_enabled INTEGER NOT NULL,
+                seed INTEGER NOT NULL,
+                strategy TEXT NOT NULL,
+                ranking_score REAL NOT NULL,
+                execution_time_ms REAL NOT NULL
+            )
+            """
+        )
+        connection.commit()
+
+    create_database(db_path)
+
+    inspector = inspect(get_engine(db_path))
+    generation_columns = {column["name"] for column in inspector.get_columns("generation_events")}
+    assert {"lead_id", "first_name", "whatsapp", "generated_games", "context_json"} <= generation_columns
 
 
 def test_save_and_read_backtest_run(tmp_path: Path) -> None:

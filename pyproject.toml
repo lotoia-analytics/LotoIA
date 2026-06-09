@@ -11,3 +11,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+lotoia = "lotoia.__main__:main"

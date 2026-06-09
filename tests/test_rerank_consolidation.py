@@ -56,7 +56,7 @@ def test_rerank_games_attaches_incremental_score_ml_when_enabled() -> None:
     assert result is games
     assert result[0]["ml_enabled"] is True
     assert 0 <= result[0]["score_ml"] <= 100
-    assert result[0]["score_ml_details"]["model_version"] == "score-ml-linear-baseline-v0.1.0"
+    assert result[0]["score_ml_details"]["model_version"] == "historical_recalibrated_v2"
 
 
 def test_generate_best_games_ml_enabled_does_not_change_ranking(monkeypatch) -> None:

@@ -143,6 +143,26 @@ def test_backtest_is_stable_with_seed() -> None:
     assert first_result.to_dict() == second_result.to_dict()
 
 
+def test_backtest_degrades_when_candidate_pool_is_too_strict() -> None:
+    draws = [
+        make_draw(contest, list(range(1 + (contest % 5), 16 + (contest % 5))))
+        for contest in range(1, 5)
+    ]
+
+    result = run_backtest(
+        draws=draws,
+        contests_analyzed=[4],
+        games_count=2,
+        pool_size=2,
+        history_window=2,
+        seed=42,
+        persist=False,
+    )
+
+    assert result.total_games >= 2
+    assert result.contests_analyzed == 1
+
+
 def test_backtest_uses_explicit_score_weights() -> None:
     draws = [
         make_draw(contest, list(range(1 + (contest % 5), 16 + (contest % 5))))
@@ -194,3 +214,31 @@ def test_backtest_validates_explicit_score_weights() -> None:
 def test_backtest_validates_parameters() -> None:
     with pytest.raises(ValueError, match="maior que zero"):
         run_backtest(draws=[], games_count=0, persist=False)
+
+
+def test_backtest_emits_generation_trace(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    draws = [
+        make_draw(1, list(range(1, 16))),
+        make_draw(2, list(range(2, 17))),
+    ]
+
+    def provider(history, target, games_count, pool_size, seed):
+        return [list(range(1, 16)), list(range(2, 17))]
+
+    result = run_backtest(
+        draws=draws,
+        contests_analyzed=[2],
+        games_count=1,
+        pool_size=2,
+        history_window=None,
+        candidate_provider=provider,
+        persist=False,
+    )
+
+    trace_dir = tmp_path / "reports" / "snapshots" / "generation_pipeline"
+    trace_files = sorted(trace_dir.glob("*.json"))
+
+    assert result.total_games == 1
+    assert trace_files
+    assert any("backtest_final_output" in path.name for path in trace_files)

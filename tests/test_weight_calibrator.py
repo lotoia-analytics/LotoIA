@@ -116,7 +116,7 @@ def test_evaluate_weight_configuration_returns_metrics() -> None:
     )
 
     assert result["average_hits"] >= 0
-    assert set(result["hit_distribution"]) == {"11", "12", "13", "14", "15"}
+    assert set(result["hit_distribution"]) == {"8", "9", "10", "11", "12", "13", "14", "15"}
     assert -1 <= result["final_score_hit_correlation"] <= 1
     assert "average_best_game_final_score" in result
     assert "hit_standard_deviation" in result

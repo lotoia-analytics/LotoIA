@@ -6,6 +6,7 @@ ensure_src_layout()
 
 from lotoia.config import settings  # noqa: E402
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv  # noqa: E402
+from lotoia.database.database import DEFAULT_DATABASE_PATH  # noqa: E402
 from lotoia.generator.basic_generator import (  # noqa: E402
     generate_best_games,
     generate_filtered_game,
@@ -89,6 +90,7 @@ def public_generate(payload: PublicGenerationRequest, request: Request) -> dict[
     try:
         return generate_public_games(
             payload,
+            db_path=DEFAULT_DATABASE_PATH,
             ip_address=_client_host(request),
             user_agent=request.headers.get("user-agent", ""),
             source="public_api",
@@ -106,6 +108,7 @@ def public_check(payload: PublicCheckRequest, request: Request) -> dict[str, obj
     try:
         return check_public_contest(
             payload,
+            db_path=DEFAULT_DATABASE_PATH,
             ip_address=_client_host(request),
             user_agent=request.headers.get("user-agent", ""),
             source="public_api",

@@ -1,20 +1,14 @@
-# C:\Projetos\LotoIA\dashboard\labels.py
-PAGES = [
-    "geracao_jogos",
-    "estatisticas_historicas",
-    "backtesting",
-    "calibracao_experimental",
-    "benchmark_cientifico",
-    "historico_experimental",
-    "relatorios",
-]
+from __future__ import annotations
 
-LABELS = {
-    "geracao_jogos": "Criar jogos",
-    "estatisticas_historicas": "Resultados passados",
-    "backtesting": "Testar estratégia",
-    "calibracao_experimental": "Ajustar estratégia",
-    "benchmark_cientifico": "Comparar métodos",
-    "historico_experimental": "Meus testes",
-    "relatorios": "Relatórios",
+from lotoia.governance import build_scientific_nuclei_registry
+
+_REGISTRY = build_scientific_nuclei_registry()
+
+PAGES = list(_REGISTRY.page_ids)
+LABELS = dict(_REGISTRY.page_labels)
+PAGE_AUDIT_MATRIX = dict(_REGISTRY.page_audit_matrix)
+PAGE_GROUPS = {
+    mode: [section.as_dict() for section in sections]
+    for mode, sections in _REGISTRY.mode_sections.items()
 }
+

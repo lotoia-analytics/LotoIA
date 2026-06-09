@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: lotoia-admin
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m streamlit run dashboard/institutional_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --browser.gatherUsageStats false
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: LOTOIA_LIGHTWEIGHT_ADMIN_RUNTIME
+        value: "1"
+      - key: LOTOIA_AUTO_SYNC_RESULTS_ON_STARTUP
+        value: "0"
+      - key: LOTOIA_RUNTIME_AUDIT
+        value: "0"
+      - key: LOTOIA_BOOTSTRAP_SCHEMA_ON_STARTUP
+        value: "0"
