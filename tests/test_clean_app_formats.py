@@ -170,8 +170,11 @@ def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -
     primary_df = build_institutional_matrix_primary_view(rows)
 
     assert list(primary_df.columns) == list(INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values())
+    assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["nucleo_a_dezenas"] == "Núcleo Operacional GP"
+    assert "Núcleo Lei 15" not in INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values()
     assert "Célula matriz" not in primary_df.columns
     assert primary_df.iloc[0]["Cartão final"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert primary_df.iloc[0]["Núcleo Operacional GP"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
     assert bool(primary_df.iloc[0]["Sincronizado"]) is True
 
 
