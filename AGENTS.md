@@ -13,6 +13,9 @@ The system prioritizes:
 
 Machine Learning is auxiliary and incremental.
 
+Official ML assistive policy: `docs/governance/POLITICA_ML_ASSISTIVO.md`
+(ADR-042 / ADR 009). Status: `POLITICA_ML_ASSISTIVO_FORMALIZADA`.
+
 ---
 
 ## Mandatory Principles
