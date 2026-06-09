@@ -9258,58 +9258,51 @@ def build_institutional_matrix_rows(
             else list(final_card)
         )
         audited_final_card = list(superior_final_card)
-        operational_nucleus = _lei15a_frozen_nucleus()
-        reservas_prioritarias = set(RESERVAS_LEI15A_PRIORITARIAS)
-        registration = build_lei15A_registration_card(dezenas_por_jogo)
+        generation_core = _extract_int_numbers(
+            game.get("core_numbers")
+            or game.get("numbers")
+            or audited_final_card[:15]
+        )
+        if not generation_core and audited_final_card:
+            generation_core = list(audited_final_card[:15])
 
-        if registration.get("operational"):
-            operational_final_card = list(registration["registration_card"])
-            auditadas_escolhidas = list(registration["reserves_used"])
-            vigilantes_escolhidas = [reserve for reserve in auditadas_escolhidas if reserve in reservas_prioritarias]
-            synchronized_with_final_card = len(operational_final_card) == dezenas_por_jogo
-            sync_status = (
-                "SINCRONIZADO_COM_CARTAO_FINAL"
-                if synchronized_with_final_card
-                else "SINCRONIZACAO_FALHOU"
-            )
-        else:
-            operational_final_card = []
-            auditadas_escolhidas = []
-            vigilantes_escolhidas = []
-            synchronized_with_final_card = False
-            sync_status = "PENDENTE_LEI15A"
+        operational_nucleus = list(generation_core)
+        operational_final_card = list(audited_final_card)
+        auditadas_escolhidas = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        if dezenas_por_jogo > 15 and not auditadas_escolhidas:
+            auditadas_escolhidas = sorted(set(operational_final_card) - set(operational_nucleus))
+        vigilantes_escolhidas = list(auditadas_escolhidas)
+
+        synchronized_with_final_card = (
+            final_card == superior_final_card
+            and operational_final_card == superior_final_card
+        )
+        sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
 
         referencias_j12_j34 = sorted(set(operational_final_card).intersection(j12.union(j34)))
         vigilancia_j71 = sorted(set(operational_final_card).intersection(j71))
 
-        if not registration.get("operational"):
-            structural_status = "PENDENTE_LEI15A"
+        if synchronized_with_final_card:
             leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; registro operacional Lei 15A "
-                f"pendente para {dezenas_por_jogo}D — status: pendente Lei 15A; "
-                "faixa superior permanece na geração Lei 15."
-            )
-        elif dezenas_por_jogo <= 15:
-            leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; registro operacional da aposta "
-                "com cartão Lei 15A = núcleo congelado; faixa superior permanece na geração Lei 15."
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; leitura operacional Lei 15A "
+                "sincronizada com o cartão final gerado pela Lei 15; núcleo, auditadas e vigilantes "
+                "espelham a saída superior."
             )
         else:
             leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; cartão de registro Lei 15A montado "
-                f"({dezenas_por_jogo - 15} reserva(s) prioritária(s)); núcleo operacional GP congelado; "
-                "auditadas = reservas Lei 15A usadas no formato; faixa superior permanece na geração Lei 15."
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; SINCRONIZACAO_FALHOU: "
+                f"cartão_final superior={_format_numbers_for_history(superior_final_card) or '-'} "
+                f"diverge do cartão interno={_format_numbers_for_history(final_card) or '-'}."
             )
 
-        if registration.get("operational"):
-            if referencias_j12_j34 and vigilancia_j71:
-                structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
-            elif referencias_j12_j34:
-                structural_status = "NUCLEO_A_COM_REFERENCIA_AUDITADA"
-            elif vigilancia_j71:
-                structural_status = "NUCLEO_A_COM_VIGILANCIA"
-            else:
-                structural_status = "NUCLEO_A"
+        if referencias_j12_j34 and vigilancia_j71:
+            structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
+        elif referencias_j12_j34:
+            structural_status = "NUCLEO_A_COM_REFERENCIA_AUDITADA"
+        elif vigilancia_j71:
+            structural_status = "NUCLEO_A_COM_VIGILANCIA"
+        else:
+            structural_status = "NUCLEO_A"
         rows.append(
             {
                 "jogo": int(game.get("jogo", index) or index),
@@ -9323,7 +9316,7 @@ def build_institutional_matrix_rows(
                 "vigilantes_escolhidas": _format_numbers_for_history(vigilantes_escolhidas) or "-",
                 "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
                 "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
-                "lei15_aplicada": bool(len(operational_nucleus) == 15),
+                "lei15_aplicada": bool(len(operational_nucleus) == 15 and len(operational_final_card) >= 15),
                 "sincronizado_com_cartao_final": bool(synchronized_with_final_card),
                 "status_institucional": sync_status,
                 "status_estrutural_anterior": structural_status,
@@ -9417,18 +9410,25 @@ def _render_institutional_matrix_reading_section(
     for row_index, row in enumerate(institutional_rows):
         superior_label = games_table_rows[row_index]["cartão_final"]
         inferior_label = str(row.get("cartao_final_lido", "-") or "-")
-        row_format = int(str(row.get("formato_d", f"{card_format}D")).replace("D", "") or card_format)
-        if row_format in LEI15A_REGISTRATION_PENDING_FORMATS:
-            synchronized = False
-        elif row_format <= LEI15A_REGISTRATION_MAX_FORMAT:
-            synchronized = inferior_label == _lei15a_registration_card_label(row_format)
-        else:
-            synchronized = superior_label == inferior_label
+        superior_reserves = str(games_table_rows[row_index].get("reservas_auditadas", "-") or "-")
+        inferior_auditadas = str(row.get("auditadas_escolhidas", "-") or "-")
+        inferior_reserves = (
+            " ".join(part.lstrip("+") for part in superior_reserves.split())
+            if superior_reserves != "-"
+            else "-"
+        )
+        synchronized = superior_label == inferior_label and (
+            inferior_auditadas == inferior_reserves
+            if superior_reserves != "-"
+            else inferior_auditadas == "-"
+        )
         sync_checks.append(
             {
                 "jogo": row_index + 1,
                 "cartao_final_superior": superior_label,
                 "cartao_final_lido": inferior_label,
+                "reservas_auditadas_superior": superior_reserves,
+                "auditadas_inferior": inferior_auditadas,
                 "sincronizado": synchronized,
             }
         )
@@ -9443,8 +9443,8 @@ def _render_institutional_matrix_reading_section(
 
     st.subheader("Leitura operacional da matriz GP")
     st.write(
-        "Esta leitura mostra como cada jogo foi montado pela Lei 15A: "
-        "núcleo operacional GP, auditadas, vigilantes e cartão final."
+        "Esta leitura operacional Lei 15A audita e sincroniza cada jogo gerado pela Lei 15: "
+        "núcleo operacional GP, auditadas, vigilantes e cartão final espelham a faixa superior."
     )
     concept_cols = st.columns(2)
     with concept_cols[0]:
@@ -9462,11 +9462,9 @@ def _render_institutional_matrix_reading_section(
     summary_cols[4].metric("Status geral", str(summary["overall_status"]))
 
     if summary["all_synchronized"]:
-        st.success("Leitura operacional GP sincronizada com o cartão de registro Lei 15A.")
-    elif int(card_format or 15) in LEI15A_REGISTRATION_PENDING_FORMATS:
-        st.warning("Registro operacional Lei 15A pendente para este formato (21D–23D observacional).")
+        st.success("Leitura operacional Lei 15A sincronizada com os cartões finais gerados pela Lei 15.")
     else:
-        st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão Lei 15A esperado.")
+        st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão_final superior.")
         st.json(summary["sync_failures"])
 
     st.dataframe(primary_df, hide_index=True, use_container_width=True)
