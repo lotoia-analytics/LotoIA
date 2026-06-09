@@ -13,6 +13,9 @@ The system prioritizes:
 
 Machine Learning is auxiliary and incremental.
 
+Official ML assistive policy: `docs/governance/POLITICA_ML_ASSISTIVO.md`
+(ADR-042 / ADR 009). Status: `POLITICA_ML_ASSISTIVO_FORMALIZADA`.
+
 ---
 
 ## Mandatory Principles
@@ -52,3 +55,16 @@ LotoIA is a scientific statistical platform focused on:
 - probabilistic ranking,
 - hybrid statistical analysis,
 - incremental supervised assistance.
+
+---
+
+## ML Assistive Policy (mandatory)
+
+1. ML must not replace Law 15 or sovereign generation rules.
+2. ML must not mutate sovereign rules automatically.
+3. ML must not produce games without traceability.
+4. ML must not act as the central predictive engine.
+5. ML may assist ranking, analysis, clustering, diagnostics, and validation only.
+6. Every ML contribution must be explainable, testable, reversible, and auditable.
+7. Every ML evolution must pass temporal validation.
+8. No model may be promoted to an institutional component without a comparative report.
