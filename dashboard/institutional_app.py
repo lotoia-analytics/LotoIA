@@ -123,40 +123,40 @@ INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_COLUMNS = (
     "jogo",
     "formato_d",
+    "nucleo_a_dezenas",
+    "referencias_auditadas_j12_j34",
+    "vigilancia_j71",
     "cartao_final_lido",
-    "lei15_aplicada",
     "sincronizado_com_cartao_final",
-    "status_institucional",
-    "leitura_institucional",
 )
 INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
     "jogo",
     "celula_matriz",
     "escala_top",
     "cartao_final_assinatura",
-    "nucleo_a_dezenas",
-    "referencias_auditadas_j12_j34",
-    "vigilancia_j71",
+    "lei15_aplicada",
+    "status_institucional",
     "status_estrutural_anterior",
+    "leitura_institucional",
 )
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "cartao_final_lido": "Cartão final lido",
-    "lei15_aplicada": "Lei 15 aplicada",
+    "nucleo_a_dezenas": "Núcleo Lei 15",
+    "referencias_auditadas_j12_j34": "Auditadas",
+    "vigilancia_j71": "Vigilantes",
+    "cartao_final_lido": "Cartão final",
     "sincronizado_com_cartao_final": "Sincronizado",
-    "status_institucional": "Status",
-    "leitura_institucional": "Leitura institucional",
 }
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
     "escala_top": "Escala top",
     "cartao_final_assinatura": "Assinatura do cartão final",
-    "nucleo_a_dezenas": "Núcleo A (dezenas)",
-    "referencias_auditadas_j12_j34": "Referências auditadas J12/J34",
-    "vigilancia_j71": "Vigilância J71",
+    "lei15_aplicada": "Lei 15 aplicada",
+    "status_institucional": "Status institucional",
     "status_estrutural_anterior": "Status estrutural",
+    "leitura_institucional": "Leitura institucional",
 }
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
@@ -9356,7 +9356,7 @@ def _render_institutional_matrix_reading_section(
 
     st.subheader("Leitura institucional da matriz")
     st.write(
-        "Esta leitura valida se cada cartão final exibido acima foi auditado pela matriz institucional."
+        "Esta leitura mostra como cada jogo foi montado: núcleo, auditadas, vigilantes e cartão final."
     )
 
     summary_cols = st.columns(5)
@@ -9374,7 +9374,7 @@ def _render_institutional_matrix_reading_section(
 
     st.dataframe(primary_df, hide_index=True, use_container_width=True)
 
-    with st.expander("Detalhes técnicos da matriz", expanded=False):
+    with st.expander("Detalhes técnicos da auditoria", expanded=False):
         st.dataframe(technical_df, hide_index=True, use_container_width=True)
 
     first_row = institutional_rows[0]
