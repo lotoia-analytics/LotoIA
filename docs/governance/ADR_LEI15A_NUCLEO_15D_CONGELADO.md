@@ -47,6 +47,9 @@ Com camadas operacionais:
 
 Documento normativo associado: `docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md`.
 
+O núcleo congelado é insumo obrigatório da **montagem do cartão de registro da aposta**
+Lei 15A — ver `docs/governance/ADR_LEI15A_CARTAO_REGISTRO_APOSTA.md`.
+
 ---
 
 ## Limites explícitos
@@ -95,6 +98,7 @@ Esta ADR é **registro institucional**, não change request de runtime:
 ## Referências
 
 - `docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md`
+- `docs/governance/ADR_LEI15A_CARTAO_REGISTRO_APOSTA.md`
 - `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - `AGENTS.md` — posicionamento LotoIA (plataforma estatística estrutural)
 - ADR-032 — Operational Scientific Audit Baseline
@@ -107,3 +111,4 @@ Esta ADR é **registro institucional**, não change request de runtime:
 | Data | Autor / agente | Nota |
 |------|----------------|------|
 | 2026-06-09 | Cloud agent | Congelamento pós-auditoria GP50–GP10 |
+| 2026-06-09 | Cloud agent | Referência cruzada — política cartão de registro Lei 15A |
