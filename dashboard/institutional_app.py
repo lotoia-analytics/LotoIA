@@ -144,7 +144,7 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Lei 15",
+    "nucleo_a_dezenas": "Núcleo Operacional GP",
     "auditadas_escolhidas": "Auditadas",
     "vigilantes_escolhidas": "Vigilantes",
     "cartao_final_lido": "Cartão final",
@@ -9369,10 +9369,18 @@ def _render_institutional_matrix_reading_section(
     primary_df = build_institutional_matrix_primary_view(institutional_rows)
     technical_df = build_institutional_matrix_technical_view(institutional_rows)
 
-    st.subheader("Leitura institucional da matriz")
+    st.subheader("Leitura operacional da matriz GP")
     st.write(
-        "Esta leitura mostra como cada jogo foi montado: núcleo, auditadas, vigilantes e cartão final."
+        "Esta leitura mostra como cada jogo foi montado pela Lei 15A: "
+        "núcleo operacional GP, auditadas, vigilantes e cartão final."
     )
+    concept_cols = st.columns(2)
+    with concept_cols[0]:
+        st.info("Lei 15 = governança soberana")
+        st.info("15D nasce do núcleo operacional GP")
+    with concept_cols[1]:
+        st.info("Lei 15A = operação GP 10/20/30/50")
+        st.info("16D–23D = núcleo operacional GP + reservas auditadas")
 
     summary_cols = st.columns(5)
     summary_cols[0].metric("Jogos lidos", int(summary["total_games"]))
@@ -9382,9 +9390,9 @@ def _render_institutional_matrix_reading_section(
     summary_cols[4].metric("Status geral", str(summary["overall_status"]))
 
     if summary["all_synchronized"]:
-        st.success("Leitura institucional sincronizada com o cartão final.")
+        st.success("Leitura operacional GP sincronizada com o cartão final.")
     else:
-        st.error("SINCRONIZACAO_FALHOU: a leitura institucional inferior diverge do cartão_final superior.")
+        st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão_final superior.")
         st.json(summary["sync_failures"])
 
     st.dataframe(primary_df, hide_index=True, use_container_width=True)
