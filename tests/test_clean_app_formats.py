@@ -1,7 +1,15 @@
 import pytest
 
 from dashboard.clean_core import _expand_official_card, _expand_generation_games_for_format
-from dashboard.institutional_app import build_institutional_matrix_rows, infer_matrix_cell
+from dashboard.institutional_app import (
+    INSTITUTIONAL_MATRIX_PRIMARY_LABELS,
+    INSTITUTIONAL_MATRIX_TECHNICAL_LABELS,
+    build_institutional_matrix_primary_view,
+    build_institutional_matrix_rows,
+    build_institutional_matrix_technical_view,
+    infer_matrix_cell,
+    summarize_institutional_matrix_reading,
+)
 
 
 def test_expand_official_card_15_keeps_core() -> None:
@@ -148,6 +156,72 @@ def test_build_institutional_matrix_rows_syncs_20_rows_with_upper_final_cards() 
     assert all(row["cartao_final_lido"] == " ".join(f"{number:02d}" for number in superior_cards[index]) for index, row in enumerate(rows))
     assert all(row["sincronizado_com_cartao_final"] is True for row in rows)
     assert all(row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL" for row in rows)
+
+
+def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -> None:
+    final_card = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    rows = build_institutional_matrix_rows(
+        [{"jogo": 1, "numbers": final_card, "final_card_numbers": final_card}],
+        15,
+        10,
+        superior_final_cards=[final_card],
+    )
+
+    primary_df = build_institutional_matrix_primary_view(rows)
+
+    assert list(primary_df.columns) == list(INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values())
+    assert "Célula matriz" not in primary_df.columns
+    assert primary_df.iloc[0]["Cartão final lido"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert bool(primary_df.iloc[0]["Sincronizado"]) is True
+
+
+def test_institutional_matrix_technical_view_preserves_full_trace() -> None:
+    final_card = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    rows = build_institutional_matrix_rows(
+        [{"jogo": 1, "numbers": final_card, "final_card_numbers": final_card}],
+        15,
+        10,
+        superior_final_cards=[final_card],
+    )
+
+    technical_df = build_institutional_matrix_technical_view(rows)
+
+    assert list(technical_df.columns) == list(INSTITUTIONAL_MATRIX_TECHNICAL_LABELS.values())
+    assert technical_df.iloc[0]["Assinatura do cartão final"] == "01-03-05-07-08-09-10-14-15-17-21-22-23-24-25"
+    assert technical_df.iloc[0]["Célula matriz"] == "15D Top 10"
+
+
+def test_institutional_matrix_summary_reports_synchronized_17d_batch() -> None:
+    games = []
+    superior_cards = []
+    for index in range(10):
+        core = sorted((((number + index - 1) % 25) + 1) for number in range(1, 16))
+        _, _, expanded = _expand_official_card(core, 17, game_index=index + 1)
+        games.append({"jogo": index + 1, "numbers": core, "final_card_numbers": expanded})
+        superior_cards.append(expanded)
+
+    rows = build_institutional_matrix_rows(games, 17, 10, superior_final_cards=superior_cards)
+    sync_checks = [
+        {
+            "jogo": index + 1,
+            "cartao_final_superior": " ".join(f"{number:02d}" for number in superior_cards[index]),
+            "cartao_final_lido": row["cartao_final_lido"],
+            "sincronizado": row["cartao_final_lido"]
+            == " ".join(f"{number:02d}" for number in superior_cards[index]),
+        }
+        for index, row in enumerate(rows)
+    ]
+
+    summary = summarize_institutional_matrix_reading(rows, sync_checks=sync_checks, card_format=17)
+
+    assert summary["total_games"] == 10
+    assert summary["synchronized_count"] == 10
+    assert summary["failure_count"] == 0
+    assert summary["card_format"] == 17
+    assert summary["overall_status"] == "LEITURA SINCRONIZADA"
+    assert summary["institutional_caption_status"] == (
+        "LEITURA_INSTITUCIONAL_PADRONIZADA_E_SINCRONIZADA_COM_CARTAO_FINAL"
+    )
 
 
 @pytest.mark.parametrize(

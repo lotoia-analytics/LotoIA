@@ -20,7 +20,7 @@ from collections import Counter
 from functools import lru_cache
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -120,6 +120,44 @@ INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS = (
     "status_estrutural_anterior",
     "leitura_institucional",
 )
+INSTITUTIONAL_MATRIX_PRIMARY_COLUMNS = (
+    "jogo",
+    "formato_d",
+    "cartao_final_lido",
+    "lei15_aplicada",
+    "sincronizado_com_cartao_final",
+    "status_institucional",
+    "leitura_institucional",
+)
+INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
+    "jogo",
+    "celula_matriz",
+    "escala_top",
+    "cartao_final_assinatura",
+    "nucleo_a_dezenas",
+    "referencias_auditadas_j12_j34",
+    "vigilancia_j71",
+    "status_estrutural_anterior",
+)
+INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
+    "jogo": "Jogo",
+    "formato_d": "Formato",
+    "cartao_final_lido": "Cartão final lido",
+    "lei15_aplicada": "Lei 15 aplicada",
+    "sincronizado_com_cartao_final": "Sincronizado",
+    "status_institucional": "Status",
+    "leitura_institucional": "Leitura institucional",
+}
+INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
+    "jogo": "Jogo",
+    "celula_matriz": "Célula matriz",
+    "escala_top": "Escala top",
+    "cartao_final_assinatura": "Assinatura do cartão final",
+    "nucleo_a_dezenas": "Núcleo A (dezenas)",
+    "referencias_auditadas_j12_j34": "Referências auditadas J12/J34",
+    "vigilancia_j71": "Vigilância J71",
+    "status_estrutural_anterior": "Status estrutural",
+}
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
     "monitoring_role": "OBSERVER_REGISTRY",
@@ -9215,6 +9253,143 @@ def build_institutional_matrix_rows(
     return rows
 
 
+def build_institutional_matrix_full_dataframe(
+    institutional_rows: Sequence[dict[str, Any]],
+) -> pd.DataFrame:
+    """Monta o dataframe completo da leitura institucional sem alterar os dados calculados."""
+    if not institutional_rows:
+        return pd.DataFrame()
+    available_columns = [
+        column
+        for column in INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS
+        if column in institutional_rows[0]
+    ]
+    return pd.DataFrame(institutional_rows)[available_columns]
+
+
+def build_institutional_matrix_primary_view(
+    institutional_rows: Sequence[dict[str, Any]],
+) -> pd.DataFrame:
+    """Visao principal limpa para auditoria humana da leitura institucional."""
+    full_df = build_institutional_matrix_full_dataframe(institutional_rows)
+    if full_df.empty:
+        return full_df
+    primary_columns = [
+        column for column in INSTITUTIONAL_MATRIX_PRIMARY_COLUMNS if column in full_df.columns
+    ]
+    return full_df[primary_columns].rename(columns=INSTITUTIONAL_MATRIX_PRIMARY_LABELS)
+
+
+def build_institutional_matrix_technical_view(
+    institutional_rows: Sequence[dict[str, Any]],
+) -> pd.DataFrame:
+    """Camada tecnica completa preservada para expander de detalhes."""
+    full_df = build_institutional_matrix_full_dataframe(institutional_rows)
+    if full_df.empty:
+        return full_df
+    technical_columns = [
+        column for column in INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS if column in full_df.columns
+    ]
+    return full_df[technical_columns].rename(columns=INSTITUTIONAL_MATRIX_TECHNICAL_LABELS)
+
+
+def summarize_institutional_matrix_reading(
+    institutional_rows: Sequence[dict[str, Any]],
+    *,
+    sync_checks: Sequence[dict[str, Any]],
+    card_format: int,
+) -> dict[str, Any]:
+    """Resume a leitura institucional para exibicao acima da tabela principal."""
+    total_games = len(institutional_rows)
+    sync_failures = [check for check in sync_checks if not check.get("sincronizado")]
+    synchronized_count = total_games - len(sync_failures)
+    all_synchronized = total_games > 0 and not sync_failures and all(
+        bool(row.get("sincronizado_com_cartao_final")) for row in institutional_rows
+    )
+    return {
+        "total_games": total_games,
+        "synchronized_count": synchronized_count,
+        "failure_count": len(sync_failures),
+        "card_format": int(card_format or 15),
+        "overall_status": (
+            "LEITURA SINCRONIZADA"
+            if all_synchronized
+            else "SINCRONIZACAO_FALHOU"
+        ),
+        "institutional_caption_status": (
+            "LEITURA_INSTITUCIONAL_PADRONIZADA_E_SINCRONIZADA_COM_CARTAO_FINAL"
+            if all_synchronized
+            else "SINCRONIZACAO_FALHOU"
+        ),
+        "all_synchronized": all_synchronized,
+        "sync_failures": sync_failures,
+    }
+
+
+def _render_institutional_matrix_reading_section(
+    *,
+    institutional_rows: Sequence[dict[str, Any]],
+    games_table_rows: Sequence[dict[str, Any]],
+    card_format: int,
+) -> None:
+    """Renderiza a leitura institucional padronizada com visao limpa e detalhes tecnicos."""
+    sync_checks: list[dict[str, Any]] = []
+    for row_index, row in enumerate(institutional_rows):
+        superior_label = games_table_rows[row_index]["cartão_final"]
+        inferior_label = str(row.get("cartao_final_lido", "-") or "-")
+        sync_checks.append(
+            {
+                "jogo": row_index + 1,
+                "cartao_final_superior": superior_label,
+                "cartao_final_lido": inferior_label,
+                "sincronizado": superior_label == inferior_label,
+            }
+        )
+
+    summary = summarize_institutional_matrix_reading(
+        institutional_rows,
+        sync_checks=sync_checks,
+        card_format=card_format,
+    )
+    primary_df = build_institutional_matrix_primary_view(institutional_rows)
+    technical_df = build_institutional_matrix_technical_view(institutional_rows)
+
+    st.subheader("Leitura institucional da matriz")
+    st.write(
+        "Esta leitura valida se cada cartão final exibido acima foi auditado pela matriz institucional."
+    )
+
+    summary_cols = st.columns(5)
+    summary_cols[0].metric("Jogos lidos", int(summary["total_games"]))
+    summary_cols[1].metric("Sincronizados", int(summary["synchronized_count"]))
+    summary_cols[2].metric("Falhas", int(summary["failure_count"]))
+    summary_cols[3].metric("Formato do cartão", f"{int(summary['card_format'])}D")
+    summary_cols[4].metric("Status geral", str(summary["overall_status"]))
+
+    if summary["all_synchronized"]:
+        st.success("Leitura institucional sincronizada com o cartão final.")
+    else:
+        st.error("SINCRONIZACAO_FALHOU: a leitura institucional inferior diverge do cartão_final superior.")
+        st.json(summary["sync_failures"])
+
+    st.dataframe(primary_df, hide_index=True, use_container_width=True)
+
+    with st.expander("Detalhes técnicos da matriz", expanded=False):
+        st.dataframe(technical_df, hide_index=True, use_container_width=True)
+
+    first_row = institutional_rows[0]
+    st.caption(
+        f"celula_matriz={first_row['celula_matriz']} | "
+        f"formato_d={first_row['formato_d']} | "
+        f"escala_top={first_row['escala_top']} | "
+        f"sincronizados={summary['synchronized_count']}/{summary['total_games']} | "
+        "fonte_cartao_final=superior_jogos_gerados | "
+        "leitura_institucional_ativa=true | "
+        f"status={summary['institutional_caption_status']} | "
+        "legado=LEITURA_INSTITUCIONAL_SINCRONIZADA_COM_CARTAO_FINAL_LEI15"
+    )
+
+
 def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
@@ -10728,40 +10903,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 superior_final_cards=cartoes_finais_superiores,
             )
             if institutional_rows:
-                sync_checks: list[dict[str, Any]] = []
-                for row_index, row in enumerate(institutional_rows):
-                    superior_label = games_table_rows[row_index]["cartão_final"]
-                    inferior_label = str(row.get("cartao_final_lido", "-") or "-")
-                    sync_checks.append(
-                        {
-                            "jogo": row_index + 1,
-                            "cartao_final_superior": superior_label,
-                            "cartao_final_lido": inferior_label,
-                            "sincronizado": superior_label == inferior_label,
-                        }
-                    )
-                institutional_df = pd.DataFrame(institutional_rows)[
-                    [column for column in INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS if column in institutional_rows[0]]
-                ]
-                st.subheader("Leitura institucional da matriz")
-                st.caption(
-                    "Esta tabela não altera o cartão técnico. Ela lê o mesmo cartão_final exibido acima e valida a sincronização linha a linha."
-                )
-                sync_failures = [check for check in sync_checks if not check["sincronizado"]]
-                if sync_failures or not bool(institutional_df["sincronizado_com_cartao_final"].all()):
-                    st.error("SINCRONIZACAO_FALHOU: a leitura institucional inferior diverge do cartão_final superior.")
-                    st.json(sync_failures)
-                st.dataframe(institutional_df, hide_index=True, use_container_width=True)
-                st.caption(
-                    f"celula_matriz={institutional_rows[0]['celula_matriz']} | "
-                    f"formato_d={institutional_rows[0]['formato_d']} | "
-                    f"escala_top={institutional_rows[0]['escala_top']} | "
-                    f"sincronizados={len(institutional_rows) - len(sync_failures)}/{len(institutional_rows)} | "
-                    "fonte_cartao_final=superior_jogos_gerados | "
-                    "leitura_institucional_ativa=true | "
-                    "status=LEITURA_INSTITUCIONAL_SINCRONIZADA_COM_CARTAO_FINAL_LEI15"
-                    if not sync_failures
-                    else "status=SINCRONIZACAO_FALHOU"
+                _render_institutional_matrix_reading_section(
+                    institutional_rows=institutional_rows,
+                    games_table_rows=games_table_rows,
+                    card_format=int(result.get("selected_card_format", 15) or 15),
                 )
         st.markdown("##### Rastros institucionais")
         trace_cols = st.columns(4)
