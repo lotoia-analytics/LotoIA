@@ -4,12 +4,17 @@ from dashboard.clean_core import _expand_official_card, _expand_generation_games
 from dashboard.institutional_app import (
     INSTITUTIONAL_MATRIX_PRIMARY_LABELS,
     INSTITUTIONAL_MATRIX_TECHNICAL_LABELS,
+    LEI15A_NUCLEO_15D_CONGELADO,
+    NUCLEO_LEI15A_15D_CONGELADO,
+    RESERVAS_PRIORITARIAS_LEI15A,
     build_institutional_matrix_primary_view,
     build_institutional_matrix_rows,
     build_institutional_matrix_technical_view,
     infer_matrix_cell,
     summarize_institutional_matrix_reading,
 )
+
+LEI15A_NUCLEO_FORMATTED = " ".join(f"{number:02d}" for number in LEI15A_NUCLEO_15D_CONGELADO)
 
 
 def test_expand_official_card_15_keeps_core() -> None:
@@ -72,17 +77,17 @@ def test_build_institutional_matrix_rows_marks_15d_institutional_reading() -> No
     assert row["celula_matriz"] == "15D Top 20"
     assert row["formato_d"] == "15D"
     assert row["escala_top"] == "Top 20"
-    assert row["cartao_final_lido"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
-    assert row["cartao_final_assinatura"] == "01-03-05-07-08-09-10-14-15-17-21-22-23-24-25"
-    assert row["nucleo_a_dezenas"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
-    assert row["referencias_auditadas_j12_j34"] == "01 03 05 07 08 09 10 14 15 22 23 24 25"
-    assert row["vigilancia_j71"] == "01 03 05 07 08 09 10 15 22 23 24"
+    assert row["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
+    assert row["cartao_final_assinatura"] == "01-02-03-04-09-10-11-12-13-18-20-22-23-24-25"
+    assert row["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+    assert row["referencias_auditadas_j12_j34"] == "01 02 03 09 10 11 13 18 20 22 23 24 25"
+    assert row["vigilancia_j71"] == "01 02 03 09 10 13 18 20 22 23 24"
     assert row["lei15_aplicada"] is True
     assert row["sincronizado_com_cartao_final"] is True
     assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
     assert row["status_estrutural_anterior"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
     assert "15D" in row["leitura_institucional"]
-    assert "cartão_final lido e sincronizado com a saída superior" in row["leitura_institucional"]
+    assert "núcleo Lei 15A congelado" in row["leitura_institucional"]
 
 
 def test_build_institutional_matrix_rows_marks_16d_with_institutional_refs() -> None:
@@ -121,12 +126,10 @@ def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
 
     rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=divergent_superior_card)
 
-    assert rows[0]["sincronizado_com_cartao_final"] is False
-    assert rows[0]["status_institucional"] == "SINCRONIZACAO_FALHOU"
-    assert "SINCRONIZACAO_FALHOU" in rows[0]["leitura_institucional"]
-    assert rows[0]["cartao_final_lido"] == "01 02 03 05 07 08 10 11 13 14 15 18 21 22 24"
-    assert "cartão_final superior=" in rows[0]["leitura_institucional"]
-    assert "cartão interno=" in rows[0]["leitura_institucional"]
+    assert rows[0]["sincronizado_com_cartao_final"] is True
+    assert rows[0]["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
+    assert rows[0]["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
+    assert "núcleo Lei 15A congelado" in rows[0]["leitura_institucional"]
 
 
 def test_build_institutional_matrix_rows_reads_superior_final_card_not_core_only() -> None:
@@ -137,7 +140,7 @@ def test_build_institutional_matrix_rows_reads_superior_final_card_not_core_only
     rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[expanded_final])
 
     assert rows[0]["cartao_final_lido"] == " ".join(f"{number:02d}" for number in expanded_final)
-    assert rows[0]["nucleo_a_dezenas"] == " ".join(f"{number:02d}" for number in sorted(core))
+    assert rows[0]["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
     assert rows[0]["sincronizado_com_cartao_final"] is True
 
 
@@ -153,7 +156,7 @@ def test_build_institutional_matrix_rows_syncs_20_rows_with_upper_final_cards() 
 
     assert len(rows) == 20
     assert all(row["jogo"] == index + 1 for index, row in enumerate(rows))
-    assert all(row["cartao_final_lido"] == " ".join(f"{number:02d}" for number in superior_cards[index]) for index, row in enumerate(rows))
+    assert all(row["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED for row in rows)
     assert all(row["sincronizado_com_cartao_final"] is True for row in rows)
     assert all(row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL" for row in rows)
 
@@ -173,8 +176,8 @@ def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -
     assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["nucleo_a_dezenas"] == "Núcleo Operacional GP"
     assert "Núcleo Lei 15" not in INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values()
     assert "Célula matriz" not in primary_df.columns
-    assert primary_df.iloc[0]["Cartão final"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
-    assert primary_df.iloc[0]["Núcleo Operacional GP"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert primary_df.iloc[0]["Cartão final"] == LEI15A_NUCLEO_FORMATTED
+    assert primary_df.iloc[0]["Núcleo Operacional GP"] == LEI15A_NUCLEO_FORMATTED
     assert bool(primary_df.iloc[0]["Sincronizado"]) is True
 
 
@@ -190,7 +193,7 @@ def test_institutional_matrix_technical_view_preserves_full_trace() -> None:
     technical_df = build_institutional_matrix_technical_view(rows)
 
     assert list(technical_df.columns) == list(INSTITUTIONAL_MATRIX_TECHNICAL_LABELS.values())
-    assert technical_df.iloc[0]["Assinatura do cartão final"] == "01-03-05-07-08-09-10-14-15-17-21-22-23-24-25"
+    assert technical_df.iloc[0]["Assinatura do cartão final"] == "01-02-03-04-09-10-11-12-13-18-20-22-23-24-25"
     assert technical_df.iloc[0]["Célula matriz"] == "15D Top 10"
 
 
@@ -260,15 +263,16 @@ def test_build_institutional_matrix_rows_15d_auditadas_vigilantes_empty() -> Non
     assert len(rows) == 1
     row = rows[0]
     assert row["formato_d"] == "15D"
+    assert row["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
     assert row["auditadas_escolhidas"] == "-"
     assert row["vigilantes_escolhidas"] == "-"
 
 
-def test_build_institutional_matrix_rows_17d_auditadas_has_two_dezenas() -> None:
-    """Para 17D, auditadas_escolhidas deve ter exatamente 2 dezenas"""
+def test_build_institutional_matrix_rows_17d_auditadas_equals_final_minus_lei15a_nucleo() -> None:
+    """Para 17D, auditadas_escolhidas = cartao_final - núcleo Lei 15A congelado."""
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
     _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
-    
+
     games = [
         {
             "jogo": 1,
@@ -282,14 +286,13 @@ def test_build_institutional_matrix_rows_17d_auditadas_has_two_dezenas() -> None
     assert len(rows) == 1
     row = rows[0]
     assert row["formato_d"] == "17D"
-    
-    # Converte a string de auditadas para lista de números
+    assert row["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+
     auditadas_str = row["auditadas_escolhidas"]
     auditadas_numbers = [int(x) for x in auditadas_str.split()] if auditadas_str != "-" else []
-    
-    assert len(auditadas_numbers) == 2, f"Expected 2 auditadas, got {len(auditadas_numbers)}: {auditadas_numbers}"
-    # Verifica que as dezenas de auditadas estão nos reserves
-    assert set(auditadas_numbers) == set(reserves), f"Auditadas {set(auditadas_numbers)} should equal reserves {set(reserves)}"
+    expected_auditadas = sorted(set(final_card) - set(LEI15A_NUCLEO_15D_CONGELADO))
+
+    assert auditadas_numbers == expected_auditadas
 
 
 def test_build_institutional_matrix_rows_auditadas_equals_final_minus_nucleo() -> None:
@@ -327,12 +330,10 @@ def test_build_institutional_matrix_rows_auditadas_equals_final_minus_nucleo() -
 
 
 def test_build_institutional_matrix_rows_vigilantes_escolhidas_intersection() -> None:
-    """Verifica que vigilantes_escolhidas = auditadas_escolhidas ∩ vigilancia_j71"""
-    from dashboard.institutional_app import INSTITUTIONAL_REFERENCE_J71
-    
+    """Verifica que vigilantes_escolhidas = auditadas_escolhidas ∩ reservas_prioritarias Lei 15A."""
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
     _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
-    
+
     games = [
         {
             "jogo": 1,
@@ -346,17 +347,36 @@ def test_build_institutional_matrix_rows_vigilantes_escolhidas_intersection() ->
 
     assert len(rows) == 1
     row = rows[0]
-    
-    # Converte strings para conjuntos de números
+
     auditadas_str = row["auditadas_escolhidas"]
     auditadas = set(int(x) for x in auditadas_str.split()) if auditadas_str != "-" else set()
-    
+
     vigilantes_str = row["vigilantes_escolhidas"]
     vigilantes = set(int(x) for x in vigilantes_str.split()) if vigilantes_str != "-" else set()
-    
-    j71_set = set(INSTITUTIONAL_REFERENCE_J71)
-    
-    # Verifica que vigilantes = auditadas ∩ j71
-    expected_vigilantes = auditadas.intersection(j71_set)
+
+    reservas_set = set(RESERVAS_PRIORITARIAS_LEI15A)
+
+    expected_vigilantes = auditadas.intersection(reservas_set)
     assert vigilantes == expected_vigilantes, f"Expected {expected_vigilantes}, got {vigilantes}"
+
+
+def test_lower_band_does_not_mirror_generation_core_numbers() -> None:
+    """Faixa inferior não deve espelhar core_numbers da geração quando divergem do núcleo Lei 15A."""
+    generation_core = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    generation_formatted = " ".join(f"{number:02d}" for number in generation_core)
+    games = [
+        {
+            "jogo": 1,
+            "numbers": generation_core,
+            "final_card_numbers": generation_core,
+            "core_numbers": generation_core,
+        }
+    ]
+
+    rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=[generation_core])
+
+    assert rows[0]["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+    assert rows[0]["nucleo_a_dezenas"] != generation_formatted
+    assert rows[0]["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
+    assert set(NUCLEO_LEI15A_15D_CONGELADO) == set(LEI15A_NUCLEO_15D_CONGELADO)
 
