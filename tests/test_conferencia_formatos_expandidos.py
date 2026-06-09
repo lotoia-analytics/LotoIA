@@ -48,7 +48,11 @@ def test_select_conference_numbers_uses_final_card(card_format: int, reservas: i
     assert info["dezenas_conferidas_count"] == card_format
     assert info["actual_card_size"] == card_format
     assert info["expected_card_size"] == card_format
-    assert info["origem_dezenas_conferencia"] == ("núcleo_lei_15" if card_format == 15 else "cartao_final")
+    assert info["origem_dezenas_conferencia"] == (
+        "nucleo_lei_15a_congelado" if card_format == 15 else "cartao_final"
+    )
+    if card_format == 15:
+        assert info["conference_numbers"] == sorted(admin_app.LEI15A_NUCLEO_15D_CONGELADO)
     assert len(info["conference_numbers"]) == card_format
     assert len(game["audited_reserve_numbers"]) == reservas
 

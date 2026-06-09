@@ -104,6 +104,14 @@ AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 
 INSTITUTIONAL_REFERENCE_J12 = (1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25)
 INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24, 25)
 INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
+# Lei 15A — núcleo operacional 15D congelado (docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md)
+NUCLEO_LEI15A_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
+RESERVAS_PRIORITARIAS_LEI15A = (15, 5, 7, 14, 19)
+LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
+LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_PRIORITARIAS_LEI15A
+LEI15A_VIGILANCIA = (4, 11, 12, 15)
+LEI15A_BLIND_SPOTS = (6, 16, 17, 21)
+LEI15A_MARGINAL = (8,)
 INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS = (
     "jogo",
     "celula_matriz",
@@ -4232,6 +4240,11 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
     return []
 
 
+def _lei15a_frozen_nucleus() -> list[int]:
+    """Núcleo operacional 15D congelado da Lei 15A (referência institucional)."""
+    return list(LEI15A_NUCLEO_15D_CONGELADO)
+
+
 def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], int, str]:
     """Extrai as dezenas que devem ser conferidas, priorizando o cartão final expandido."""
     if not isinstance(game, dict):
@@ -4254,6 +4267,9 @@ def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], i
     expected_card_size = int(card_format or len(final_card_numbers) or len(core_numbers) or 15)
     if expected_card_size >= 16 and final_card_numbers:
         return final_card_numbers, expected_card_size, "cartao_final"
+    frozen_nucleus = _lei15a_frozen_nucleus()
+    if expected_card_size <= 15 and frozen_nucleus:
+        return frozen_nucleus, 15, "nucleo_lei_15a_congelado"
     if core_numbers:
         return core_numbers, expected_card_size, "núcleo_lei_15"
     if final_card_numbers:
@@ -9202,29 +9218,27 @@ def build_institutional_matrix_rows(
             else list(final_card)
         )
         audited_final_card = list(superior_final_card)
-        synchronized_with_final_card = final_card == superior_final_card
+        operational_nucleus = _lei15a_frozen_nucleus()
+        reservas_prioritarias = set(RESERVAS_PRIORITARIAS_LEI15A)
+
+        if dezenas_por_jogo <= 15:
+            operational_final_card = list(operational_nucleus)
+            auditadas_escolhidas: list[int] = []
+            vigilantes_escolhidas: list[int] = []
+            synchronized_with_final_card = len(operational_nucleus) == 15
+        else:
+            operational_final_card = list(audited_final_card)
+            auditadas_escolhidas_set = set(operational_final_card) - set(operational_nucleus)
+            auditadas_escolhidas = sorted(auditadas_escolhidas_set)
+            vigilantes_escolhidas_set = auditadas_escolhidas_set.intersection(reservas_prioritarias)
+            vigilantes_escolhidas = sorted(vigilantes_escolhidas_set)
+            synchronized_with_final_card = final_card == superior_final_card
+
         sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
-        core_numbers = _extract_int_numbers(
-            game.get("core_numbers")
-            or game.get("nucleo_lei_15")
-            or game.get("numbers")
-            or audited_final_card[:15]
-        )
-        if not core_numbers:
-            core_numbers = list(audited_final_card[:15])
-        
-        # Calcula dezenas efetivamente adicionadas (auditadas escolhidas)
-        auditadas_escolhidas_set = set(audited_final_card) - set(core_numbers)
-        auditadas_escolhidas = sorted(auditadas_escolhidas_set) if dezenas_por_jogo > 15 and auditadas_escolhidas_set else []
-        
-        # Calcula dezenas de vigilância efetivamente adicionadas (interseção)
-        vigilantes_escolhidas_set = auditadas_escolhidas_set.intersection(j71)
-        vigilantes_escolhidas = sorted(vigilantes_escolhidas_set) if dezenas_por_jogo > 15 and vigilantes_escolhidas_set else []
-        
-        # Referências completas para auditoria técnica (mantidas para compatibilidade)
-        referencias_j12_j34 = sorted(set(audited_final_card).intersection(j12.union(j34)))
-        vigilancia_j71 = sorted(set(audited_final_card).intersection(j71))
-        
+
+        referencias_j12_j34 = sorted(set(operational_final_card).intersection(j12.union(j34)))
+        vigilancia_j71 = sorted(set(operational_final_card).intersection(j71))
+
         if referencias_j12_j34 and vigilancia_j71:
             structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
         elif referencias_j12_j34:
@@ -9233,11 +9247,17 @@ def build_institutional_matrix_rows(
             structural_status = "NUCLEO_A_COM_VIGILANCIA"
         else:
             structural_status = "NUCLEO_A"
-        if synchronized_with_final_card:
+        if dezenas_por_jogo <= 15:
+            leitura_institucional = (
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; registro operacional da aposta "
+                "com núcleo Lei 15A congelado; cartão final inferior = núcleo operacional GP; "
+                "faixa superior permanece na geração atual."
+            )
+        elif synchronized_with_final_card:
             leitura_institucional = (
                 f"Jogo {dezenas_por_jogo}D da célula {escala_label}; cartão_final lido e sincronizado "
-                "com a saída superior; núcleo Lei 15 preservado; referências auditadas aplicadas; "
-                "status institucional compatível."
+                "com a saída superior; núcleo operacional Lei 15A congelado aplicado na leitura inferior; "
+                "auditadas = cartão final − núcleo Lei 15A; vigilantes = auditadas ∩ reservas prioritárias."
             )
         else:
             leitura_institucional = (
@@ -9251,14 +9271,14 @@ def build_institutional_matrix_rows(
                 "celula_matriz": celula_matriz,
                 "formato_d": f"{dezenas_por_jogo}D",
                 "escala_top": escala_label,
-                "cartao_final_lido": _format_numbers_for_history(audited_final_card) or "-",
-                "cartao_final_assinatura": _game_signature(audited_final_card) if audited_final_card else "-",
-                "nucleo_a_dezenas": _format_numbers_for_history(core_numbers) or "-",
+                "cartao_final_lido": _format_numbers_for_history(operational_final_card) or "-",
+                "cartao_final_assinatura": _game_signature(operational_final_card) if operational_final_card else "-",
+                "nucleo_a_dezenas": _format_numbers_for_history(operational_nucleus) or "-",
                 "auditadas_escolhidas": _format_numbers_for_history(auditadas_escolhidas) or "-",
                 "vigilantes_escolhidas": _format_numbers_for_history(vigilantes_escolhidas) or "-",
                 "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
                 "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
-                "lei15_aplicada": bool(len(core_numbers) == 15),
+                "lei15_aplicada": bool(len(operational_nucleus) == 15),
                 "sincronizado_com_cartao_final": bool(synchronized_with_final_card),
                 "status_institucional": sync_status,
                 "status_estrutural_anterior": structural_status,
@@ -9349,15 +9369,20 @@ def _render_institutional_matrix_reading_section(
 ) -> None:
     """Renderiza a leitura institucional padronizada com visao limpa e detalhes tecnicos."""
     sync_checks: list[dict[str, Any]] = []
+    operational_nucleus_label = _format_numbers_for_history(_lei15a_frozen_nucleus()) or "-"
     for row_index, row in enumerate(institutional_rows):
         superior_label = games_table_rows[row_index]["cartão_final"]
         inferior_label = str(row.get("cartao_final_lido", "-") or "-")
+        if int(card_format or 15) <= 15:
+            synchronized = inferior_label == operational_nucleus_label
+        else:
+            synchronized = superior_label == inferior_label
         sync_checks.append(
             {
                 "jogo": row_index + 1,
                 "cartao_final_superior": superior_label,
                 "cartao_final_lido": inferior_label,
-                "sincronizado": superior_label == inferior_label,
+                "sincronizado": synchronized,
             }
         )
 
