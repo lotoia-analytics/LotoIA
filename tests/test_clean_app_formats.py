@@ -171,7 +171,7 @@ def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -
 
     assert list(primary_df.columns) == list(INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values())
     assert "Célula matriz" not in primary_df.columns
-    assert primary_df.iloc[0]["Cartão final lido"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert primary_df.iloc[0]["Cartão final"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
     assert bool(primary_df.iloc[0]["Sincronizado"]) is True
 
 
@@ -239,3 +239,121 @@ def test_expand_official_card_supports_16_to_23(card_format: int, expected_reser
     assert len(final_card) == card_format
     assert set(core).issubset(final_card)
     assert not set(core).intersection(reserves)
+
+
+def test_build_institutional_matrix_rows_15d_auditadas_vigilantes_empty() -> None:
+    """Para 15D, auditadas_escolhidas e vigilantes_escolhidas devem ser '-'"""
+    final_card = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    games = [
+        {
+            "jogo": 1,
+            "numbers": final_card,
+            "final_card_numbers": final_card,
+        }
+    ]
+
+    rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=[final_card])
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["formato_d"] == "15D"
+    assert row["auditadas_escolhidas"] == "-"
+    assert row["vigilantes_escolhidas"] == "-"
+
+
+def test_build_institutional_matrix_rows_17d_auditadas_has_two_dezenas() -> None:
+    """Para 17D, auditadas_escolhidas deve ter exatamente 2 dezenas"""
+    core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
+    
+    games = [
+        {
+            "jogo": 1,
+            "numbers": core,
+            "final_card_numbers": final_card,
+        }
+    ]
+
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[final_card])
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["formato_d"] == "17D"
+    
+    # Converte a string de auditadas para lista de números
+    auditadas_str = row["auditadas_escolhidas"]
+    auditadas_numbers = [int(x) for x in auditadas_str.split()] if auditadas_str != "-" else []
+    
+    assert len(auditadas_numbers) == 2, f"Expected 2 auditadas, got {len(auditadas_numbers)}: {auditadas_numbers}"
+    # Verifica que as dezenas de auditadas estão nos reserves
+    assert set(auditadas_numbers) == set(reserves), f"Auditadas {set(auditadas_numbers)} should equal reserves {set(reserves)}"
+
+
+def test_build_institutional_matrix_rows_auditadas_equals_final_minus_nucleo() -> None:
+    """Verifica que auditadas_escolhidas = cartao_final - nucleo_lei_15"""
+    core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
+    
+    games = [
+        {
+            "jogo": 1,
+            "numbers": core,
+            "final_card_numbers": final_card,
+            "core_numbers": sorted(core),
+        }
+    ]
+
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[final_card])
+
+    assert len(rows) == 1
+    row = rows[0]
+    
+    # Converte strings para conjuntos de números
+    nucleo_str = row["nucleo_a_dezenas"]
+    nucleo = set(int(x) for x in nucleo_str.split()) if nucleo_str != "-" else set()
+    
+    cartao_str = row["cartao_final_lido"]
+    cartao = set(int(x) for x in cartao_str.split()) if cartao_str != "-" else set()
+    
+    auditadas_str = row["auditadas_escolhidas"]
+    auditadas = set(int(x) for x in auditadas_str.split()) if auditadas_str != "-" else set()
+    
+    # Verifica que auditadas = cartao - nucleo
+    expected_auditadas = cartao - nucleo
+    assert auditadas == expected_auditadas, f"Expected {expected_auditadas}, got {auditadas}"
+
+
+def test_build_institutional_matrix_rows_vigilantes_escolhidas_intersection() -> None:
+    """Verifica que vigilantes_escolhidas = auditadas_escolhidas ∩ vigilancia_j71"""
+    from dashboard.institutional_app import INSTITUTIONAL_REFERENCE_J71
+    
+    core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
+    
+    games = [
+        {
+            "jogo": 1,
+            "numbers": core,
+            "final_card_numbers": final_card,
+            "core_numbers": sorted(core),
+        }
+    ]
+
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[final_card])
+
+    assert len(rows) == 1
+    row = rows[0]
+    
+    # Converte strings para conjuntos de números
+    auditadas_str = row["auditadas_escolhidas"]
+    auditadas = set(int(x) for x in auditadas_str.split()) if auditadas_str != "-" else set()
+    
+    vigilantes_str = row["vigilantes_escolhidas"]
+    vigilantes = set(int(x) for x in vigilantes_str.split()) if vigilantes_str != "-" else set()
+    
+    j71_set = set(INSTITUTIONAL_REFERENCE_J71)
+    
+    # Verifica que vigilantes = auditadas ∩ j71
+    expected_vigilantes = auditadas.intersection(j71_set)
+    assert vigilantes == expected_vigilantes, f"Expected {expected_vigilantes}, got {vigilantes}"
+

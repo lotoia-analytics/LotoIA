@@ -112,6 +112,8 @@ INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS = (
     "cartao_final_lido",
     "cartao_final_assinatura",
     "nucleo_a_dezenas",
+    "auditadas_escolhidas",
+    "vigilantes_escolhidas",
     "referencias_auditadas_j12_j34",
     "vigilancia_j71",
     "lei15_aplicada",
@@ -124,8 +126,8 @@ INSTITUTIONAL_MATRIX_PRIMARY_COLUMNS = (
     "jogo",
     "formato_d",
     "nucleo_a_dezenas",
-    "referencias_auditadas_j12_j34",
-    "vigilancia_j71",
+    "auditadas_escolhidas",
+    "vigilantes_escolhidas",
     "cartao_final_lido",
     "sincronizado_com_cartao_final",
 )
@@ -143,8 +145,8 @@ INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
     "nucleo_a_dezenas": "Núcleo Lei 15",
-    "referencias_auditadas_j12_j34": "Auditadas",
-    "vigilancia_j71": "Vigilantes",
+    "auditadas_escolhidas": "Auditadas",
+    "vigilantes_escolhidas": "Vigilantes",
     "cartao_final_lido": "Cartão final",
     "sincronizado_com_cartao_final": "Sincronizado",
 }
@@ -9210,8 +9212,19 @@ def build_institutional_matrix_rows(
         )
         if not core_numbers:
             core_numbers = list(audited_final_card[:15])
+        
+        # Calcula dezenas efetivamente adicionadas (auditadas escolhidas)
+        auditadas_escolhidas_set = set(audited_final_card) - set(core_numbers)
+        auditadas_escolhidas = sorted(auditadas_escolhidas_set) if dezenas_por_jogo > 15 and auditadas_escolhidas_set else []
+        
+        # Calcula dezenas de vigilância efetivamente adicionadas (interseção)
+        vigilantes_escolhidas_set = auditadas_escolhidas_set.intersection(j71)
+        vigilantes_escolhidas = sorted(vigilantes_escolhidas_set) if dezenas_por_jogo > 15 and vigilantes_escolhidas_set else []
+        
+        # Referências completas para auditoria técnica (mantidas para compatibilidade)
         referencias_j12_j34 = sorted(set(audited_final_card).intersection(j12.union(j34)))
         vigilancia_j71 = sorted(set(audited_final_card).intersection(j71))
+        
         if referencias_j12_j34 and vigilancia_j71:
             structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
         elif referencias_j12_j34:
@@ -9241,6 +9254,8 @@ def build_institutional_matrix_rows(
                 "cartao_final_lido": _format_numbers_for_history(audited_final_card) or "-",
                 "cartao_final_assinatura": _game_signature(audited_final_card) if audited_final_card else "-",
                 "nucleo_a_dezenas": _format_numbers_for_history(core_numbers) or "-",
+                "auditadas_escolhidas": _format_numbers_for_history(auditadas_escolhidas) or "-",
+                "vigilantes_escolhidas": _format_numbers_for_history(vigilantes_escolhidas) or "-",
                 "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
                 "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
                 "lei15_aplicada": bool(len(core_numbers) == 15),
