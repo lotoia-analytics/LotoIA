@@ -3,7 +3,8 @@
 ## Status
 
 `NUCLEO_LEI15A_15D_CONGELADO_REGISTRADO`  
-`POLITICA_CARTAO_REGISTRO_LEI15A_REGISTRADA`
+`POLITICA_CARTAO_REGISTRO_LEI15A_REGISTRADA`  
+`RUNTIME_LEI15A_APLICADO_ATE_20D`
 
 Registro institucional de referência operacional para a Lei 15A.  
 **Não altera geração, Lei 15, expansão 16D–23D, banco, gateway, guardrails ou runtime de produção.**
@@ -47,10 +48,26 @@ cartao_registro_aposta:
 | **17D** | Núcleo + 2 reservas Lei 15A |
 | **18D** | Núcleo + 3 reservas Lei 15A |
 | **19D** | Núcleo + 4 reservas Lei 15A |
-| **20D** | Núcleo + 5 reservas Lei 15A |
-| **21D** | Núcleo + 6 reservas Lei 15A |
+| **20D** | Núcleo + 5 reservas Lei 15A (`15 05 07 14 19`) |
+| **21D** | **Pendente Lei 15A** — observacional; runtime bloqueado |
 | **22D** | **Observacional** — não é cartão de registro de aposta |
 | **23D** | **Observacional** — não é cartão de registro de aposta |
+
+### Runtime aplicado (faixa inferior do painel)
+
+Função: `build_lei15A_registration_card(format_size)` em `dashboard/institutional_app.py`.
+
+| Formato | Cartão inferior (registro Lei 15A) | Auditadas | Vigilantes |
+|---------|--------------------------------------|-----------|------------|
+| **15D** | Núcleo congelado | `-` | `-` |
+| **16D** | Núcleo + `[15]` | `15` | `15` |
+| **17D** | Núcleo + `[15, 05]` | `15 05` | `15 05` |
+| **18D** | Núcleo + `[15, 05, 07]` | `15 05 07` | `15 05 07` |
+| **19D** | Núcleo + `[15, 05, 07, 14]` | `15 05 07 14` | `15 05 07 14` |
+| **20D** | Núcleo + `[15, 05, 07, 14, 19]` | `15 05 07 14 19` | `15 05 07 14 19` |
+| **21D–23D** | `-` (pendente Lei 15A) | `-` | `-` |
+
+A faixa superior permanece na geração Lei 15 (`Jogos gerados`).
 
 Reservas Lei 15A para expansão 16D–21D seguem a ordem prioritária registrada neste
 documento (`15 · 05 · 07 · 14 · 19`).
@@ -200,3 +217,4 @@ exige troca controlada via reservas — **fora do escopo deste registro**.
 |------|--------|
 | 2026-06-09 | Registro institucional do núcleo congelado pós-auditoria GP50→GP10 |
 | 2026-06-09 | Política de cartão de registro da aposta Lei 15A registrada (ADR dedicado) |
+| 2026-06-09 | Runtime Lei 15A aplicado na faixa inferior até 20D (`build_lei15A_registration_card`) |

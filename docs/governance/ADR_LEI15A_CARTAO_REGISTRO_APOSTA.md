@@ -4,7 +4,8 @@
 
 **Accepted**
 
-Registro: `POLITICA_CARTAO_REGISTRO_LEI15A_REGISTRADA`
+Registro: `POLITICA_CARTAO_REGISTRO_LEI15A_REGISTRADA`  
+Runtime: `RUNTIME_LEI15A_APLICADO_ATE_20D`
 
 ---
 
@@ -66,8 +67,8 @@ auditoria — mas o registro operacional da aposta obedece à montagem Lei 15A.
 | **17D** | `nucleo_lei15A_15D` + 2 reservas Lei 15A |
 | **18D** | `nucleo_lei15A_15D` + 3 reservas Lei 15A |
 | **19D** | `nucleo_lei15A_15D` + 4 reservas Lei 15A |
-| **20D** | `nucleo_lei15A_15D` + 5 reservas Lei 15A |
-| **21D** | `nucleo_lei15A_15D` + 6 reservas Lei 15A |
+| **20D** | `nucleo_lei15A_15D` + `[15, 05, 07, 14, 19]` |
+| **21D** | **Pendente Lei 15A** — observacional; runtime bloqueado |
 | **22D** | **Observacional** — fora do registro operacional de aposta |
 | **23D** | **Observacional** — fora do registro operacional de aposta |
 
@@ -100,10 +101,19 @@ Esta ADR é **registro institucional de política**, não change request de runt
 1. **Lei 15** permanece soberana na geração — **não alterada** por esta ADR.
 2. **Geração, expansão runtime, banco, gateway, guardrails e Railway** permanecem
    **inalterados** nesta missão.
-3. **22D e 23D** permanecem **observacionais**; não produzem cartão de registro de aposta
+4. **21D–23D** permanecem **observacionais/pendentes**; registro bloqueado na faixa inferior
    até ADR dedicado.
-4. Implementação técnica da montagem Lei 15A em runtime é escopo de missão futura; esta ADR
-   define apenas a **norma operacional** e a **fronteira semântica**.
+
+---
+
+## Implementação runtime (2026-06-09)
+
+Status: `RUNTIME_LEI15A_APLICADO_ATE_20D`
+
+- Função `build_lei15A_registration_card(format_size)` em `dashboard/institutional_app.py`
+- Faixa inferior: cartão de registro Lei 15A para **15D–20D**
+- Faixa superior: geração Lei 15 **inalterada**
+- **21D–23D**: status `pendente Lei 15A` — registro bloqueado
 
 ---
 
@@ -133,7 +143,7 @@ Esta ADR é **registro institucional de política**, não change request de runt
 | Lei 15A monta cartão operacional próprio | Sim |
 | Reclassificação visual ≠ cartão de aposta | Sim |
 | 22D/23D observacionais | Sim |
-| Alteração de código / runtime | **Não** (nesta missão) |
+| Alteração de código / runtime | **Sim** — faixa inferior 15D–20D (`RUNTIME_LEI15A_APLICADO_ATE_20D`) |
 | Alteração Lei 15 | **Não** |
 | Deploy produção | **Não** |
 
@@ -153,3 +163,4 @@ Esta ADR é **registro institucional de política**, não change request de runt
 | Data | Autor / agente | Nota |
 |------|----------------|------|
 | 2026-06-09 | Cloud agent | Registro institucional da política de cartão de registro da aposta Lei 15A |
+| 2026-06-09 | Cloud agent | Runtime aplicado na faixa inferior até 20D |

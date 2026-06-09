@@ -6,15 +6,27 @@ from dashboard.institutional_app import (
     INSTITUTIONAL_MATRIX_TECHNICAL_LABELS,
     LEI15A_NUCLEO_15D_CONGELADO,
     NUCLEO_LEI15A_15D_CONGELADO,
+    RESERVAS_LEI15A_PRIORITARIAS,
     RESERVAS_PRIORITARIAS_LEI15A,
     build_institutional_matrix_primary_view,
     build_institutional_matrix_rows,
     build_institutional_matrix_technical_view,
+    build_lei15A_registration_card,
     infer_matrix_cell,
     summarize_institutional_matrix_reading,
 )
 
 LEI15A_NUCLEO_FORMATTED = " ".join(f"{number:02d}" for number in LEI15A_NUCLEO_15D_CONGELADO)
+
+
+def _format_card(numbers: list[int]) -> str:
+    return " ".join(f"{number:02d}" for number in sorted(numbers))
+
+
+def _expected_lei15a_registration_card(card_format: int) -> list[int]:
+    registration = build_lei15A_registration_card(card_format)
+    assert registration["operational"] is True
+    return list(registration["registration_card"])
 
 
 def test_expand_official_card_15_keeps_core() -> None:
@@ -87,31 +99,33 @@ def test_build_institutional_matrix_rows_marks_15d_institutional_reading() -> No
     assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
     assert row["status_estrutural_anterior"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
     assert "15D" in row["leitura_institucional"]
-    assert "núcleo Lei 15A congelado" in row["leitura_institucional"]
+    assert "núcleo congelado" in row["leitura_institucional"]
 
 
-def test_build_institutional_matrix_rows_marks_16d_with_institutional_refs() -> None:
+def test_build_institutional_matrix_rows_marks_16d_with_lei15a_registration_card() -> None:
+    generation_final = [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25, 9]
+    expected_card = _expected_lei15a_registration_card(16)
     games = [
         {
             "jogo": 2,
-            "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25, 9],
-            "final_card_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25, 9],
+            "numbers": generation_final[:15],
+            "final_card_numbers": generation_final,
         }
     ]
 
-    rows = build_institutional_matrix_rows(games, 16, 20)
+    rows = build_institutional_matrix_rows(games, 16, 20, superior_final_cards=[generation_final])
 
     assert len(rows) == 1
     row = rows[0]
     assert row["formato_d"] == "16D"
-    assert row["escala_top"] == "Top 20"
-    assert row["celula_matriz"] == "16D Top 20"
-    assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
-    assert row["status_estrutural_anterior"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
-    assert row["referencias_auditadas_j12_j34"] == "01 02 03 05 07 08 09 10 11 13 14 15 18 22 24 25"
-    assert row["vigilancia_j71"] == "01 02 03 05 07 08 09 10 13 15 18 22 24"
+    assert row["cartao_final_lido"] == _format_card(expected_card)
+    assert row["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+    assert row["auditadas_escolhidas"] == "15"
+    assert row["vigilantes_escolhidas"] == "15"
+    assert row["cartao_final_lido"] != _format_card(generation_final)
     assert row["sincronizado_com_cartao_final"] is True
-    assert "cartão_final lido e sincronizado com a saída superior" in row["leitura_institucional"]
+    assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
+    assert "cartão de registro Lei 15A montado" in row["leitura_institucional"]
 
 
 def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
@@ -129,18 +143,21 @@ def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
     assert rows[0]["sincronizado_com_cartao_final"] is True
     assert rows[0]["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
     assert rows[0]["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
-    assert "núcleo Lei 15A congelado" in rows[0]["leitura_institucional"]
+    assert "núcleo congelado" in rows[0]["leitura_institucional"]
 
 
-def test_build_institutional_matrix_rows_reads_superior_final_card_not_core_only() -> None:
+def test_build_institutional_matrix_rows_uses_lei15a_card_not_generation_for_17d() -> None:
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
-    expanded_final = sorted(core + [2, 4])
-    games = [{"jogo": 1, "numbers": core, "final_card_numbers": expanded_final}]
+    _, _, generation_final = _expand_official_card(core, 17, game_index=1)
+    expected_card = _expected_lei15a_registration_card(17)
+    games = [{"jogo": 1, "numbers": core, "final_card_numbers": generation_final}]
 
-    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[expanded_final])
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[generation_final])
 
-    assert rows[0]["cartao_final_lido"] == " ".join(f"{number:02d}" for number in expanded_final)
+    assert rows[0]["cartao_final_lido"] == _format_card(expected_card)
+    assert rows[0]["cartao_final_lido"] != _format_card(generation_final)
     assert rows[0]["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+    assert rows[0]["auditadas_escolhidas"] == "15 05"
     assert rows[0]["sincronizado_com_cartao_final"] is True
 
 
@@ -207,13 +224,13 @@ def test_institutional_matrix_summary_reports_synchronized_17d_batch() -> None:
         superior_cards.append(expanded)
 
     rows = build_institutional_matrix_rows(games, 17, 10, superior_final_cards=superior_cards)
+    expected_17d = _format_card(_expected_lei15a_registration_card(17))
     sync_checks = [
         {
             "jogo": index + 1,
             "cartao_final_superior": " ".join(f"{number:02d}" for number in superior_cards[index]),
             "cartao_final_lido": row["cartao_final_lido"],
-            "sincronizado": row["cartao_final_lido"]
-            == " ".join(f"{number:02d}" for number in superior_cards[index]),
+            "sincronizado": row["cartao_final_lido"] == expected_17d,
         }
         for index, row in enumerate(rows)
     ]
@@ -268,65 +285,49 @@ def test_build_institutional_matrix_rows_15d_auditadas_vigilantes_empty() -> Non
     assert row["vigilantes_escolhidas"] == "-"
 
 
-def test_build_institutional_matrix_rows_17d_auditadas_equals_final_minus_lei15a_nucleo() -> None:
-    """Para 17D, auditadas_escolhidas = cartao_final - núcleo Lei 15A congelado."""
+def test_build_institutional_matrix_rows_17d_auditadas_are_lei15a_reserves_used() -> None:
+    """Para 17D, auditadas_escolhidas = reservas Lei 15A usadas no formato (15, 05)."""
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
-    _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
+    _, _, generation_final = _expand_official_card(core, 17, game_index=1)
 
     games = [
         {
             "jogo": 1,
             "numbers": core,
-            "final_card_numbers": final_card,
+            "final_card_numbers": generation_final,
         }
     ]
 
-    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[final_card])
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[generation_final])
 
-    assert len(rows) == 1
     row = rows[0]
     assert row["formato_d"] == "17D"
     assert row["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
-
-    auditadas_str = row["auditadas_escolhidas"]
-    auditadas_numbers = [int(x) for x in auditadas_str.split()] if auditadas_str != "-" else []
-    expected_auditadas = sorted(set(final_card) - set(LEI15A_NUCLEO_15D_CONGELADO))
-
-    assert auditadas_numbers == expected_auditadas
+    assert row["auditadas_escolhidas"] == "15 05"
+    assert row["vigilantes_escolhidas"] == "15 05"
+    assert row["cartao_final_lido"] == _format_card(_expected_lei15a_registration_card(17))
 
 
-def test_build_institutional_matrix_rows_auditadas_equals_final_minus_nucleo() -> None:
-    """Verifica que auditadas_escolhidas = cartao_final - nucleo_lei_15"""
+def test_build_institutional_matrix_rows_auditadas_equals_reserves_used_in_format() -> None:
+    """Verifica que auditadas_escolhidas = reservas Lei 15A usadas no formato."""
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
-    _, reserves, final_card = _expand_official_card(core, 17, game_index=1)
-    
+    _, _, generation_final = _expand_official_card(core, 17, game_index=1)
+
     games = [
         {
             "jogo": 1,
             "numbers": core,
-            "final_card_numbers": final_card,
+            "final_card_numbers": generation_final,
             "core_numbers": sorted(core),
         }
     ]
 
-    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[final_card])
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[generation_final])
 
-    assert len(rows) == 1
     row = rows[0]
-    
-    # Converte strings para conjuntos de números
-    nucleo_str = row["nucleo_a_dezenas"]
-    nucleo = set(int(x) for x in nucleo_str.split()) if nucleo_str != "-" else set()
-    
-    cartao_str = row["cartao_final_lido"]
-    cartao = set(int(x) for x in cartao_str.split()) if cartao_str != "-" else set()
-    
-    auditadas_str = row["auditadas_escolhidas"]
-    auditadas = set(int(x) for x in auditadas_str.split()) if auditadas_str != "-" else set()
-    
-    # Verifica que auditadas = cartao - nucleo
-    expected_auditadas = cartao - nucleo
-    assert auditadas == expected_auditadas, f"Expected {expected_auditadas}, got {auditadas}"
+    auditadas = set(int(x) for x in row["auditadas_escolhidas"].split())
+    expected_auditadas = set(build_lei15A_registration_card(17)["reserves_used"])
+    assert auditadas == expected_auditadas
 
 
 def test_build_institutional_matrix_rows_vigilantes_escolhidas_intersection() -> None:
@@ -379,4 +380,52 @@ def test_lower_band_does_not_mirror_generation_core_numbers() -> None:
     assert rows[0]["nucleo_a_dezenas"] != generation_formatted
     assert rows[0]["cartao_final_lido"] == LEI15A_NUCLEO_FORMATTED
     assert set(NUCLEO_LEI15A_15D_CONGELADO) == set(LEI15A_NUCLEO_15D_CONGELADO)
+
+
+@pytest.mark.parametrize(
+    ("card_format", "expected_auditadas"),
+    [
+        (15, "-"),
+        (16, "15"),
+        (17, "15 05"),
+        (18, "15 05 07"),
+        (19, "15 05 07 14"),
+        (20, "15 05 07 14 19"),
+    ],
+)
+def test_lei15a_registration_card_formats_15d_to_20d(card_format: int, expected_auditadas: str) -> None:
+    registration = build_lei15A_registration_card(card_format)
+    assert registration["operational"] is True
+    assert registration["status"] == "registro_lei15a"
+
+    generation_core = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
+    _, _, generation_final = _expand_official_card(generation_core, card_format, game_index=1)
+    games = [{"jogo": 1, "numbers": generation_core, "final_card_numbers": generation_final}]
+    rows = build_institutional_matrix_rows(games, card_format, 20, superior_final_cards=[generation_final])
+    row = rows[0]
+
+    assert row["cartao_final_lido"] == _format_card(registration["registration_card"])
+    assert row["nucleo_a_dezenas"] == LEI15A_NUCLEO_FORMATTED
+    assert row["auditadas_escolhidas"] == expected_auditadas
+    assert row["cartao_final_lido"] != _format_card(generation_final)
+
+
+@pytest.mark.parametrize("card_format", [21, 22, 23])
+def test_lei15a_registration_pending_for_21d_to_23d(card_format: int) -> None:
+    registration = build_lei15A_registration_card(card_format)
+    assert registration["operational"] is False
+    assert registration["status"] == "pendente Lei 15A"
+
+    generation_core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    _, _, generation_final = _expand_official_card(generation_core, card_format, game_index=1)
+    games = [{"jogo": 1, "numbers": generation_core, "final_card_numbers": generation_final}]
+    rows = build_institutional_matrix_rows(games, card_format, 20, superior_final_cards=[generation_final])
+    row = rows[0]
+
+    assert row["cartao_final_lido"] == "-"
+    assert row["status_institucional"] == "PENDENTE_LEI15A"
+    assert row["status_estrutural_anterior"] == "PENDENTE_LEI15A"
+    assert row["sincronizado_com_cartao_final"] is False
+    assert "pendente Lei 15A" in row["leitura_institucional"]
+    assert set(RESERVAS_LEI15A_PRIORITARIAS) == set(RESERVAS_PRIORITARIAS_LEI15A)
 
