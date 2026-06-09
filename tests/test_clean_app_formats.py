@@ -47,15 +47,16 @@ def test_infer_matrix_cell_labels_15d_top20() -> None:
 
 
 def test_build_institutional_matrix_rows_marks_15d_institutional_reading() -> None:
+    final_card = [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25]
     games = [
         {
             "jogo": 1,
-            "numbers": [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25],
-            "final_card_numbers": [1, 3, 5, 7, 8, 9, 10, 14, 15, 17, 21, 22, 23, 24, 25],
+            "numbers": final_card,
+            "final_card_numbers": final_card,
         }
     ]
 
-    rows = build_institutional_matrix_rows(games, 15, 20)
+    rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=[final_card])
 
     assert len(rows) == 1
     row = rows[0]
@@ -63,12 +64,17 @@ def test_build_institutional_matrix_rows_marks_15d_institutional_reading() -> No
     assert row["celula_matriz"] == "15D Top 20"
     assert row["formato_d"] == "15D"
     assert row["escala_top"] == "Top 20"
+    assert row["cartao_final_lido"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
+    assert row["cartao_final_assinatura"] == "01-03-05-07-08-09-10-14-15-17-21-22-23-24-25"
     assert row["nucleo_a_dezenas"] == "01 03 05 07 08 09 10 14 15 17 21 22 23 24 25"
     assert row["referencias_auditadas_j12_j34"] == "01 03 05 07 08 09 10 14 15 22 23 24 25"
     assert row["vigilancia_j71"] == "01 03 05 07 08 09 10 15 22 23 24"
-    assert row["status_institucional"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
+    assert row["lei15_aplicada"] is True
+    assert row["sincronizado_com_cartao_final"] is True
+    assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
+    assert row["status_estrutural_anterior"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
     assert "15D" in row["leitura_institucional"]
-    assert "leitura institucional" in row["leitura_institucional"]
+    assert "cartão_final lido e sincronizado com a saída superior" in row["leitura_institucional"]
 
 
 def test_build_institutional_matrix_rows_marks_16d_with_institutional_refs() -> None:
@@ -87,10 +93,61 @@ def test_build_institutional_matrix_rows_marks_16d_with_institutional_refs() -> 
     assert row["formato_d"] == "16D"
     assert row["escala_top"] == "Top 20"
     assert row["celula_matriz"] == "16D Top 20"
-    assert row["status_institucional"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
+    assert row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL"
+    assert row["status_estrutural_anterior"] == "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
     assert row["referencias_auditadas_j12_j34"] == "01 02 03 05 07 08 09 10 11 13 14 15 18 22 24 25"
     assert row["vigilancia_j71"] == "01 02 03 05 07 08 09 10 13 15 18 22 24"
-    assert "15 + reservas auditadas" in row["leitura_institucional"]
+    assert row["sincronizado_com_cartao_final"] is True
+    assert "cartão_final lido e sincronizado com a saída superior" in row["leitura_institucional"]
+
+
+def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
+    games = [
+        {
+            "jogo": 1,
+            "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25],
+            "final_card_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25],
+        }
+    ]
+    divergent_superior_card = [[1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 21, 22, 24]]
+
+    rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=divergent_superior_card)
+
+    assert rows[0]["sincronizado_com_cartao_final"] is False
+    assert rows[0]["status_institucional"] == "SINCRONIZACAO_FALHOU"
+    assert "SINCRONIZACAO_FALHOU" in rows[0]["leitura_institucional"]
+    assert rows[0]["cartao_final_lido"] == "01 02 03 05 07 08 10 11 13 14 15 18 21 22 24"
+    assert "cartão_final superior=" in rows[0]["leitura_institucional"]
+    assert "cartão interno=" in rows[0]["leitura_institucional"]
+
+
+def test_build_institutional_matrix_rows_reads_superior_final_card_not_core_only() -> None:
+    core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    expanded_final = sorted(core + [2, 4])
+    games = [{"jogo": 1, "numbers": core, "final_card_numbers": expanded_final}]
+
+    rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[expanded_final])
+
+    assert rows[0]["cartao_final_lido"] == " ".join(f"{number:02d}" for number in expanded_final)
+    assert rows[0]["nucleo_a_dezenas"] == " ".join(f"{number:02d}" for number in sorted(core))
+    assert rows[0]["sincronizado_com_cartao_final"] is True
+
+
+def test_build_institutional_matrix_rows_syncs_20_rows_with_upper_final_cards() -> None:
+    games = []
+    superior_cards = []
+    for index in range(20):
+        core = sorted((((number + index - 1) % 25) + 1) for number in range(1, 16))
+        games.append({"jogo": index + 1, "numbers": core, "final_card_numbers": core})
+        superior_cards.append(core)
+
+    rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=superior_cards)
+
+    assert len(rows) == 20
+    assert all(row["jogo"] == index + 1 for index, row in enumerate(rows))
+    assert all(row["cartao_final_lido"] == " ".join(f"{number:02d}" for number in superior_cards[index]) for index, row in enumerate(rows))
+    assert all(row["sincronizado_com_cartao_final"] is True for row in rows)
+    assert all(row["status_institucional"] == "SINCRONIZADO_COM_CARTAO_FINAL" for row in rows)
 
 
 @pytest.mark.parametrize(

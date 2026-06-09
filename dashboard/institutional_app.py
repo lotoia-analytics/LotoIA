@@ -104,6 +104,22 @@ AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 
 INSTITUTIONAL_REFERENCE_J12 = (1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25)
 INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24, 25)
 INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
+INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS = (
+    "jogo",
+    "celula_matriz",
+    "formato_d",
+    "escala_top",
+    "cartao_final_lido",
+    "cartao_final_assinatura",
+    "nucleo_a_dezenas",
+    "referencias_auditadas_j12_j34",
+    "vigilancia_j71",
+    "lei15_aplicada",
+    "sincronizado_com_cartao_final",
+    "status_institucional",
+    "status_estrutural_anterior",
+    "leitura_institucional",
+)
 POST_DRAW_MONITORING_PAYLOAD = {
     "post_draw_monitoring_enabled": True,
     "monitoring_role": "OBSERVER_REGISTRY",
@@ -9122,11 +9138,13 @@ def build_institutional_matrix_rows(
     games: Sequence[dict[str, Any]],
     formato_d: int | str | None,
     escala_top: int | str | None,
+    superior_final_cards: Sequence[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build the institutional matrix rows from already loaded games."""
     dezenas_por_jogo = int(formato_d or 15)
     quantidade_jogos = int(escala_top or 0)
     celula_matriz = f"{dezenas_por_jogo}D Top {quantidade_jogos}" if quantidade_jogos else f"{dezenas_por_jogo}D Top -"
+    escala_label = f"Top {quantidade_jogos}" if quantidade_jogos else "Top -"
     j12 = set(INSTITUTIONAL_REFERENCE_J12)
     j34 = set(INSTITUTIONAL_REFERENCE_J34)
     j71 = set(INSTITUTIONAL_REFERENCE_J71)
@@ -9138,46 +9156,59 @@ def build_institutional_matrix_rows(
             or game.get("numbers")
             or []
         )
+        superior_final_card = (
+            _extract_int_numbers(superior_final_cards[index - 1])
+            if superior_final_cards is not None and index - 1 < len(superior_final_cards)
+            else list(final_card)
+        )
+        audited_final_card = list(superior_final_card)
+        synchronized_with_final_card = final_card == superior_final_card
+        sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
         core_numbers = _extract_int_numbers(
             game.get("core_numbers")
             or game.get("nucleo_lei_15")
             or game.get("numbers")
-            or final_card[:15]
+            or audited_final_card[:15]
         )
         if not core_numbers:
-            core_numbers = list(final_card[:15])
-        referencias_j12 = sorted(set(final_card).intersection(j12))
-        referencias_j34 = sorted(set(final_card).intersection(j34))
-        referencias_j12_j34 = sorted(set(final_card).intersection(j12.union(j34)))
-        vigilancia_j71 = sorted(set(final_card).intersection(j71))
+            core_numbers = list(audited_final_card[:15])
+        referencias_j12_j34 = sorted(set(audited_final_card).intersection(j12.union(j34)))
+        vigilancia_j71 = sorted(set(audited_final_card).intersection(j71))
         if referencias_j12_j34 and vigilancia_j71:
-            status_institucional = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
+            structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
         elif referencias_j12_j34:
-            status_institucional = "NUCLEO_A_COM_REFERENCIA_AUDITADA"
+            structural_status = "NUCLEO_A_COM_REFERENCIA_AUDITADA"
         elif vigilancia_j71:
-            status_institucional = "NUCLEO_A_COM_VIGILANCIA"
+            structural_status = "NUCLEO_A_COM_VIGILANCIA"
         else:
-            status_institucional = "NUCLEO_A"
-        if dezenas_por_jogo == 15:
+            structural_status = "NUCLEO_A"
+        if synchronized_with_final_card:
             leitura_institucional = (
-                f"Jogo 15D da célula {celula_matriz}; cartao técnico preservado com 15 dezenas; "
-                "referências J12/J34 e J71 exibidas apenas como leitura institucional, sem reserva técnica adicional."
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; cartão_final lido e sincronizado "
+                "com a saída superior; núcleo Lei 15 preservado; referências auditadas aplicadas; "
+                "status institucional compatível."
             )
         else:
             leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {celula_matriz}; cartao técnico segue 15 + reservas auditadas; "
-                "reserva técnica deve ser rastreada pela regra executável correspondente."
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; SINCRONIZACAO_FALHOU: "
+                f"cartão_final superior={_format_numbers_for_history(superior_final_card) or '-'} "
+                f"diverge do cartão interno={_format_numbers_for_history(final_card) or '-'}."
             )
         rows.append(
             {
                 "jogo": int(game.get("jogo", index) or index),
                 "celula_matriz": celula_matriz,
                 "formato_d": f"{dezenas_por_jogo}D",
-                "escala_top": f"Top {quantidade_jogos}" if quantidade_jogos else "Top -",
+                "escala_top": escala_label,
+                "cartao_final_lido": _format_numbers_for_history(audited_final_card) or "-",
+                "cartao_final_assinatura": _game_signature(audited_final_card) if audited_final_card else "-",
                 "nucleo_a_dezenas": _format_numbers_for_history(core_numbers) or "-",
                 "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
                 "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
-                "status_institucional": status_institucional,
+                "lei15_aplicada": bool(len(core_numbers) == 15),
+                "sincronizado_com_cartao_final": bool(synchronized_with_final_card),
+                "status_institucional": sync_status,
+                "status_estrutural_anterior": structural_status,
                 "leitura_institucional": leitura_institucional,
             }
         )
@@ -10670,17 +10701,20 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], int(result.get("selected_card_format", 15) or 15)))
         if games:
             st.markdown("#### Jogos gerados")
-            games_df = pd.DataFrame(
-                [
+            cartoes_finais_superiores: list[list[int]] = []
+            games_table_rows: list[dict[str, Any]] = []
+            for index, game in enumerate(games):
+                final_card_numbers = _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+                cartoes_finais_superiores.append(final_card_numbers)
+                games_table_rows.append(
                     {
                         "jogo": index + 1,
-                        "núcleo_lei_15": " ".join(f"{int(number):02d}" for number in game.get("core_numbers", game.get("numbers", []))),
+                        "núcleo_lei_15": _format_numbers_for_history(game.get("core_numbers", game.get("numbers", []))),
                         "reservas_auditadas": " ".join(f"+{int(number):02d}" for number in game.get("audited_reserve_numbers", [])) or "-",
-                        "cartão_final": " ".join(f"{int(number):02d}" for number in game.get("final_card_numbers", game.get("numbers", []))),
+                        "cartão_final": _format_numbers_for_history(final_card_numbers),
                     }
-                    for index, game in enumerate(games)
-                ]
-            )
+                )
+            games_df = pd.DataFrame(games_table_rows)
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
                 f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
@@ -10691,19 +10725,43 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 games,
                 result.get("selected_card_format", 15),
                 result.get("requested_count", len(games)),
+                superior_final_cards=cartoes_finais_superiores,
             )
             if institutional_rows:
-                institutional_df = pd.DataFrame(institutional_rows)
+                sync_checks: list[dict[str, Any]] = []
+                for row_index, row in enumerate(institutional_rows):
+                    superior_label = games_table_rows[row_index]["cartão_final"]
+                    inferior_label = str(row.get("cartao_final_lido", "-") or "-")
+                    sync_checks.append(
+                        {
+                            "jogo": row_index + 1,
+                            "cartao_final_superior": superior_label,
+                            "cartao_final_lido": inferior_label,
+                            "sincronizado": superior_label == inferior_label,
+                        }
+                    )
+                institutional_df = pd.DataFrame(institutional_rows)[
+                    [column for column in INSTITUTIONAL_MATRIX_DISPLAY_COLUMNS if column in institutional_rows[0]]
+                ]
                 st.subheader("Leitura institucional da matriz")
                 st.caption(
-                    "Esta tabela não altera o cartão técnico. Ela apenas exibe a leitura institucional da célula executada."
+                    "Esta tabela não altera o cartão técnico. Ela lê o mesmo cartão_final exibido acima e valida a sincronização linha a linha."
                 )
+                sync_failures = [check for check in sync_checks if not check["sincronizado"]]
+                if sync_failures or not bool(institutional_df["sincronizado_com_cartao_final"].all()):
+                    st.error("SINCRONIZACAO_FALHOU: a leitura institucional inferior diverge do cartão_final superior.")
+                    st.json(sync_failures)
                 st.dataframe(institutional_df, hide_index=True, use_container_width=True)
                 st.caption(
                     f"celula_matriz={institutional_rows[0]['celula_matriz']} | "
                     f"formato_d={institutional_rows[0]['formato_d']} | "
                     f"escala_top={institutional_rows[0]['escala_top']} | "
-                    "leitura_institucional_ativa=true"
+                    f"sincronizados={len(institutional_rows) - len(sync_failures)}/{len(institutional_rows)} | "
+                    "fonte_cartao_final=superior_jogos_gerados | "
+                    "leitura_institucional_ativa=true | "
+                    "status=LEITURA_INSTITUCIONAL_SINCRONIZADA_COM_CARTAO_FINAL_LEI15"
+                    if not sync_failures
+                    else "status=SINCRONIZACAO_FALHOU"
                 )
         st.markdown("##### Rastros institucionais")
         trace_cols = st.columns(4)
