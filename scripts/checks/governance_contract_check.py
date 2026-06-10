@@ -12,6 +12,7 @@ REQUIRED_PATHS = (
     "docs/governance/POLITICA_ML_ASSISTIVO.md",
     "docs/governance/ADR_LEI15A_CARTAO_REGISTRO_APOSTA.md",
     "docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md",
+    "docs/governance/ADR_LEI15A_NUCLEO_15D_CONGELADO.md",
     "docs/governance/BRANCH_PROTECTION_MAIN.md",
     ".github/CODEOWNERS",
     ".github/workflows/governance-gate.yml",
