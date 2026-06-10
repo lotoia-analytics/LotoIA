@@ -61,6 +61,32 @@ VERDICT_STATUS_BY_TYPE = {
     VERDICT_REQUEST_MORE_EVIDENCE: STATUS_PENDENTE_EVIDENCIA,
     VERDICT_REJECT: STATUS_REJEITADO,
 }
+EVIDENCE_STATUS_COMPLETE = "COMPLETE"
+EVIDENCE_STATUS_INSUFFICIENT = "INSUFFICIENT"
+EVIDENCE_STATUS_INVALID = "INVALID"
+GOVERNANCE_STATUS_SAFE_OBSERVATIONAL = "SAFE_OBSERVATIONAL"
+GOVERNANCE_STATUS_BLOCKED = "BLOCKED"
+INSUFFICIENT_EVIDENCE_MARKERS = frozenset(
+    {
+        "amostra_insuficiente",
+        "poucas_geracoes",
+        "drilldown_incompleto",
+        "falta_cartao_final_ou_resultado_oficial",
+    }
+)
+INVALID_EVIDENCE_MARKERS = frozenset(
+    {
+        "regra_nao_identificada",
+        "fonte_nao_auditavel",
+        "conflito_com_Lei_15_ou_Lei_15A",
+        "proposta_tenta_efeito_operacional",
+    }
+)
+VERDICT_REASON_HINTS = {
+    VERDICT_ACCEPT_DIAGNOSTIC: "Evidência completa e sem efeito operacional.",
+    VERDICT_REQUEST_MORE_EVIDENCE: "Falta amostra, gerações, concursos ou drilldown suficiente.",
+    VERDICT_REJECT: "Conflito de governança, fonte inválida ou tentativa operacional.",
+}
 
 ACTION_PROMOVER_RESERVA_ADR = "propor_promocao_reserva_via_ADR"
 ACTION_VIGILANCIA_DEZENA = "propor_vigilancia_dezena"
@@ -432,7 +458,124 @@ def assess_alert_evidence_gaps(
             gaps.append("amostra_insuficiente")
     if not alert.get("ml_proposal", {}).get("action"):
         gaps.append("regra_nao_identificada")
+    if alert_type == ALERT_001:
+        consecutivas = int(diagnosis.get("consecutivas", 0) or 0)
+        if 0 < consecutivas < MIN_CONSECUTIVE_RUNS_ALERT_001:
+            gaps.append("poucas_geracoes")
     return sorted(set(gaps))
+
+
+def _detect_invalid_evidence_markers(alert: dict[str, Any]) -> list[str]:
+    markers: list[str] = []
+    proposal = dict(alert.get("ml_proposal") or {})
+    fonte = str(alert.get("fonte") or SOURCE_POSTGRESQL)
+    if fonte != SOURCE_POSTGRESQL:
+        markers.append("fonte_nao_auditavel")
+    if not proposal.get("action"):
+        markers.append("regra_nao_identificada")
+    if proposal.get("operational_effect") or proposal.get("executed"):
+        markers.append("proposta_tenta_efeito_operacional")
+    if proposal.get("mutates_lei15") or proposal.get("lei15_mutation"):
+        markers.append("conflito_com_Lei_15_ou_Lei_15A")
+    if proposal.get("mutates_lei15a") or proposal.get("lei15a_mutation"):
+        markers.append("conflito_com_Lei_15_ou_Lei_15A")
+    if proposal.get("generation_command") or proposal.get("recalibration_command"):
+        markers.append("proposta_tenta_efeito_operacional")
+    return sorted(set(markers))
+
+
+def _detect_governance_blockers(alert: dict[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    proposal = dict(alert.get("ml_proposal") or {})
+    if bool(alert.get("generation_command") or alert.get("generation_cmd")):
+        blockers.append("generation_command_true")
+    if bool(alert.get("recalibration_command") or alert.get("recalibration_cmd")):
+        blockers.append("recalibration_command_true")
+    if proposal.get("operational_effect") or proposal.get("executed"):
+        blockers.append("operational_effect_true")
+    if proposal.get("mutates_lei15") or proposal.get("lei15_mutation"):
+        blockers.append("Lei_15_mutation_detected")
+    if proposal.get("mutates_lei15a") or proposal.get("lei15a_mutation"):
+        blockers.append("Lei_15A_mutation_detected")
+    return sorted(set(blockers))
+
+
+def _has_auditable_drilldown(alert: dict[str, Any]) -> bool:
+    alert_type = str(alert.get("tipo_alerta") or "")
+    if alert_type != ALERT_001:
+        return bool(alert.get("ml_diagnosis"))
+    evidence = dict(alert.get("leakage_evidence") or {})
+    drilldown_map = dict(evidence.get("drilldown_per_dezena") or {})
+    if not drilldown_map:
+        return int((alert.get("ml_proposal") or {}).get("drilldown_rows", 0) or 0) > 0
+    for rows in drilldown_map.values():
+        for row in rows or []:
+            if row.get("cartao_final") and row.get("resultado_oficial"):
+                return True
+    return False
+
+
+def _evidence_complete_checks(alert: dict[str, Any], gaps: Sequence[str]) -> dict[str, bool]:
+    alert_type = str(alert.get("tipo_alerta") or "")
+    proposal = dict(alert.get("ml_proposal") or {})
+    insufficient = set(gaps) & INSUFFICIENT_EVIDENCE_MARKERS
+    return {
+        "regra_ML_existente_identificada": bool(proposal.get("action")),
+        "threshold_usado_exibido": bool(_format_alert_threshold_used(alert_type)),
+        "evidencia_completa": not insufficient,
+        "drilldown_auditavel": _has_auditable_drilldown(alert),
+        "cartao_final_presente": "falta_cartao_final_ou_resultado_oficial" not in gaps,
+        "resultado_oficial_presente": "falta_cartao_final_ou_resultado_oficial" not in gaps,
+        "source_PostgreSQL": str(alert.get("fonte") or SOURCE_POSTGRESQL) == SOURCE_POSTGRESQL,
+    }
+
+
+def build_adm_verdict_guide(alert: dict[str, Any]) -> dict[str, Any]:
+    """Guia ADM: elegibilidade observacional para veredito (display-only, sem efeito operacional)."""
+    gaps = list(alert.get("evidence_gaps") or assess_alert_evidence_gaps(alert))
+    invalid_markers = _detect_invalid_evidence_markers(alert)
+    invalid_from_gaps = sorted(set(gaps) & INVALID_EVIDENCE_MARKERS)
+    all_invalid = sorted(set(invalid_markers) | set(invalid_from_gaps))
+    insufficient = sorted(set(gaps) & INSUFFICIENT_EVIDENCE_MARKERS)
+    governance_blockers = _detect_governance_blockers(alert)
+    complete_checks = _evidence_complete_checks(alert, gaps)
+
+    if all_invalid:
+        evidence_status = EVIDENCE_STATUS_INVALID
+    elif insufficient:
+        evidence_status = EVIDENCE_STATUS_INSUFFICIENT
+    elif all(complete_checks.values()):
+        evidence_status = EVIDENCE_STATUS_COMPLETE
+    else:
+        evidence_status = EVIDENCE_STATUS_INSUFFICIENT
+
+    governance_status = (
+        GOVERNANCE_STATUS_BLOCKED
+        if governance_blockers
+        else GOVERNANCE_STATUS_SAFE_OBSERVATIONAL
+    )
+
+    if evidence_status == EVIDENCE_STATUS_INVALID or governance_status == GOVERNANCE_STATUS_BLOCKED:
+        suggested_verdict = VERDICT_REJECT
+    elif evidence_status == EVIDENCE_STATUS_INSUFFICIENT:
+        suggested_verdict = VERDICT_REQUEST_MORE_EVIDENCE
+    else:
+        suggested_verdict = VERDICT_ACCEPT_DIAGNOSTIC
+
+    return {
+        "title": "Guia ADM",
+        "evidence_status": evidence_status,
+        "governance_status": governance_status,
+        "suggested_verdict": suggested_verdict,
+        "reason_hint": VERDICT_REASON_HINTS[suggested_verdict],
+        "suggested_verdict_display_only": True,
+        "adm_can_override": True,
+        "override_requires_reason": True,
+        "evidence_checks": complete_checks,
+        "insufficient_markers": insufficient,
+        "invalid_markers": all_invalid,
+        "governance_blockers": governance_blockers,
+    }
 
 
 def enrich_alert_card_for_display(alert: dict[str, Any]) -> dict[str, Any]:
@@ -445,6 +588,7 @@ def enrich_alert_card_for_display(alert: dict[str, Any]) -> dict[str, Any]:
     enriched["generation_cmd"] = False
     enriched["recalibration_cmd"] = False
     enriched["evidence_gaps"] = assess_alert_evidence_gaps(alert)
+    enriched["adm_guide"] = build_adm_verdict_guide(enriched)
     return enriched
 
 

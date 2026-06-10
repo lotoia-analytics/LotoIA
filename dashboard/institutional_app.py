@@ -8061,6 +8061,20 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             guard_cols[2].write(f"recalibration_cmd: `{alert.get('recalibration_cmd')}`")
             if alert.get("evidence_gaps"):
                 st.caption(f"Lacunas detectadas: {', '.join(alert.get('evidence_gaps') or [])}")
+            adm_guide = dict(alert.get("adm_guide") or {})
+            if adm_guide:
+                st.markdown("**Guia ADM**")
+                guide_cols = st.columns(2)
+                guide_cols[0].write(f"Evidência: **{adm_guide.get('evidence_status', '—')}**")
+                guide_cols[1].write(f"Governança: **{adm_guide.get('governance_status', '—')}**")
+                st.info(
+                    f"Veredito sugerido (somente orientação): **{adm_guide.get('suggested_verdict', '—')}** — "
+                    f"{adm_guide.get('reason_hint', '')}"
+                )
+                st.caption(
+                    "O ADM decide manualmente; override do veredito sugerido exige motivo. "
+                    "Nenhum veredito gera efeito operacional."
+                )
             if alert.get("tipo_alerta") == ALERT_001:
                 leakage_evidence = dict(alert.get("leakage_evidence") or {})
                 leakage_table = list(leakage_evidence.get("leakage_table") or [])
@@ -8082,8 +8096,9 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                             )
             if status in ACTIVE_ALERT_STATUSES:
                 reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
+                suggested_verdict = str(adm_guide.get("suggested_verdict") or "")
                 st.text_input(
-                    "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE e REJECT)",
+                    "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE, REJECT e override)",
                     key=reason_key,
                 )
                 action_cols = st.columns(3)
@@ -8092,67 +8107,81 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                     key=f"ml_diag_accept_{alert.get('alert_key')}",
                     type="primary",
                 ):
-                    try:
-                        register_ml_diagnostic_verdict(
-                            alert_type=str(alert.get("tipo_alerta")),
-                            dezena=int(alert.get("dezena") or 0),
-                            ml_proposal=dict(alert.get("ml_proposal") or {}),
-                            verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
-                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                            adm_user=adm_user,
-                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                            alert_card=alert,
-                            db_path=DB_PATH,
-                        )
-                        st.success("Veredito ACCEPT_DIAGNOSTIC registrado (status=ACEITO).")
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    if suggested_verdict and suggested_verdict != VERDICT_ACCEPT_DIAGNOSTIC and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                db_path=DB_PATH,
+                            )
+                            st.success("Veredito ACCEPT_DIAGNOSTIC registrado (status=ACEITO).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
                 if action_cols[1].button(
                     "REQUEST_MORE_EVIDENCE",
                     key=f"ml_diag_more_evidence_{alert.get('alert_key')}",
                 ):
                     reason = str(st.session_state.get(reason_key) or "").strip()
-                    try:
-                        register_ml_diagnostic_verdict(
-                            alert_type=str(alert.get("tipo_alerta")),
-                            dezena=int(alert.get("dezena") or 0),
-                            ml_proposal=dict(alert.get("ml_proposal") or {}),
-                            verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
-                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                            verdict_reason=reason,
-                            adm_user=adm_user,
-                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                            alert_card=alert,
-                            missing_evidence=list(alert.get("evidence_gaps") or []),
-                            db_path=DB_PATH,
-                        )
-                        st.info("Veredito REQUEST_MORE_EVIDENCE registrado (status=PENDENTE_EVIDENCIA).")
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    if not reason:
+                        st.error("Informe o motivo antes de confirmar REQUEST_MORE_EVIDENCE.")
+                    elif suggested_verdict and suggested_verdict != VERDICT_REQUEST_MORE_EVIDENCE and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                verdict_reason=reason,
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                missing_evidence=list(alert.get("evidence_gaps") or []),
+                                db_path=DB_PATH,
+                            )
+                            st.info("Veredito REQUEST_MORE_EVIDENCE registrado (status=PENDENTE_EVIDENCIA).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
                 if action_cols[2].button(
                     "REJECT",
                     key=f"ml_diag_reject_{alert.get('alert_key')}",
                 ):
                     reason = str(st.session_state.get(reason_key) or "").strip()
-                    try:
-                        register_ml_diagnostic_verdict(
-                            alert_type=str(alert.get("tipo_alerta")),
-                            dezena=int(alert.get("dezena") or 0),
-                            ml_proposal=dict(alert.get("ml_proposal") or {}),
-                            verdict_type=VERDICT_REJECT,
-                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                            verdict_reason=reason,
-                            adm_user=adm_user,
-                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                            alert_card=alert,
-                            db_path=DB_PATH,
-                        )
-                        st.warning("Veredito REJECT registrado (status=REJEITADO).")
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    if not reason:
+                        st.error("Informe o motivo antes de confirmar REJECT.")
+                    elif suggested_verdict and suggested_verdict != VERDICT_REJECT and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_REJECT,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                verdict_reason=reason,
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                db_path=DB_PATH,
+                            )
+                            st.warning("Veredito REJECT registrado (status=REJEITADO).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
             else:
                 if alert.get("verdict_reason") or alert.get("adm_reason"):
                     st.caption(f"Motivo: {alert.get('verdict_reason') or alert.get('adm_reason')}")
