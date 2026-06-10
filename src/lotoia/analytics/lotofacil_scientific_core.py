@@ -3681,8 +3681,13 @@ def discover_scientific_generation_policy(
     contests: Sequence[dict[str, Any]] | None = None,
     db_path: Any = DEFAULT_DATABASE_PATH,
     candidate_limit: int = 120,
+    use_csv_fallback: bool = True,
 ) -> dict[str, Any]:
-    core = LotofacilScientificCore(contests=contests, db_path=db_path)
+    core = LotofacilScientificCore(
+        contests=contests,
+        db_path=db_path,
+        use_csv_fallback=use_csv_fallback,
+    )
     return core.discover_scientific_generation_policy(game_size, candidate_limit=candidate_limit)
 
 

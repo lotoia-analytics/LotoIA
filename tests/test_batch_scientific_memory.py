@@ -975,12 +975,16 @@ def test_institutional_source_map_separates_csv_api_and_persisted_history(tmp_pa
             },
         },
     )
+    monkeypatch.setattr(
+        "dashboard.institutional_app._load_hai_latest_contest_summary",
+        lambda: {"contest_number": 3700, "source": "lotofacil_official_history"},
+    )
     snapshot = {"counts": {"imported_contests": 4}}
 
     source_map = _institutional_source_map(snapshot)
     source_by_layer = {row["camada"]: row for row in source_map}
 
-    assert source_by_layer["CSV histórico versionado"]["uso"].endswith("3702 | papel=seed/documentação | runtime=PostgreSQL")
+    assert "export/auditoria/migração" in source_by_layer["CSV histórico versionado"]["uso"]
     assert source_by_layer["API oficial"]["uso"].endswith("3700")
     assert "último concurso persistido=3700" in source_by_layer["Banco persistido"]["uso"]
     assert "lotofacil_official_history=4" in source_by_layer["Banco persistido"]["uso"]
