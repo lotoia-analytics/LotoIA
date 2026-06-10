@@ -1,95 +1,134 @@
 from __future__ import annotations
 
+import pytest
+
 from dashboard import institutional_app as app
 from lotoia.observability.observational_leftover import (
-    LEFTOVER_BASIS,
-    build_observational_leftover_payload,
+    ML_ROLE_DIAGNOSTIC_ONLY,
+    OBSERVATIONAL_SOURCE_CARTAO_FINAL,
+    REAL_LEFTOVER_BASIS,
+    build_real_post_conference_leftover_payload,
+    compute_dezenas_acertadas,
     compute_dezenas_sobrando,
+    validate_observational_source,
+    validate_real_leftover_guards,
 )
 
 
-def test_leftover_set_difference() -> None:
-    result = compute_dezenas_sobrando(["01", "02", "03", "04", "05"], ["02", "04", "06"])
-    assert result == [1, 3, 5]
-
-
-def test_no_leftover_when_all_observed_in_reference() -> None:
-    result = compute_dezenas_sobrando(["01", "02", "03"], ["01", "02", "03", "04"])
-    assert result == []
-
-
-def test_leftover_not_hardcoded() -> None:
-    row_a = build_observational_leftover_payload(
-        observadas=[1, 2, 3, 4, 5],
-        cartao_referencia=[2, 4, 6],
+def test_real_leftovers() -> None:
+    payload = build_real_post_conference_leftover_payload(
+        cartao_final=[1, 2, 3, 4, 5],
+        resultado_oficial=[1, 3, 5, 7, 9],
     )
-    row_b = build_observational_leftover_payload(
-        observadas=[10, 11, 12],
-        cartao_referencia=[10],
-    )
-    assert row_a["dezenas_sobrando"] != row_b["dezenas_sobrando"]
-    assert row_a["dezenas_sobrando_count"] == 3
-    assert row_b["dezenas_sobrando_count"] == 2
-
-
-def test_leftover_payload_includes_basis_and_reference_card() -> None:
-    payload = build_observational_leftover_payload(
-        observadas=[1, 2, 3],
-        cartao_referencia=[2, 4],
-    )
-    assert payload["leftover_basis"] == LEFTOVER_BASIS
-    assert payload["cartao_referencia"] == [2, 4]
-    assert payload["dezenas_sobrando"] == [1, 3]
+    assert payload["dezenas_observadas"] == [1, 2, 3, 4, 5]
+    assert payload["cartao_referencia"] == [1, 3, 5, 7, 9]
+    assert payload["dezenas_acertadas"] == [1, 3, 5]
+    assert payload["dezenas_sobrando"] == [2, 4]
     assert payload["dezenas_sobrando_count"] == 2
+    assert payload["leftover_basis"] == REAL_LEFTOVER_BASIS
+    assert payload["origem_observacional"] == OBSERVATIONAL_SOURCE_CARTAO_FINAL
+    assert payload["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
 
 
-def test_build_observational_leftover_audit_row_uses_set_difference() -> None:
-    game = {
-        "game_index": 1,
-        "odd": 8,
-        "even": 7,
-        "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-        "final_card_numbers": [1, 2, 3, 4, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-        "generation_context": {
-            "core_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-            "audited_reserve_numbers": [4],
-            "final_card_numbers": [1, 2, 3, 4, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-            "selected_card_format": 16,
-        },
-        "formato_cartao": 16,
-    }
-    row = app._build_observational_leftover_audit_row(game)
-    assert row["leftover_basis"] == LEFTOVER_BASIS
-    assert row["cartao_referencia"] != "-"
-    assert row["dezenas_sobrando_count"] == len(
-        [token for token in str(row["dezenas sobrando"]).split() if token and token != "-"]
+def test_hits_plus_leftovers_equals_card_size() -> None:
+    cartao_final = [1, 2, 3, 4, 5]
+    resultado_oficial = [1, 3, 5, 7, 9]
+    acertadas = compute_dezenas_acertadas(cartao_final, resultado_oficial)
+    sobrando = compute_dezenas_sobrando(cartao_final, resultado_oficial)
+    assert len(acertadas) + len(sobrando) == len(cartao_final)
+
+
+def test_dezenas_observadas_equals_cartao_final() -> None:
+    payload = build_real_post_conference_leftover_payload(
+        cartao_final=[10, 11, 12, 13],
+        resultado_oficial=[10, 12, 14, 15, 16],
     )
-    assert "01 02 03" not in str(row["dezenas sobrando"]) or row["dezenas_sobrando_count"] == 0
+    assert payload["dezenas_observadas"] == payload["cartao_final"]
 
 
-def test_leftover_audit_row_differs_from_fixed_nucleo_slice() -> None:
-    game_a = {
-        "game_index": 1,
-        "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-        "final_card_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-        "generation_context": {
-            "core_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-            "audited_reserve_numbers": [4, 6],
-            "final_card_numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+def test_validate_observational_source_blocks_nucleo() -> None:
+    assert validate_observational_source("nucleo_lei_15")
+    assert validate_observational_source("nucleo_lei_15a_congelado")
+    assert not validate_observational_source(OBSERVATIONAL_SOURCE_CARTAO_FINAL)
+
+
+def test_build_observational_leftover_audit_row_uses_cartao_final_not_nucleo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    official_15 = [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    monkeypatch.setattr(
+        app,
+        "get_official_contest",
+        lambda contest_id: {"contest_number": contest_id, "dezenas": official_15},
+    )
+    row = app._build_observational_leftover_audit_row(
+        {
+            "game_index": 1,
+            "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+            "final_card_numbers": [1, 2, 3, 4, 5],
+            "formato_cartao": 5,
         },
-    }
-    game_b = {
-        "game_index": 2,
-        "numbers": [2, 4, 6, 7, 8, 9, 11, 12, 13, 16, 17, 18, 20, 21, 25],
-        "final_card_numbers": [2, 4, 6, 7, 8, 9, 11, 12, 13, 16, 17, 18, 20, 21, 25],
-        "generation_context": {
-            "core_numbers": [2, 4, 6, 7, 8, 9, 11, 12, 13, 16, 17, 18, 20, 21, 25],
-            "audited_reserve_numbers": [1, 15],
-            "final_card_numbers": [2, 4, 6, 7, 8, 9, 11, 12, 13, 16, 17, 18, 20, 21, 25],
+        concurso_analisado=3700,
+        generation_event_id=42,
+        reconciliation_run_id=9,
+    )
+    assert row["origem_observacional"] == OBSERVATIONAL_SOURCE_CARTAO_FINAL
+    assert row["origem_observacional"] != "nucleo_lei_15"
+    assert row["dezenas_observadas"] == row["cartao_final"] == "01 02 03 04 05"
+    assert row["cartao_referencia"] == row["resultado_oficial"]
+    assert row["dezenas_acertadas"] == "01 03 05"
+    assert row["dezenas sobrando"] == "02 04"
+    assert row["leftover_basis"] == REAL_LEFTOVER_BASIS
+    assert row["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
+
+
+def test_build_observational_leftover_audit_row_blocks_without_cartao_final(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    official_15 = [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    monkeypatch.setattr(
+        app,
+        "get_official_contest",
+        lambda contest_id: {"contest_number": contest_id, "dezenas": official_15},
+    )
+    row = app._build_observational_leftover_audit_row(
+        {
+            "game_index": 1,
+            "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
         },
-    }
-    row_a = app._build_observational_leftover_audit_row(game_a)
-    row_b = app._build_observational_leftover_audit_row(game_b)
-    assert row_a["dezenas sobrando"] == "04 06"
-    assert row_b["dezenas sobrando"] == "01 15"
-    assert row_a["dezenas sobrando"] != " ".join(f"{number:02d}" for number in game_a["numbers"][:5])
+        concurso_analisado=3700,
+        generation_event_id=42,
+        reconciliation_run_id=9,
+    )
+    assert "cartao_final_missing" in str(row["observação institucional"])
+    assert row["origem_observacional"] == "indisponivel"
+
+
+def test_build_observational_leftover_audit_row_blocks_without_official(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app, "get_official_contest", lambda _contest_id: None)
+    row = app._build_observational_leftover_audit_row(
+        {"game_index": 1, "final_card_numbers": [1, 2, 3, 4, 5]},
+        concurso_analisado=3700,
+        generation_event_id=42,
+        reconciliation_run_id=9,
+    )
+    assert "resultado_oficial_missing" in str(row["observação institucional"])
+    assert row["dezenas sobrando"] == "-"
+
+
+def test_validate_real_leftover_guards_blocks_missing_inputs() -> None:
+    errors = validate_real_leftover_guards(
+        cartao_final=[],
+        resultado_oficial=[],
+        concurso_analisado=None,
+        generation_event_id=None,
+        origem_observacional="nucleo_lei_15",
+    )
+    assert "cartao_final_missing" in errors
+    assert "resultado_oficial_missing" in errors
+    assert "concurso_analisado_missing" in errors
+    assert "generation_event_id_missing" in errors
+    assert "origem_observacional_invalid" in errors
+    assert any("origem_observacional_forbidden" in error for error in errors)

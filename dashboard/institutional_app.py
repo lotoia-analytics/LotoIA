@@ -68,8 +68,12 @@ from lotoia.governance.structural_rfe import (
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.observability.observational_leftover import (
-    build_observational_leftover_payload,
+    ML_ROLE_DIAGNOSTIC_ONLY,
+    OBSERVATIONAL_SOURCE_CARTAO_FINAL,
+    REAL_LEFTOVER_BASIS,
+    build_real_post_conference_leftover_payload,
     format_dezenas as _format_observational_dezenas,
+    validate_real_leftover_guards,
 )
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
@@ -4378,19 +4382,8 @@ def _game_cartao_final_numbers(game: dict[str, Any]) -> list[int]:
     )
 
 
-def _observational_dezenas_from_game(game: dict[str, Any]) -> list[int]:
-    """Dezenas rastreadas pela camada observacional (sem alterar conferência)."""
-    conference_info = _select_conference_numbers(game)
-    observed: set[int] = set(int(number) for number in (conference_info.get("conference_numbers") or []))
-    context_json = dict(game.get("generation_context") or {})
-    for key in ("final_card_numbers", "audited_reserve_numbers", "core_numbers"):
-        observed.update(int(number) for number in (context_json.get(key) or []))
-    observed.update(int(number) for number in (game.get("numbers") or []))
-    return sorted(observed)
-
-
-def _cartao_referencia_conferencia_por_jogo(game: dict[str, Any]) -> list[int]:
-    """Cartão final de referência da conferência por jogo."""
+def _extract_cartao_final_from_game(game: dict[str, Any]) -> list[int]:
+    """Cartão final persistido do jogo (generated_games.cartao_final). Não usa núcleo Lei 15."""
     context_json = dict(game.get("generation_context") or {})
     for source in (
         context_json.get("final_card_numbers"),
@@ -4404,30 +4397,87 @@ def _cartao_referencia_conferencia_por_jogo(game: dict[str, Any]) -> list[int]:
             numbers = _extract_int_numbers(str(source or ""))
         if numbers:
             return sorted(numbers)
+    return []
+
+
+def _extract_resultado_oficial_dezenas(concurso_analisado: int | None) -> list[int]:
+    if concurso_analisado is None or int(concurso_analisado) <= 0:
+        return []
+    official = get_official_contest(int(concurso_analisado))
+    if not official:
+        return []
+    return _extract_official_numbers_from_record(official)
+
+
+def _build_observational_leftover_audit_row(
+    game: dict[str, Any],
+    *,
+    concurso_analisado: int | None = None,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+) -> dict[str, Any]:
+    cartao_final = _extract_cartao_final_from_game(game)
+    resultado_oficial = _extract_resultado_oficial_dezenas(concurso_analisado)
     conference_info = _select_conference_numbers(game)
-    return [int(number) for number in (conference_info.get("conference_numbers") or [])]
-
-
-def _build_observational_leftover_audit_row(game: dict[str, Any]) -> dict[str, Any]:
-    leftover_payload = build_observational_leftover_payload(
-        observadas=_observational_dezenas_from_game(game),
-        cartao_referencia=_cartao_referencia_conferencia_por_jogo(game),
+    formato_cartao = int(
+        conference_info.get("formato_cartao")
+        or game.get("formato_cartao")
+        or len(cartao_final)
+        or 15
     )
-    conference_info = _select_conference_numbers(game)
-    observadas_display = list(conference_info.get("conference_numbers") or leftover_payload["dezenas_observadas"])
-    return {
-        "formato_cartao": int(conference_info.get("formato_cartao", 15) or 15),
-        "origem_observacional": str(conference_info.get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-        "dezenas observadas": _format_observational_dezenas(observadas_display),
-        "dezenas observadas count": len(observadas_display),
-        "cartao_referencia": _format_observational_dezenas(leftover_payload["cartao_referencia"]),
-        "dezenas sobrando": _format_observational_dezenas(leftover_payload["dezenas_sobrando"]),
-        "dezenas_sobrando_count": int(leftover_payload["dezenas_sobrando_count"]),
-        "leftover_basis": str(leftover_payload["leftover_basis"]),
-        "frequência": int(game.get("odd", 0) or 0) + int(game.get("even", 0) or 0),
+    origem_observacional = OBSERVATIONAL_SOURCE_CARTAO_FINAL if cartao_final else "indisponivel"
+    guard_errors = validate_real_leftover_guards(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+        concurso_analisado=concurso_analisado,
+        generation_event_id=generation_event_id,
+        origem_observacional=origem_observacional,
+    )
+    base_row = {
+        "generation_event_id": int(generation_event_id or 0) or "-",
+        "reconciliation_run_id": int(reconciliation_run_id or 0) or "-",
+        "concurso analisado": int(concurso_analisado or 0) or "-",
+        "formato_cartao": formato_cartao,
+        "origem_observacional": origem_observacional,
+        "dezenas_observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas count": len(cartao_final),
+        "cartao_final": _format_observational_dezenas(cartao_final),
+        "cartao_referencia": _format_observational_dezenas(resultado_oficial),
+        "resultado_oficial": _format_observational_dezenas(resultado_oficial),
+        "dezenas_acertadas": "-",
+        "dezenas sobrando": "-",
+        "dezenas_sobrando_count": 0,
+        "leftover_basis": REAL_LEFTOVER_BASIS,
+        "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
         "grupo relacionado": game.get("game_index", "-"),
-        "observação institucional": "observação pós-conferência",
     }
+    if guard_errors:
+        base_row["observação institucional"] = f"bloqueado: {', '.join(guard_errors)}"
+        return base_row
+
+    payload = build_real_post_conference_leftover_payload(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+    )
+    base_row.update(
+        {
+            "origem_observacional": str(payload["origem_observacional"]),
+            "dezenas_observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas count": len(payload["dezenas_observadas"]),
+            "cartao_final": _format_observational_dezenas(payload["cartao_final"]),
+            "cartao_referencia": _format_observational_dezenas(payload["cartao_referencia"]),
+            "resultado_oficial": _format_observational_dezenas(payload["resultado_oficial"]),
+            "dezenas_acertadas": _format_observational_dezenas(payload["dezenas_acertadas"]),
+            "dezenas sobrando": _format_observational_dezenas(payload["dezenas_sobrando"]),
+            "dezenas_sobrando_count": int(payload["dezenas_sobrando_count"]),
+            "leftover_basis": str(payload["leftover_basis"]),
+            "ml_role": str(payload["ml_role"]),
+            "observação institucional": "observação pós-conferência",
+        }
+    )
+    return base_row
 
 
 def validate_conference_15d_source(
@@ -10546,11 +10596,32 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
         data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            extra_rows = [_build_observational_leftover_audit_row(game) for game in latest_generation.get("games", [])]
-            for row in extra_rows:
-                row["concurso analisado"] = int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-"
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
+            )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            extra_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
             extra_df = pd.DataFrame(extra_rows)
-            st.caption(f"leftover_basis={extra_rows[0].get('leftover_basis', '-')}" if extra_rows else "leftover_basis=-")
+            st.caption(
+                " | ".join(
+                    [
+                        f"origem_observacional={extra_rows[0].get('origem_observacional', '-')}" if extra_rows else "origem_observacional=-",
+                        f"leftover_basis={extra_rows[0].get('leftover_basis', '-')}" if extra_rows else "leftover_basis=-",
+                        f"ml_role={extra_rows[0].get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}" if extra_rows else f"ml_role={ML_ROLE_DIAGNOSTIC_ONLY}",
+                    ]
+                )
+            )
             st.dataframe(extra_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
