@@ -354,7 +354,6 @@ PAGE_TARGETS = {
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
-    "Desempenho por grupo": "audit_monitoring_group_performance",
     "Dezenas faltantes": "audit_monitoring_missing_numbers",
     "Dezenas sobrando": "audit_monitoring_extra_numbers",
     "Vazamento lateral": "audit_monitoring_side_leak",
@@ -9133,7 +9132,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         ("Auditoria Runtime", "audit"),
         ("Auditoria e Monitoramento", "audit_monitoring"),
         ("Confer?ncia por concurso", "audit_monitoring_conference"),
-        ("Desempenho por grupo", "audit_monitoring_group_performance"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
@@ -9188,7 +9186,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit",
         "audit_monitoring",
         "audit_monitoring_conference",
-        "audit_monitoring_group_performance",
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
         "summary_benchmark",
@@ -10469,7 +10466,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.markdown("##### Acessos de auditoria")
         st.markdown(
             "- Conferência por concurso\n"
-            "- Desempenho por grupo\n"
             "- Dezenas faltantes\n"
             "- Dezenas sobrando"
         )
@@ -10529,63 +10525,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                 block_cols[index].caption(block_numbers.get(label, "-"))
         else:
             st.caption("Distribuição indisponível: dezenas oficiais não encontradas para o concurso monitorado.")
-    elif section == "group_performance":
-        st.markdown("##### Auditoria Observacional — Desempenho por Grupo")
-        st.write("Esta tela observa o desempenho dos grupos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
-        latest_contest = _load_imported_contest()
-        generation_history = _load_generation_history(limit=10)
-        latest_generation = generation_history[0] if generation_history else {}
-        latest_group = (latest_generation.get("top_games") or [{}])[0] if latest_generation else {}
-        st.markdown("##### Status institucional")
-        cols = st.columns(4)
-        cols[0].metric("Camada", "Auditoria Observacional")
-        cols[1].metric("Geração", "não executa")
-        cols[2].metric("Recalibração", "bloqueada")
-        cols[3].metric("Alerta", "registro")
-        st.markdown("##### Status dos dados")
-        data_cols = st.columns(5)
-        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
-        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
-        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
-        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
-        if latest_generation.get("games"):
-            conference_games = [_select_conference_numbers(game).get("conference_numbers", []) for game in latest_generation.get("games", [])]
-            group_stats = _summarize_games_structurally(conference_games)
-            st.caption(
-                " | ".join(
-                    [
-                        f"grupos_avaliados={len(latest_generation.get('games') or [])}",
-                        f"melhor_grupo={latest_group.get('game_index', '-')}",
-                        f"acertos_medios={latest_generation.get('avg_score', 0.0):.4f}",
-                        f"overlap={group_stats.get('average_overlap', 0.0):.4f}",
-                    ]
-                )
-            )
-            st.markdown("##### Resumo de desempenho")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "grupo": game.get("game_index", "-"),
-                            "jogos": 1,
-                            "acertos": game.get("hits", 0) if game.get("hits") is not None else "-",
-                            "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                            "núcleo_lei_15": " ".join(f"{number:02d}" for number in list(game.get("numbers", [])[:15])) or "-",
-                            "reservas_auditadas": " ".join(f"+{number:02d}" for number in list(game.get("numbers", [])[15:])) or "-",
-                            "cartão_final": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                            "dezenas_conferidas_count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                            "origem_dezenas_conferencia": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                            "observação institucional": "grupo avaliado na conferência",
-                        }
-                        for game in latest_generation.get("games", [])
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
-        else:
-            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "missing_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Faltantes")
         st.write(
@@ -13012,8 +12951,6 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
         _render_audit_monitoring_page(snapshot, "conference")
-    elif page == "audit_monitoring_group_performance":
-        _render_audit_monitoring_page(snapshot, "group_performance")
     elif page == "audit_monitoring_missing_numbers":
         _render_audit_monitoring_page(snapshot, "missing_numbers")
     elif page == "audit_monitoring_extra_numbers":
