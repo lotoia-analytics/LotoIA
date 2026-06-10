@@ -201,11 +201,17 @@ def test_load_institutional_check_result_from_db_builds_rows(monkeypatch: pytest
     session_cm.__enter__.return_value = session
     session_cm.__exit__.return_value = False
     monkeypatch.setattr(admin_app, "get_session", lambda _path: session_cm)
-    monkeypatch.setattr(
-        admin_app,
-        "_load_official_history_contest",
-        lambda _contest: {"concurso": 3700, "data": "01/06/2026", "dezenas": list(range(1, 16))},
+    official_row = SimpleNamespace(
+        contest_number=3700,
+        numbers="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15",
+        draw_date="01/06/2026",
+        numbers_signature="sig",
+        source="caixa",
+        is_valid=1,
+        imported_at=None,
+        validated_at=None,
     )
+    session.query.return_value.filter.return_value.limit.return_value.one_or_none.return_value = official_row
 
     loaded = admin_app._load_institutional_check_result_from_db(generation_event_id=42)
     assert loaded is not None
