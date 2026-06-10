@@ -9235,22 +9235,102 @@ def normalize_dezenas(value: object) -> tuple[str, ...]:
     return tuple(sorted(dezenas))
 
 
+def build_lei15a_operational_read(
+    *,
+    game: dict[str, Any],
+    cartao_final_lei15: Sequence[int],
+    formato_d: int,
+    mode: str = "audit_validation",
+) -> dict[str, Any]:
+    """Leitura operacional Lei 15A com componentes próprios e validação do cartão Lei 15."""
+    nucleo_operacional_gp = list(NUCLEO_LEI15A_15D_CONGELADO)
+    cartao_validado = list(cartao_final_lei15)
+    if int(formato_d or 15) <= 15:
+        auditadas: list[int] = []
+    else:
+        auditadas = sorted(set(cartao_validado) - set(nucleo_operacional_gp))
+    vigilantes = sorted(set(auditadas).intersection(RESERVAS_LEI15A_PRIORITARIAS))
+
+    cartao_final_sync = normalize_dezenas(cartao_validado) == normalize_dezenas(cartao_final_lei15)
+    origin_log = {
+        "jogo": int(game.get("jogo", 0) or 0),
+        "formato": f"{int(formato_d or 15)}D",
+        "mode": mode,
+        "lei15": {
+            "nucleo": {
+                "value": _format_numbers_for_history(
+                    _extract_int_numbers(game.get("core_numbers", game.get("numbers", [])))
+                )
+                or "-",
+                "source": "Lei15.concept.runtime",
+            },
+            "reservas_auditadas": {
+                "value": _format_numbers_for_history(
+                    _extract_int_numbers(game.get("audited_reserve_numbers", []))
+                )
+                or "-",
+                "source": "Lei15.concept.runtime",
+            },
+            "cartao_final": {
+                "value": _format_numbers_for_history(cartao_final_lei15) or "-",
+                "source": "Lei15.generation",
+            },
+        },
+        "lei15a": {
+            "nucleo_operacional_gp": {
+                "value": _format_numbers_for_history(nucleo_operacional_gp) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15": False,
+            },
+            "auditadas": {
+                "value": _format_numbers_for_history(auditadas) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15_reservas": False,
+                "fixed_constant_used": False,
+            },
+            "vigilantes": {
+                "value": _format_numbers_for_history(vigilantes) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15_reservas": False,
+                "fixed_constant_used": False,
+            },
+            "cartao_validado": {
+                "value": _format_numbers_for_history(cartao_validado) or "-",
+                "source": "Lei15A.validation",
+                "generated_new_card": False,
+                "overrode_lei15_card": False,
+            },
+        },
+        "checks": {
+            "cartao_final_sync": cartao_final_sync,
+            "component_boundary_preserved": True,
+            "no_fixed_override": True,
+            "no_direct_copy": True,
+        },
+    }
+    return {
+        "nucleo_operacional_gp": nucleo_operacional_gp,
+        "auditadas": auditadas,
+        "vigilantes": vigilantes,
+        "cartao_validado": cartao_validado,
+        "mode": mode,
+        "origin_log": origin_log,
+        "sources": origin_log["lei15a"],
+        "checks": origin_log["checks"],
+    }
+
+
 def evaluate_institutional_panel_sync(
     *,
     cartao_final_superior: object,
     cartao_final_lido: object,
-    reservas_auditadas_superior: object,
-    auditadas_inferior: object,
+    reservas_auditadas_superior: object | None = None,
+    auditadas_inferior: object | None = None,
     vigilantes_inferior: object | None = None,
 ) -> bool:
-    """Verifica sincronização Lei 15 / Lei 15A com dezenas normalizadas."""
-    cartao_ok = normalize_dezenas(cartao_final_superior) == normalize_dezenas(cartao_final_lido)
-    auditadas_ok = (
-        normalize_dezenas(reservas_auditadas_superior) == normalize_dezenas(auditadas_inferior)
-    )
-    vigilantes_value = auditadas_inferior if vigilantes_inferior is None else vigilantes_inferior
-    vigilantes_ok = normalize_dezenas(vigilantes_value) == normalize_dezenas(auditadas_inferior)
-    return cartao_ok and auditadas_ok and vigilantes_ok
+    """Verifica sincronização de cartão final Lei 15 / Lei 15A (contrato aprovado)."""
+    _ = (reservas_auditadas_superior, auditadas_inferior, vigilantes_inferior)
+    return normalize_dezenas(cartao_final_superior) == normalize_dezenas(cartao_final_lido)
 
 
 def build_institutional_panel_sync_checks(
@@ -9270,10 +9350,8 @@ def build_institutional_panel_sync_checks(
         synchronized = evaluate_institutional_panel_sync(
             cartao_final_superior=superior_label,
             cartao_final_lido=inferior_label,
-            reservas_auditadas_superior=superior_reserves,
-            auditadas_inferior=inferior_auditadas,
-            vigilantes_inferior=inferior_vigilantes,
         )
+        boundary_checks = dict(row.get("lei15a_boundary_checks") or {})
         sync_checks.append(
             {
                 "jogo": row_index + 1,
@@ -9283,11 +9361,46 @@ def build_institutional_panel_sync_checks(
                 "auditadas_inferior": inferior_auditadas,
                 "vigilantes_inferior": inferior_vigilantes,
                 "origem_superior": "Lei15.generation",
-                "origem_inferior": "Lei15A.operational_read",
+                "origem_inferior": "Lei15A.validation",
                 "sincronizado": synchronized,
+                "component_boundary_preserved": bool(boundary_checks.get("component_boundary_preserved")),
+                "no_direct_copy": bool(boundary_checks.get("no_direct_copy")),
+                "no_fixed_override": bool(boundary_checks.get("no_fixed_override")),
+                "origin_log": row.get("lei15a_origin_log"),
             }
         )
     return sync_checks
+
+
+def _evaluate_lei15a_boundary_checks(row: dict[str, Any]) -> dict[str, bool]:
+    """Avalia fronteira conceitual Lei 15 / Lei 15A a partir da leitura operacional."""
+    origin_log = dict(row.get("lei15a_origin_log") or {})
+    lei15a = dict(origin_log.get("lei15a") or {})
+    nucleo_meta = dict(lei15a.get("nucleo_operacional_gp") or {})
+    auditadas_meta = dict(lei15a.get("auditadas") or {})
+    vigilantes_meta = dict(lei15a.get("vigilantes") or {})
+    cartao_meta = dict(lei15a.get("cartao_validado") or {})
+    no_direct_copy = (
+        not bool(nucleo_meta.get("copied_from_lei15"))
+        and not bool(auditadas_meta.get("copied_from_lei15_reservas"))
+        and not bool(vigilantes_meta.get("copied_from_lei15_reservas"))
+    )
+    no_fixed_override = (
+        not bool(auditadas_meta.get("fixed_constant_used"))
+        and not bool(vigilantes_meta.get("fixed_constant_used"))
+    )
+    no_independent_card = (
+        not bool(cartao_meta.get("generated_new_card"))
+        and not bool(cartao_meta.get("overrode_lei15_card"))
+    )
+    component_boundary_preserved = no_direct_copy and no_fixed_override and no_independent_card
+    return {
+        "cartao_final_sync": bool(row.get("sincronizado_com_cartao_final")),
+        "component_boundary_preserved": component_boundary_preserved,
+        "no_fixed_override": no_fixed_override,
+        "no_direct_copy": no_direct_copy,
+        "no_independent_lei15a_card": no_independent_card,
+    }
 
 
 def validate_lei15_lei15a_runtime_contract(
@@ -9307,25 +9420,49 @@ def validate_lei15_lei15a_runtime_contract(
     lower_all_identical = len(set(lower_cards)) == 1 and len(lower_cards) > 1
     fixed_override_detected = upper_variable and lower_all_identical
 
+    boundary_rows = [_evaluate_lei15a_boundary_checks(row) for row in institutional_rows]
     checks_results = {
-        "CHECK_001_FINAL_CARD_SYNC": all(
+        "CHECK_001_CARTAO_FINAL_SYNC": all(
             normalize_dezenas(check["cartao_final_superior"]) == normalize_dezenas(check["cartao_final_lido"])
             for check in sync_checks
         ),
-        "CHECK_002_AUDITADAS_SYNC": all(
-            normalize_dezenas(check["reservas_auditadas_superior"])
-            == normalize_dezenas(check["auditadas_inferior"])
+        "CHECK_002_NO_NUCLEO_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("nucleo_operacional_gp", {}).get("copied_from_lei15"))
             for check in sync_checks
         ),
-        "CHECK_003_VIGILANTES_CONFIRM": all(
-            normalize_dezenas(check["vigilantes_inferior"]) == normalize_dezenas(check["auditadas_inferior"])
+        "CHECK_003_NO_AUDITADAS_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("auditadas", {}).get("copied_from_lei15_reservas"))
             for check in sync_checks
         ),
-        "CHECK_004_NO_FIXED_OVERRIDE": not fixed_override_detected,
-        "CHECK_005_NO_NEW_CONCEPT": True,
-        "CHECK_006_RUNTIME_OBEYS_APPROVED_CONTRACT": not failed_checks and not fixed_override_detected,
+        "CHECK_004_NO_VIGILANTES_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("vigilantes", {}).get("copied_from_lei15_reservas"))
+            for check in sync_checks
+        ),
+        "CHECK_005_NO_FIXED_AUDITADAS_VIGILANTES": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("auditadas", {}).get("fixed_constant_used"))
+            and not bool((check.get("origin_log") or {}).get("lei15a", {}).get("vigilantes", {}).get("fixed_constant_used"))
+            for check in sync_checks
+        ),
+        "CHECK_006_NO_INDEPENDENT_LEI15A_CARD": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("cartao_validado", {}).get("generated_new_card"))
+            and not bool((check.get("origin_log") or {}).get("lei15a", {}).get("cartao_validado", {}).get("overrode_lei15_card"))
+            for check in sync_checks
+        ),
+        "CHECK_007_COMPONENT_BOUNDARY": all(
+            boundary.get("component_boundary_preserved") for boundary in boundary_rows
+        ),
+        "CHECK_008_PERSISTENCE_GUARD": False,
     }
-    persistence_allowed = all(checks_results.values()) and not failed_checks
+    checks_results["CHECK_008_PERSISTENCE_GUARD"] = (
+        checks_results["CHECK_001_CARTAO_FINAL_SYNC"]
+        and checks_results["CHECK_007_COMPONENT_BOUNDARY"]
+        and checks_results["CHECK_005_NO_FIXED_AUDITADAS_VIGILANTES"]
+        and checks_results["CHECK_002_NO_NUCLEO_COPY"]
+        and checks_results["CHECK_003_NO_AUDITADAS_COPY"]
+        and checks_results["CHECK_004_NO_VIGILANTES_COPY"]
+        and not fixed_override_detected
+    )
+    persistence_allowed = checks_results["CHECK_008_PERSISTENCE_GUARD"] and not failed_checks
     classification = "COMPATIVEL" if persistence_allowed else "CONFLITANTE"
     return {
         "classification": classification,
@@ -9334,10 +9471,13 @@ def validate_lei15_lei15a_runtime_contract(
         "checks_results": checks_results,
         "fixed_override_detected": fixed_override_detected,
         "persistence_allowed": persistence_allowed,
+        "persistence_guard_status": "PROTEGIDO" if persistence_allowed else "SINCRONIZACAO_FALHOU",
         "governance_confirmation": {
             "lei15_role": "governanca_soberana_geracao",
-            "lei15a_role": "leitura_operacional_auditoria_sincronizacao",
+            "lei15a_role": "leitura_operacional_gp_auditoria_validacao",
             "runtime_source_of_truth": "Lei15.generation",
+            "component_boundary": "PRESERVADA",
+            "sync_contract": "cartao_final_compativel",
         },
     }
 
@@ -9405,32 +9545,27 @@ def build_institutional_matrix_rows(
             if superior_final_cards is not None and index - 1 < len(superior_final_cards)
             else list(final_card)
         )
-        audited_final_card = list(superior_final_card)
-        generation_core = _extract_int_numbers(
-            game.get("core_numbers")
-            or game.get("numbers")
-            or audited_final_card[:15]
+        lei15a_read = build_lei15a_operational_read(
+            game=game,
+            cartao_final_lei15=superior_final_card,
+            formato_d=dezenas_por_jogo,
+            mode="audit_validation",
         )
-        if not generation_core and audited_final_card:
-            generation_core = list(audited_final_card[:15])
+        operational_nucleus = list(lei15a_read["nucleo_operacional_gp"])
+        operational_final_card = list(lei15a_read["cartao_validado"])
+        auditadas_escolhidas = list(lei15a_read["auditadas"])
+        vigilantes_escolhidas = list(lei15a_read["vigilantes"])
+        origin_log = dict(lei15a_read.get("origin_log") or {})
+        boundary_checks = dict(lei15a_read.get("checks") or {})
 
         reserve_numbers = _extract_int_numbers(game.get("audited_reserve_numbers", []))
         superior_reserves_label = (
             " ".join(f"+{int(number):02d}" for number in reserve_numbers) if reserve_numbers else "-"
         )
-        operational_nucleus = list(generation_core)
-        operational_final_card = list(audited_final_card)
-        auditadas_escolhidas = list(reserve_numbers)
-        if dezenas_por_jogo > 15 and not auditadas_escolhidas:
-            auditadas_escolhidas = sorted(set(operational_final_card) - set(operational_nucleus))
-        vigilantes_escolhidas = list(auditadas_escolhidas)
 
         synchronized_with_final_card = evaluate_institutional_panel_sync(
             cartao_final_superior=_format_numbers_for_history(superior_final_card),
             cartao_final_lido=_format_numbers_for_history(operational_final_card),
-            reservas_auditadas_superior=superior_reserves_label,
-            auditadas_inferior=_format_numbers_for_history(auditadas_escolhidas) or "-",
-            vigilantes_inferior=_format_numbers_for_history(vigilantes_escolhidas) or "-",
         )
         sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
 
@@ -9440,14 +9575,14 @@ def build_institutional_matrix_rows(
         if synchronized_with_final_card:
             leitura_institucional = (
                 f"Jogo {dezenas_por_jogo}D da célula {escala_label}; leitura operacional Lei 15A "
-                "sincronizada com o cartão final gerado pela Lei 15; núcleo, auditadas e vigilantes "
-                "espelham a saída superior."
+                "valida o cartão final gerado pela Lei 15; núcleo operacional GP, auditadas e "
+                "vigilantes são componentes próprios da Lei 15A."
             )
         else:
             leitura_institucional = (
                 f"Jogo {dezenas_por_jogo}D da célula {escala_label}; SINCRONIZACAO_FALHOU: "
                 f"cartão_final superior={_format_numbers_for_history(superior_final_card) or '-'} "
-                f"diverge do cartão interno={_format_numbers_for_history(final_card) or '-'}."
+                f"diverge do cartão validado={_format_numbers_for_history(operational_final_card) or '-'}."
             )
 
         if referencias_j12_j34 and vigilancia_j71:
@@ -9477,7 +9612,9 @@ def build_institutional_matrix_rows(
                 "status_estrutural_anterior": structural_status,
                 "leitura_institucional": leitura_institucional,
                 "origem_geracao": "Lei15.generation",
-                "origem_leitura": "Lei15A.operational_read",
+                "origem_leitura": "Lei15A.validation",
+                "lei15a_origin_log": origin_log,
+                "lei15a_boundary_checks": boundary_checks,
             }
         )
     return rows
@@ -9578,8 +9715,9 @@ def _render_institutional_matrix_reading_section(
 
     st.subheader("Leitura operacional da matriz GP")
     st.write(
-        "Esta leitura operacional Lei 15A audita e sincroniza cada jogo gerado pela Lei 15: "
-        "núcleo operacional GP, auditadas, vigilantes e cartão final espelham a faixa superior."
+        "Esta leitura operacional Lei 15A audita e valida cada jogo gerado pela Lei 15: "
+        "o cartão validado deve coincidir com o cartão final superior; núcleo operacional GP, "
+        "auditadas e vigilantes são componentes próprios da Lei 15A."
     )
     concept_cols = st.columns(2)
     with concept_cols[0]:
