@@ -43,9 +43,24 @@ ALERT_003_LABEL = "candidata_conversao"
 
 ADM_ACEITO = "ACEITO"
 ADM_REJEITADO = "REJEITADO"
+VERDICT_ACCEPT_DIAGNOSTIC = "ACCEPT_DIAGNOSTIC"
+VERDICT_REQUEST_MORE_EVIDENCE = "REQUEST_MORE_EVIDENCE"
+VERDICT_REJECT = "REJECT"
+VERDICT_OPTIONS = (
+    VERDICT_ACCEPT_DIAGNOSTIC,
+    VERDICT_REQUEST_MORE_EVIDENCE,
+    VERDICT_REJECT,
+)
 STATUS_PENDENTE = "PENDENTE"
+STATUS_PENDENTE_EVIDENCIA = "PENDENTE_EVIDENCIA"
 STATUS_ACEITO = "ACEITO"
 STATUS_REJEITADO = "REJEITADO"
+ACTIVE_ALERT_STATUSES = frozenset({STATUS_PENDENTE, STATUS_PENDENTE_EVIDENCIA})
+VERDICT_STATUS_BY_TYPE = {
+    VERDICT_ACCEPT_DIAGNOSTIC: STATUS_ACEITO,
+    VERDICT_REQUEST_MORE_EVIDENCE: STATUS_PENDENTE_EVIDENCIA,
+    VERDICT_REJECT: STATUS_REJEITADO,
+}
 
 ACTION_PROMOVER_RESERVA_ADR = "propor_promocao_reserva_via_ADR"
 ACTION_VIGILANCIA_DEZENA = "propor_vigilancia_dezena"
@@ -336,6 +351,103 @@ def _alert_key(alert_type: str, dezena: int, reconciliation_run_id: int) -> str:
     return f"{alert_type}:{dezena:02d}:{reconciliation_run_id}"
 
 
+def _format_alert_regra_base(alert_type: str) -> str:
+    if alert_type == ALERT_001:
+        return (
+            f"vazamento_lateral > {SIDE_LEAK_ALERT_THRESHOLD * 100:.0f}% "
+            f"em {MIN_CONSECUTIVE_RUNS_ALERT_001}+ runs consecutivas"
+        )
+    if alert_type == ALERT_002:
+        blind = ", ".join(f"{dezena:02d}" for dezena in sorted(BLIND_SPOTS))
+        return f"blind_spot confirmado em evolução ({blind})"
+    return f"taxa_conversao > {CONVERSION_ALERT_THRESHOLD * 100:.0f}%"
+
+
+def _format_alert_threshold_used(alert_type: str) -> str:
+    if alert_type == ALERT_001:
+        return f"{SIDE_LEAK_ALERT_THRESHOLD * 100:.0f}% / {MIN_CONSECUTIVE_RUNS_ALERT_001} runs"
+    if alert_type == ALERT_002:
+        return "blind_spot + dezena_faltante"
+    return f"{CONVERSION_ALERT_THRESHOLD * 100:.0f}%"
+
+
+def _format_alert_evidencia(alert: dict[str, Any]) -> str:
+    diagnosis = dict(alert.get("ml_diagnosis") or {})
+    proposal = dict(alert.get("ml_proposal") or {})
+    alert_type = str(alert.get("tipo_alerta") or "")
+    dezena = alert.get("dezena_fmt") or f"{int(alert.get('dezena', 0) or 0):02d}"
+    if alert_type == ALERT_001:
+        frequencia = diagnosis.get("frequencia", 0)
+        consecutivas = diagnosis.get("consecutivas", 0)
+        return (
+            f"Dezena {dezena} em sobra_real com {frequencia}% de vazamento "
+            f"em {consecutivas} runs consecutivas."
+        )
+    if alert_type == ALERT_002:
+        return (
+            f"Blind spot {dezena} como dezena_faltante em {diagnosis.get('aparicoes', 0)} "
+            f"jogos na faixa {diagnosis.get('faixa', '')}."
+        )
+    faixa = diagnosis.get("faixa", "")
+    best_taxa = max(
+        float(diagnosis.get("taxa_conversao_13_14", 0) or 0),
+        float(diagnosis.get("taxa_conversao_14_15", 0) or 0),
+    )
+    return (
+        f"Dezena {dezena} faltante em {best_taxa}% dos jogos na faixa {faixa}. "
+        f"Proposta: {proposal.get('action', '')}."
+    )
+
+
+def assess_alert_evidence_gaps(
+    alert: dict[str, Any],
+    *,
+    leakage_evidence: dict[str, Any] | None = None,
+) -> list[str]:
+    gaps: list[str] = []
+    diagnosis = dict(alert.get("ml_diagnosis") or {})
+    alert_type = str(alert.get("tipo_alerta") or "")
+    evidence = dict(leakage_evidence or alert.get("leakage_evidence") or {})
+    if alert_type == ALERT_001:
+        sample_size = int(diagnosis.get("sample_size", 0) or 0)
+        leakage_table = list(evidence.get("leakage_table") or [])
+        if not sample_size and leakage_table:
+            sample_size = int(leakage_table[0].get("sample_size", 0) or 0)
+        if sample_size < 2:
+            gaps.append("amostra_insuficiente")
+        drilldown_map = dict(evidence.get("drilldown_per_dezena") or {})
+        drilldown_rows = int((alert.get("ml_proposal") or {}).get("drilldown_rows", 0) or 0)
+        if not drilldown_map and drilldown_rows <= 0:
+            gaps.append("drilldown_incompleto")
+        for row in evidence.get("leakage_table") or []:
+            for drill_row in drilldown_map.get(str(row.get("dezena", "")), []) or []:
+                if not drill_row.get("cartao_final") or not drill_row.get("resultado_oficial"):
+                    gaps.append("falta_cartao_final_ou_resultado_oficial")
+                    break
+    elif alert_type == ALERT_002:
+        if int(diagnosis.get("aparicoes", 0) or 0) < 1:
+            gaps.append("amostra_insuficiente")
+    elif alert_type == ALERT_003:
+        if not diagnosis.get("faixa"):
+            gaps.append("amostra_insuficiente")
+    if not alert.get("ml_proposal", {}).get("action"):
+        gaps.append("regra_nao_identificada")
+    return sorted(set(gaps))
+
+
+def enrich_alert_card_for_display(alert: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(alert)
+    alert_type = str(alert.get("tipo_alerta") or "")
+    enriched["evidencia"] = _format_alert_evidencia(alert)
+    enriched["regra_base"] = _format_alert_regra_base(alert_type)
+    enriched["threshold_usado"] = _format_alert_threshold_used(alert_type)
+    enriched["fonte"] = SOURCE_POSTGRESQL
+    enriched["generation_cmd"] = False
+    enriched["recalibration_cmd"] = False
+    enriched["evidence_gaps"] = assess_alert_evidence_gaps(alert)
+    return enriched
+
+
 def _base_alert_card(
     *,
     alert_type: str,
@@ -539,15 +651,19 @@ def build_central_ml_diagnostics_payload(
     for alert in alerts:
         key = (alert["tipo_alerta"], alert["dezena"], alert["reconciliation_run_id"])
         existing = decision_index.get(key)
+        alert = dict(alert)
         if existing:
-            alert = dict(alert)
-            alert["status"] = existing["adm_decision"]
+            alert["status"] = existing.get("status") or existing["adm_decision"]
+            alert["verdict_type"] = existing.get("verdict_type")
             alert["decision_id"] = existing["id"]
+            alert["verdict_reason"] = existing.get("verdict_reason") or existing.get("adm_reason")
             alert["adm_reason"] = existing.get("adm_reason")
             alert["adm_user"] = existing.get("adm_user")
             alert["decided_at"] = existing.get("decided_at")
-        active_alerts.append(alert)
-    pending = [alert for alert in active_alerts if alert["status"] == STATUS_PENDENTE]
+            alert["missing_evidence"] = list(existing.get("missing_evidence") or [])
+            alert["adr_candidate"] = bool(existing.get("adr_candidate"))
+        active_alerts.append(enrich_alert_card_for_display(alert))
+    pending = [alert for alert in active_alerts if alert["status"] in ACTIVE_ALERT_STATUSES]
     updated_at = datetime.now(UTC).isoformat()
     return {
         "available": bool(contexts),
@@ -585,6 +701,8 @@ def list_ml_diagnostic_decisions(
 
 def _serialize_decision_row(row: MlDiagnosticDecision) -> dict[str, Any]:
     decided_at = row.decided_at
+    status = str(row.status or row.adm_decision or "")
+    verdict_reason = row.verdict_reason or row.adm_reason or ""
     return {
         "id": int(row.id or 0),
         "alert_type": row.alert_type,
@@ -592,9 +710,14 @@ def _serialize_decision_row(row: MlDiagnosticDecision) -> dict[str, Any]:
         "dezena_fmt": f"{int(row.dezena or 0):02d}",
         "ml_proposal": dict(row.ml_proposal or {}),
         "adm_decision": row.adm_decision,
-        "decision": row.adm_decision,
+        "decision": status or row.adm_decision,
+        "verdict_type": row.verdict_type or "",
+        "status": status,
         "adm_reason": row.adm_reason,
-        "reason": row.adm_reason or "",
+        "verdict_reason": verdict_reason,
+        "reason": verdict_reason,
+        "missing_evidence": list(row.missing_evidence or []),
+        "adr_candidate": bool(row.adr_candidate),
         "adm_user": row.adm_user,
         "reconciliation_run_id": int(row.reconciliation_run_id or 0),
         "created_at": row.created_at.isoformat() if row.created_at else "",
@@ -640,25 +763,119 @@ def _build_acceptance_effects(
     }
 
 
-def register_ml_diagnostic_decision(
+def _build_verdict_effects(
+    verdict_type: str,
+    alert_type: str,
+    ml_proposal: dict[str, Any],
+    *,
+    leakage_evidence: dict[str, Any] | None = None,
+    missing_evidence: Sequence[str] | None = None,
+    verdict_reason: str = "",
+) -> dict[str, Any]:
+    operational_effect = False
+    if verdict_type == VERDICT_ACCEPT_DIAGNOSTIC:
+        effects = _build_acceptance_effects(
+            alert_type,
+            ml_proposal,
+            leakage_evidence=leakage_evidence,
+        )
+        effects.update(
+            {
+                "feed_institutional_memory": True,
+                "adr_candidate": alert_type == ALERT_001,
+                "operational_effect": operational_effect,
+            }
+        )
+        return effects
+    if verdict_type == VERDICT_REQUEST_MORE_EVIDENCE:
+        return {
+            "register_missing_evidence": True,
+            "keep_alert_active": True,
+            "missing_evidence": list(missing_evidence or []),
+            "operational_effect": operational_effect,
+            "note": "Alerta permanece ativo até evidência complementar.",
+        }
+    return {
+        "register_rejection_reason": True,
+        "ml_feedback": True,
+        "rejection_reason": verdict_reason,
+        "operational_effect": operational_effect,
+        "note": "Rejeição registrada com feedback ML; sem efeito operacional.",
+    }
+
+
+def _validate_verdict_request(
+    verdict_type: str,
+    *,
+    alert_card: dict[str, Any] | None,
+    leakage_evidence: dict[str, Any] | None,
+    verdict_reason: str,
+    missing_evidence: Sequence[str],
+) -> None:
+    alert = dict(alert_card or {})
+    proposal = dict(alert.get("ml_proposal") or {})
+    gaps = list(missing_evidence) or assess_alert_evidence_gaps(alert, leakage_evidence=leakage_evidence)
+    if verdict_type == VERDICT_ACCEPT_DIAGNOSTIC:
+        if not proposal.get("action"):
+            raise ValueError("ACCEPT_DIAGNOSTIC requer regra_ML_existente_identificada.")
+        if gaps:
+            raise ValueError(
+                "ACCEPT_DIAGNOSTIC requer evidencia_completa e drilldown_auditavel: "
+                + ", ".join(gaps)
+            )
+        if alert.get("generation_command") or alert.get("recalibration_command"):
+            raise ValueError("ACCEPT_DIAGNOSTIC exige generation_command=False e recalibration_command=False.")
+        return
+    if verdict_type == VERDICT_REQUEST_MORE_EVIDENCE:
+        if not str(verdict_reason or "").strip():
+            raise ValueError("verdict_reason é obrigatório para REQUEST_MORE_EVIDENCE.")
+        if not gaps:
+            raise ValueError(
+                "REQUEST_MORE_EVIDENCE requer ao menos uma lacuna: "
+                "amostra_insuficiente, poucas_geracoes, drilldown_incompleto "
+                "ou falta_cartao_final_ou_resultado_oficial."
+            )
+        return
+    if verdict_type == VERDICT_REJECT:
+        if not str(verdict_reason or "").strip():
+            raise ValueError("verdict_reason é obrigatório para REJECT.")
+
+
+def register_ml_diagnostic_verdict(
     *,
     alert_type: str,
     dezena: int,
     ml_proposal: dict[str, Any],
-    adm_decision: str,
+    verdict_type: str,
     reconciliation_run_id: int,
-    adm_reason: str = "",
+    verdict_reason: str = "",
     adm_user: str = "",
     leakage_evidence: dict[str, Any] | None = None,
+    alert_card: dict[str, Any] | None = None,
+    missing_evidence: Sequence[str] | None = None,
     db_path: str = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    """Persiste decisão ADM (aceita ou rejeitada). ML nunca executa sem ACEITO."""
-    normalized_decision = str(adm_decision or "").strip().upper()
-    if normalized_decision not in {ADM_ACEITO, ADM_REJEITADO}:
-        raise ValueError("adm_decision deve ser ACEITO ou REJEITADO")
+    """Persiste veredito ADM (ADM_VERDICT_POLICY). Nenhum veredito gera efeito operacional."""
+    normalized_verdict = str(verdict_type or "").strip().upper()
+    if normalized_verdict not in VERDICT_OPTIONS:
+        raise ValueError("verdict_type deve ser ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT")
     proposal = dict(ml_proposal or {})
-    if normalized_decision == ADM_REJEITADO and not str(adm_reason or "").strip():
-        raise ValueError("adm_reason é obrigatório para decisão REJEITADO")
+    card = dict(alert_card or {})
+    card.setdefault("tipo_alerta", alert_type)
+    card.setdefault("ml_proposal", proposal)
+    card.setdefault("generation_command", False)
+    card.setdefault("recalibration_command", False)
+    gaps = list(missing_evidence or assess_alert_evidence_gaps(card, leakage_evidence=leakage_evidence))
+    _validate_verdict_request(
+        normalized_verdict,
+        alert_card=card,
+        leakage_evidence=leakage_evidence,
+        verdict_reason=verdict_reason,
+        missing_evidence=gaps,
+    )
+    status = VERDICT_STATUS_BY_TYPE[normalized_verdict]
+    adm_decision = status if status in {STATUS_ACEITO, STATUS_REJEITADO} else STATUS_PENDENTE_EVIDENCIA
+    adr_candidate = normalized_verdict == VERDICT_ACCEPT_DIAGNOSTIC and alert_type == ALERT_001
     now = datetime.now(UTC)
     with get_session(db_path) as session:
         existing = (
@@ -674,24 +891,29 @@ def register_ml_diagnostic_decision(
         if existing is not None:
             return _serialize_decision_row(existing)
         payload = dict(proposal)
-        if normalized_decision == ADM_ACEITO:
-            payload["acceptance_effects"] = _build_acceptance_effects(
-                alert_type,
-                proposal,
-                leakage_evidence=leakage_evidence,
-            )
-            if leakage_evidence:
-                payload["leakage_evidence"] = dict(leakage_evidence)
-        else:
+        payload["verdict_effects"] = _build_verdict_effects(
+            normalized_verdict,
+            alert_type,
+            proposal,
+            leakage_evidence=leakage_evidence,
+            missing_evidence=gaps,
+            verdict_reason=verdict_reason,
+        )
+        if leakage_evidence:
+            payload["leakage_evidence"] = dict(leakage_evidence)
+        if normalized_verdict == VERDICT_REJECT:
             payload["archived"] = True
-            if leakage_evidence:
-                payload["leakage_evidence"] = dict(leakage_evidence)
         row = MlDiagnosticDecision(
             alert_type=alert_type,
             dezena=int(dezena),
             ml_proposal=payload,
-            adm_decision=normalized_decision,
-            adm_reason=str(adm_reason or "").strip() or None,
+            adm_decision=adm_decision,
+            adm_reason=str(verdict_reason or "").strip() or None,
+            verdict_type=normalized_verdict,
+            status=status,
+            verdict_reason=str(verdict_reason or "").strip() or None,
+            missing_evidence=gaps if normalized_verdict == VERDICT_REQUEST_MORE_EVIDENCE else [],
+            adr_candidate=adr_candidate,
             adm_user=str(adm_user or "").strip(),
             reconciliation_run_id=int(reconciliation_run_id),
             created_at=now,
@@ -701,6 +923,56 @@ def register_ml_diagnostic_decision(
         session.commit()
         session.refresh(row)
         return _serialize_decision_row(row)
+
+
+def register_ml_diagnostic_decision(
+    *,
+    alert_type: str,
+    dezena: int,
+    ml_proposal: dict[str, Any],
+    adm_decision: str,
+    reconciliation_run_id: int,
+    adm_reason: str = "",
+    adm_user: str = "",
+    leakage_evidence: dict[str, Any] | None = None,
+    alert_card: dict[str, Any] | None = None,
+    db_path: str = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Compat wrapper: ACEITO/REJEITADO → ADM_VERDICT_POLICY."""
+    normalized_decision = str(adm_decision or "").strip().upper()
+    if normalized_decision == ADM_ACEITO:
+        verdict_type = VERDICT_ACCEPT_DIAGNOSTIC
+    elif normalized_decision == ADM_REJEITADO:
+        verdict_type = VERDICT_REJECT
+    else:
+        raise ValueError("adm_decision deve ser ACEITO ou REJEITADO")
+    card = dict(alert_card or {})
+    card.setdefault("tipo_alerta", alert_type)
+    card.setdefault("ml_proposal", ml_proposal)
+    if leakage_evidence:
+        card["leakage_evidence"] = dict(leakage_evidence)
+        if alert_type == ALERT_001:
+            leakage_table = list(leakage_evidence.get("leakage_table") or [])
+            drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
+            card.setdefault(
+                "ml_diagnosis",
+                {
+                    "sample_size": int((leakage_table[0] or {}).get("sample_size", 0) or 0) if leakage_table else 0,
+                    "drilldown_available": bool(drilldown_map),
+                },
+            )
+    return register_ml_diagnostic_verdict(
+        alert_type=alert_type,
+        dezena=dezena,
+        ml_proposal=ml_proposal,
+        verdict_type=verdict_type,
+        reconciliation_run_id=reconciliation_run_id,
+        verdict_reason=adm_reason,
+        adm_user=adm_user,
+        leakage_evidence=leakage_evidence,
+        alert_card=card,
+        db_path=db_path,
+    )
 
 
 def build_side_leak_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
