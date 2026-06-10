@@ -17,6 +17,7 @@ import time
 import uuid
 import unicodedata
 from collections import Counter
+from contextlib import contextmanager
 from functools import lru_cache
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2606,12 +2607,35 @@ def _reconciliation_memories_share_generation(
     return bool(post_gen and post_gen in batch_ids)
 
 
+@contextmanager
+def _streamlit_collapsible(
+    title: str,
+    *,
+    expanded: bool = False,
+    allow_expander: bool = True,
+    key: str | None = None,
+):
+    """Evita expanders aninhados quando a seção já está dentro de outro expander."""
+    if allow_expander:
+        with st.expander(title, expanded=expanded, key=key):
+            yield
+    else:
+        yield
+
+
 def _render_hit_decomposition_technical_expander(
     hit_decomposition: dict[str, Any],
     *,
     key_prefix: str,
+    use_expander: bool = True,
 ) -> None:
-    with st.expander("Detalhamento técnico por faixa de acertos", expanded=False):
+    if not use_expander:
+        return
+    with _streamlit_collapsible(
+        "Detalhamento técnico por faixa de acertos",
+        expanded=False,
+        key=f"hit_decomp_{key_prefix}",
+    ):
         exact_cols = st.columns(6)
         exact_cols[0].metric("count_10_exact", int(hit_decomposition.get("count_10_exact", 0) or 0))
         exact_cols[1].metric("count_11_exact", int(hit_decomposition.get("count_11_exact", 0) or 0))
@@ -2627,7 +2651,8 @@ def _render_hit_decomposition_technical_expander(
         plus_cols[4].metric("count_15", int(hit_decomposition.get("count_15", 0) or 0))
 
 
-def _render_scientific_memory_block(*, compact: bool = False) -> None:
+def _render_scientific_memory_block(*, compact: bool = False, inside_expander: bool = False) -> None:
+    allow_expander = not inside_expander
     official_diagnostics = _load_official_history_diagnostics()
     seed_report = {
         "status": official_diagnostics.get("status_base_oficial", "-"),
@@ -2721,6 +2746,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
             _render_hit_decomposition_technical_expander(
                 official_hit_decomposition,
                 key_prefix="official_15",
+                use_expander=allow_expander,
             )
         else:
             official_exact_cols = st.columns(5)
@@ -2748,7 +2774,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
         official_detail_cols[3].markdown(
             f"**Concurso base**  \n{official_15_memory.get('baseline_contest_number', official_window.get('contest_number', '-')) or '-'}"
         )
-        with st.expander("Ver baseline oficial da política 15 completa", expanded=False):
+        with _streamlit_collapsible(
+            "Ver baseline oficial da política 15 completa",
+            allow_expander=allow_expander,
+            key="scientific_baseline_15_full",
+        ):
             st.caption("Baseline persistida no PostgreSQL. Exporte via histórico institucional para auditoria técnica.")
     post_window: dict[str, Any] = {}
     cross_validation_summary: dict[str, Any] = {}
@@ -2784,6 +2814,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
             _render_hit_decomposition_technical_expander(
                 post_hit_decomposition,
                 key_prefix="post_reconciliation",
+                use_expander=allow_expander,
             )
         else:
             post_exact_cols = st.columns(6)
@@ -2820,7 +2851,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                     f"Janela {label}",
                     int(window_payload.get("contest_count", 0) or 0),
                 )
-            with st.expander("Memória pós-conferência observacional — detalhes", expanded=False):
+            with _streamlit_collapsible(
+                "Memória pós-conferência observacional — detalhes",
+                allow_expander=allow_expander,
+                key="scientific_post_reconciliation_details",
+            ):
                 st.caption("Registro técnico legado preservado para auditoria histórica no PostgreSQL.")
     if batch_reconciliation_memory:
         if merge_reconciliation:
@@ -2924,9 +2959,14 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
             _render_hit_decomposition_technical_expander(
                 batch_hit_decomposition,
                 key_prefix="merged_reconciliation",
+                use_expander=allow_expander,
             )
             if windows_summary:
-                with st.expander("Expansão histórica", expanded=False):
+                with _streamlit_collapsible(
+                    "Expansão histórica",
+                    allow_expander=allow_expander,
+                    key="scientific_historical_expansion",
+                ):
                     window_items = sorted(
                         windows_summary.items(),
                         key=lambda item: (item[0] != "all", int(item[0]) if str(item[0]).isdigit() else 9999),
@@ -2937,7 +2977,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                             f"Janela {label}",
                             int(window_payload.get("contest_count", 0) or 0),
                         )
-            with st.expander("Identificação técnica da memória", expanded=False):
+            with _streamlit_collapsible(
+                "Identificação técnica da memória",
+                allow_expander=allow_expander,
+                key="scientific_memory_identity_merged",
+            ):
                 identity_cols = st.columns(5)
                 identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
                 identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
@@ -2999,6 +3043,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                 _render_hit_decomposition_technical_expander(
                     batch_hit_decomposition,
                     key_prefix="batch_reconciliation",
+                    use_expander=allow_expander,
                 )
             else:
                 batch_exact_cols = st.columns(6)
@@ -3028,7 +3073,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                 f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
             )
             if compact:
-                with st.expander("Identificação técnica da memória", expanded=False):
+                with _streamlit_collapsible(
+                    "Identificação técnica da memória",
+                    allow_expander=allow_expander,
+                    key="scientific_memory_identity_batch",
+                ):
                     identity_cols = st.columns(5)
                     identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
                     identity_cols[1].markdown(
@@ -3132,7 +3181,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                 "A memória possui suporte histórico cruzado, mas ainda depende de validação prospectiva. "
                 f"O uso recomendado é condicional/híbrido até produzir {batch_hit_decomposition.get('validation_threshold', 11)}+ na próxima bateria limpa."
             )
-        with st.expander("Memória consolidada da bateria conferida — detalhes", expanded=False):
+        with _streamlit_collapsible(
+            "Memória consolidada da bateria conferida — detalhes",
+            allow_expander=allow_expander,
+            key="scientific_batch_memory_details",
+        ):
             st.caption("Memória consolidada persistida no PostgreSQL.")
     else:
         st.caption("Memória de reconciliação em lote indisponível ou ainda não registrada para esta sessão.")
@@ -3186,6 +3239,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                 _render_hit_decomposition_technical_expander(
                     near_miss_hit_decomposition,
                     key_prefix="near_miss",
+                    use_expander=allow_expander,
                 )
             else:
                 near_miss_exact_cols = st.columns(6)
@@ -3213,7 +3267,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                         ]
                     )
                 )
-            with st.expander("Melhores near miss — detalhes", expanded=False):
+            with _streamlit_collapsible(
+                "Melhores near miss — detalhes",
+                allow_expander=allow_expander,
+                key="scientific_near_miss_details",
+            ):
                 st.caption("Registro near miss persistido no PostgreSQL.")
     st.markdown("##### Histórico Oficial Lotofácil")
     official_rows_summary = _load_official_history_rows(limit=10, descending=True)
@@ -3265,7 +3323,11 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
         )
     )
     if scientific_memory:
-        with st.expander("Memória científica legada — quarentena documental", expanded=False):
+        with _streamlit_collapsible(
+            "Memória científica legada — quarentena documental",
+            allow_expander=allow_expander,
+            key="scientific_legacy_quarantine",
+        ):
             if official_15_memory:
                 st.caption(
                     "Baseline oficial 15 validada nível 3 | official_15_search_standard=true | "
@@ -7650,8 +7712,8 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         summary_cols[3].metric("Melhor score", f"{best_score:.4f}")
         summary_cols[4].metric("Última geração", latest_generation_label)
 
-        with st.expander("Memória científica", expanded=False):
-            _render_scientific_memory_block(compact=True)
+        with st.expander("Memória científica", expanded=False, key="historico_memoria_cientifica"):
+            _render_scientific_memory_block(compact=True, inside_expander=True)
 
         filter_cols = st.columns(3)
         generation_labels = list(generation_df["geração"].astype(str).tolist())
