@@ -11395,7 +11395,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                 with st.expander(
                     f"{title} | jogos={item.get('total_games', '-') } | best_hits={item.get('best_hits', '-')}",
                     expanded=False,
-                    key=f"conference_generation_expander_{generation_event_id or 'unknown'}",
                 ):
                     gen_cols = st.columns(4)
                     gen_cols[0].metric("seed", item.get("seed", "-"))
