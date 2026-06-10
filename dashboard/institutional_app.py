@@ -9215,6 +9215,41 @@ def _format_numbers_for_history(values: Sequence[int] | None) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
 
 
+def normalize_dezenas(value: object) -> tuple[str, ...]:
+    """Normaliza dezenas para comparação institucional (ordem e prefixo '+')."""
+    if value is None or value == "-":
+        return tuple()
+
+    if isinstance(value, str):
+        tokens = value.replace("+", " ").split()
+    else:
+        tokens = list(value)
+
+    dezenas: list[str] = []
+    for token in tokens:
+        cleaned = str(token).replace("+", "").strip()
+        if not cleaned:
+            continue
+        dezenas.append(f"{int(cleaned):02d}")
+
+    return tuple(sorted(dezenas))
+
+
+def evaluate_institutional_panel_sync(
+    *,
+    cartao_final_superior: object,
+    cartao_final_lido: object,
+    reservas_auditadas_superior: object,
+    auditadas_inferior: object,
+) -> bool:
+    """Verifica sincronização Lei 15 / Lei 15A com dezenas normalizadas."""
+    cartao_ok = normalize_dezenas(cartao_final_superior) == normalize_dezenas(cartao_final_lido)
+    auditadas_ok = (
+        normalize_dezenas(reservas_auditadas_superior) == normalize_dezenas(auditadas_inferior)
+    )
+    return cartao_ok and auditadas_ok
+
+
 def infer_matrix_cell(formato_cartao: int | str | None, requested_count: int | str | None) -> dict[str, Any]:
     """Infer a matrix cell label from the card format and requested quantity."""
     dezenas_por_jogo = int(formato_cartao or 15)
@@ -9412,15 +9447,11 @@ def _render_institutional_matrix_reading_section(
         inferior_label = str(row.get("cartao_final_lido", "-") or "-")
         superior_reserves = str(games_table_rows[row_index].get("reservas_auditadas", "-") or "-")
         inferior_auditadas = str(row.get("auditadas_escolhidas", "-") or "-")
-        inferior_reserves = (
-            " ".join(part.lstrip("+") for part in superior_reserves.split())
-            if superior_reserves != "-"
-            else "-"
-        )
-        synchronized = superior_label == inferior_label and (
-            inferior_auditadas == inferior_reserves
-            if superior_reserves != "-"
-            else inferior_auditadas == "-"
+        synchronized = evaluate_institutional_panel_sync(
+            cartao_final_superior=superior_label,
+            cartao_final_lido=inferior_label,
+            reservas_auditadas_superior=superior_reserves,
+            auditadas_inferior=inferior_auditadas,
         )
         sync_checks.append(
             {
