@@ -14,6 +14,7 @@ from lotoia.database.database import (
     ReconciliationRun,
     get_session,
 )
+from lotoia.analytics.lotofacil_scientific_core import validation_threshold_by_game_size
 from lotoia.observability.observational_leftover import (
     ML_ROLE_DIAGNOSTIC_ONLY,
     compute_dezenas_sobrando,
@@ -49,6 +50,26 @@ STATUS_REJEITADO = "REJEITADO"
 ACTION_PROMOVER_RESERVA_ADR = "propor_promocao_reserva_via_ADR"
 ACTION_VIGILANCIA_DEZENA = "propor_vigilancia_dezena"
 ACTION_AJUSTE_POOL = "propor_ajuste_pool_candidatos"
+
+
+def get_evolution_target_hits(game_size: int = 15) -> list[int]:
+    """Hit bands for evolution diagnostics: two steps below max, anchored at schema base."""
+    base = validation_threshold_by_game_size.get(game_size, 11)
+    offset_low = game_size - base - 2
+    offset_high = game_size - base - 1
+    return [base + offset_low, base + offset_high]
+
+
+def _evolution_faixa_label(lower_target: int) -> str:
+    return f"{lower_target}->{lower_target + 1}"
+
+
+def _infer_game_size_from_context(context: dict[str, Any], *, default: int = 15) -> int:
+    for game in context.get("games") or []:
+        numbers = game.get("numbers") or []
+        if numbers:
+            return len(numbers)
+    return default
 
 
 def _parse_dezenas(values: Sequence[int | str] | str | None) -> list[int]:
@@ -412,9 +433,12 @@ def build_alert_002_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
     if not context.get("available"):
         return []
     run_id = int(context.get("reconciliation_run_id", 0) or 0)
+    game_size = _infer_game_size_from_context(context)
+    evolution_targets = get_evolution_target_hits(game_size)
     cards: list[dict[str, Any]] = []
     seen: set[int] = set()
-    for target_hits, faixa in ((13, "13->14"), (14, "14->15")):
+    for target_hits in evolution_targets:
+        faixa = _evolution_faixa_label(target_hits)
         stats = _missing_dezena_stats(context, target_hits=target_hits)
         for dezena, payload in stats.items():
             if dezena not in BLIND_SPOTS or dezena in seen:
@@ -451,21 +475,25 @@ def build_alert_003_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
     if not context.get("available"):
         return []
     run_id = int(context.get("reconciliation_run_id", 0) or 0)
-    stats_13 = _missing_dezena_stats(context, target_hits=13)
-    stats_14 = _missing_dezena_stats(context, target_hits=14)
-    all_dezenas = set(stats_13) | set(stats_14)
+    game_size = _infer_game_size_from_context(context)
+    lower_target, upper_target = get_evolution_target_hits(game_size)
+    stats_lower = _missing_dezena_stats(context, target_hits=lower_target)
+    stats_upper = _missing_dezena_stats(context, target_hits=upper_target)
+    all_dezenas = set(stats_lower) | set(stats_upper)
     cards: list[dict[str, Any]] = []
     for dezena in sorted(all_dezenas):
-        taxa_13 = stats_13.get(dezena, {}).get("percentual", 0.0)
-        taxa_14 = stats_14.get(dezena, {}).get("percentual", 0.0)
-        best_taxa = max(taxa_13, taxa_14)
+        taxa_lower = stats_lower.get(dezena, {}).get("percentual", 0.0)
+        taxa_upper = stats_upper.get(dezena, {}).get("percentual", 0.0)
+        best_taxa = max(taxa_lower, taxa_upper)
         if best_taxa <= (CONVERSION_ALERT_THRESHOLD * 100.0):
             continue
-        faixa = "14->15" if taxa_14 >= taxa_13 else "13->14"
+        faixa_upper = _evolution_faixa_label(upper_target)
+        faixa_lower = _evolution_faixa_label(lower_target)
+        faixa = faixa_upper if taxa_upper >= taxa_lower else faixa_lower
         ml_diagnosis = {
             "dezena": f"{dezena:02d}",
-            "taxa_conversao_13_14": taxa_13,
-            "taxa_conversao_14_15": taxa_14,
+            "taxa_conversao_13_14": taxa_lower,
+            "taxa_conversao_14_15": taxa_upper,
             "faixa": faixa,
         }
         ml_proposal = {
@@ -741,16 +769,20 @@ def _build_evolution_panel_payload(
 
 
 def build_evolution_13_14_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
+    game_size = _infer_game_size_from_context(context)
+    lower_target, _ = get_evolution_target_hits(game_size)
     return _build_evolution_panel_payload(
         context,
-        target_hits=13,
+        target_hits=lower_target,
         candidate_flag=CANDIDATE_FLAG_13_14,
     )
 
 
 def build_evolution_14_15_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
+    game_size = _infer_game_size_from_context(context)
+    _, upper_target = get_evolution_target_hits(game_size)
     return _build_evolution_panel_payload(
         context,
-        target_hits=14,
+        target_hits=upper_target,
         candidate_flag=CANDIDATE_FLAG_14_15,
     )

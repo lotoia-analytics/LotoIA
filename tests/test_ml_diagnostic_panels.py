@@ -7,6 +7,7 @@ from lotoia.observability.ml_diagnostic_panels import (
     build_evolution_13_14_panel_payload,
     build_evolution_14_15_panel_payload,
     build_side_leak_panel_payload,
+    get_evolution_target_hits,
 )
 from lotoia.observability.observational_leftover import ML_ROLE_DIAGNOSTIC_ONLY
 
@@ -25,22 +26,22 @@ def _sample_context() -> dict:
         "games": [
             {
                 "game_index": 1,
-                "numbers": sorted(NUCLEO | {5, 7}),
+                "numbers": sorted(NUCLEO),
                 "hits": 13,
             },
             {
                 "game_index": 2,
-                "numbers": sorted(NUCLEO | {6, 8}),
+                "numbers": sorted(NUCLEO),
                 "hits": 13,
             },
             {
                 "game_index": 3,
-                "numbers": sorted(NUCLEO | {5}),
+                "numbers": sorted(NUCLEO),
                 "hits": 14,
             },
             {
                 "game_index": 4,
-                "numbers": sorted(NUCLEO | {7, 15}),
+                "numbers": sorted(NUCLEO),
                 "hits": 14,
             },
         ],
@@ -73,6 +74,18 @@ def test_evolution_14_15_ranks_missing_dezenas() -> None:
     assert payload["games_analyzed"] == 2
     assert payload["candidate_flag"] == CANDIDATE_FLAG_14_15
     assert payload["rows"]
+
+
+def test_get_evolution_target_hits_15d() -> None:
+    assert get_evolution_target_hits(15) == [13, 14]
+
+
+def test_get_evolution_target_hits_17d() -> None:
+    assert get_evolution_target_hits(17) == [15, 16]
+
+
+def test_get_evolution_target_hits_18d() -> None:
+    assert get_evolution_target_hits(18) == [16, 17]
 
 
 def test_side_leak_alert_when_threshold_exceeded() -> None:
