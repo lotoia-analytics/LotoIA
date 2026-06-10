@@ -420,7 +420,6 @@ PAGE_TARGETS = {
     "Evolução 13 -> 14": "audit_monitoring_13_to_14",
     "Evolução 14 -> 15": "audit_monitoring_14_to_15",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
-    "Hipóteses para teste offline": "audit_monitoring_offline_hypotheses",
     "Gerar Jogos": "generation",
     "Conferir Resultados": "conference",
     "Simular Resultados": "simulation",
@@ -431,14 +430,9 @@ PAGE_TARGETS = {
     "Limpar Históricos": "clear_histories",
     "Apagar Histórico": "delete_history",
     "Comparativos histórico": "comparative_history",
-    "Análises Estratégicas": "strategies_analysis",
-    "Testar Estratégias": "strategies_test",
-    "Simular Estratégias": "strategies_simulation",
     "Métricas HB": "hb_metrics",
     "Cobertura estrutural": "structural_coverage",
-    "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
-    "HB Geometry": "hb_geometry",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
 
@@ -9663,18 +9657,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         _nav_entry(label, page_id)
     st.sidebar.caption("Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Hip?teses para teste offline", "audit_monitoring_offline_hypotheses"),
-        ("An?lises Estrat?gicas", "strategies_analysis"),
-        ("Testar Estrat?gias", "strategies_test"),
-        ("Simular Estrat?gias", "strategies_simulation"),
-        ("Replay institucional", "institutional_replay"),
-        ("HB Geometry", "hb_geometry"),
-    ]:
-        _nav_entry(label, page_id, disabled=True)
-    st.sidebar.caption("Itens de quarentena permanecem vis?veis apenas como refer?ncia institucional.")
-
     st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
     for label, page_id in [("Limpar Hist?ricos", "clear_histories"), ("Apagar Hist?rico", "delete_history")]:
         _nav_entry(label, page_id)
@@ -9705,18 +9687,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "clear_histories",
         "delete_history",
     }
-    blocked_pages = {
-        "audit_monitoring_offline_hypotheses",
-        "strategies_analysis",
-        "strategies_test",
-        "strategies_simulation",
-        "institutional_replay",
-        "hb_geometry",
-    }
-    if choice in blocked_pages:
-        st.sidebar.warning("P?gina bloqueada por pol?tica institucional.")
-        choice = "home"
-    elif choice not in allowed_pages:
+    if choice not in allowed_pages:
         choice = _canonical_page_id(page)
     if choice not in allowed_pages:
         choice = "fallback"
@@ -11094,11 +11065,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         else:
             st.info("Sem dezenas faltantes para análise 14 → 15 nesta conferência.")
         _render_local_ml_diagnostics(list(evolution.get("local_diagnostics") or []))
-    elif section == "offline_hypotheses":
-        st.markdown("##### Hipóteses para teste offline")
-        st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
-
-
 def _render_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     _ensure_official_history_seeded()
@@ -13394,7 +13360,7 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     state_cols = st.columns(4)
     state_cols[0].metric("Gerador", "não carregado")
     state_cols[1].metric("Geração automática", "bloqueada na home")
-    state_cols[2].metric("Quarentena", "restrita")
+    state_cols[2].metric("Camadas ML", "observacionais")
     state_cols[3].metric("Destrutivas", "bloqueadas")
     with st.expander("Detalhes técnicos avançados", expanded=False):
         st.caption("Home institucional leve, sem histórico pesado e sem execução operacional.")
@@ -13443,8 +13409,6 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "14_to_15")
     elif page == "central_ml_diagnostics":
         _render_central_ml_diagnostics_page(snapshot)
-    elif page == "audit_monitoring_offline_hypotheses":
-        _render_audit_monitoring_page(snapshot, "offline_hypotheses")
     elif page == "generation":
         _render_generator_page(snapshot)
     elif page == "clean_law15_generation":
@@ -13463,22 +13427,14 @@ def main() -> None:
         _render_delete_history_page(snapshot)
     elif page == "comparative_history":
         _render_comparative_history_page(snapshot)
-    elif page == "strategies_analysis":
-        _render_strategies_page("Análises Estratégicas", snapshot)
-    elif page == "strategies_test":
-        _render_strategies_page("Testar Estratégias", snapshot)
-    elif page == "strategies_simulation":
-        _render_strategies_page("Simular Estratégias", snapshot)
     elif page == "hb_metrics":
         _render_metrics_hb_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
-    elif page == "institutional_replay":
-        _render_replay_institutional_page(snapshot)
     elif page == "summary_benchmark":
         _render_benchmark_resumido_page(snapshot)
     else:
-        _render_hb_geometry_page(_hb_geometry_state())
+        _render_fallback_page(snapshot)
 
 
 if __name__ == "__main__":
