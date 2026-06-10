@@ -4448,6 +4448,8 @@ def _build_observational_leftover_audit_row(
         "dezenas_acertadas": "-",
         "dezenas sobrando": "-",
         "dezenas_sobrando_count": 0,
+        "dezenas faltantes": "-",
+        "dezenas_faltantes_count": 0,
         "leftover_basis": REAL_LEFTOVER_BASIS,
         "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
         "grupo relacionado": game.get("game_index", "-"),
@@ -4472,6 +4474,8 @@ def _build_observational_leftover_audit_row(
             "dezenas_acertadas": _format_observational_dezenas(payload["dezenas_acertadas"]),
             "dezenas sobrando": _format_observational_dezenas(payload["dezenas_sobrando"]),
             "dezenas_sobrando_count": int(payload["dezenas_sobrando_count"]),
+            "dezenas faltantes": _format_observational_dezenas(payload["dezenas_faltando"]),
+            "dezenas_faltantes_count": len(payload["dezenas_faltando"]),
             "leftover_basis": str(payload["leftover_basis"]),
             "ml_role": str(payload["ml_role"]),
             "observação institucional": "observação pós-conferência",
@@ -4484,8 +4488,18 @@ OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS: tuple[str, ...] = (
     "concurso_analisado",
     "formato_cartao",
     "dezenas_registradas",
+    "resultado_oficial",
     "dezenas_nao_acertadas",
     "dezenas_nao_acertadas_count",
+)
+
+OBSERVATIONAL_MISSING_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "resultado_oficial",
+    "dezenas_faltantes",
+    "dezenas_faltantes_count",
 )
 
 
@@ -4495,8 +4509,21 @@ def _project_observational_leftover_display_row(row: dict[str, Any]) -> dict[str
         "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
         "formato_cartao": row.get("formato_cartao", "-"),
         "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
         "dezenas_nao_acertadas": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
         "dezenas_nao_acertadas_count": row.get("dezenas_sobrando_count", 0),
+    }
+
+
+def _project_observational_missing_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para o painel de dezenas faltantes."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
+        "dezenas_faltantes": row.get("dezenas faltantes", row.get("dezenas_faltantes", "-")),
+        "dezenas_faltantes_count": row.get("dezenas_faltantes_count", 0),
     }
 
 
@@ -10561,7 +10588,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "missing_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Faltantes")
-        st.write("Esta tela observa as dezenas ausentes nos acertos por grupo, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        st.write(
+            "Esta tela observa as dezenas sorteadas que não foram jogadas "
+            "(resultado_oficial − cartao_final), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
         latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
@@ -10578,22 +10608,24 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
         data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            missing_df = pd.DataFrame(
-                [
-                    {
-                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                        "dezenas ausentes": " ".join(f"{number:02d}" for number in game.get("matched_numbers", []) or []) or "-",
-                        "frequência": int(game.get("hits", 0) or 0),
-                        "grupo relacionado": game.get("game_index", "-"),
-                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
-                        "observação institucional": "observação pós-conferência",
-                    }
-                    for game in latest_generation.get("games", [])
-                ]
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
             )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            missing_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
+            missing_display_rows = [_project_observational_missing_display_row(row) for row in missing_rows]
+            missing_df = pd.DataFrame(missing_display_rows, columns=list(OBSERVATIONAL_MISSING_DISPLAY_COLUMNS))
             st.dataframe(missing_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
