@@ -4468,7 +4468,7 @@ def render_observability_page() -> None:
         st.dataframe(_presentational_dataframe(_experiment_baseline_table()), hide_index=True, use_container_width=True)
         st.subheader("Comparativo experimental")
         st.dataframe(_presentational_dataframe(_experiment_comparison_table()), hide_index=True, use_container_width=True)
-        st.subheader("Plat? de recuperacao")
+        st.subheader("Plataforma de recuperacao")
         st.dataframe(_presentational_dataframe(_recovery_plateau_table()), hide_index=True, use_container_width=True)
         st.subheader("Experimento 01")
         st.dataframe(_presentational_dataframe(_experiment_01_table()), hide_index=True, use_container_width=True)

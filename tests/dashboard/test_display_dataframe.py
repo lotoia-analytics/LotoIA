@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from dashboard.display_dataframe import make_arrow_safe_dataframe, normalize_display_dataframe
+from dashboard.display_dataframe import (
+    make_arrow_safe_dataframe,
+    normalize_display_dataframe,
+    strip_adm_technical_columns,
+    strip_adm_technical_records,
+)
 
 
 def test_normalize_display_dataframe_casts_valor_column_to_string() -> None:
@@ -65,3 +70,46 @@ def test_make_arrow_safe_dataframe_keeps_hit_distribution_numeric_column() -> No
     assert str(safe["Faixa de acertos"].dtype) == "string"
     assert int(safe.loc[0, "Quantidade de jogos"]) == 5
     assert int(safe.loc[1, "Quantidade de jogos"]) == 45
+
+
+def test_strip_adm_technical_columns_removes_hidden_fields() -> None:
+    dataframe = pd.DataFrame(
+        [
+            {
+                "geração": "Geração 42",
+                "generation_event_id": 42,
+                "reconciliation_run_id": 7,
+                "sample_size": 20,
+                "leftover_basis": "real",
+                "ml_role": "diagnostic",
+                "origem_observacional": "cartao_final",
+                "hits": 11,
+            }
+        ]
+    )
+    stripped = strip_adm_technical_columns(dataframe)
+    assert "geração" in stripped.columns
+    assert "hits" in stripped.columns
+    assert "generation_event_id" not in stripped.columns
+    assert "reconciliation_run_id" not in stripped.columns
+    assert "sample_size" not in stripped.columns
+
+
+def test_make_arrow_safe_dataframe_strips_adm_technical_columns() -> None:
+    dataframe = pd.DataFrame([{"Campo": "acertos", "Valor": 11, "generation_event_id": 99}])
+    safe = make_arrow_safe_dataframe(dataframe)
+    assert "generation_event_id" not in safe.columns
+    assert "Campo" in safe.columns
+
+
+def test_strip_adm_technical_records_removes_hidden_keys() -> None:
+    records = [
+        {
+            "dezena": "03",
+            "generation_event_id": 10,
+            "ml_role": "diagnostic",
+            "hits": 12,
+        }
+    ]
+    cleaned = strip_adm_technical_records(records)
+    assert cleaned == [{"dezena": "03", "hits": 12}]

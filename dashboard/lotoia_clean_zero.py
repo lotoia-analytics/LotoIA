@@ -197,7 +197,7 @@ def _render_conferir_resultados() -> None:
         [
             ("IMPORTED_CONTESTS", len(results)),
             ("GENERATED_GAMES", len(games)),
-            ("RECONCILIATION_RUNS", sum(1 for event in reconciliations if event.get("event_type") == "Confer?ncia institucional")),
+            ("RECONCILIATION_RUNS", sum(1 for event in reconciliations if event.get("event_type") == "Conferência institucional")),
         ]
     )
     st.caption("Compare os jogos gerados com o concurso selecionado no banco.")
@@ -216,13 +216,13 @@ def _render_conferir_resultados() -> None:
         manual = st.text_input("Resultado oficial (15 dezenas)", key="zero_conferir_manual")
         result_numbers = _parse_numbers_from_text(manual)
         if len(result_numbers) != 15:
-            st.warning("Resultado indispon?vel ou incompleto.")
+            st.warning("Resultado indisponível ou incompleto.")
     if st.button("Conferir Resultados", type="primary", key="zero_conferir_button"):
         if len(result_numbers) != 15:
-            st.warning("Resultado indispon?vel ou incompleto.")
+            st.warning("Resultado indisponível ou incompleto.")
             return
         if not games:
-            st.info("Ainda n?o h? jogos persistidos no Clean Zero.")
+            st.info("Ainda não há jogos persistidos no Clean Zero.")
             return
         rows = []
         for index, game in enumerate(games, start=1):
@@ -233,9 +233,9 @@ def _render_conferir_resultados() -> None:
             rows.append(
                 {
                     "jogo": index,
-                    "n?cleo_lei_15": _numbers_to_text(core_numbers),
+                    "núcleo_lei_15": _numbers_to_text(core_numbers),
                     "reservas_auditadas": " ".join(f"+{int(n):02d}" for n in reserves) or "-",
-                    "cart?o_final": _numbers_to_text(final_card),
+                    "cartão_final": _numbers_to_text(final_card),
                     "acertos": hits,
                 }
             )
@@ -276,13 +276,13 @@ def _render_simular_resultados() -> None:
     manual = st.text_area("Simular resultado de 15 dezenas", key="zero_simular_manual", height=80)
     result_numbers = _parse_numbers_from_text(manual)
     if len(result_numbers) != 15:
-        st.warning("Digite 15 dezenas v?lidas para simular.")
+        st.warning("Digite 15 dezenas válidas para simular.")
     if st.button("Simular Resultados", type="primary", key="zero_simular_button"):
         if len(result_numbers) != 15:
-            st.warning("Digite 15 dezenas v?lidas para simular.")
+            st.warning("Digite 15 dezenas válidas para simular.")
             return
         if not games:
-            st.info("Nenhum jogo encontrado para simula??o.")
+            st.info("Nenhum jogo encontrado para simulação.")
             return
         rows = []
         for index, game in enumerate(games, start=1):
@@ -291,7 +291,7 @@ def _render_simular_resultados() -> None:
             rows.append(
                 {
                     "jogo": index,
-                    "cart?o_final": _numbers_to_text(final_card),
+                    "cartão_final": _numbers_to_text(final_card),
                     "acertos": hits,
                 }
             )
@@ -356,7 +356,7 @@ def _render_historico_institucional() -> None:
 
 def _render_limpar_historico() -> None:
     st.markdown("### Limpar Histórico")
-    if st.button("Limpar visualiza??o / filtros", key="zero_clear_session"):
+    if st.button("Limpar visualização / filtros", key="zero_clear_session"):
         for key in [
             "zero_generation_result",
             "zero_requested_count",
