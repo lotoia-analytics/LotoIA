@@ -63,14 +63,25 @@ python scripts/checks/railway_production_validation.py --deploy-only --expected-
 
 ---
 
-## 4. Resultado desta execução (agente CI)
+## 4. Resultado missão `MERGE_PR_30_AND_RUN_RAILWAY_VALIDATION`
 
 | Escopo | Status | Notas |
 |--------|--------|-------|
-| Merge #28 | **PASS** | Confirmado via `gh pr view 28` |
-| Deploy Railway | **PASS** | SHA `f263197`, state `success` |
-| CI governance-gate | **PASS** | main verde pós-merge |
-| PostgreSQL operacional | **PENDENTE** | `DATABASE_URL` indisponível no ambiente do agente; executar script no Railway |
+| PR #30 merge | **PASS** | `2026-06-10T06:29:59Z`, merge commit `9046305` |
+| Deploy Railway | **PASS** | SHA `9046305`, state `success` (`2026-06-10T06:31:35Z`) |
+| CI governance-gate | **PASS** | headSha `9046305` |
+| `RAILWAY_FULL_VALIDATION` | **FAIL** | Agente sem shell Railway / `DATABASE_URL`; comando deve rodar no Railway |
+
+**Nota SHA:** após merge #30 o deploy ativo é `9046305` (não `f263197`). Usar:
+`python scripts/checks/railway_production_validation.py --expected-sha 9046305`
+
+### Execução agente (2026-06-10T06:31Z)
+
+```text
+deploy-only --expected-sha 9046305 → PASS
+full --expected-sha 9046305        → FAIL (DATABASE_URL ausente)
+full --expected-sha f263197          → FAIL (SHA mismatch + DATABASE_URL ausente)
+```
 
 ---
 
