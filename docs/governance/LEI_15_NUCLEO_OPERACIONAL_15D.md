@@ -94,7 +94,8 @@ Ausência estrutural persistente em GP50, GP30, GP20 e GP10 (400+ jogos auditado
 ```
 
 Nenhuma destas dezenas apareceu nas baterias validadas. Expansão 16D–23D que dependa delas
-exige troca controlada via reservas — **fora do escopo deste registro**.
+exige troca controlada via reservas — matriz normativa em
+`docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`.
 
 ---
 
@@ -143,7 +144,8 @@ exige troca controlada via reservas — **fora do escopo deste registro**.
 ## O que este registro **não** faz
 
 - Não substitui a geração soberana Lei 15 por núcleo fixo na Conferência.
-- Não recalibra motor, rerank ou expansão 16D–23D.
+- Não recalibra motor, rerank ou expansão combinatória científica (ver ADR-034).
+- Não substitui a matriz de expansão dimensional documentada em `ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`.
 - Não modifica schema, gateway, guardrails ou Railway.
 - Não promove ML assistivo a decisor do núcleo.
 - Não autoriza deploy ou mudança de runtime do dashboard por si só.
@@ -161,6 +163,7 @@ exige troca controlada via reservas — **fora do escopo deste registro**.
 ## Referências
 
 - ADR núcleo congelado: `docs/governance/ADR_LEI15_NUCLEO_15D_CONGELADO.md`
+- ADR expansão dimensional 15D→23D: `docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`
 - ADR cartão de registro (Lei 15A): `docs/governance/ADR_LEI15A_CARTAO_REGISTRO_APOSTA.md`
 - Política ML assistivo: `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - Governança operacional: `docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md`

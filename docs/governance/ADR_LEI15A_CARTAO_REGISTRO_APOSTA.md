@@ -93,6 +93,21 @@ auditoria — mas o registro operacional da aposta obedece à montagem Lei 15A.
 | Copiar `core_numbers` da geração para a faixa inferior como “núcleo operacional” | **Espelhamento indevido** — proibido como registro |
 | Usar cartão final superior (Lei 15) como registro sem montagem Lei 15A | **Não conforme** com esta política |
 
+### Conferência institucional (camada distinta do registro)
+
+A **Conferência** não usa o cartão de registro Lei 15A como atalho. Para cada jogo conferido:
+
+| Formato | Fonte na conferência | Origem registrada |
+|---------|----------------------|-------------------|
+| **15D** | `cartao_final` / `final_card_numbers` do jogo | `origem_dezenas_conferencia = cartao_final` |
+| **16D–23D** | `cartao_final` por jogo | `origem_dezenas_conferencia = cartao_final` |
+
+**AUD-004:** em 15D, é proibido repetir o núcleo congelado em todas as linhas quando os jogos
+gerados são distintos. A guarda `validate_conference_15d_source()` bloqueia persistência com
+`BLOQUEADO_NUCLEO_FIXO_15D`.
+
+Matriz completa geração / registro / conferência: `ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`.
+
 ---
 
 ## Limites explícitos
@@ -154,6 +169,7 @@ Status: `RUNTIME_LEI15A_APLICADO_ATE_20D`
 
 - `docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md`
 - `docs/governance/ADR_LEI15_NUCLEO_15D_CONGELADO.md`
+- `docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`
 - `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - `AGENTS.md` — posicionamento LotoIA
 
@@ -165,3 +181,4 @@ Status: `RUNTIME_LEI15A_APLICADO_ATE_20D`
 |------|----------------|------|
 | 2026-06-09 | Cloud agent | Registro institucional da política de cartão de registro da aposta Lei 15A |
 | 2026-06-09 | Cloud agent | Runtime aplicado na faixa inferior até 20D |
+| 2026-06-10 | Cloud agent | DOC-001 — seção Conferência + referência ADR expansão dimensional |
