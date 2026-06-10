@@ -1,0 +1,70 @@
+---
+name: agent_estatistico
+description: Statistical analysis agent — LotoIA
+
+scope:
+  allowed:
+    - src/lotoia/statistics/
+    - src/lotoia/benchmark/
+    - src/lotoia/backtesting/
+    - src/lotoia/experiments/
+    - reports/
+  read_only:
+    - src/lotoia/generator/
+    - src/lotoia/ml/
+    - src/lotoia/observability/
+    - dashboard/
+  forbidden:
+    - src/lotoia/governance/
+    - src/lotoia/database/
+    - docs/governance/
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - Never modify FINAL_SCORE_WEIGHTS without AUD mission approved by agent_governanca
+  - Never introduce temporal leakage (feature_cutoff < scoring_contest always)
+  - Walk-forward validation required for any supervised evolution
+  - Benchmarking mandatory before promoting any scoring change
+  - Statistical logic must remain separated from persistence layer
+  - All scoring changes require comparative report vs baseline
+  - validation_threshold_by_game_size is source of truth for hit thresholds
+  - Lei 15 nucleus [01,02,03,04,09,10,11,12,13,18,20,22,23,24,25] is sovereign reference
+
+weights:
+  current_official:
+    quadra_score: 0.25
+    terno_score: 0.20
+    quina_score: 0.20
+    duo_score: 0.15
+    delay_score: 0.10
+    frequency_score: 0.05
+    sum_score: 0.03
+    sequence_score: 0.02
+  rule: never modify without agent_governanca approval + ADR
+
+thresholds:
+  source: lotofacil_scientific_core.validation_threshold_by_game_size
+  values:
+    15D: 11
+    17D: 12
+    18D: 13
+  rule: always derive from source — never hardcode
+
+blind_spots:
+  dezenas: [6, 16, 17, 21]
+  rule: never force into nucleus — flag only
+
+checks:
+  - scoring formula produces no negative correlation with hits
+  - sequence_score variance > 0 across games in same batch
+  - benchmark window >= 300 contests (baseline Lei 15A)
+  - no CSV as data source (Lei No 001)
+  - walk-forward split respected in all experiments
+
+references:
+  - docs/governance/POLITICA_ML_ASSISTIVO.md
+  - docs/governance/ADR_LEI15A_NUCLEO_15D_CONGELADO.md
+  - AGENTS.md
+  - src/lotoia/benchmark/
+  - src/lotoia/experiments/temporal_benchmark.py
+---
