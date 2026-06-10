@@ -56,6 +56,7 @@ def test_build_observational_leftover_audit_row_uses_cartao_final_not_nucleo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     official_15 = [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    cartao_15d = [1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 16, 17, 18, 21]
     monkeypatch.setattr(
         app,
         "get_official_contest",
@@ -65,8 +66,8 @@ def test_build_observational_leftover_audit_row_uses_cartao_final_not_nucleo(
         {
             "game_index": 1,
             "numbers": [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
-            "final_card_numbers": [1, 2, 3, 4, 5],
-            "formato_cartao": 5,
+            "final_card_numbers": cartao_15d,
+            "formato_cartao": 15,
         },
         concurso_analisado=3700,
         generation_event_id=42,
@@ -74,10 +75,12 @@ def test_build_observational_leftover_audit_row_uses_cartao_final_not_nucleo(
     )
     assert row["origem_observacional"] == OBSERVATIONAL_SOURCE_CARTAO_FINAL
     assert row["origem_observacional"] != "nucleo_lei_15"
-    assert row["dezenas_observadas"] == row["cartao_final"] == "01 02 03 04 05"
+    assert row["formato_cartao"] == 15
+    assert row["dezenas_observadas"] == row["cartao_final"] == "01 02 03 04 06 08 10 11 12 13 14 16 17 18 21"
     assert row["cartao_referencia"] == row["resultado_oficial"]
-    assert row["dezenas_acertadas"] == "01 03 05"
-    assert row["dezenas sobrando"] == "02 04"
+    assert row["dezenas_acertadas"] == "01 03 11 12 13 14 16 17 18"
+    assert row["dezenas sobrando"] == "02 04 06 08 10 21"
+    assert row["dezenas faltantes"] == "05 07 09 15 19 20"
     assert row["leftover_basis"] == REAL_LEFTOVER_BASIS
     assert row["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
 
