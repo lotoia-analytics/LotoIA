@@ -31,6 +31,14 @@ from sqlalchemy.exc import IntegrityError
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
+from lotoia.database.institutional_read_repository import InstitutionalReadRepository, count_generated_games_for_event
+from lotoia.governance.db_first_guards import (
+    build_db_export_metadata,
+    detect_session_truth,
+    evaluate_analytical_guard,
+    evaluate_history_guard,
+    evaluate_institutional_guard,
+)
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
@@ -67,6 +75,21 @@ from lotoia.governance.structural_rfe import (
     validate_rfe_final_card,
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.observability.ml_diagnostic_panels import (
+    ALERT_SIDE_LEAK,
+    build_evolution_13_14_panel_payload,
+    build_evolution_14_15_panel_payload,
+    build_side_leak_panel_payload,
+    load_latest_reconciliation_diagnostic_context,
+)
+from lotoia.observability.observational_leftover import (
+    ML_ROLE_DIAGNOSTIC_ONLY,
+    OBSERVATIONAL_SOURCE_CARTAO_FINAL,
+    REAL_LEFTOVER_BASIS,
+    build_real_post_conference_leftover_payload,
+    format_dezenas as _format_observational_dezenas,
+    validate_real_leftover_guards,
+)
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
@@ -158,7 +181,7 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Operacional GP Lei 15A",
+    "nucleo_a_dezenas": "Núcleo Lei 15 (insumo Lei 15A)",
     "auditadas_escolhidas": "Auditadas Lei 15A",
     "vigilantes_escolhidas": "Vigilantes Lei 15A",
     "cartao_final_lido": "Cartão validado Lei 15A",
@@ -177,7 +200,9 @@ LEI15A_PANEL_DESCRIPTION = (
     "o cartão validado deve coincidir com o cartão final superior; "
     "núcleo operacional GP, auditadas e vigilantes são componentes próprios da Lei 15A."
 )
-LEI15A_PANEL_FORMAT_16D_23D_LABEL = "16D–23D = cartão validado pela matriz GP da Lei 15A"
+LEI15A_PANEL_FORMAT_16D_20D_LABEL = "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP"
+LEI15A_PANEL_FORMAT_21D_23D_LABEL = "21D–23D = leitura observacional — registro Lei 15A pendente"
+LEI15A_PANEL_FORMAT_16D_23D_LABEL = LEI15A_PANEL_FORMAT_16D_20D_LABEL
 LEI15A_PANEL_SYNC_SUCCESS = (
     "Leitura operacional Lei 15A validada: cartão Lei 15A coincide com "
     "o cartão final gerado pela Lei 15, preservando componentes próprios."
@@ -187,7 +212,10 @@ LEI15A_PANEL_SYNC_SEMANTICS = (
     "cartão final Lei 15. Não significa cópia de núcleo, reservas, auditadas "
     "ou vigilantes entre as leis."
 )
-LEI15_PANEL_CONCEPT_15D = "15D = núcleo Lei 15 (geração soberana)"
+LEI15_PANEL_CONCEPT_15D = (
+    "15D = geração soberana Lei 15; conferência usa cartão final por jogo"
+)
+LEI15_PANEL_CONCEPT_EXPANDED = "16D–23D = cartão final gerado pela Lei 15 (geração soberana)"
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
@@ -210,6 +238,24 @@ POST_DRAW_MONITORING_PAYLOAD = {
     "gold_target": 14,
     "diamond_target": 15,
 }
+
+
+def _resolve_lei15a_panel_format_label(card_format: int) -> str:
+    """Rótulo semântico da faixa Lei 15A conforme matriz dimensional (DOC-001 / DOC-002)."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    if resolved_format <= LEI15A_REGISTRATION_MAX_FORMAT:
+        return LEI15A_PANEL_FORMAT_16D_20D_LABEL
+    return LEI15A_PANEL_FORMAT_21D_23D_LABEL
+
+
+def _resolve_lei15_panel_concept_label(card_format: int) -> str:
+    """Rótulo da geração soberana Lei 15 no painel superior/inferior."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    return LEI15_PANEL_CONCEPT_EXPANDED
 
 
 def _clean_law15_format_label(card_format: int) -> str:
@@ -346,7 +392,6 @@ PAGE_TARGETS = {
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
-    "Desempenho por grupo": "audit_monitoring_group_performance",
     "Dezenas faltantes": "audit_monitoring_missing_numbers",
     "Dezenas sobrando": "audit_monitoring_extra_numbers",
     "Vazamento lateral": "audit_monitoring_side_leak",
@@ -370,7 +415,6 @@ PAGE_TARGETS = {
     "Cobertura estrutural": "structural_coverage",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
-    "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
@@ -445,6 +489,7 @@ def _load_official_sync_diagnostics() -> dict[str, Any]:
 
 
 def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
+    """Cross-check/auditoria apenas. Nunca usar como fonte operacional de Histórico/Analítico/Institucional."""
     try:
         draws = load_draws_csv()
     except Exception:
@@ -460,7 +505,89 @@ def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
         "data": str(getattr(latest_draw, "date", "") or ""),
         "dezenas": [int(number) for number in getattr(latest_draw, "numbers", []) or []],
         "source": "historico_lotofacil.csv",
+        "usage": "auditoria_cross_check",
     }
+
+
+def _institutional_read_repository() -> InstitutionalReadRepository:
+    return InstitutionalReadRepository(DB_PATH)
+
+
+def _evaluate_db_first_history_guard(generation_event_id: int | None) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_history_guard(session, generation_event_id)
+
+
+def _evaluate_db_first_analytical_guard(
+    *,
+    reconciliation_run_id: int | None = None,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_analytical_guard(
+            session,
+            reconciliation_run_id=reconciliation_run_id,
+            generation_event_id=generation_event_id,
+        )
+
+
+def _evaluate_db_first_institutional_guard() -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_institutional_guard(session)
+
+
+def _resolve_scientific_memory_from_db(
+    *,
+    memory_kind: str,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    scientific_memory = _load_latest_scientific_memory(limit=20)
+    for row in scientific_memory:
+        if str(row.get("memory_kind", "") or "") != memory_kind:
+            continue
+        if generation_event_id is not None and int(row.get("generation_event_id", 0) or 0) != int(generation_event_id):
+            continue
+        return dict(row)
+    return {}
+
+
+def _build_db_derived_export_payload(
+    rows: list[dict[str, Any]],
+    *,
+    db_table: str,
+    event_id: int | None = None,
+    run_id: int | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, Any]:
+    metadata = build_db_export_metadata(
+        db_table=db_table,
+        event_id=event_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        commit_hash=_resolve_active_commit(),
+    )
+    return {"rows": rows, "metadata": metadata}
+
+
+def _render_db_export_download(
+    export_payload: dict[str, Any],
+    *,
+    file_name: str,
+    label: str,
+) -> None:
+    rows = list(export_payload.get("rows") or [])
+    metadata = dict(export_payload.get("metadata") or {})
+    if not rows:
+        return
+    export_df = pd.DataFrame(rows)
+    csv_body = export_df.to_csv(index=False)
+    metadata_lines = "\n".join(f"# {key}={value}" for key, value in metadata.items())
+    st.download_button(
+        label=label,
+        data=f"{metadata_lines}\n{csv_body}",
+        file_name=file_name,
+        mime="text/csv",
+    )
 
 
 def _load_official_sync_contest_summary() -> dict[str, Any] | None:
@@ -833,9 +960,10 @@ def _live_institutional_snapshot(snapshot: dict[str, Any] | None = None) -> dict
 
 
 def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
-    latest_contest = _load_hai_latest_contest_summary() or {}
+    latest_contest = _get_latest_contest() or _load_latest_contest_summary() or {}
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_csv = _load_csv_latest_contest_summary() or {}
     latest_sync = _load_official_sync_contest_summary() or {}
     official_history = _load_official_history_diagnostics()
     return [
@@ -843,7 +971,11 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
             "camada": "CSV histórico versionado",
             "origem": "historico_lotofacil.csv",
             "tabelas": "data/raw/historico_lotofacil.csv",
-            "uso": "papel=export/auditoria/migração | runtime=PostgreSQL",
+            "uso": (
+                f"último concurso CSV={latest_csv.get('contest_number', '-')}"
+                f" | papel=seed/documentação"
+                f" | runtime=PostgreSQL"
+            ),
         },
         {
             "camada": "API oficial",
@@ -903,19 +1035,20 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
     conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
     source_cols = st.columns(5)
-    hai_summary = _load_hai_latest_contest_summary() or {}
+    csv_summary = _load_csv_latest_contest_summary() or {}
     sync_summary = _load_official_sync_contest_summary() or {}
+    db_summary = _load_imported_contest() or {}
     official_history = _load_official_history_diagnostics()
-    source_cols[0].metric("CSV oficial", "export/auditoria")
+    source_cols[0].metric("CSV oficial", int(csv_summary.get("contest_number", 0) or 0) or "-")
     source_cols[1].metric("API sincronizada", int(sync_summary.get("contest_number", 0) or 0) or "-")
-    source_cols[2].metric("Banco oficial HAI", int(hai_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[2].metric("Banco persistido", int(db_summary.get("contest_number", 0) or 0) or "-")
     source_cols[3].metric("Histórico oficial", int(official_history.get("total_lotofacil_official_history", 0) or 0))
     source_cols[4].metric("Primeiro concurso", int(official_history.get("contest_number_min", 0) or 0) or "-")
     official_cols = st.columns(4)
     official_cols[0].metric("Último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
     official_cols[1].metric("Faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
     official_cols[2].metric("Status", str(official_history.get("status_base_oficial", "-") or "-"))
-    official_cols[3].metric("Fonte HAI", str(hai_summary.get("source", "lotofacil_official_history") or "lotofacil_official_history"))
+    official_cols[3].metric("Banco persistido", int(db_summary.get("contest_number", 0) or 0) or "-")
     st.caption(
         " | ".join(
             [
@@ -1050,6 +1183,21 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
             (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
             {},
         )
+    if not post_reconciliation_memory:
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
     if post_reconciliation_memory:
         st.markdown("###### Memória pós-conferência científica")
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
@@ -1060,7 +1208,17 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         post_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
         post_cols[4].metric("Jogos com 10", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_10_exact", 0) or 0))
         post_cols[5].metric("Jogos com 11+", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_11_plus", 0) or 0))
-    batch_reconciliation_memory = {}
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
+        session_conflict = detect_session_truth(
+            dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}),
+            None,
+        )
+        if session_conflict.get("conflict"):
+            st.warning(
+                "Memória consolidada indisponível no PostgreSQL. "
+                "session_state não pode ser usada como fonte oficial."
+            )
     if batch_reconciliation_memory:
         st.markdown("###### Memória consolidada da bateria conferida")
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
@@ -1186,62 +1344,6 @@ def get_latest_official_contest() -> dict[str, Any] | None:
     if latest_contest_number is None or latest_contest_number <= 0:
         return None
     return get_official_contest(latest_contest_number)
-
-
-def _load_hai_latest_contest_summary() -> dict[str, Any] | None:
-    """Gateway DB-first para páginas HAI (Histórico/Analítico/Institucional)."""
-    latest_official = get_latest_official_contest()
-    if not latest_official:
-        return None
-    normalized = _normalize_contest_record(latest_official)
-    if not normalized:
-        return None
-    normalized["source"] = "lotofacil_official_history"
-    return normalized
-
-
-def _load_post_draw_monitoring_from_db() -> dict[str, Any]:
-    """Carrega monitoramento pós-conferência exclusivamente do PostgreSQL."""
-    payload = dict(POST_DRAW_MONITORING_PAYLOAD)
-    latest_contest = _load_hai_latest_contest_summary()
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    official_diagnostics = _load_official_history_diagnostics()
-    try:
-        generation_events_count = int(_database_snapshot()["counts"].get("generation_events", 0) or 0)
-    except Exception:
-        generation_events_count = 0
-
-    contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
-    dezenas = _extract_int_numbers((latest_contest or {}).get("dezenas", []) or [])
-    accepted_signatures: list[str] = []
-    if dezenas:
-        accepted_signatures.append(" ".join(f"{number:02d}" for number in sorted(dezenas)))
-    block_distribution = list(_block_distribution(dezenas).values()) if dezenas else []
-    latest_conference = str(latest_reconciliation.get("created_at", "") or "-")
-
-    payload.update(
-        {
-            "source": "postgresql",
-            "latest_contest": contest_number,
-            "contest_number": contest_number,
-            "evaluated_contests": int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0),
-            "contests_evaluated": int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0),
-            "analyzed_generations": generation_events_count,
-            "generations_analyzed": generation_events_count,
-            "latest_conference": latest_conference,
-            "last_conference": latest_conference,
-            "accepted_signatures": accepted_signatures,
-            "block_distribution": block_distribution,
-            "reconciliation_generation_event_id": latest_reconciliation.get("generation_event_id"),
-            "reconciliation_best_hits": latest_reconciliation.get("best_hits"),
-        }
-    )
-    return payload
-
-
-def _build_hai_official_history_export_rows() -> list[dict[str, Any]]:
-    """Prepara linhas de exportação/auditoria a partir do histórico oficial persistido."""
-    return list(_load_official_history_rows() or [])
 
 
 def get_previous_official_contest(target_contest: int | None) -> RFEPreviousContestReference:
@@ -2413,20 +2515,13 @@ def _ensure_official_history_seeded() -> dict[str, Any]:
 
 
 def _render_scientific_memory_block() -> None:
+    seed_report = _ensure_official_history_seeded()
     official_diagnostics = _load_official_history_diagnostics()
-    seed_report = {
-        "status": official_diagnostics.get("status_base_oficial", "-"),
-        "seeded": 0,
-        **official_diagnostics,
-    }
     synthesized_batch_memory = _ensure_scientific_batch_memory_from_history()
     if synthesized_batch_memory:
         st.session_state["institutional_batch_reconciliation_memory"] = dict(synthesized_batch_memory)
     scientific_memory = _load_latest_scientific_memory(limit=20)
-    batch_reconciliation_memory = next(
-        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
-        {},
-    )
+    batch_reconciliation_memory: dict[str, Any] = {}
     official_15_memory = next((row for row in scientific_memory if _scientific_15_is_official_baseline(row)), {})
     historical_scientific_memory = [row for row in scientific_memory if not _scientific_15_is_official_baseline(row)]
     active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
@@ -2446,6 +2541,22 @@ def _render_scientific_memory_block() -> None:
             (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
             {},
         )
+    if not post_reconciliation_memory:
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
@@ -2565,6 +2676,12 @@ def _render_scientific_memory_block() -> None:
             with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
                 st.caption("Registro técnico legado preservado para auditoria histórica.")
                 st.json(post_reconciliation_memory)
+        batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
+        batch_reconciliation_memory = next(
+            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
+            {},
+        )
     if batch_reconciliation_memory:
         batch_title = "###### Histórico institucional / memória consolidada da bateria conferida" if official_15_memory else "###### Memória consolidada da bateria conferida"
         st.markdown(batch_title)
@@ -4423,6 +4540,151 @@ def _game_cartao_final_numbers(game: dict[str, Any]) -> list[int]:
     )
 
 
+def _extract_cartao_final_from_game(game: dict[str, Any]) -> list[int]:
+    """Cartão final persistido do jogo (generated_games.cartao_final). Não usa núcleo Lei 15."""
+    context_json = dict(game.get("generation_context") or {})
+    for source in (
+        context_json.get("final_card_numbers"),
+        game.get("final_card_numbers"),
+        game.get("cartao_final"),
+        game.get("cartão_final"),
+    ):
+        if isinstance(source, list):
+            numbers = [int(number) for number in source]
+        else:
+            numbers = _extract_int_numbers(str(source or ""))
+        if numbers:
+            return sorted(numbers)
+    return []
+
+
+def _extract_resultado_oficial_dezenas(concurso_analisado: int | None) -> list[int]:
+    if concurso_analisado is None or int(concurso_analisado) <= 0:
+        return []
+    official = get_official_contest(int(concurso_analisado))
+    if not official:
+        return []
+    return _extract_official_numbers_from_record(official)
+
+
+def _build_observational_leftover_audit_row(
+    game: dict[str, Any],
+    *,
+    concurso_analisado: int | None = None,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+) -> dict[str, Any]:
+    cartao_final = _extract_cartao_final_from_game(game)
+    resultado_oficial = _extract_resultado_oficial_dezenas(concurso_analisado)
+    conference_info = _select_conference_numbers(game)
+    formato_cartao = int(
+        conference_info.get("formato_cartao")
+        or game.get("formato_cartao")
+        or len(cartao_final)
+        or 15
+    )
+    origem_observacional = OBSERVATIONAL_SOURCE_CARTAO_FINAL if cartao_final else "indisponivel"
+    guard_errors = validate_real_leftover_guards(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+        concurso_analisado=concurso_analisado,
+        generation_event_id=generation_event_id,
+        origem_observacional=origem_observacional,
+    )
+    base_row = {
+        "generation_event_id": int(generation_event_id or 0) or "-",
+        "reconciliation_run_id": int(reconciliation_run_id or 0) or "-",
+        "concurso analisado": int(concurso_analisado or 0) or "-",
+        "formato_cartao": formato_cartao,
+        "origem_observacional": origem_observacional,
+        "dezenas_observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas count": len(cartao_final),
+        "cartao_final": _format_observational_dezenas(cartao_final),
+        "cartao_referencia": _format_observational_dezenas(resultado_oficial),
+        "resultado_oficial": _format_observational_dezenas(resultado_oficial),
+        "dezenas_acertadas": "-",
+        "dezenas sobrando": "-",
+        "dezenas_sobrando_count": 0,
+        "dezenas faltantes": "-",
+        "dezenas_faltantes_count": 0,
+        "leftover_basis": REAL_LEFTOVER_BASIS,
+        "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
+        "grupo relacionado": game.get("game_index", "-"),
+    }
+    if guard_errors:
+        base_row["observação institucional"] = f"bloqueado: {', '.join(guard_errors)}"
+        return base_row
+
+    payload = build_real_post_conference_leftover_payload(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+    )
+    base_row.update(
+        {
+            "origem_observacional": str(payload["origem_observacional"]),
+            "dezenas_observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas count": len(payload["dezenas_observadas"]),
+            "cartao_final": _format_observational_dezenas(payload["cartao_final"]),
+            "cartao_referencia": _format_observational_dezenas(payload["cartao_referencia"]),
+            "resultado_oficial": _format_observational_dezenas(payload["resultado_oficial"]),
+            "dezenas_acertadas": _format_observational_dezenas(payload["dezenas_acertadas"]),
+            "dezenas sobrando": _format_observational_dezenas(payload["dezenas_sobrando"]),
+            "dezenas_sobrando_count": int(payload["dezenas_sobrando_count"]),
+            "dezenas faltantes": _format_observational_dezenas(payload["dezenas_faltando"]),
+            "dezenas_faltantes_count": len(payload["dezenas_faltando"]),
+            "leftover_basis": str(payload["leftover_basis"]),
+            "ml_role": str(payload["ml_role"]),
+            "observação institucional": "observação pós-conferência",
+        }
+    )
+    return base_row
+
+
+OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "resultado_oficial",
+    "dezenas_nao_acertadas",
+    "dezenas_nao_acertadas_count",
+)
+
+OBSERVATIONAL_MISSING_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "resultado_oficial",
+    "dezenas_faltantes",
+    "dezenas_faltantes_count",
+)
+
+
+def _project_observational_leftover_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para as colunas operacionais do painel."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
+        "dezenas_nao_acertadas": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
+        "dezenas_nao_acertadas_count": row.get("dezenas_sobrando_count", 0),
+    }
+
+
+def _project_observational_missing_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para o painel de dezenas faltantes."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
+        "dezenas_faltantes": row.get("dezenas faltantes", row.get("dezenas_faltantes", "-")),
+        "dezenas_faltantes_count": row.get("dezenas_faltantes_count", 0),
+    }
+
+
 def validate_conference_15d_source(
     *,
     games: Sequence[dict[str, Any]],
@@ -5713,6 +5975,22 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             games=list(group.get("games") or []),
             contest=contest_payload,
         )
+        if str(comparison.get("status", "") or "") == "error":
+            conference_15d_guard = dict((comparison.get("diagnostics") or {}).get("conference_15d_guard") or comparison.get("conference_15d_guard") or {})
+            st.session_state["institutional_check_result"] = {
+                "status": "blocked_conference_15d",
+                "warning": str(comparison.get("message", "Conferência 15D bloqueada.") or "Conferência 15D bloqueada."),
+                "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
+                "generation_event_id": int(group.get("generation_event_id") or 0),
+                "conference_15d_guard": conference_15d_guard,
+                "persistence_guard_status": str(
+                    comparison.get("persistence_guard_status")
+                    or conference_15d_guard.get("persistence_guard_status")
+                    or "BLOQUEADO_NUCLEO_FIXO_15D"
+                ),
+                "classification": str(conference_15d_guard.get("classification", "CONFLITANTE") or "CONFLITANTE"),
+            }
+            return
         comparison_diagnostics = dict(comparison.get("diagnostics") or {})
         group_games = list(group.get("games") or [])
         group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
@@ -6072,6 +6350,112 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
+def _compute_structural_entropy_from_dezenas(games: Sequence[Sequence[int]]) -> float:
+    """Entropia normalizada da dispersão de dezenas no lote conferido."""
+    frequencies: dict[int, int] = {}
+    total = 0
+    for numbers in games:
+        for number in numbers:
+            value = int(number)
+            if 1 <= value <= 25:
+                frequencies[value] = frequencies.get(value, 0) + 1
+                total += 1
+    if total <= 0 or not frequencies:
+        return 0.0
+    entropy = 0.0
+    for count in frequencies.values():
+        share = count / total
+        entropy -= share * math.log2(share)
+    max_entropy = math.log2(len(frequencies)) if len(frequencies) > 1 else 1.0
+    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
+
+
+def _empty_hb_metrics_payload() -> dict[str, Any]:
+    return {
+        "available": False,
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": 0,
+        "media_acertos": 0.0,
+        "jogos_11_mais": 0,
+        "jogos_12_mais": 0,
+        "entropia_estrutural": 0.0,
+        "media_sobreposicao": 0.0,
+        "dezenas_dominantes": [],
+        "concursos_analisados": 0,
+        "jogos_analisados": 0,
+        "tamanho_conjunto": 0,
+    }
+
+
+def _build_hb_metrics_payload_from_reconciliation(
+    *,
+    reconciliation_run_id: int,
+    contest_id: int,
+    games_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
+    hits = [int(row.get("hits", 0) or 0) for row in games_rows]
+    contest_ids = {
+        int(row.get("contest_id", 0) or 0)
+        for row in games_rows
+        if int(row.get("contest_id", 0) or 0) > 0
+    }
+    if not contest_ids and int(contest_id or 0) > 0:
+        contest_ids = {int(contest_id)}
+    structural = _summarize_games_structurally(games_numbers)
+    pool_numbers: set[int] = set()
+    for numbers in games_numbers:
+        pool_numbers.update(numbers)
+    media_acertos = round(sum(hits) / len(hits), 4) if hits else 0.0
+    return {
+        "available": bool(games_rows),
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": int(reconciliation_run_id or 0),
+        "media_acertos": media_acertos,
+        "jogos_11_mais": sum(1 for value in hits if value >= 11),
+        "jogos_12_mais": sum(1 for value in hits if value >= 12),
+        "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
+        "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
+        "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
+        "concursos_analisados": len(contest_ids),
+        "jogos_analisados": len(games_rows),
+        "tamanho_conjunto": len(pool_numbers),
+    }
+
+
+def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
+    """Carrega métricas HB da última reconciliation_run persistida no PostgreSQL (Lei 001)."""
+    with get_session(DB_PATH) as session:
+        run = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .first()
+        )
+        if run is None:
+            return _empty_hb_metrics_payload()
+        games_rows = (
+            session.query(ReconciliationGame)
+            .filter(ReconciliationGame.reconciliation_run_id == run.id)
+            .order_by(ReconciliationGame.game_index.asc())
+            .all()
+        )
+        row_payloads = [
+            {
+                "numbers": list(row.numbers or []),
+                "hits": int(row.hits or 0),
+                "contest_id": int(row.contest_id or 0),
+            }
+            for row in games_rows
+        ]
+        return _build_hb_metrics_payload_from_reconciliation(
+            reconciliation_run_id=int(run.id or 0),
+            contest_id=int(run.contest_id or 0),
+            games_rows=row_payloads,
+        )
+
+
 def _build_reconciliation_result_row(game_row: ReconciliationGame) -> dict[str, Any]:
     context_json = dict(getattr(game_row, "context_json", {}) or {})
     numbers = [int(number) for number in (game_row.numbers or [])]
@@ -6189,6 +6573,13 @@ def _resolve_institutional_check_result(
     if db_result:
         return db_result
     session_result = dict(st.session_state.get("institutional_check_result") or {})
+    session_conflict = detect_session_truth(session_result, db_result)
+    if session_conflict.get("conflict"):
+        return {
+            "warning": "Conferência disponível apenas em session_state. Recarregue após persistência no PostgreSQL.",
+            "status": "blocked_session_truth",
+            "classification": session_conflict.get("classification", "CONFLITANTE"),
+        }
     if session_result.get("warning"):
         return {
             "warning": str(session_result.get("warning", "") or ""),
@@ -6344,6 +6735,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "ml_enabled": bool(getattr(event, "ml_enabled", 0) or 0),
                     "total_games": len(games),
+                    "persisted_games_count": len(games_rows),
                     "target_contest": max(target_contests) if target_contests else None,
                     "first_name": str(getattr(event, "first_name", "") or ""),
                     "whatsapp": str(getattr(event, "whatsapp", "") or ""),
@@ -6849,10 +7241,11 @@ def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
+        generation_event_id = int(generation.get("generation_event_id", 0) or 0)
         games = list(generation.get("games", []) or [])
         reconciliation = dict(generation.get("reconciliation") or {})
         generated_count = int(generation.get("total_games", 0) or 0)
-        persisted_count = generated_count
+        persisted_count = int(generation.get("persisted_games_count", generated_count) or generated_count)
         recovered_count = len(games)
         first_context = dict((games[0] or {}).get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
         requested_count = int(first_context.get("total_games", generated_count) or generated_count)
@@ -7017,12 +7410,19 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
+    institutional_guard = _evaluate_db_first_institutional_guard()
+    if not institutional_guard.get("allowed"):
+        st.error(
+            "Painel institucional bloqueado: nenhum snapshot, audit_log ou geração persistida encontrada no PostgreSQL."
+        )
+        st.caption(f"motivo={institutional_guard.get('reason', '-')}")
+        return
     st.subheader("Histórico Institucional")
     st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
 
     source_map = _institutional_source_map(snapshot)
-    latest_sync = _load_official_sync_diagnostics()
-    latest_contest = _load_hai_latest_contest_summary() or {}
+    latest_sync = _load_official_sync_contest_summary() or _load_official_sync_diagnostics() or {}
+    latest_contest = _load_latest_contest_summary() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
@@ -7088,11 +7488,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = (
-            _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
-            if scientific_batch_id
-            else {}
-        )
+        scientific_batch = {}
+        if scientific_batch_id:
+            scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
         latest_generated_games = list(latest_commander.get("generated_games", []) or [])
         latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
         scientific_game_size = int(
@@ -7101,11 +7499,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             or latest_commander.get("quantidade solicitada", 15)
             or 15
         )
-        scientific_policy_discovery = discover_scientific_generation_policy(
-            scientific_game_size,
-            db_path=DB_PATH,
-            use_csv_fallback=False,
-        )
+        scientific_policy_discovery = discover_scientific_generation_policy(scientific_game_size, db_path=DB_PATH)
         history_policy = dict(
             scientific_policy_discovery.get("policy")
             or {
@@ -7387,6 +7781,21 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     else:
         st.info("Ainda não há gerações persistidas para reconstrução institucional.")
 
+    latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
+    latest_reconciliation_id = int(generation_df["reconciliation_id"].fillna(0).astype(int).max()) if not generation_df.empty and "reconciliation_id" in generation_df.columns else 0
+    institutional_export = _build_db_derived_export_payload(
+        generation_rows,
+        db_table="generation_events",
+        event_id=latest_generation_event_id or None,
+        run_id=latest_reconciliation_id or None,
+        snapshot_id=str((institutional_guard.get("snapshot") or {}).get("memory_id") or (institutional_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        institutional_export,
+        file_name="historico_institucional_export.csv",
+        label="Exportar histórico institucional (PostgreSQL)",
+    )
+
     st.divider()
     st.markdown("##### Tabelas Institucionais")
     table_rows = []
@@ -7604,6 +8013,20 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
         st.dataframe(replay_df, hide_index=True, use_container_width=True)
 
 
+def _render_ml_diagnostic_source_caption(payload: dict[str, Any]) -> None:
+    st.caption(
+        " | ".join(
+            [
+                f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
+                f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
+                f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
+                "generation_command=False",
+                "recalibration_command=False",
+            ]
+        )
+    )
+
+
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
@@ -7619,18 +8042,23 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "dispersão e volume analisado, sem atuar como comando de geração ou "
         "recalibração."
     )
-    state = _hb_geometry_state()
-    summary = state["summary"] or {}
-    baseline = summary.get("hb_baseline", {})
-    avg_hits = round(float(baseline.get("average_hits", 0.0)), 4)
-    hits_11_plus = int(baseline.get("hits_11_plus", 0))
-    hits_12_plus = int(baseline.get("hits_12_plus", 0))
-    entropy = round(float(baseline.get("entropy", 0.0)), 4)
-    average_overlap = round(float(baseline.get("average_overlap", 0.0)), 4)
-    dominant_numbers = list(baseline.get("dominant_numbers", []) or [])
-    contests_analyzed = int(summary.get("contests_analyzed", 0) or 0)
-    games_count = int(summary.get("games_count", 0) or 0)
-    pool_size = int(summary.get("pool_size", 0) or 0)
+    metrics = _load_hb_metrics_from_reconciliation_db()
+    st.caption(
+        f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
+        f"reconciliation_run_id={metrics.get('reconciliation_run_id', 0)} | "
+        f"Lei 001: sem CSV, sem session_state"
+    )
+    if not metrics.get("available"):
+        st.warning("Nenhuma reconciliation_run persistida encontrada no PostgreSQL para calcular as métricas HB.")
+    avg_hits = float(metrics.get("media_acertos", 0.0) or 0.0)
+    hits_11_plus = int(metrics.get("jogos_11_mais", 0) or 0)
+    hits_12_plus = int(metrics.get("jogos_12_mais", 0) or 0)
+    entropy = float(metrics.get("entropia_estrutural", 0.0) or 0.0)
+    average_overlap = float(metrics.get("media_sobreposicao", 0.0) or 0.0)
+    dominant_numbers = list(metrics.get("dezenas_dominantes", []) or [])
+    contests_analyzed = int(metrics.get("concursos_analisados", 0) or 0)
+    games_count = int(metrics.get("jogos_analisados", 0) or 0)
+    pool_size = int(metrics.get("tamanho_conjunto", 0) or 0)
     cols = st.columns(4)
     cols[0].metric("Média de acertos", avg_hits)
     cols[1].metric("Jogos com 11+ acertos", hits_11_plus)
@@ -7642,30 +8070,29 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "ou mudança da governança soberana."
     )
     st.subheader("Resumo observacional HB")
-    st.caption("Indicadores estruturais derivados da bateria analisada.")
+    st.caption("Indicadores estruturais derivados da última reconciliation_run persistida.")
     metrics_df = pd.DataFrame(
         [
-            {"métrica": "average_overlap", "valor": average_overlap},
-            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in dominant_numbers[:5]) or "-"},
-            {"métrica": "contests_analyzed", "valor": contests_analyzed},
-            {"métrica": "games_count", "valor": games_count},
-            {"métrica": "pool_size", "valor": pool_size},
+            {"métrica": "media_sobreposicao", "valor": average_overlap},
+            {
+                "métrica": "dezenas_dominantes",
+                "valor": ", ".join(f"{item['number']:02d}:{item['frequency']}" for item in dominant_numbers[:5]) or "-",
+            },
+            {"métrica": "concursos_analisados", "valor": contests_analyzed},
+            {"métrica": "jogos_analisados", "valor": games_count},
+            {"métrica": "tamanho_conjunto", "valor": pool_size},
         ]
     )
     metric_label_map = {
-        "average_overlap": "Média de sobreposição",
-        "dominant_numbers": "Dezenas dominantes",
-        "contests_analyzed": "Concursos analisados",
-        "games_count": "Jogos analisados",
-        "pool_size": "Tamanho do conjunto",
+        "media_sobreposicao": "Média de sobreposição",
+        "dezenas_dominantes": "Dezenas dominantes",
+        "concursos_analisados": "Concursos analisados",
+        "jogos_analisados": "Jogos analisados",
+        "tamanho_conjunto": "Tamanho do conjunto",
     }
     metrics_display_df = metrics_df.copy()
-    if "métrica" in metrics_display_df.columns:
-        metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
-    elif "metric" in metrics_display_df.columns:
-        metrics_display_df["metric"] = metrics_display_df["metric"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"metric": "Métrica", "value": "Valor"})
+    metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
+    metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
     st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
     st.subheader("Interpretação observacional")
     st.markdown(
@@ -7675,19 +8102,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "alterar histórico."
     )
     with st.expander("Detalhes técnicos avançados"):
-        st.write(
-            {
-                "AVG_HITS": avg_hits,
-                "11+": hits_11_plus,
-                "12+": hits_12_plus,
-                "ENTROPY": entropy,
-                "average_overlap": average_overlap,
-                "dominant_numbers": dominant_numbers,
-                "contests_analyzed": contests_analyzed,
-                "games_count": games_count,
-                "pool_size": pool_size,
-            }
-        )
+        st.write(metrics)
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
@@ -7859,67 +8274,6 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         st.json(latest_reconciliation)
 
 
-def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Estatísticas operacionais")
-    st.write("Leitura institucional do fluxo operacional persistido, das conferências realizadas e do estado temporário da sessão.")
-    st.info("Esta página é operacional e observacional. Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 e não modifica histórico.")
-    latest_generation = _load_latest_generated_games() or {}
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    generation_events = int(snapshot["counts"].get("generation_events", 0))
-    generated_games = int(snapshot["counts"].get("generated_games", 0))
-    reconciliation_runs = int(snapshot["counts"].get("reconciliation_runs", 0))
-    session_keys = len([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
-    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
-    latest_generation_event_id = latest_generation.get("generation_event_id", "-")
-    latest_reconciliation_id = latest_reconciliation.get("id", "-") if latest_reconciliation else "-"
-    st.markdown(
-        "Esta tela resume eventos persistidos da operação e informações temporárias da sessão atual. "
-        "Os indicadores abaixo servem para auditoria do funcionamento do ADM e não representam comando de geração, "
-        "conferência automática ou recalibração institucional."
-    )
-    operational_label_map = {
-        "GENERATION_EVENTS": "Eventos de geração",
-        "GENERATED_GAMES": "Jogos gerados",
-        "RECONCILIATION_RUNS": "Conferências realizadas",
-        "SESSION_KEYS": "Chaves de sessão",
-        "last_ui_event": "Último evento de interface",
-        "latest_generation_event_id": "Última geração registrada",
-        "latest_reconciliation_id": "Última conferência registrada",
-    }
-    raw_operational_stats = {
-        "GENERATION_EVENTS": generation_events,
-        "GENERATED_GAMES": generated_games,
-        "RECONCILIATION_RUNS": reconciliation_runs,
-        "SESSION_KEYS": session_keys,
-        "last_ui_event": last_ui_event,
-        "latest_generation_event_id": latest_generation_event_id,
-        "latest_reconciliation_id": latest_reconciliation_id,
-    }
-    cols = st.columns(4)
-    cols[0].metric(operational_label_map["GENERATION_EVENTS"], generation_events)
-    cols[1].metric(operational_label_map["GENERATED_GAMES"], generated_games)
-    cols[2].metric(operational_label_map["RECONCILIATION_RUNS"], reconciliation_runs)
-    cols[3].metric(operational_label_map["SESSION_KEYS"], session_keys)
-    st.caption(
-        f"{operational_label_map['last_ui_event']}: {last_ui_event} | "
-        f"{operational_label_map['latest_generation_event_id']}: {latest_generation_event_id} | "
-        f"{operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Últimos registros operacionais")
-    st.markdown(
-        f"- {operational_label_map['last_ui_event']}: {last_ui_event}\n"
-        f"- {operational_label_map['latest_generation_event_id']}: {latest_generation_event_id}\n"
-        f"- {operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Interpretação operacional")
-    st.write(
-        "As estatísticas operacionais indicam a atividade recente do ADM, incluindo eventos de geração registrados, "
-        "jogos persistidos e conferências executadas. A leitura de sessão é temporária e não deve ser interpretada "
-        "como histórico oficial."
-    )
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.write(raw_operational_stats)
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
         repository = ContestRepository(DB_PATH)
@@ -8248,13 +8602,11 @@ def _persist_generation_snapshot(
         }
 
 
-def _count_generated_games_for_event(generation_event_id: int) -> int:
-    with get_session(DB_PATH) as session:
-        return int(
-            session.query(GeneratedGame)
-            .filter(GeneratedGame.generation_event_id == int(generation_event_id))
-            .count()
-        )
+def _count_generated_games_for_event(generation_event_id: int, session: Any | None = None) -> int:
+    if session is not None:
+        return count_generated_games_for_event(session, int(generation_event_id))
+    with get_session(DB_PATH) as db_session:
+        return count_generated_games_for_event(db_session, int(generation_event_id))
 
 
 def _generated_games_count_sql(generation_event_id: int) -> str:
@@ -9029,7 +9381,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         ("Auditoria Runtime", "audit"),
         ("Auditoria e Monitoramento", "audit_monitoring"),
         ("Confer?ncia por concurso", "audit_monitoring_conference"),
-        ("Desempenho por grupo", "audit_monitoring_group_performance"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
@@ -9038,7 +9389,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
-        ("Estat?sticas operacionais", "operational_statistics"),
         ("M?tricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
     ]:
@@ -9084,11 +9434,9 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit",
         "audit_monitoring",
         "audit_monitoring_conference",
-        "audit_monitoring_group_performance",
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
         "summary_benchmark",
-        "operational_statistics",
         "hb_metrics",
         "structural_coverage",
         "audit_monitoring_side_leak",
@@ -10120,10 +10468,10 @@ def _render_institutional_matrix_reading_section(
     concept_cols = st.columns(2)
     with concept_cols[0]:
         st.info("Lei 15 = governança soberana")
-        st.info(LEI15_PANEL_CONCEPT_15D)
+        st.info(_resolve_lei15_panel_concept_label(card_format))
     with concept_cols[1]:
         st.info("Lei 15A = operação GP 10/20/30/50")
-        st.info(LEI15A_PANEL_FORMAT_16D_23D_LABEL)
+        st.info(_resolve_lei15a_panel_format_label(card_format))
     with st.expander("O que significa sincronização?", expanded=False):
         st.caption(LEI15A_PANEL_SYNC_SEMANTICS)
 
@@ -10251,7 +10599,6 @@ def _official_15_group_registry_found() -> bool:
 
 
 def _render_post_conference_monitoring_panel() -> None:
-    monitoring_payload = _load_post_draw_monitoring_from_db()
     st.markdown("##### Auditoria e Monitoramento")
     st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar a Lei.")
     cols = st.columns(4)
@@ -10278,38 +10625,17 @@ def _render_post_conference_monitoring_panel() -> None:
             "- Meta diamante: 15 pontos"
         )
     _render_signature_grid(
-        list(monitoring_payload.get("accepted_signatures", [])),
+        list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
         title="Dezenas organizadas no topo",
         empty_label="Este painel não recebeu dezenas para exibir no topo.",
     )
-    _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
+    _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
     with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.json(monitoring_payload)
-
-
-def _render_lei_16_governance_panel() -> None:
-    st.markdown("##### Lei 16 — Integridade Global da Geração")
-    st.caption("Leitura documental da governança institucional. Não comanda geração, não cria controles e não altera a Lei 15.")
-    cols = st.columns(3)
-    cols[0].metric("Status", "Formalizada documentalmente")
-    cols[1].metric("Classificação", "Compatível com a Lei 15")
-    cols[2].metric("Aderência", "Alta")
-    st.info(
-        "Toda geração institucional da LotoIA deve entregar combinações globalmente únicas dentro do mesmo evento, "
-        "lote ou bateria. A Lei 16 garante duplicados globais zero, memória de assinaturas compartilhada entre "
-        "grupos da mesma bateria e preservação da soberania da Lei 15."
-    )
-    st.markdown(
-        "- Duplicados globais: zero\n"
-        "- Grupos da mesma bateria compartilham memória de assinaturas\n"
-        "- Cada jogo entregue representa uma combinação única\n"
-        "- A Lei 15 permanece soberana e inalterada"
-    )
+        st.json(POST_DRAW_MONITORING_PAYLOAD)
 
 
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    monitoring_payload = _load_post_draw_monitoring_from_db()
     st.subheader("Auditoria e Monitoramento")
     st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
@@ -10331,43 +10657,41 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         cols2[0].metric("Lei 15", "Comando soberano")
         cols2[1].metric("Lei 17", "Validação / referência")
         cols2[2].metric("Lei 18", "Validação / referência")
-        cols2[3].metric("Dados", "Disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "Indisponível")
-        _render_lei_16_governance_panel()
+        cols2[3].metric("Dados", "Disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "Indisponível")
         st.markdown("##### Resumo de monitoramento")
         monitoring_cols = st.columns(5)
         monitoring_cols[0].metric(
             "Último concurso monitorado",
-            str(monitoring_payload.get("latest_contest", monitoring_payload.get("contest_number", "-")) or "-"),
+            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_contest", POST_DRAW_MONITORING_PAYLOAD.get("contest_number", "-")) or "-"),
         )
         monitoring_cols[1].metric(
             "Total de concursos avaliados",
-            int(monitoring_payload.get("evaluated_contests", monitoring_payload.get("contests_evaluated", 0)) or 0),
+            int(POST_DRAW_MONITORING_PAYLOAD.get("evaluated_contests", POST_DRAW_MONITORING_PAYLOAD.get("contests_evaluated", 0)) or 0),
         )
         monitoring_cols[2].metric(
             "Total de gerações analisadas",
-            int(monitoring_payload.get("analyzed_generations", monitoring_payload.get("generations_analyzed", 0)) or 0),
+            int(POST_DRAW_MONITORING_PAYLOAD.get("analyzed_generations", POST_DRAW_MONITORING_PAYLOAD.get("generations_analyzed", 0)) or 0),
         )
         monitoring_cols[3].metric(
             "Última conferência registrada",
-            str(monitoring_payload.get("latest_conference", monitoring_payload.get("last_conference", "-")) or "-"),
+            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_conference", POST_DRAW_MONITORING_PAYLOAD.get("last_conference", "-")) or "-"),
         )
         monitoring_cols[4].metric(
             "Status dos dados",
-            "disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "indisponível",
+            "disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "indisponível",
         )
-        if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")):
+        if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")):
             _render_signature_grid(
-                list(monitoring_payload.get("accepted_signatures", [])),
+                list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
                 title="Dezenas organizadas no topo",
                 empty_label="Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.",
             )
-            _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
+            _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
         else:
             st.info("Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.")
         st.markdown("##### Acessos de auditoria")
         st.markdown(
             "- Conferência por concurso\n"
-            "- Desempenho por grupo\n"
             "- Dezenas faltantes\n"
             "- Dezenas sobrando"
         )
@@ -10377,14 +10701,14 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
             st.markdown("status: LIBERADO / OBSERVACIONAL_AUDITADO")
         with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(monitoring_payload)
+            st.json(POST_DRAW_MONITORING_PAYLOAD)
         return
     if section == "conference":
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
         st.markdown("###### Camada observacional isolada")
-        latest_contest = _load_hai_latest_contest_summary()
-        latest_official_contest = latest_contest
+        latest_contest = _load_imported_contest()
+        latest_official_contest = _load_official_history_contest(_safe_int((latest_contest or {}).get("contest_number"), default=None)) if latest_contest else None
         latest_reconciliation = _load_latest_reconciliation_summary() or {}
         st.markdown("##### Status dos dados")
         data_cols = st.columns(5)
@@ -10392,7 +10716,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_reconciliation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_reconciliation.get("games_count", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str(latest_reconciliation.get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_reconciliation:
             st.caption(
                 " | ".join(
@@ -10406,9 +10730,9 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
         with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(monitoring_payload)
+            st.json(POST_DRAW_MONITORING_PAYLOAD)
         _render_signature_grid(
-            list(monitoring_payload.get("accepted_signatures", [])),
+            list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
             title="Dezenas organizadas no topo",
             empty_label="Esta conferência não recebeu dezenas para exibir no topo.",
         )
@@ -10427,67 +10751,13 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                 block_cols[index].caption(block_numbers.get(label, "-"))
         else:
             st.caption("Distribuição indisponível: dezenas oficiais não encontradas para o concurso monitorado.")
-    elif section == "group_performance":
-        st.markdown("##### Auditoria Observacional — Desempenho por Grupo")
-        st.write("Esta tela observa o desempenho dos grupos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
-        latest_contest = _load_hai_latest_contest_summary()
-        generation_history = _load_generation_history(limit=10)
-        latest_generation = generation_history[0] if generation_history else {}
-        latest_group = (latest_generation.get("top_games") or [{}])[0] if latest_generation else {}
-        st.markdown("##### Status institucional")
-        cols = st.columns(4)
-        cols[0].metric("Camada", "Auditoria Observacional")
-        cols[1].metric("Geração", "não executa")
-        cols[2].metric("Recalibração", "bloqueada")
-        cols[3].metric("Alerta", "registro")
-        st.markdown("##### Status dos dados")
-        data_cols = st.columns(5)
-        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
-        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
-        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
-        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
-        if latest_generation.get("games"):
-            conference_games = [_select_conference_numbers(game).get("conference_numbers", []) for game in latest_generation.get("games", [])]
-            group_stats = _summarize_games_structurally(conference_games)
-            st.caption(
-                " | ".join(
-                    [
-                        f"grupos_avaliados={len(latest_generation.get('games') or [])}",
-                        f"melhor_grupo={latest_group.get('game_index', '-')}",
-                        f"acertos_medios={latest_generation.get('avg_score', 0.0):.4f}",
-                        f"overlap={group_stats.get('average_overlap', 0.0):.4f}",
-                    ]
-                )
-            )
-            st.markdown("##### Resumo de desempenho")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "grupo": game.get("game_index", "-"),
-                            "jogos": 1,
-                            "acertos": game.get("hits", 0) if game.get("hits") is not None else "-",
-                            "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                            "núcleo_lei_15": " ".join(f"{number:02d}" for number in list(game.get("numbers", [])[:15])) or "-",
-                            "reservas_auditadas": " ".join(f"+{number:02d}" for number in list(game.get("numbers", [])[15:])) or "-",
-                            "cartão_final": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                            "dezenas_conferidas_count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                            "origem_dezenas_conferencia": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                            "observação institucional": "grupo avaliado na conferência",
-                        }
-                        for game in latest_generation.get("games", [])
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
-        else:
-            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "missing_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Faltantes")
-        st.write("Esta tela observa as dezenas ausentes nos acertos por grupo, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
-        latest_contest = _load_hai_latest_contest_summary()
+        st.write(
+            "Esta tela observa as dezenas sorteadas que não foram jogadas "
+            "(resultado_oficial − cartao_final), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
+        latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
         cols = st.columns(4)
@@ -10501,31 +10771,36 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            missing_df = pd.DataFrame(
-                [
-                    {
-                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                        "dezenas ausentes": " ".join(f"{number:02d}" for number in game.get("matched_numbers", []) or []) or "-",
-                        "frequência": int(game.get("hits", 0) or 0),
-                        "grupo relacionado": game.get("game_index", "-"),
-                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
-                        "observação institucional": "observação pós-conferência",
-                    }
-                    for game in latest_generation.get("games", [])
-                ]
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
             )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            missing_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
+            missing_display_rows = [_project_observational_missing_display_row(row) for row in missing_rows]
+            missing_df = pd.DataFrame(missing_display_rows, columns=list(OBSERVATIONAL_MISSING_DISPLAY_COLUMNS))
             st.dataframe(missing_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "extra_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Sobrando")
-        st.write("Esta tela observa as dezenas excedentes dos jogos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
-        latest_contest = _load_hai_latest_contest_summary()
+        st.write(
+            "Esta tela observa as dezenas jogadas que não foram sorteadas "
+            "(cartao_final − resultado_oficial), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
+        latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
         cols = st.columns(4)
@@ -10539,51 +10814,95 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            extra_df = pd.DataFrame(
-                [
-                    {
-                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                        "dezenas sobrando": " ".join(f"{number:02d}" for number in game.get("numbers", [])[:5]) or "-",
-                        "frequência": int(game.get("odd", 0) or 0) + int(game.get("even", 0) or 0),
-                        "grupo relacionado": game.get("game_index", "-"),
-                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
-                        "observação institucional": "observação pós-conferência",
-                    }
-                    for game in latest_generation.get("games", [])
-                ]
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
             )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            extra_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
+            display_rows = [_project_observational_leftover_display_row(row) for row in extra_rows]
+            extra_df = pd.DataFrame(display_rows, columns=list(OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS))
             st.dataframe(extra_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
+        st.caption("Sinaliza cobertura lateral: dezenas do cartao_final fora do núcleo Lei 15 15D congelado.")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        side_leak = build_side_leak_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(side_leak)
+        if not side_leak.get("available"):
+            st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
+        elif side_leak.get("alert") == ALERT_SIDE_LEAK:
+            st.error(
+                f"Alerta ML diagnóstico: {ALERT_SIDE_LEAK} — dezenas: "
+                f"{', '.join(side_leak.get('alert_dezenas', []) or [])}"
+            )
+        if side_leak.get("rows"):
+            st.dataframe(
+                pd.DataFrame(side_leak["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhuma dezena de vazamento lateral detectada na última conferência.")
     elif section == "13_to_14":
         st.markdown("##### Evolução 13 -> 14")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 13 para 14 sem recalibrar automaticamente.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_13_14_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 13 → 14 nesta conferência.")
     elif section == "14_to_15":
         st.markdown("##### Evolução 14 -> 15")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 14 para 15 em modo observador.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_14_15_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 14 → 15 nesta conferência.")
     elif section == "offline_hypotheses":
         st.markdown("##### Hipóteses para teste offline")
         st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
@@ -12429,6 +12748,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    analytical_guard = _evaluate_db_first_analytical_guard(generation_event_id=active_generation_event_id)
+    if not analytical_guard.get("allowed"):
+        st.error("Painel analítico bloqueado: nenhuma conferência ou snapshot analítico persistido no PostgreSQL.")
+        st.caption(f"motivo={analytical_guard.get('reason', '-')}")
+        return
     analytic_labels = {
         "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
         "TOTAL_JOGOS_HISTORICOS_CARREGADOS": "Jogos históricos carregados",
@@ -12775,6 +13100,20 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
             st.info("Ainda não há eventos suficientes para montar a timeline analítica.")
+
+    latest_run_id = _safe_int(analytical_guard.get("reconciliation_run_id"), default=None)
+    analytical_export = _build_db_derived_export_payload(
+        historical_rows,
+        db_table=str(analytical_guard.get("db_table") or "reconciliation_games"),
+        event_id=active_generation_event_id,
+        run_id=latest_run_id,
+        snapshot_id=str((analytical_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        analytical_export,
+        file_name="historico_analitico_export.csv",
+        label="Exportar histórico analítico (PostgreSQL)",
+    )
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
     st.write("Auditoria incremental isolada do motor oficial.")
@@ -12900,8 +13239,6 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
         _render_audit_monitoring_page(snapshot, "conference")
-    elif page == "audit_monitoring_group_performance":
-        _render_audit_monitoring_page(snapshot, "group_performance")
     elif page == "audit_monitoring_missing_numbers":
         _render_audit_monitoring_page(snapshot, "missing_numbers")
     elif page == "audit_monitoring_extra_numbers":
@@ -12946,8 +13283,6 @@ def main() -> None:
         _render_replay_institutional_page(snapshot)
     elif page == "summary_benchmark":
         _render_benchmark_resumido_page(snapshot)
-    elif page == "operational_statistics":
-        _render_estatisticas_operacionais_page(snapshot)
     else:
         _render_hb_geometry_page(_hb_geometry_state())
 

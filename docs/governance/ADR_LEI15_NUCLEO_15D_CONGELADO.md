@@ -58,8 +58,11 @@ Esta ADR é **registro institucional Lei 15**, não change request de runtime Le
 
 1. **Lei 15** permanece soberana na geração.
 2. **Lei 15A** usa o núcleo apenas como insumo normativo de registro — sem reclassificar soberania.
-3. **Conferência** usa `cartao_final` por jogo — não o núcleo congelado como atalho repetido.
-4. **Expansão 16D–23D** permanece bloqueada até missão e ADR específicos.
+3. **Conferência** usa `cartao_final` por jogo — não o núcleo congelado como atalho repetido
+   (guarda AUD-004; ver `ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`).
+4. **Expansão dimensional 16D–23D** está formalizada em camadas separadas (geração / registro /
+   conferência) — ver `ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`. Promoção operacional de 21D–23D
+   permanece bloqueada até ADR dedicado.
 5. Nenhum campo de banco, schema ou gateway é criado ou modificado por esta ADR.
 
 ---
@@ -99,6 +102,7 @@ Esta ADR é **registro institucional Lei 15**, não change request de runtime Le
 
 - `docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md`
 - `docs/governance/ADR_LEI15A_CARTAO_REGISTRO_APOSTA.md`
+- `docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md`
 - `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - `AGENTS.md` — posicionamento LotoIA (plataforma estatística estrutural)
 - ADR-032 — Operational Scientific Audit Baseline
@@ -112,3 +116,4 @@ Esta ADR é **registro institucional Lei 15**, não change request de runtime Le
 |------|----------------|------|
 | 2026-06-09 | Cloud agent | Congelamento pós-auditoria GP50–GP10 |
 | 2026-06-10 | Cloud agent | Reclassificado como ADR **Lei 15** (núcleo soberano) |
+| 2026-06-10 | Cloud agent | DOC-001 — referência cruzada à ADR de expansão dimensional |

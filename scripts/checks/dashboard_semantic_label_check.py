@@ -14,7 +14,10 @@ FORBIDDEN_LABELS = (
 )
 
 REQUIRED_LABELS = (
-    "16D–23D = cartão validado pela matriz GP da Lei 15A",
+    "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP",
+    "21D–23D = leitura observacional — registro Lei 15A pendente",
+    "conferência usa cartão final por jogo",
+    "Núcleo Lei 15 (insumo Lei 15A)",
     "componentes próprios da Lei 15A",
     "cartão validado deve coincidir com o cartão final superior",
     "Cartão validado Lei 15A",

@@ -5,6 +5,9 @@
 Esta politica define como a arquitetura do LotoIA pode evoluir apos o
 FREEZE ARQUITETURAL INSTITUCIONAL V1.
 
+Para expansao **dimensional de cartao** (15D → 23D) no runtime institucional Lei 15 / Lei 15A,
+ver tambem `docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md` (DOC-001).
+
 Durante o freeze, esta politica serve como regra de bloqueio: expansoes nao aprovadas nao
 devem ser implementadas.
 
