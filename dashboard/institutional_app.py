@@ -155,12 +155,36 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Operacional GP",
-    "auditadas_escolhidas": "Auditadas",
-    "vigilantes_escolhidas": "Vigilantes",
-    "cartao_final_lido": "Cartão final",
+    "nucleo_a_dezenas": "Núcleo Operacional GP Lei 15A",
+    "auditadas_escolhidas": "Auditadas Lei 15A",
+    "vigilantes_escolhidas": "Vigilantes Lei 15A",
+    "cartao_final_lido": "Cartão validado Lei 15A",
     "sincronizado_com_cartao_final": "Sincronizado",
 }
+LEI15_UPPER_PANEL_TITLE = "Jogos gerados pela Lei 15"
+LEI15_UPPER_PANEL_COLUMN_LABELS = {
+    "jogo": "Jogo",
+    "núcleo_lei_15": "Núcleo Lei 15",
+    "reservas_auditadas": "Reservas auditadas Lei 15",
+    "cartão_final": "Cartão final Lei 15",
+}
+LEI15A_LOWER_PANEL_TITLE = "Leitura operacional Lei 15A"
+LEI15A_PANEL_DESCRIPTION = (
+    "Esta leitura operacional Lei 15A audita e valida cada jogo gerado pela Lei 15: "
+    "o cartão validado deve coincidir com o cartão final superior; "
+    "núcleo operacional GP, auditadas e vigilantes são componentes próprios da Lei 15A."
+)
+LEI15A_PANEL_FORMAT_16D_23D_LABEL = "16D–23D = cartão validado pela matriz GP da Lei 15A"
+LEI15A_PANEL_SYNC_SUCCESS = (
+    "Leitura operacional Lei 15A validada: cartão Lei 15A coincide com "
+    "o cartão final gerado pela Lei 15, preservando componentes próprios."
+)
+LEI15A_PANEL_SYNC_SEMANTICS = (
+    "Sincronização significa coincidência entre cartão validado Lei 15A e "
+    "cartão final Lei 15. Não significa cópia de núcleo, reservas, auditadas "
+    "ou vigilantes entre as leis."
+)
+LEI15_PANEL_CONCEPT_15D = "15D = núcleo Lei 15 (geração soberana)"
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
@@ -9713,19 +9737,17 @@ def _render_institutional_matrix_reading_section(
     primary_df = build_institutional_matrix_primary_view(institutional_rows)
     technical_df = build_institutional_matrix_technical_view(institutional_rows)
 
-    st.subheader("Leitura operacional da matriz GP")
-    st.write(
-        "Esta leitura operacional Lei 15A audita e valida cada jogo gerado pela Lei 15: "
-        "o cartão validado deve coincidir com o cartão final superior; núcleo operacional GP, "
-        "auditadas e vigilantes são componentes próprios da Lei 15A."
-    )
+    st.subheader(LEI15A_LOWER_PANEL_TITLE)
+    st.write(LEI15A_PANEL_DESCRIPTION)
     concept_cols = st.columns(2)
     with concept_cols[0]:
         st.info("Lei 15 = governança soberana")
-        st.info("15D nasce do núcleo operacional GP")
+        st.info(LEI15_PANEL_CONCEPT_15D)
     with concept_cols[1]:
         st.info("Lei 15A = operação GP 10/20/30/50")
-        st.info("16D–23D = núcleo operacional GP + reservas auditadas")
+        st.info(LEI15A_PANEL_FORMAT_16D_23D_LABEL)
+    with st.expander("O que significa sincronização?", expanded=False):
+        st.caption(LEI15A_PANEL_SYNC_SEMANTICS)
 
     summary_cols = st.columns(5)
     summary_cols[0].metric("Jogos lidos", int(summary["total_games"]))
@@ -9735,7 +9757,7 @@ def _render_institutional_matrix_reading_section(
     summary_cols[4].metric("Status geral", str(summary["overall_status"]))
 
     if summary["all_synchronized"]:
-        st.success("Leitura operacional Lei 15A sincronizada com os cartões finais gerados pela Lei 15.")
+        st.success(LEI15A_PANEL_SYNC_SUCCESS)
     else:
         st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão_final superior.")
         st.json(summary["sync_failures"])
@@ -11264,7 +11286,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
         games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], int(result.get("selected_card_format", 15) or 15)))
         if games:
-            st.markdown("#### Jogos gerados")
+            st.markdown(f"#### {LEI15_UPPER_PANEL_TITLE}")
             cartoes_finais_superiores: list[list[int]] = []
             games_table_rows: list[dict[str, Any]] = []
             for index, game in enumerate(games):
@@ -11278,7 +11300,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                         "cartão_final": _format_numbers_for_history(final_card_numbers),
                     }
                 )
-            games_df = pd.DataFrame(games_table_rows)
+            games_df = pd.DataFrame(games_table_rows).rename(columns=LEI15_UPPER_PANEL_COLUMN_LABELS)
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
                 f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
