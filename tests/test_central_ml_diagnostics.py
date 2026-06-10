@@ -34,6 +34,7 @@ from lotoia.observability.ml_diagnostic_panels import (
     build_alert_002_cards,
     build_alert_003_cards,
     build_central_ml_diagnostics_payload,
+    EVIDENCE_LEVEL_RECURRENT,
     EVIDENCE_STATUS_COMPLETE,
     EVIDENCE_STATUS_INSUFFICIENT,
     EVIDENCE_STATUS_INVALID,
@@ -231,6 +232,8 @@ def test_register_ml_diagnostic_verdict_accept_reject_and_more_evidence(tmp_path
             "leakage_evidence": evidence,
             "generation_command": False,
             "recalibration_command": False,
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
         }
     )
     accepted = register_ml_diagnostic_verdict(
@@ -256,6 +259,8 @@ def test_register_ml_diagnostic_verdict_accept_reject_and_more_evidence(tmp_path
             "tipo_alerta": ALERT_002,
             "ml_proposal": {"action": ACTION_VIGILANCIA_DEZENA},
             "ml_diagnosis": {"aparicoes": 0, "faixa": "13->14"},
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
         },
         missing_evidence=["amostra_insuficiente"],
         db_path=db_path,
@@ -272,6 +277,8 @@ def test_register_ml_diagnostic_verdict_accept_reject_and_more_evidence(tmp_path
             "tipo_alerta": ALERT_003,
             "ml_proposal": {"action": ACTION_AJUSTE_POOL},
             "ml_diagnosis": {"faixa": "13->14", "taxa_conversao_13_14": 60.0},
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
         },
         db_path=db_path,
     )
@@ -311,6 +318,18 @@ def test_register_ml_diagnostic_decision_legacy_wrapper(tmp_path) -> None:
         reconciliation_run_id=99,
         adm_user="adm@test.local",
         leakage_evidence=evidence,
+        alert_card={
+            "tipo_alerta": ALERT_001,
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
+            "ml_proposal": {
+                "action": ACTION_PROMOVER_RESERVA_ADR,
+                "target_dezena": "06",
+                "drilldown_rows": 1,
+            },
+            "ml_diagnosis": {"sample_size": 2, "drilldown_available": True},
+            "leakage_evidence": evidence,
+        },
         db_path=db_path,
     )
     rejected = register_ml_diagnostic_decision(
@@ -325,6 +344,8 @@ def test_register_ml_diagnostic_decision_legacy_wrapper(tmp_path) -> None:
             "tipo_alerta": ALERT_002,
             "ml_proposal": {"action": ACTION_VIGILANCIA_DEZENA},
             "ml_diagnosis": {"aparicoes": 2, "faixa": "13->14"},
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
         },
         db_path=db_path,
     )
@@ -348,9 +369,20 @@ def test_register_reject_requires_reason(tmp_path) -> None:
                 "tipo_alerta": ALERT_003,
                 "ml_proposal": {"action": ACTION_AJUSTE_POOL},
                 "ml_diagnosis": {"faixa": "13->14"},
+                "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+                "verdict_buttons_allowed": True,
             },
             db_path=db_path,
         )
+
+
+def _seed_many_runs(session, count: int) -> int:
+    leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
+    games = [{"numbers": leak_card, "hits": 14}] * 3
+    last_run_id = 0
+    for suffix in range(1, count + 1):
+        last_run_id = _seed_reconciliation_run(session, games=games, run_suffix=suffix)
+    return last_run_id
 
 
 def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
@@ -364,9 +396,7 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
             {"numbers": leak_card, "hits": 14},
             {"numbers": leak_card, "hits": 14},
         ]
-        run_id_1 = _seed_reconciliation_run(session, games=games, run_suffix=1)
-        run_id_2 = _seed_reconciliation_run(session, games=games, run_suffix=2)
-    assert run_id_1 > 0
+        run_id_2 = _seed_many_runs(session, 20)
     assert run_id_2 > 0
     payload = build_central_ml_diagnostics_payload(db_path=db_path)
     assert payload["source"] == "postgresql"
@@ -387,6 +417,14 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
         reconciliation_run_id=run_id_2,
         adm_user="adm@test.local",
         leakage_evidence=_sample_leakage_evidence(),
+        alert_card={
+            "tipo_alerta": ALERT_001,
+            "evidence_level": EVIDENCE_LEVEL_RECURRENT,
+            "verdict_buttons_allowed": True,
+            "ml_proposal": {"action": ACTION_PROMOVER_RESERVA_ADR, "drilldown_rows": 1},
+            "ml_diagnosis": {"sample_size": 2, "drilldown_available": True},
+            "leakage_evidence": _sample_leakage_evidence(),
+        },
         db_path=db_path,
     )
     payload_after = build_central_ml_diagnostics_payload(db_path=db_path)

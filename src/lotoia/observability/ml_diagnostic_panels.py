@@ -87,6 +87,13 @@ VERDICT_REASON_HINTS = {
     VERDICT_REQUEST_MORE_EVIDENCE: "Falta amostra, gerações, concursos ou drilldown suficiente.",
     VERDICT_REJECT: "Conflito de governança, fonte inválida ou tentativa operacional.",
 }
+MIN_GENERATIONS_FOR_CENTRAL = 20
+EVIDENCE_LEVEL_LOCAL = "LOCAL_DIAGNOSTIC"
+EVIDENCE_LEVEL_RECURRENT = "RECURRENT_DIAGNOSTIC"
+LOCAL_DIAGNOSTIC_LABEL = "Diagnóstico local — não elegível para veredito ADM"
+CENTRAL_EMPTY_NO_RECURRENT_MESSAGE = (
+    "Nenhum alerta recorrente elegível. Alertas locais permanecem nos painéis analíticos."
+)
 
 ACTION_PROMOVER_RESERVA_ADR = "propor_promocao_reserva_via_ADR"
 ACTION_VIGILANCIA_DEZENA = "propor_vigilancia_dezena"
@@ -775,51 +782,150 @@ def build_alert_003_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
     return cards
 
 
-def build_central_ml_diagnostics_payload(
+def load_distinct_generation_event_count(
+    db_path: str = DEFAULT_DATABASE_PATH,
+) -> int:
+    """Conta generation_event_id distintos persistidos em reconciliation_runs."""
+    with get_session(db_path) as session:
+        values = session.query(ReconciliationRun.generation_event_id).distinct().all()
+        return len({int(row[0]) for row in values if int(row[0] or 0) > 0})
+
+
+def annotate_alert_routing(
+    alert: dict[str, Any],
+    *,
+    distinct_generation_events: int,
+) -> dict[str, Any]:
+    routed = dict(alert)
+    count = int(distinct_generation_events)
+    alert_type = str(routed.get("tipo_alerta") or "")
+    routed["distinct_generation_events"] = count
+    routed["min_required_generations"] = MIN_GENERATIONS_FOR_CENTRAL
+    routed["formula"] = _format_alert_regra_base(alert_type)
+    routed["operational_effect"] = False
+    if count < MIN_GENERATIONS_FOR_CENTRAL:
+        routed["evidence_level"] = EVIDENCE_LEVEL_LOCAL
+        routed["routing_reason"] = "base inferior a 20 gerações"
+        routed["verdict_buttons_allowed"] = False
+        routed["adr_candidate"] = False
+        routed["local_diagnostic_label"] = LOCAL_DIAGNOSTIC_LABEL
+    else:
+        routed["evidence_level"] = EVIDENCE_LEVEL_RECURRENT
+        routed["routing_reason"] = ""
+        routed["verdict_buttons_allowed"] = True
+    return routed
+
+
+def is_central_eligible_alert(alert: dict[str, Any]) -> bool:
+    if alert.get("evidence_level") != EVIDENCE_LEVEL_RECURRENT:
+        return False
+    if int(alert.get("distinct_generation_events", 0) or 0) < MIN_GENERATIONS_FOR_CENTRAL:
+        return False
+    if str(alert.get("fonte") or SOURCE_POSTGRESQL) != SOURCE_POSTGRESQL:
+        return False
+    guide = dict(alert.get("adm_guide") or {})
+    return guide.get("evidence_status") == EVIDENCE_STATUS_COMPLETE
+
+
+def build_ml_diagnostic_alerts_bundle(
     db_path: str = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
-    """Monta payload da Central de Diagnósticos ML com os 3 tipos de alerta."""
+    """Monta todos os alertas ML com roteamento local vs recorrente."""
     contexts = load_recent_reconciliation_runs_context(limit=5, db_path=db_path)
     latest = contexts[0] if contexts else _empty_context()
-    alerts = (
+    distinct_generation_events = load_distinct_generation_event_count(db_path=db_path)
+    raw_alerts = (
         build_alert_001_cards(contexts)
         + build_alert_002_cards(latest)
         + build_alert_003_cards(latest)
     )
-    decisions = list_ml_diagnostic_decisions(db_path=db_path, limit=500)
+    all_alerts: list[dict[str, Any]] = []
+    for raw in raw_alerts:
+        routed = annotate_alert_routing(raw, distinct_generation_events=distinct_generation_events)
+        enriched = enrich_alert_card_for_display(routed)
+        if enriched.get("evidence_level") == EVIDENCE_LEVEL_LOCAL:
+            enriched["verdict_buttons_allowed"] = False
+            enriched["adr_candidate"] = False
+        all_alerts.append(enriched)
+    local_alerts = [alert for alert in all_alerts if alert.get("evidence_level") == EVIDENCE_LEVEL_LOCAL]
+    central_alerts = [alert for alert in all_alerts if is_central_eligible_alert(alert)]
+    return {
+        "available": bool(contexts),
+        "contexts": contexts,
+        "latest": latest,
+        "distinct_generation_events": distinct_generation_events,
+        "all_alerts": all_alerts,
+        "local_alerts": local_alerts,
+        "central_alerts": central_alerts,
+        "local_alerts_by_panel": {
+            "side_leak": [alert for alert in local_alerts if alert.get("tipo_alerta") == ALERT_001],
+            "evolution_13_14": [
+                alert for alert in local_alerts if alert.get("tipo_alerta") in {ALERT_002, ALERT_003}
+            ],
+            "evolution_14_15": [
+                alert for alert in local_alerts if alert.get("tipo_alerta") in {ALERT_002, ALERT_003}
+            ],
+        },
+    }
+
+
+def _merge_alert_decisions(
+    alerts: Sequence[dict[str, Any]],
+    *,
+    decisions: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
     decision_index = {
         (row["alert_type"], row["dezena"], row["reconciliation_run_id"]): row
         for row in decisions
     }
-    active_alerts: list[dict[str, Any]] = []
+    merged: list[dict[str, Any]] = []
     for alert in alerts:
-        key = (alert["tipo_alerta"], alert["dezena"], alert["reconciliation_run_id"])
+        item = dict(alert)
+        key = (item["tipo_alerta"], item["dezena"], item["reconciliation_run_id"])
         existing = decision_index.get(key)
-        alert = dict(alert)
         if existing:
-            alert["status"] = existing.get("status") or existing["adm_decision"]
-            alert["verdict_type"] = existing.get("verdict_type")
-            alert["decision_id"] = existing["id"]
-            alert["verdict_reason"] = existing.get("verdict_reason") or existing.get("adm_reason")
-            alert["adm_reason"] = existing.get("adm_reason")
-            alert["adm_user"] = existing.get("adm_user")
-            alert["decided_at"] = existing.get("decided_at")
-            alert["missing_evidence"] = list(existing.get("missing_evidence") or [])
-            alert["adr_candidate"] = bool(existing.get("adr_candidate"))
-        active_alerts.append(enrich_alert_card_for_display(alert))
+            item["status"] = existing.get("status") or existing["adm_decision"]
+            item["verdict_type"] = existing.get("verdict_type")
+            item["decision_id"] = existing["id"]
+            item["verdict_reason"] = existing.get("verdict_reason") or existing.get("adm_reason")
+            item["adm_reason"] = existing.get("adm_reason")
+            item["adm_user"] = existing.get("adm_user")
+            item["decided_at"] = existing.get("decided_at")
+            item["missing_evidence"] = list(existing.get("missing_evidence") or [])
+            if item.get("evidence_level") == EVIDENCE_LEVEL_RECURRENT:
+                item["adr_candidate"] = bool(existing.get("adr_candidate"))
+            else:
+                item["adr_candidate"] = False
+        merged.append(item)
+    return merged
+
+
+def build_central_ml_diagnostics_payload(
+    db_path: str = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Monta payload da Central — somente alertas RECURRENT_DIAGNOSTIC elegíveis."""
+    bundle = build_ml_diagnostic_alerts_bundle(db_path=db_path)
+    decisions = list_ml_diagnostic_decisions(db_path=db_path, limit=500)
+    active_alerts = _merge_alert_decisions(bundle["central_alerts"], decisions=decisions)
     pending = [alert for alert in active_alerts if alert["status"] in ACTIVE_ALERT_STATUSES]
+    latest = bundle["latest"]
     updated_at = datetime.now(UTC).isoformat()
     return {
-        "available": bool(contexts),
+        "available": bool(bundle["available"]),
         "source": SOURCE_POSTGRESQL,
         "tables": RECONCILIATION_TABLES,
         "reconciliation_run_id": int(latest.get("reconciliation_run_id", 0) or 0),
         "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
         "generation_command": False,
         "recalibration_command": False,
+        "distinct_generation_events": bundle["distinct_generation_events"],
+        "min_required_generations": MIN_GENERATIONS_FOR_CENTRAL,
+        "local_alerts_count": len(bundle["local_alerts"]),
         "total_alertas_ativos": len(pending),
         "ultima_atualizacao": updated_at,
         "alerts": active_alerts,
+        "local_alerts": bundle["local_alerts"],
+        "empty_state_message": CENTRAL_EMPTY_NO_RECURRENT_MESSAGE,
         "history": decisions,
     }
 
@@ -915,8 +1021,10 @@ def _build_verdict_effects(
     leakage_evidence: dict[str, Any] | None = None,
     missing_evidence: Sequence[str] | None = None,
     verdict_reason: str = "",
+    alert_card: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     operational_effect = False
+    card = dict(alert_card or {})
     if verdict_type == VERDICT_ACCEPT_DIAGNOSTIC:
         effects = _build_acceptance_effects(
             alert_type,
@@ -926,7 +1034,10 @@ def _build_verdict_effects(
         effects.update(
             {
                 "feed_institutional_memory": True,
-                "adr_candidate": alert_type == ALERT_001,
+                "adr_candidate": (
+                    alert_type == ALERT_001
+                    and card.get("evidence_level") == EVIDENCE_LEVEL_RECURRENT
+                ),
                 "operational_effect": operational_effect,
             }
         )
@@ -985,6 +1096,16 @@ def _validate_verdict_request(
             raise ValueError("verdict_reason é obrigatório para REJECT.")
 
 
+def _validate_central_verdict_allowed(alert_card: dict[str, Any] | None) -> None:
+    card = dict(alert_card or {})
+    if card.get("evidence_level") == EVIDENCE_LEVEL_LOCAL:
+        raise ValueError(
+            "Alertas locais (< 20 gerações) não são elegíveis para veredito ADM na Central."
+        )
+    if not card.get("verdict_buttons_allowed", True):
+        raise ValueError("Veredito ADM não permitido para diagnósticos locais.")
+
+
 def register_ml_diagnostic_verdict(
     *,
     alert_type: str,
@@ -1010,6 +1131,7 @@ def register_ml_diagnostic_verdict(
     card.setdefault("generation_command", False)
     card.setdefault("recalibration_command", False)
     gaps = list(missing_evidence or assess_alert_evidence_gaps(card, leakage_evidence=leakage_evidence))
+    _validate_central_verdict_allowed(card)
     _validate_verdict_request(
         normalized_verdict,
         alert_card=card,
@@ -1019,7 +1141,11 @@ def register_ml_diagnostic_verdict(
     )
     status = VERDICT_STATUS_BY_TYPE[normalized_verdict]
     adm_decision = status if status in {STATUS_ACEITO, STATUS_REJEITADO} else STATUS_PENDENTE_EVIDENCIA
-    adr_candidate = normalized_verdict == VERDICT_ACCEPT_DIAGNOSTIC and alert_type == ALERT_001
+    adr_candidate = (
+        normalized_verdict == VERDICT_ACCEPT_DIAGNOSTIC
+        and alert_type == ALERT_001
+        and card.get("evidence_level") == EVIDENCE_LEVEL_RECURRENT
+    )
     now = datetime.now(UTC)
     with get_session(db_path) as session:
         existing = (
@@ -1042,6 +1168,7 @@ def register_ml_diagnostic_verdict(
             leakage_evidence=leakage_evidence,
             missing_evidence=gaps,
             verdict_reason=verdict_reason,
+            alert_card=card,
         )
         if leakage_evidence:
             payload["leakage_evidence"] = dict(leakage_evidence)
@@ -1119,9 +1246,14 @@ def register_ml_diagnostic_decision(
     )
 
 
-def build_side_leak_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
+def build_side_leak_panel_payload(
+    context: dict[str, Any],
+    *,
+    local_alerts: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     evidence = build_lateral_leakage_evidence(context)
     leakage_table = list(evidence.get("leakage_table") or [])
+    locals_for_panel = list(local_alerts or [])
     return {
         "available": bool(evidence.get("available")),
         "source": SOURCE_POSTGRESQL,
@@ -1140,7 +1272,25 @@ def build_side_leak_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
         "vazamento_definition": evidence.get("vazamento_definition"),
         "sobra_real_definition": evidence.get("sobra_real_definition"),
         "nucleo_lei15_15d": sorted(NUCLEO_LEI15_15D_CONGELADO),
+        "show_local_diagnostics": bool(locals_for_panel),
+        "local_diagnostic_label": LOCAL_DIAGNOSTIC_LABEL,
+        "local_diagnostics": locals_for_panel,
+        "min_required_generations": MIN_GENERATIONS_FOR_CENTRAL,
     }
+
+
+def _attach_local_diagnostics_to_evolution_payload(
+    payload: dict[str, Any],
+    *,
+    local_alerts: Sequence[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    enriched = dict(payload)
+    locals_for_panel = list(local_alerts or [])
+    enriched["show_local_diagnostics"] = bool(locals_for_panel)
+    enriched["local_diagnostic_label"] = LOCAL_DIAGNOSTIC_LABEL
+    enriched["local_diagnostics"] = locals_for_panel
+    enriched["min_required_generations"] = MIN_GENERATIONS_FOR_CENTRAL
+    return enriched
 
 
 def _build_evolution_panel_payload(
@@ -1148,6 +1298,7 @@ def _build_evolution_panel_payload(
     *,
     target_hits: int,
     candidate_flag: str,
+    local_alerts: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     games = [game for game in (context.get("games") or []) if int(game.get("hits", 0) or 0) == target_hits]
     resultado_oficial = set(int(number) for number in (context.get("resultado_oficial") or []))
@@ -1168,37 +1319,50 @@ def _build_evolution_panel_payload(
             }
         )
     top_row = rows[0] if rows else None
-    return {
-        "available": bool(context.get("available") and total_games > 0),
-        "source": SOURCE_POSTGRESQL,
-        "tables": RECONCILIATION_TABLES,
-        "reconciliation_run_id": int(context.get("reconciliation_run_id", 0) or 0),
-        "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
-        "generation_command": False,
-        "recalibration_command": False,
-        "target_hits": target_hits,
-        "games_analyzed": total_games,
-        "rows": rows,
-        "candidate_flag": candidate_flag if top_row else None,
-        "candidata_conversao": top_row["dezena_faltante"] if top_row else None,
-    }
+    return _attach_local_diagnostics_to_evolution_payload(
+        {
+            "available": bool(context.get("available") and total_games > 0),
+            "source": SOURCE_POSTGRESQL,
+            "tables": RECONCILIATION_TABLES,
+            "reconciliation_run_id": int(context.get("reconciliation_run_id", 0) or 0),
+            "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
+            "generation_command": False,
+            "recalibration_command": False,
+            "target_hits": target_hits,
+            "games_analyzed": total_games,
+            "rows": rows,
+            "candidate_flag": candidate_flag if top_row else None,
+            "candidata_conversao": top_row["dezena_faltante"] if top_row else None,
+        },
+        local_alerts=local_alerts,
+    )
 
 
-def build_evolution_13_14_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
+def build_evolution_13_14_panel_payload(
+    context: dict[str, Any],
+    *,
+    local_alerts: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     game_size = _infer_game_size_from_context(context)
     lower_target, _ = get_evolution_target_hits(game_size)
     return _build_evolution_panel_payload(
         context,
         target_hits=lower_target,
         candidate_flag=CANDIDATE_FLAG_13_14,
+        local_alerts=local_alerts,
     )
 
 
-def build_evolution_14_15_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
+def build_evolution_14_15_panel_payload(
+    context: dict[str, Any],
+    *,
+    local_alerts: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     game_size = _infer_game_size_from_context(context)
     _, upper_target = get_evolution_target_hits(game_size)
     return _build_evolution_panel_payload(
         context,
         target_hits=upper_target,
         candidate_flag=CANDIDATE_FLAG_14_15,
+        local_alerts=local_alerts,
     )
