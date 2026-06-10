@@ -46,6 +46,7 @@ approval_required_for:
   - new agent rules in .cursor/rules/
 
 references:
+  - docs/governance/COMUNICACAO_INSTITUCIONAL.md
   - docs/governance/POLITICA_ML_ASSISTIVO.md
   - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
   - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
