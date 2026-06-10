@@ -1,0 +1,41 @@
+---
+name: agent_visual
+description: Frontend/Visual agent — LotoIA dashboard
+
+scope:
+  allowed:
+    - dashboard/          # components, layout, CSS
+    - assets/             # images, fonts, styles
+  read_only:
+    - docs/governance/    # nomenclatura institucional apenas
+    - src/lotoia/observability/  # entender o que exibir
+  forbidden:
+    - src/lotoia/generator/
+    - src/lotoia/statistics/
+    - src/lotoia/ml/
+    - src/lotoia/governance/
+    - src/lotoia/database/
+    - tests/
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - never modify business logic — display only
+  - never modify data sources — render only
+  - never modify Lei 15 / Lei 15A concepts or labels
+  - nomenclatura institucional must match docs/governance/
+  - encoding must be UTF-8 everywhere
+  - no technical data exposed to ADM without explicit need
+  - drilldowns must be collapsible by default
+  - remove "Detalhes técnicos avançados" expanders
+  - operational_effect = false on all visual changes
+
+visual_standards:
+  encoding: UTF-8
+  language: pt-BR
+  forbidden_in_main_tables:
+    - generation_event_id
+    - reconciliation_run_id
+    - sample_size
+    - raw JSON blocks
+  collapsible_by_default: true
+---
