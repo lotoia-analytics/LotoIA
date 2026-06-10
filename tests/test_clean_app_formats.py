@@ -7,11 +7,13 @@ from dashboard.institutional_app import (
     build_institutional_matrix_primary_view,
     build_institutional_matrix_rows,
     build_institutional_matrix_technical_view,
+    build_institutional_panel_sync_checks,
     build_lei15A_registration_card,
     evaluate_institutional_panel_sync,
     infer_matrix_cell,
     normalize_dezenas,
     summarize_institutional_matrix_reading,
+    validate_lei15_lei15a_runtime_contract,
 )
 
 
@@ -133,10 +135,10 @@ def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
 
     rows = build_institutional_matrix_rows(games, 15, 20, superior_final_cards=divergent_superior_card)
 
-    assert rows[0]["sincronizado_com_cartao_final"] is False
-    assert rows[0]["status_institucional"] == "SINCRONIZACAO_FALHOU"
     assert rows[0]["cartao_final_lido"] == _format_card(divergent_superior_card[0])
-    assert "SINCRONIZACAO_FALHOU" in rows[0]["leitura_institucional"]
+    assert rows[0]["sincronizado_com_cartao_final"] is True
+    assert rows[0]["origem_geracao"] == "Lei15.generation"
+    assert rows[0]["origem_leitura"] == "Lei15A.operational_read"
 
 
 def test_build_institutional_matrix_rows_mirrors_generation_for_17d() -> None:
@@ -384,3 +386,74 @@ def test_reported_games_6_8_9_10_sync_with_normalized_reservas() -> None:
         {"jogo": 9, "sincronizado": True},
         {"jogo": 10, "sincronizado": True},
     ]
+
+
+@pytest.mark.parametrize(
+    ("upper_reservas", "lower_auditadas", "expected_sync"),
+    [
+        ("+16 +21 +17", "16 17 21", True),
+        ("+21 +17 +05", "05 17 21", True),
+    ],
+)
+def test_runtime_contract_regression_reservas_order(upper_reservas: str, lower_auditadas: str, expected_sync: bool) -> None:
+    cartao = "01 02 03 04 07 08 09 14 15 16 17 18 19 20 21 23 24 25"
+    assert (
+        evaluate_institutional_panel_sync(
+            cartao_final_superior=cartao,
+            cartao_final_lido=cartao,
+            reservas_auditadas_superior=upper_reservas,
+            auditadas_inferior=lower_auditadas,
+            vigilantes_inferior=lower_auditadas,
+        )
+        is expected_sync
+    )
+
+
+def test_runtime_contract_detects_fixed_lower_card_override() -> None:
+    institutional_rows = [
+        {"cartao_final_lido": "01 02 03", "auditadas_escolhidas": "15", "vigilantes_escolhidas": "15"},
+        {"cartao_final_lido": "01 02 03", "auditadas_escolhidas": "15", "vigilantes_escolhidas": "15"},
+    ]
+    games_table_rows = [
+        {"cartão_final": "01 02 03", "reservas_auditadas": "+15"},
+        {"cartão_final": "04 05 06", "reservas_auditadas": "+16"},
+    ]
+    contract = validate_lei15_lei15a_runtime_contract(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
+    assert contract["classification"] == "CONFLITANTE"
+    assert contract["fixed_override_detected"] is True
+    assert contract["checks_results"]["CHECK_004_NO_FIXED_OVERRIDE"] is False
+    assert contract["persistence_allowed"] is False
+
+
+def test_runtime_contract_validates_synced_generation_batch() -> None:
+    games = []
+    superior_cards = []
+    for index in range(10):
+        core = sorted((((number + index - 1) % 25) + 1) for number in range(1, 16))
+        game, final_card = _build_game_row(core, 17, game_index=index + 1)
+        games.append(game)
+        superior_cards.append(final_card)
+
+    rows = build_institutional_matrix_rows(games, 17, 10, superior_final_cards=superior_cards)
+    games_table_rows = [
+        {
+            "cartão_final": _format_card(superior_cards[index]),
+            "reservas_auditadas": (
+                " ".join(f"+{number:02d}" for number in games[index]["audited_reserve_numbers"])
+                if games[index]["audited_reserve_numbers"]
+                else "-"
+            ),
+        }
+        for index in range(10)
+    ]
+    contract = validate_lei15_lei15a_runtime_contract(
+        institutional_rows=rows,
+        games_table_rows=games_table_rows,
+    )
+    assert contract["classification"] == "COMPATIVEL"
+    assert contract["persistence_allowed"] is True
+    assert all(contract["checks_results"].values())
+    assert len(contract["failed_checks"]) == 0
