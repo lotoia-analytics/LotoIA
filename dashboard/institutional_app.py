@@ -13543,10 +13543,7 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
             st.markdown(
                 """
                 <div class="lotoia-home-brand">
-                    <div>
-                        <div class="lotoia-home-brand-name">LotoIA</div>
-                        <div class="lotoia-home-brand-sub">Painel Institucional</div>
-                    </div>
+                    <div class="lotoia-home-brand-name">Painel Institucional</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
