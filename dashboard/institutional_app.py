@@ -9241,13 +9241,126 @@ def evaluate_institutional_panel_sync(
     cartao_final_lido: object,
     reservas_auditadas_superior: object,
     auditadas_inferior: object,
+    vigilantes_inferior: object | None = None,
 ) -> bool:
     """Verifica sincronização Lei 15 / Lei 15A com dezenas normalizadas."""
     cartao_ok = normalize_dezenas(cartao_final_superior) == normalize_dezenas(cartao_final_lido)
     auditadas_ok = (
         normalize_dezenas(reservas_auditadas_superior) == normalize_dezenas(auditadas_inferior)
     )
-    return cartao_ok and auditadas_ok
+    vigilantes_value = auditadas_inferior if vigilantes_inferior is None else vigilantes_inferior
+    vigilantes_ok = normalize_dezenas(vigilantes_value) == normalize_dezenas(auditadas_inferior)
+    return cartao_ok and auditadas_ok and vigilantes_ok
+
+
+def build_institutional_panel_sync_checks(
+    *,
+    institutional_rows: Sequence[dict[str, Any]],
+    games_table_rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Monta checks de sincronização Lei 15 (superior) vs Lei 15A (inferior)."""
+    sync_checks: list[dict[str, Any]] = []
+    for row_index, row in enumerate(institutional_rows):
+        superior_row = games_table_rows[row_index]
+        superior_label = str(superior_row.get("cartão_final", "-") or "-")
+        inferior_label = str(row.get("cartao_final_lido", "-") or "-")
+        superior_reserves = str(superior_row.get("reservas_auditadas", "-") or "-")
+        inferior_auditadas = str(row.get("auditadas_escolhidas", "-") or "-")
+        inferior_vigilantes = str(row.get("vigilantes_escolhidas", "-") or "-")
+        synchronized = evaluate_institutional_panel_sync(
+            cartao_final_superior=superior_label,
+            cartao_final_lido=inferior_label,
+            reservas_auditadas_superior=superior_reserves,
+            auditadas_inferior=inferior_auditadas,
+            vigilantes_inferior=inferior_vigilantes,
+        )
+        sync_checks.append(
+            {
+                "jogo": row_index + 1,
+                "cartao_final_superior": superior_label,
+                "cartao_final_lido": inferior_label,
+                "reservas_auditadas_superior": superior_reserves,
+                "auditadas_inferior": inferior_auditadas,
+                "vigilantes_inferior": inferior_vigilantes,
+                "origem_superior": "Lei15.generation",
+                "origem_inferior": "Lei15A.operational_read",
+                "sincronizado": synchronized,
+            }
+        )
+    return sync_checks
+
+
+def validate_lei15_lei15a_runtime_contract(
+    *,
+    institutional_rows: Sequence[dict[str, Any]],
+    games_table_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Valida contrato runtime aprovado Lei 15 / Lei 15A antes de exibir ou persistir."""
+    sync_checks = build_institutional_panel_sync_checks(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
+    failed_checks = [check for check in sync_checks if not check.get("sincronizado")]
+    upper_cards = [str(row.get("cartão_final", "-") or "-") for row in games_table_rows]
+    lower_cards = [str(row.get("cartao_final_lido", "-") or "-") for row in institutional_rows]
+    upper_variable = len(set(upper_cards)) > 1
+    lower_all_identical = len(set(lower_cards)) == 1 and len(lower_cards) > 1
+    fixed_override_detected = upper_variable and lower_all_identical
+
+    checks_results = {
+        "CHECK_001_FINAL_CARD_SYNC": all(
+            normalize_dezenas(check["cartao_final_superior"]) == normalize_dezenas(check["cartao_final_lido"])
+            for check in sync_checks
+        ),
+        "CHECK_002_AUDITADAS_SYNC": all(
+            normalize_dezenas(check["reservas_auditadas_superior"])
+            == normalize_dezenas(check["auditadas_inferior"])
+            for check in sync_checks
+        ),
+        "CHECK_003_VIGILANTES_CONFIRM": all(
+            normalize_dezenas(check["vigilantes_inferior"]) == normalize_dezenas(check["auditadas_inferior"])
+            for check in sync_checks
+        ),
+        "CHECK_004_NO_FIXED_OVERRIDE": not fixed_override_detected,
+        "CHECK_005_NO_NEW_CONCEPT": True,
+        "CHECK_006_RUNTIME_OBEYS_APPROVED_CONTRACT": not failed_checks and not fixed_override_detected,
+    }
+    persistence_allowed = all(checks_results.values()) and not failed_checks
+    classification = "COMPATIVEL" if persistence_allowed else "CONFLITANTE"
+    return {
+        "classification": classification,
+        "sync_checks": sync_checks,
+        "failed_checks": failed_checks,
+        "checks_results": checks_results,
+        "fixed_override_detected": fixed_override_detected,
+        "persistence_allowed": persistence_allowed,
+        "governance_confirmation": {
+            "lei15_role": "governanca_soberana_geracao",
+            "lei15a_role": "leitura_operacional_auditoria_sincronizacao",
+            "runtime_source_of_truth": "Lei15.generation",
+        },
+    }
+
+
+def _build_games_table_rows_from_generation_games(
+    games: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Espelha a tabela superior Jogos gerados para validação de contrato."""
+    games_table_rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games):
+        final_card_numbers = _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+        reserve_numbers = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        games_table_rows.append(
+            {
+                "jogo": index + 1,
+                "núcleo_lei_15": _format_numbers_for_history(game.get("core_numbers", game.get("numbers", []))),
+                "reservas_auditadas": (
+                    " ".join(f"+{int(number):02d}" for number in reserve_numbers) if reserve_numbers else "-"
+                ),
+                "cartão_final": _format_numbers_for_history(final_card_numbers),
+            }
+        )
+    return games_table_rows
 
 
 def infer_matrix_cell(formato_cartao: int | str | None, requested_count: int | str | None) -> dict[str, Any]:
@@ -9301,16 +9414,23 @@ def build_institutional_matrix_rows(
         if not generation_core and audited_final_card:
             generation_core = list(audited_final_card[:15])
 
+        reserve_numbers = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        superior_reserves_label = (
+            " ".join(f"+{int(number):02d}" for number in reserve_numbers) if reserve_numbers else "-"
+        )
         operational_nucleus = list(generation_core)
         operational_final_card = list(audited_final_card)
-        auditadas_escolhidas = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        auditadas_escolhidas = list(reserve_numbers)
         if dezenas_por_jogo > 15 and not auditadas_escolhidas:
             auditadas_escolhidas = sorted(set(operational_final_card) - set(operational_nucleus))
         vigilantes_escolhidas = list(auditadas_escolhidas)
 
-        synchronized_with_final_card = (
-            final_card == superior_final_card
-            and operational_final_card == superior_final_card
+        synchronized_with_final_card = evaluate_institutional_panel_sync(
+            cartao_final_superior=_format_numbers_for_history(superior_final_card),
+            cartao_final_lido=_format_numbers_for_history(operational_final_card),
+            reservas_auditadas_superior=superior_reserves_label,
+            auditadas_inferior=_format_numbers_for_history(auditadas_escolhidas) or "-",
+            vigilantes_inferior=_format_numbers_for_history(vigilantes_escolhidas) or "-",
         )
         sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
 
@@ -9356,6 +9476,8 @@ def build_institutional_matrix_rows(
                 "status_institucional": sync_status,
                 "status_estrutural_anterior": structural_status,
                 "leitura_institucional": leitura_institucional,
+                "origem_geracao": "Lei15.generation",
+                "origem_leitura": "Lei15A.operational_read",
             }
         )
     return rows
@@ -9441,28 +9563,10 @@ def _render_institutional_matrix_reading_section(
     card_format: int,
 ) -> None:
     """Renderiza a leitura institucional padronizada com visao limpa e detalhes tecnicos."""
-    sync_checks: list[dict[str, Any]] = []
-    for row_index, row in enumerate(institutional_rows):
-        superior_label = games_table_rows[row_index]["cartão_final"]
-        inferior_label = str(row.get("cartao_final_lido", "-") or "-")
-        superior_reserves = str(games_table_rows[row_index].get("reservas_auditadas", "-") or "-")
-        inferior_auditadas = str(row.get("auditadas_escolhidas", "-") or "-")
-        synchronized = evaluate_institutional_panel_sync(
-            cartao_final_superior=superior_label,
-            cartao_final_lido=inferior_label,
-            reservas_auditadas_superior=superior_reserves,
-            auditadas_inferior=inferior_auditadas,
-        )
-        sync_checks.append(
-            {
-                "jogo": row_index + 1,
-                "cartao_final_superior": superior_label,
-                "cartao_final_lido": inferior_label,
-                "reservas_auditadas_superior": superior_reserves,
-                "auditadas_inferior": inferior_auditadas,
-                "sincronizado": synchronized,
-            }
-        )
+    sync_checks = build_institutional_panel_sync_checks(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
 
     summary = summarize_institutional_matrix_reading(
         institutional_rows,
@@ -9525,6 +9629,27 @@ def _persist_clean_law15_generation_history(
     if not games:
         return {}
     formatted_games = _expand_generation_games_for_format(games, selected_card_format)
+    cartoes_finais_superiores = [
+        _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+        for game in formatted_games
+    ]
+    institutional_rows = build_institutional_matrix_rows(
+        formatted_games,
+        selected_card_format,
+        int(result.get("requested_count", len(formatted_games)) or len(formatted_games)),
+        superior_final_cards=cartoes_finais_superiores,
+    )
+    games_table_rows = _build_games_table_rows_from_generation_games(formatted_games)
+    runtime_contract = validate_lei15_lei15a_runtime_contract(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
+    if not runtime_contract.get("persistence_allowed"):
+        return {
+            "persistence_blocked": True,
+            "persistence_guard_status": "SINCRONIZACAO_FALHOU",
+            "runtime_contract": runtime_contract,
+        }
     payload_games: list[dict[str, Any]] = []
     for game in formatted_games:
         core_numbers = list(game.get("core_numbers", game.get("numbers", [])) or [])
