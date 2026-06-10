@@ -1128,7 +1128,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     )
     st.dataframe(_make_arrow_safe(integrity_rows), hide_index=True, use_container_width=True)
 
-    with st.expander("Detalhes técnicos do runtime", expanded=False, key="audit_runtime_technical"):
+    with st.expander("Detalhes técnicos do runtime", expanded=False):
         st.caption(
             " | ".join(
                 [
@@ -1193,7 +1193,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         else:
             st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
 
-    with st.expander("Memória científica (documental)", expanded=False, key="audit_runtime_scientific_memory"):
+    with st.expander("Memória científica (documental)", expanded=False):
         st.caption("Registro histórico. Não comanda geração nem recalibra a Lei 15.")
         _render_scientific_memory_block(compact=True, inside_expander=True)
 
@@ -2555,7 +2555,7 @@ def _streamlit_collapsible(
 ):
     """Evita expanders aninhados quando a seção já está dentro de outro expander."""
     if allow_expander:
-        with st.expander(title, expanded=expanded, key=key):
+        with st.expander(title, expanded=expanded):
             yield
     else:
         yield
@@ -7650,7 +7650,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         summary_cols[3].metric("Melhor score", f"{best_score:.4f}")
         summary_cols[4].metric("Última geração", latest_generation_label)
 
-        with st.expander("Memória científica", expanded=False, key="historico_memoria_cientifica"):
+        with st.expander("Memória científica", expanded=False):
             _render_scientific_memory_block(compact=True, inside_expander=True)
 
         filter_cols = st.columns(3)

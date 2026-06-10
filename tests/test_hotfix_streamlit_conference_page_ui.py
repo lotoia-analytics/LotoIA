@@ -53,6 +53,11 @@ def test_no_key_argument_on_streamlit_expander() -> None:
     assert not re.search(r"st\.expander\([\s\S]*?expanded=False,\s*key\s*=", source)
 
 
+def test_institutional_app_expander_calls_do_not_use_key() -> None:
+    source = inspect.getsource(admin_app)
+    assert not re.search(r"st\.expander\([^)]*key\s*=", source)
+
+
 def test_render_conference_page_no_typeerror_on_expander(monkeypatch: pytest.MonkeyPatch) -> None:
     db_result = {
         "status": "checked",
