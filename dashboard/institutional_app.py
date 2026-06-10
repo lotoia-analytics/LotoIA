@@ -104,11 +104,13 @@ AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 
 INSTITUTIONAL_REFERENCE_J12 = (1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25)
 INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24, 25)
 INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
-# Lei 15A — núcleo operacional 15D congelado (docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md)
-NUCLEO_LEI15A_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
+# Lei 15 — núcleo operacional 15D congelado (docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md)
+NUCLEO_LEI15_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
 RESERVAS_LEI15A_PRIORITARIAS = (15, 5, 7, 14, 19)
 RESERVAS_PRIORITARIAS_LEI15A = RESERVAS_LEI15A_PRIORITARIAS
-LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
+LEI15_NUCLEO_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
+NUCLEO_LEI15A_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
+LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
 LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_LEI15A_PRIORITARIAS
 LEI15A_REGISTRATION_MAX_FORMAT = 20
 LEI15A_REGISTRATION_PENDING_FORMATS = (21, 22, 23)
@@ -4267,15 +4269,20 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
     return []
 
 
+def _lei15_frozen_nucleus() -> list[int]:
+    """Núcleo operacional 15D congelado da Lei 15 (documento-fonte soberano)."""
+    return list(NUCLEO_LEI15_15D_CONGELADO)
+
+
 def _lei15a_frozen_nucleus() -> list[int]:
-    """Núcleo operacional 15D congelado da Lei 15A (referência institucional)."""
-    return list(NUCLEO_LEI15A_15D_CONGELADO)
+    """Alias legado — o núcleo congelado pertence à Lei 15."""
+    return _lei15_frozen_nucleus()
 
 
 def build_lei15A_registration_card(format_size: int | str | None) -> dict[str, Any]:
     """Monta o cartão de registro da aposta Lei 15A para formatos 15D–20D."""
     card_format = int(format_size or 15)
-    nucleus = list(NUCLEO_LEI15A_15D_CONGELADO)
+    nucleus = list(NUCLEO_LEI15_15D_CONGELADO)
     if card_format in LEI15A_REGISTRATION_PENDING_FORMATS or card_format > LEI15A_REGISTRATION_MAX_FORMAT:
         return {
             "format_size": card_format,
@@ -9371,7 +9378,7 @@ def build_lei15a_operational_read(
     mode: str = "audit_validation",
 ) -> dict[str, Any]:
     """Leitura operacional Lei 15A com componentes próprios e validação do cartão Lei 15."""
-    nucleo_operacional_gp = list(NUCLEO_LEI15A_15D_CONGELADO)
+    nucleo_operacional_gp = list(NUCLEO_LEI15_15D_CONGELADO)
     cartao_validado = list(cartao_final_lei15)
     if int(formato_d or 15) <= 15:
         auditadas: list[int] = []
