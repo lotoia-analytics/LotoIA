@@ -1,0 +1,45 @@
+---
+name: agent_geracao
+description: Generation engine agent — LotoIA
+
+scope:
+  allowed:
+    - src/lotoia/generator/
+    - src/lotoia/combinatorics/
+    - src/lotoia/calibration/
+  read_only:
+    - src/lotoia/statistics/
+    - src/lotoia/governance/
+    - docs/governance/
+  forbidden:
+    - src/lotoia/ml/
+    - src/lotoia/database/
+    - dashboard/
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - Lei 15 is sovereign — never replace, bypass or recalibrate
+  - nucleo_lei15_15D [01,02,03,04,09,10,11,12,13,18,20,22,23,24,25] is immutable
+  - blind_spots [06,16,17,21] never forced into nucleus
+  - expansion 16D-23D = nucleus + audited reserves only
+  - calibration_engine role = DISABLED in clean Lei 15 runtime
+  - no new generators without ADR approved by agent_governanca
+  - no automatic recalibration of sovereign rules
+
+expansion_policy:
+  15D: nucleus only
+  16D-20D: nucleus + Lei15A reserves [15,05,07,14,19]
+  21D-23D: observational only — registro bloqueado
+  rule: never exceed 23D
+
+guards:
+  - generation_command always explicit — never automatic
+  - no duplicate games in same batch (Lei 16 integrity)
+  - cartao_final per game — never fixed nucleus as output
+  - seed registered in generation_events
+
+references:
+  - docs/governance/ADR_EXPANSAO_DIMENSIONAL_16D_23D.md
+  - docs/governance/ADR_LEI15_NUCLEO_15D_CONGELADO.md
+  - AGENTS.md
+---
