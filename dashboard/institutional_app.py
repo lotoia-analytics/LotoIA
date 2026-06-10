@@ -101,7 +101,7 @@ from lotoia.observability.ml_diagnostic_panels import (
     build_ml_diagnostic_alerts_bundle,
     build_side_leak_panel_payload,
     list_ml_diagnostic_decisions,
-    load_latest_reconciliation_diagnostic_context,
+    load_displayed_conference_diagnostic_context,
     register_ml_diagnostic_verdict,
 )
 from lotoia.observability.observational_leftover import (
@@ -6624,7 +6624,11 @@ def _summarize_games_structurally(games: list[Any]) -> dict[str, Any]:
 
 def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
     with get_session(DB_PATH) as session:
-        run = session.query(ReconciliationRun).order_by(ReconciliationRun.id.desc()).first()
+        run = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .first()
+        )
         if run is None:
             return None
         games_rows = (
@@ -6716,6 +6720,7 @@ def _load_institutional_check_result_from_db(
             hit_counts = Counter(int(row.get("hits", 0) or 0) for row in results)
             generation_results.append(
                 {
+                    "reconciliation_run_id": int(run.id or 0),
                     "generation_event_id": gen_id,
                     "created_at": event.created_at.isoformat() if event and getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0) if event else 0,
@@ -6756,6 +6761,7 @@ def _load_institutional_check_result_from_db(
             "official_numbers_from_db": dezenas,
             "generation_results": generation_results,
             "generation_event_id": int(primary.get("generation_event_id", 0) or 0),
+            "reconciliation_run_id": int(primary.get("reconciliation_run_id", 0) or 0),
             "best_hits": max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0),
             "total_hits": sum(int(item.get("total_hits", 0) or 0) for item in generation_results),
             "prize_count": sum(int(item.get("prize_count", 0) or 0) for item in generation_results),
@@ -8232,6 +8238,67 @@ def _render_ml_diagnostic_source_caption(
     else:
         parts.insert(1, f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}")
     st.caption(" | ".join(parts))
+
+
+def _load_displayed_conference_diagnostic_context() -> dict[str, Any]:
+    """Contexto da conferência exibida — PostgreSQL, IDs da última reconciliation persistida."""
+    displayed_summary = _load_latest_reconciliation_summary() or {}
+    return load_displayed_conference_diagnostic_context(
+        DB_PATH,
+        generation_event_id=_safe_int(displayed_summary.get("generation_event_id"), default=None),
+        reconciliation_run_id=_safe_int(displayed_summary.get("id"), default=None),
+    )
+
+
+def _render_evolution_panel_context_caption(payload: dict[str, Any]) -> None:
+    _render_ml_diagnostic_source_caption(payload, analysis_only=True)
+    parts = [
+        f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
+        f"generation_event_id={payload.get('generation_event_id', 0)}",
+    ]
+    if "target_hits" in payload:
+        parts.append(f"target_hits={payload.get('target_hits', '-')}")
+    if "count_hits_target" in payload:
+        parts.append(f"count_hits_target={payload.get('count_hits_target', 0)}")
+    st.caption(" | ".join(parts))
+
+
+def _render_evolution_panel_hits_distribution(evolution: dict[str, Any]) -> None:
+    hits_distribution = dict(evolution.get("hits_distribution") or {})
+    if not hits_distribution:
+        return
+    distribution_rows = [
+        {"hits": int(hits), "jogos": int(count)}
+        for hits, count in sorted(hits_distribution.items(), key=lambda item: (-item[0], item[1]))
+    ]
+    st.markdown("###### Distribuição de acertos da conferência exibida")
+    st.dataframe(
+        pd.DataFrame(distribution_rows),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+
+def _render_evolution_panel_empty_state(evolution: dict[str, Any], *, target_label: str) -> None:
+    count_hits_target = int(evolution.get("count_hits_target", 0) or 0)
+    if count_hits_target > 0:
+        return
+    st.warning(f"Nenhum jogo com {target_label} acertos na conferência exibida.")
+    st.caption(
+        " | ".join(
+            [
+                f"reconciliation_run_id={evolution.get('reconciliation_run_id', 0)}",
+                f"generation_event_id={evolution.get('generation_event_id', 0)}",
+            ]
+        )
+    )
+    _render_evolution_panel_hits_distribution(evolution)
+
+
+def _render_perfect_hits_notice(evolution: dict[str, Any]) -> None:
+    perfect_hits = int(evolution.get("perfect_hits_count", 0) or 0)
+    if perfect_hits > 0:
+        st.success(f"Acerto perfeito: {perfect_hits} jogo(s) com 15 acertos nesta conferência.")
 
 
 def _render_local_ml_diagnostics(locals_for_panel: list[dict[str, Any]]) -> None:
@@ -11208,12 +11275,12 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             "(sobra_real = cartao_final − resultado_oficial). ml_role=diagnostic_only."
         )
         routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
-        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        diagnostic_context = _load_displayed_conference_diagnostic_context()
         side_leak = build_side_leak_panel_payload(
             diagnostic_context,
             local_alerts=routing_bundle["local_alerts_by_panel"]["side_leak"],
         )
-        _render_ml_diagnostic_source_caption(side_leak, analysis_only=True)
+        _render_evolution_panel_context_caption(side_leak)
         if not side_leak.get("available"):
             st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
         elif side_leak.get("alert") == ALERT_SIDE_LEAK:
@@ -11246,14 +11313,15 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
         st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
         routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
-        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        diagnostic_context = _load_displayed_conference_diagnostic_context()
         evolution = build_evolution_13_14_panel_payload(
             diagnostic_context,
             local_alerts=routing_bundle["local_alerts_by_panel"]["evolution_13_14"],
         )
-        _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
+        _render_evolution_panel_context_caption(evolution)
+        _render_perfect_hits_notice(evolution)
         if not evolution.get("available"):
-            st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
+            _render_evolution_panel_empty_state(evolution, target_label="13")
         elif evolution.get("candidata_conversao"):
             st.info(
                 f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
@@ -11273,14 +11341,15 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
         st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
         routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
-        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        diagnostic_context = _load_displayed_conference_diagnostic_context()
         evolution = build_evolution_14_15_panel_payload(
             diagnostic_context,
             local_alerts=routing_bundle["local_alerts_by_panel"]["evolution_14_15"],
         )
-        _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
+        _render_evolution_panel_context_caption(evolution)
+        _render_perfect_hits_notice(evolution)
         if not evolution.get("available"):
-            st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
+            _render_evolution_panel_empty_state(evolution, target_label="14")
         elif evolution.get("candidata_conversao"):
             st.info(
                 f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "

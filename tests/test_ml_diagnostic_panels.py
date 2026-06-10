@@ -4,6 +4,7 @@ from lotoia.observability.ml_diagnostic_panels import (
     ALERT_SIDE_LEAK,
     CANDIDATE_FLAG_13_14,
     CANDIDATE_FLAG_14_15,
+    _build_hits_distribution,
     build_evolution_13_14_panel_payload,
     build_evolution_14_15_panel_payload,
     build_side_leak_panel_payload,
@@ -63,6 +64,9 @@ def test_evolution_13_14_ranks_missing_dezenas() -> None:
     payload = build_evolution_13_14_panel_payload(_sample_context())
     assert payload["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
     assert payload["games_analyzed"] == 2
+    assert payload["count_hits_target"] == 2
+    assert payload["hits_distribution"][13] == 2
+    assert payload["hits_distribution"][14] == 2
     assert payload["candidate_flag"] == CANDIDATE_FLAG_13_14
     assert payload["rows"]
     assert payload["candidata_conversao"] == payload["rows"][0]["dezena_faltante"]
@@ -72,8 +76,46 @@ def test_evolution_14_15_ranks_missing_dezenas() -> None:
     payload = build_evolution_14_15_panel_payload(_sample_context())
     assert payload["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
     assert payload["games_analyzed"] == 2
+    assert payload["count_hits_target"] == 2
     assert payload["candidate_flag"] == CANDIDATE_FLAG_14_15
     assert payload["rows"]
+
+
+def test_evolution_uses_normalized_hits_from_matched_numbers() -> None:
+    context = _sample_context()
+    context["hits_distribution"] = {13: 1, 14: 0, 15: 1}
+    context["games"] = [
+        {
+            "game_index": 1,
+            "numbers": sorted(NUCLEO),
+            "hits": 0,
+            "matched_numbers": sorted(OFFICIAL_15)[:13],
+        }
+    ]
+    payload = build_evolution_13_14_panel_payload(context)
+    assert payload["available"] is True
+    assert payload["games_analyzed"] == 1
+    assert payload["count_hits_target"] == 1
+
+
+def test_evolution_empty_only_when_count_hits_target_zero() -> None:
+    context = _sample_context()
+    context["hits_distribution"] = {12: 2, 14: 1, 15: 1}
+    context["games"] = [game for game in context["games"] if int(game.get("hits", 0) or 0) != 13]
+    payload = build_evolution_13_14_panel_payload(context)
+    assert payload["available"] is False
+    assert payload["count_hits_target"] == 0
+    assert payload["perfect_hits_count"] == 1
+
+
+def test_build_hits_distribution_normalizes_int_hits() -> None:
+    games = [
+        {"hits": 13, "numbers": [], "matched_numbers": []},
+        {"hits": "14", "numbers": [], "matched_numbers": []},
+    ]
+    distribution = _build_hits_distribution(games, OFFICIAL_15)
+    assert distribution[13] == 1
+    assert distribution[14] == 1
 
 
 def test_get_evolution_target_hits_15d() -> None:

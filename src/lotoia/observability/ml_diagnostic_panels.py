@@ -196,6 +196,16 @@ def _resolve_diagnostic_game_hits(
     return 0
 
 
+def _build_hits_distribution(
+    games: Sequence[dict[str, Any]],
+    resultado_oficial: Sequence[int],
+) -> dict[int, int]:
+    counts: Counter[int] = Counter()
+    for game in games:
+        counts[int(_resolve_diagnostic_game_hits(game, resultado_oficial))] += 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[0], item[1])))
+
+
 def build_lateral_leakage_evidence(context: dict[str, Any]) -> dict[str, Any]:
     """Evidência auditável de vazamento lateral: cartao_final − resultado_oficial."""
     games = list(context.get("games") or [])
@@ -268,18 +278,47 @@ def build_lateral_leakage_evidence(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def load_latest_reconciliation_diagnostic_context(
+def _load_reconciliation_run(
+    session: Any,
+    *,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+) -> ReconciliationRun | None:
+    if reconciliation_run_id is not None and int(reconciliation_run_id) > 0:
+        run = session.get(ReconciliationRun, int(reconciliation_run_id))
+        if run is not None:
+            if generation_event_id is not None and int(generation_event_id) > 0:
+                run_gen = int(getattr(run, "generation_event_id", 0) or 0)
+                if run_gen and run_gen != int(generation_event_id):
+                    return None
+            return run
+        return None
+    query = session.query(ReconciliationRun)
+    if generation_event_id is not None and int(generation_event_id) > 0:
+        query = query.filter(ReconciliationRun.generation_event_id == int(generation_event_id))
+    return (
+        query.order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+        .first()
+    )
+
+
+def load_reconciliation_diagnostic_context(
     db_path: str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
 ) -> dict[str, Any]:
-    """Carrega última reconciliation_run e jogos do PostgreSQL (Lei 001)."""
+    """Carrega reconciliation_run e jogos do PostgreSQL com contexto explícito."""
     with get_session(db_path) as session:
-        run = (
-            session.query(ReconciliationRun)
-            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
-            .first()
+        run = _load_reconciliation_run(
+            session,
+            generation_event_id=generation_event_id,
+            reconciliation_run_id=reconciliation_run_id,
         )
         if run is None:
-            return _empty_context()
+            empty = _empty_context()
+            empty["generation_event_id"] = int(generation_event_id or 0)
+            return empty
         contest_id = int(getattr(run, "contest_id", 0) or 0)
         games_rows = (
             session.query(ReconciliationGame)
@@ -289,6 +328,7 @@ def load_latest_reconciliation_diagnostic_context(
         )
         resultado_oficial = _load_official_numbers(session, contest_id)
         games = [_serialize_game_row(row) for row in games_rows]
+        hits_distribution = _build_hits_distribution(games, resultado_oficial)
         return {
             "available": bool(games and resultado_oficial),
             "source": SOURCE_POSTGRESQL,
@@ -298,10 +338,32 @@ def load_latest_reconciliation_diagnostic_context(
             "generation_event_id": int(getattr(run, "generation_event_id", 0) or 0),
             "resultado_oficial": resultado_oficial,
             "games": games,
+            "hits_distribution": hits_distribution,
             "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
             "generation_command": False,
             "recalibration_command": False,
         }
+
+
+def load_displayed_conference_diagnostic_context(
+    db_path: str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+) -> dict[str, Any]:
+    """Contexto da conferência exibida: IDs explícitos ou última run persistida no PostgreSQL."""
+    return load_reconciliation_diagnostic_context(
+        db_path,
+        generation_event_id=generation_event_id,
+        reconciliation_run_id=reconciliation_run_id,
+    )
+
+
+def load_latest_reconciliation_diagnostic_context(
+    db_path: str = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Carrega última reconciliation_run e jogos do PostgreSQL (Lei 001)."""
+    return load_reconciliation_diagnostic_context(db_path)
 
 
 def load_recent_reconciliation_runs_context(
@@ -1300,14 +1362,24 @@ def _build_evolution_panel_payload(
     candidate_flag: str,
     local_alerts: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    games = [game for game in (context.get("games") or []) if int(game.get("hits", 0) or 0) == target_hits]
-    resultado_oficial = set(int(number) for number in (context.get("resultado_oficial") or []))
+    resultado_oficial_list = [int(number) for number in (context.get("resultado_oficial") or [])]
+    hits_distribution = dict(context.get("hits_distribution") or {})
+    if not hits_distribution and context.get("games"):
+        hits_distribution = _build_hits_distribution(context.get("games") or [], resultado_oficial_list)
+    normalized_target_hits = int(target_hits)
+    games = [
+        game
+        for game in (context.get("games") or [])
+        if int(_resolve_diagnostic_game_hits(game, resultado_oficial_list)) == normalized_target_hits
+    ]
+    resultado_oficial = set(resultado_oficial_list)
     dezena_counts: Counter[int] = Counter()
     for game in games:
         cartao = set(int(number) for number in (game.get("numbers") or []))
         for dezena in sorted(resultado_oficial - cartao):
             dezena_counts[dezena] += 1
     total_games = len(games)
+    count_hits_target = int(hits_distribution.get(normalized_target_hits, 0) or 0)
     rows: list[dict[str, Any]] = []
     for dezena, frequencia in dezena_counts.most_common():
         percentual = round((frequencia / total_games) * 100.0, 2) if total_games else 0.0
@@ -1319,17 +1391,22 @@ def _build_evolution_panel_payload(
             }
         )
     top_row = rows[0] if rows else None
+    perfect_hits = int(hits_distribution.get(15, 0) or 0)
     return _attach_local_diagnostics_to_evolution_payload(
         {
-            "available": bool(context.get("available") and total_games > 0),
+            "available": bool(context.get("available") and count_hits_target > 0),
             "source": SOURCE_POSTGRESQL,
             "tables": RECONCILIATION_TABLES,
             "reconciliation_run_id": int(context.get("reconciliation_run_id", 0) or 0),
+            "generation_event_id": int(context.get("generation_event_id", 0) or 0),
             "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
             "generation_command": False,
             "recalibration_command": False,
-            "target_hits": target_hits,
+            "target_hits": normalized_target_hits,
+            "count_hits_target": count_hits_target,
             "games_analyzed": total_games,
+            "hits_distribution": hits_distribution,
+            "perfect_hits_count": perfect_hits,
             "rows": rows,
             "candidate_flag": candidate_flag if top_row else None,
             "candidata_conversao": top_row["dezena_faltante"] if top_row else None,
