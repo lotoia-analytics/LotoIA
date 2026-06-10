@@ -4480,6 +4480,26 @@ def _build_observational_leftover_audit_row(
     return base_row
 
 
+OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "dezenas_sobrando",
+    "dezenas_sobrando_count",
+)
+
+
+def _project_observational_leftover_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para as colunas operacionais do painel."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "dezenas_sobrando": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
+        "dezenas_sobrando_count": row.get("dezenas_sobrando_count", 0),
+    }
+
+
 def validate_conference_15d_source(
     *,
     games: Sequence[dict[str, Any]],
@@ -10612,16 +10632,8 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                 )
                 for game in latest_generation.get("games", [])
             ]
-            extra_df = pd.DataFrame(extra_rows)
-            st.caption(
-                " | ".join(
-                    [
-                        f"origem_observacional={extra_rows[0].get('origem_observacional', '-')}" if extra_rows else "origem_observacional=-",
-                        f"leftover_basis={extra_rows[0].get('leftover_basis', '-')}" if extra_rows else "leftover_basis=-",
-                        f"ml_role={extra_rows[0].get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}" if extra_rows else f"ml_role={ML_ROLE_DIAGNOSTIC_ONLY}",
-                    ]
-                )
-            )
+            display_rows = [_project_observational_leftover_display_row(row) for row in extra_rows]
+            extra_df = pd.DataFrame(display_rows, columns=list(OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS))
             st.dataframe(extra_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
