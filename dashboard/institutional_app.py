@@ -2581,7 +2581,49 @@ def _ensure_official_history_seeded() -> dict[str, Any]:
         return {"status": "error", "seeded": 0, "error": str(exc), **diagnostics}
 
 
-def _render_scientific_memory_block() -> None:
+def _reconciliation_memories_share_generation(
+    post_memory: dict[str, Any] | None,
+    batch_memory: dict[str, Any] | None,
+) -> bool:
+    post = dict(post_memory or {})
+    batch = dict(batch_memory or {})
+    if not post or not batch:
+        return False
+    post_window = dict(post.get("generation_range") or {})
+    batch_window = dict(batch.get("generation_range") or {})
+    post_gen = int(post.get("generation_event_id") or post_window.get("generation_event_id") or 0)
+    batch_gen = int(batch.get("generation_event_id") or batch_window.get("generation_event_id") or 0)
+    batch_last = int(batch_window.get("last_generation_event_id") or 0)
+    if post_gen and batch_gen and post_gen == batch_gen:
+        return True
+    if post_gen and batch_last and post_gen == batch_last:
+        return True
+    batch_ids = {_safe_int(value, default=0) for value in list(batch_window.get("generation_event_ids") or [])}
+    return bool(post_gen and post_gen in batch_ids)
+
+
+def _render_hit_decomposition_technical_expander(
+    hit_decomposition: dict[str, Any],
+    *,
+    key_prefix: str,
+) -> None:
+    with st.expander("Detalhamento técnico por faixa de acertos", expanded=False):
+        exact_cols = st.columns(6)
+        exact_cols[0].metric("count_10_exact", int(hit_decomposition.get("count_10_exact", 0) or 0))
+        exact_cols[1].metric("count_11_exact", int(hit_decomposition.get("count_11_exact", 0) or 0))
+        exact_cols[2].metric("count_12_exact", int(hit_decomposition.get("count_12_exact", 0) or 0))
+        exact_cols[3].metric("count_13_exact", int(hit_decomposition.get("count_13_exact", 0) or 0))
+        exact_cols[4].metric("count_14_exact", int(hit_decomposition.get("count_14_exact", 0) or 0))
+        exact_cols[5].metric("count_15_exact", int(hit_decomposition.get("count_15_exact", 0) or 0))
+        plus_cols = st.columns(5)
+        plus_cols[0].metric("count_11_plus", int(hit_decomposition.get("count_11_plus", 0) or 0))
+        plus_cols[1].metric("count_12_plus", int(hit_decomposition.get("count_12_plus", 0) or 0))
+        plus_cols[2].metric("count_13_plus", int(hit_decomposition.get("count_13_plus", 0) or 0))
+        plus_cols[3].metric("count_14_plus", int(hit_decomposition.get("count_14_plus", 0) or 0))
+        plus_cols[4].metric("count_15", int(hit_decomposition.get("count_15", 0) or 0))
+
+
+def _render_scientific_memory_block(*, compact: bool = False) -> None:
     official_diagnostics = _load_official_history_diagnostics()
     seed_report = {
         "status": official_diagnostics.get("status_base_oficial", "-"),
@@ -2631,6 +2673,15 @@ def _render_scientific_memory_block() -> None:
                     "session_state não pode ser usada como fonte oficial."
                 )
     batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
+        batch_reconciliation_memory = next(
+            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
+            {},
+        )
+    merge_reconciliation = compact and _reconciliation_memories_share_generation(
+        post_reconciliation_memory,
+        batch_reconciliation_memory,
+    )
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
@@ -2662,18 +2713,24 @@ def _render_scientific_memory_block() -> None:
         official_banner = _official_15_policy_status_label(official_15_memory)
         if official_banner:
             st.success(official_banner)
-        official_exact_cols = st.columns(5)
-        official_exact_cols[0].metric("count_11_exact", int(official_hit_decomposition.get("count_11_exact", 0) or 0))
-        official_exact_cols[1].metric("count_12_exact", int(official_hit_decomposition.get("count_12_exact", 0) or 0))
-        official_exact_cols[2].metric("count_13_exact", int(official_hit_decomposition.get("count_13_exact", 0) or 0))
-        official_exact_cols[3].metric("count_14_exact", int(official_hit_decomposition.get("count_14_exact", 0) or 0))
-        official_exact_cols[4].metric("count_15_exact", int(official_hit_decomposition.get("count_15_exact", 0) or 0))
-        official_plus_cols = st.columns(5)
-        official_plus_cols[0].metric("count_11_plus", int(official_hit_decomposition.get("count_11_plus", 0) or 0))
-        official_plus_cols[1].metric("count_12_plus", int(official_hit_decomposition.get("count_12_plus", 0) or 0))
-        official_plus_cols[2].metric("count_13_plus", int(official_hit_decomposition.get("count_13_plus", 0) or 0))
-        official_plus_cols[3].metric("count_14_plus", int(official_hit_decomposition.get("count_14_plus", 0) or 0))
-        official_plus_cols[4].metric("count_15", int(official_hit_decomposition.get("count_15", 0) or 0))
+        if compact:
+            _render_hit_decomposition_technical_expander(
+                official_hit_decomposition,
+                key_prefix="official_15",
+            )
+        else:
+            official_exact_cols = st.columns(5)
+            official_exact_cols[0].metric("count_11_exact", int(official_hit_decomposition.get("count_11_exact", 0) or 0))
+            official_exact_cols[1].metric("count_12_exact", int(official_hit_decomposition.get("count_12_exact", 0) or 0))
+            official_exact_cols[2].metric("count_13_exact", int(official_hit_decomposition.get("count_13_exact", 0) or 0))
+            official_exact_cols[3].metric("count_14_exact", int(official_hit_decomposition.get("count_14_exact", 0) or 0))
+            official_exact_cols[4].metric("count_15_exact", int(official_hit_decomposition.get("count_15_exact", 0) or 0))
+            official_plus_cols = st.columns(5)
+            official_plus_cols[0].metric("count_11_plus", int(official_hit_decomposition.get("count_11_plus", 0) or 0))
+            official_plus_cols[1].metric("count_12_plus", int(official_hit_decomposition.get("count_12_plus", 0) or 0))
+            official_plus_cols[2].metric("count_13_plus", int(official_hit_decomposition.get("count_13_plus", 0) or 0))
+            official_plus_cols[3].metric("count_14_plus", int(official_hit_decomposition.get("count_14_plus", 0) or 0))
+            official_plus_cols[4].metric("count_15", int(official_hit_decomposition.get("count_15", 0) or 0))
         official_detail_cols = st.columns(4)
         official_detail_cols[0].markdown(
             f"**Classificação oficial**  \n{official_15_memory.get('policy_validation_status', '-') or '-'}"
@@ -2689,13 +2746,20 @@ def _render_scientific_memory_block() -> None:
         )
         with st.expander("Ver baseline oficial da política 15 completa", expanded=False):
             st.json(official_15_memory)
+    post_window: dict[str, Any] = {}
+    cross_validation_summary: dict[str, Any] = {}
+    scientific_components: dict[str, Any] = {}
+    post_hit_decomposition: dict[str, Any] = {}
+    windows_summary: dict[str, Any] = {}
     if post_reconciliation_memory:
-        post_title = "###### Histórico antigo / memória anterior à baseline oficial - Memória pós-conferência científica" if official_15_memory else "###### Memória pós-conferência científica"
-        st.markdown(post_title)
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
         cross_validation_summary = dict(post_reconciliation_memory.get("cross_validation_summary") or {})
         scientific_components = dict(cross_validation_summary.get("scientific_score_components") or {})
         post_hit_decomposition = _scientific_hit_decomposition(post_reconciliation_memory)
+        windows_summary = dict(cross_validation_summary.get("historical_windows") or {})
+    if post_reconciliation_memory and not merge_reconciliation:
+        post_title = "###### Histórico antigo / memória anterior à baseline oficial - Memória pós-conferência científica" if official_15_memory else "###### Memória pós-conferência científica"
+        st.markdown(post_title)
         post_summary_cols = st.columns(6)
         post_summary_cols[0].metric(
             "Última geração conferida",
@@ -2712,19 +2776,25 @@ def _render_scientific_memory_block() -> None:
             f"Jogos com {post_hit_decomposition.get('validation_threshold', 11)}+",
             int(post_hit_decomposition.get("scientific_validation_zone_count", post_hit_decomposition.get("count_11_plus", 0)) or 0),
         )
-        post_exact_cols = st.columns(6)
-        post_exact_cols[0].metric("count_10_exact", int(post_hit_decomposition.get("count_10_exact", 0) or 0))
-        post_exact_cols[1].metric("count_11_exact", int(post_hit_decomposition.get("count_11_exact", 0) or 0))
-        post_exact_cols[2].metric("count_12_exact", int(post_hit_decomposition.get("count_12_exact", 0) or 0))
-        post_exact_cols[3].metric("count_13_exact", int(post_hit_decomposition.get("count_13_exact", 0) or 0))
-        post_exact_cols[4].metric("count_14_exact", int(post_hit_decomposition.get("count_14_exact", 0) or 0))
-        post_exact_cols[5].metric("count_15_exact", int(post_hit_decomposition.get("count_15_exact", 0) or 0))
-        post_plus_cols = st.columns(5)
-        post_plus_cols[0].metric("count_11_plus", int(post_hit_decomposition.get("count_11_plus", 0) or 0))
-        post_plus_cols[1].metric("count_12_plus", int(post_hit_decomposition.get("count_12_plus", 0) or 0))
-        post_plus_cols[2].metric("count_13_plus", int(post_hit_decomposition.get("count_13_plus", 0) or 0))
-        post_plus_cols[3].metric("count_14_plus", int(post_hit_decomposition.get("count_14_plus", 0) or 0))
-        post_plus_cols[4].metric("count_15", int(post_hit_decomposition.get("count_15", 0) or 0))
+        if compact:
+            _render_hit_decomposition_technical_expander(
+                post_hit_decomposition,
+                key_prefix="post_reconciliation",
+            )
+        else:
+            post_exact_cols = st.columns(6)
+            post_exact_cols[0].metric("count_10_exact", int(post_hit_decomposition.get("count_10_exact", 0) or 0))
+            post_exact_cols[1].metric("count_11_exact", int(post_hit_decomposition.get("count_11_exact", 0) or 0))
+            post_exact_cols[2].metric("count_12_exact", int(post_hit_decomposition.get("count_12_exact", 0) or 0))
+            post_exact_cols[3].metric("count_13_exact", int(post_hit_decomposition.get("count_13_exact", 0) or 0))
+            post_exact_cols[4].metric("count_14_exact", int(post_hit_decomposition.get("count_14_exact", 0) or 0))
+            post_exact_cols[5].metric("count_15_exact", int(post_hit_decomposition.get("count_15_exact", 0) or 0))
+            post_plus_cols = st.columns(5)
+            post_plus_cols[0].metric("count_11_plus", int(post_hit_decomposition.get("count_11_plus", 0) or 0))
+            post_plus_cols[1].metric("count_12_plus", int(post_hit_decomposition.get("count_12_plus", 0) or 0))
+            post_plus_cols[2].metric("count_13_plus", int(post_hit_decomposition.get("count_13_plus", 0) or 0))
+            post_plus_cols[3].metric("count_14_plus", int(post_hit_decomposition.get("count_14_plus", 0) or 0))
+            post_plus_cols[4].metric("count_15", int(post_hit_decomposition.get("count_15", 0) or 0))
         post_detail_cols = st.columns(4)
         post_detail_cols[0].markdown(f"**Classificação local**  \n{post_reconciliation_memory.get('scientific_classification', '-') or '-'}")
         post_detail_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
@@ -2734,7 +2804,6 @@ def _render_scientific_memory_block() -> None:
         post_detail_cols[3].markdown(
             f"**Risco de overfit**  \n{scientific_components.get('overfit_risk', '-') or '-'}"
         )
-        windows_summary = cross_validation_summary.get("historical_windows", {}) or {}
         if windows_summary:
             st.markdown("###### Expansão histórica")
             window_items = sorted(
@@ -2750,14 +2819,13 @@ def _render_scientific_memory_block() -> None:
             with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
                 st.caption("Registro técnico legado preservado para auditoria histórica.")
                 st.json(post_reconciliation_memory)
-        batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
-    if not batch_reconciliation_memory:
-        batch_reconciliation_memory = next(
-            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
-            {},
-        )
     if batch_reconciliation_memory:
-        batch_title = "###### Histórico institucional / memória consolidada da bateria conferida" if official_15_memory else "###### Memória consolidada da bateria conferida"
+        if merge_reconciliation:
+            batch_title = "###### Conferência científica consolidada"
+        elif official_15_memory:
+            batch_title = "###### Histórico institucional / memória consolidada da bateria conferida"
+        else:
+            batch_title = "###### Memória consolidada da bateria conferida"
         st.markdown(batch_title)
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
         batch_components = dict(batch_reconciliation_memory.get("scientific_score_components") or {})
@@ -2797,54 +2865,188 @@ def _render_scientific_memory_block() -> None:
             st.info(
                 "Memória com suporte histórico cruzado. Validação cruzada histórica favorável, mas ainda pendente de validação prospectiva."
             )
-        identity_cols = st.columns(5)
-        identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
-        identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
-        identity_cols[2].markdown(f"**generation_event_id**  \n{batch_reconciliation_memory.get('generation_event_id', '-') or '-'}")
-        identity_cols[3].markdown(f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
-        identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
-        role_cols = st.columns(3)
-        role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
-        role_cols[1].markdown("**dominant_memory**  \nRegistro legado para auditoria histórica")
-        role_cols[2].markdown("**selection_variant**  \nRegistro legado para auditoria histórica")
-        control_cols = st.columns(2)
-        control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
-        control_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
-        batch_cols = st.columns(6)
-        batch_cols[0].metric(
-            "Última bateria conferida",
-            f"{batch_window.get('first_generation_event_id', '-') }–{batch_window.get('last_generation_event_id', '-') }".replace(" ", ""),
-        )
-        batch_cols[1].metric("Total de gerações", int(batch_window.get("total_generations", 0) or 0))
-        batch_cols[2].metric("Total de jogos", int(batch_window.get("total_games_checked", 0) or 0))
-        batch_cols[3].metric("Melhor acerto global", int(batch_window.get("global_best_hits", 0) or 0))
-        batch_cols[4].metric("Jogos com 10", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
-        batch_cols[5].metric(
-            f"Jogos com {batch_hit_decomposition.get('validation_threshold', 11)}+",
-            int(batch_hit_decomposition.get("scientific_validation_zone_count", batch_hit_decomposition.get("count_11_plus", 0)) or 0),
-        )
-        batch_exact_cols = st.columns(6)
-        batch_exact_cols[0].metric("count_10_exact", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
-        batch_exact_cols[1].metric("count_11_exact", int(batch_hit_decomposition.get("count_11_exact", 0) or 0))
-        batch_exact_cols[2].metric("count_12_exact", int(batch_hit_decomposition.get("count_12_exact", 0) or 0))
-        batch_exact_cols[3].metric("count_13_exact", int(batch_hit_decomposition.get("count_13_exact", 0) or 0))
-        batch_exact_cols[4].metric("count_14_exact", int(batch_hit_decomposition.get("count_14_exact", 0) or 0))
-        batch_exact_cols[5].metric("count_15_exact", int(batch_hit_decomposition.get("count_15_exact", 0) or 0))
-        batch_plus_cols = st.columns(5)
-        batch_plus_cols[0].metric("count_11_plus", int(batch_hit_decomposition.get("count_11_plus", 0) or 0))
-        batch_plus_cols[1].metric("count_12_plus", int(batch_hit_decomposition.get("count_12_plus", 0) or 0))
-        batch_plus_cols[2].metric("count_13_plus", int(batch_hit_decomposition.get("count_13_plus", 0) or 0))
-        batch_plus_cols[3].metric("count_14_plus", int(batch_hit_decomposition.get("count_14_plus", 0) or 0))
-        batch_plus_cols[4].metric("count_15", int(batch_hit_decomposition.get("count_15", 0) or 0))
-        batch_detail_cols = st.columns(4)
-        batch_detail_cols[0].markdown(f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}")
-        batch_detail_cols[1].markdown("**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional.")
-        batch_detail_cols[2].markdown(
-            f"**Validação histórica**  \n{batch_reconciliation_memory.get('confidence_level', '-') or '-'}"
-        )
-        batch_detail_cols[3].markdown(
-            f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
-        )
+        if merge_reconciliation:
+            merged_cols = st.columns(6)
+            merged_cols[0].metric(
+                "Última geração conferida",
+                post_window.get(
+                    "generation_event_id",
+                    post_reconciliation_memory.get("batch_id", batch_reconciliation_memory.get("generation_event_id", "-")),
+                )
+                or "-",
+            )
+            merged_cols[1].metric(
+                "Concurso conferido",
+                post_window.get(
+                    "contest_number",
+                    post_reconciliation_memory.get(
+                        "official_history_last_contest",
+                        batch_window.get("contest_number", "-"),
+                    ),
+                )
+                or "-",
+            )
+            merged_cols[2].metric(
+                "Jogos conferidos",
+                int(post_reconciliation_memory.get("total_games", batch_window.get("total_games_checked", 0)) or 0),
+            )
+            merged_cols[3].metric(
+                "Melhor acerto",
+                int(post_reconciliation_memory.get("best_hit", batch_window.get("global_best_hits", 0)) or 0),
+            )
+            merged_cols[4].metric("Jogos com 10", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
+            merged_cols[5].metric(
+                f"Jogos com {batch_hit_decomposition.get('validation_threshold', 11)}+",
+                int(
+                    batch_hit_decomposition.get(
+                        "scientific_validation_zone_count",
+                        batch_hit_decomposition.get("count_11_plus", 0),
+                    )
+                    or 0
+                ),
+            )
+            merged_detail_cols = st.columns(4)
+            merged_detail_cols[0].markdown(
+                f"**Classificação local**  \n{post_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+            )
+            merged_detail_cols[1].markdown(
+                f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+            )
+            merged_detail_cols[2].markdown(
+                f"**Nível de confiança**  \n{cross_validation_summary.get('confidence_level', batch_reconciliation_memory.get('confidence_level', '-')) or '-'}"
+            )
+            merged_detail_cols[3].markdown(
+                f"**Risco de overfit**  \n{scientific_components.get('overfit_risk', '-') or '-'}"
+            )
+            _render_hit_decomposition_technical_expander(
+                batch_hit_decomposition,
+                key_prefix="merged_reconciliation",
+            )
+            if windows_summary:
+                with st.expander("Expansão histórica", expanded=False):
+                    window_items = sorted(
+                        windows_summary.items(),
+                        key=lambda item: (item[0] != "all", int(item[0]) if str(item[0]).isdigit() else 9999),
+                    )
+                    window_cols = st.columns(min(5, max(1, len(window_items))))
+                    for index, (label, window_payload) in enumerate(window_items[: len(window_cols)]):
+                        window_cols[index].metric(
+                            f"Janela {label}",
+                            int(window_payload.get("contest_count", 0) or 0),
+                        )
+            with st.expander("Identificação técnica da memória", expanded=False):
+                identity_cols = st.columns(5)
+                identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
+                identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
+                identity_cols[2].markdown(f"**generation_event_id**  \n{batch_reconciliation_memory.get('generation_event_id', '-') or '-'}")
+                identity_cols[3].markdown(
+                    f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+                )
+                identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
+                role_cols = st.columns(3)
+                role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
+                role_cols[1].markdown(f"**dominant_memory**  \n{batch_dominant_memory}")
+                role_cols[2].markdown(f"**selection_variant**  \n{batch_selection_variant}")
+                control_cols = st.columns(2)
+                control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
+                control_cols[1].markdown(
+                    f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
+                )
+        else:
+            if not compact:
+                identity_cols = st.columns(5)
+                identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
+                identity_cols[1].markdown(f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}")
+                identity_cols[2].markdown(
+                    f"**generation_event_id**  \n{batch_reconciliation_memory.get('generation_event_id', '-') or '-'}"
+                )
+                identity_cols[3].markdown(
+                    f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+                )
+                identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
+                role_cols = st.columns(3)
+                role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
+                role_cols[1].markdown("**dominant_memory**  \nRegistro legado para auditoria histórica")
+                role_cols[2].markdown("**selection_variant**  \nRegistro legado para auditoria histórica")
+                control_cols = st.columns(2)
+                control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
+                control_cols[1].markdown(
+                    "**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional."
+                )
+            batch_cols = st.columns(6)
+            batch_cols[0].metric(
+                "Última bateria conferida",
+                f"{batch_window.get('first_generation_event_id', '-') }–{batch_window.get('last_generation_event_id', '-') }".replace(" ", ""),
+            )
+            batch_cols[1].metric("Total de gerações", int(batch_window.get("total_generations", 0) or 0))
+            batch_cols[2].metric("Total de jogos", int(batch_window.get("total_games_checked", 0) or 0))
+            batch_cols[3].metric("Melhor acerto global", int(batch_window.get("global_best_hits", 0) or 0))
+            batch_cols[4].metric("Jogos com 10", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
+            batch_cols[5].metric(
+                f"Jogos com {batch_hit_decomposition.get('validation_threshold', 11)}+",
+                int(
+                    batch_hit_decomposition.get(
+                        "scientific_validation_zone_count",
+                        batch_hit_decomposition.get("count_11_plus", 0),
+                    )
+                    or 0
+                ),
+            )
+            if compact:
+                _render_hit_decomposition_technical_expander(
+                    batch_hit_decomposition,
+                    key_prefix="batch_reconciliation",
+                )
+            else:
+                batch_exact_cols = st.columns(6)
+                batch_exact_cols[0].metric("count_10_exact", int(batch_hit_decomposition.get("count_10_exact", 0) or 0))
+                batch_exact_cols[1].metric("count_11_exact", int(batch_hit_decomposition.get("count_11_exact", 0) or 0))
+                batch_exact_cols[2].metric("count_12_exact", int(batch_hit_decomposition.get("count_12_exact", 0) or 0))
+                batch_exact_cols[3].metric("count_13_exact", int(batch_hit_decomposition.get("count_13_exact", 0) or 0))
+                batch_exact_cols[4].metric("count_14_exact", int(batch_hit_decomposition.get("count_14_exact", 0) or 0))
+                batch_exact_cols[5].metric("count_15_exact", int(batch_hit_decomposition.get("count_15_exact", 0) or 0))
+                batch_plus_cols = st.columns(5)
+                batch_plus_cols[0].metric("count_11_plus", int(batch_hit_decomposition.get("count_11_plus", 0) or 0))
+                batch_plus_cols[1].metric("count_12_plus", int(batch_hit_decomposition.get("count_12_plus", 0) or 0))
+                batch_plus_cols[2].metric("count_13_plus", int(batch_hit_decomposition.get("count_13_plus", 0) or 0))
+                batch_plus_cols[3].metric("count_14_plus", int(batch_hit_decomposition.get("count_14_plus", 0) or 0))
+                batch_plus_cols[4].metric("count_15", int(batch_hit_decomposition.get("count_15", 0) or 0))
+            batch_detail_cols = st.columns(4)
+            batch_detail_cols[0].markdown(
+                f"**Classificação global**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+            )
+            batch_detail_cols[1].markdown(
+                "**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional."
+            )
+            batch_detail_cols[2].markdown(
+                f"**Validação histórica**  \n{batch_reconciliation_memory.get('confidence_level', '-') or '-'}"
+            )
+            batch_detail_cols[3].markdown(
+                f"**Eventos avaliados**  \n{len(batch_window.get('generation_event_ids', []) or [])}"
+            )
+            if compact:
+                with st.expander("Identificação técnica da memória", expanded=False):
+                    identity_cols = st.columns(5)
+                    identity_cols[0].markdown(f"**memory_id**  \n{batch_reconciliation_memory.get('id', '-')}")
+                    identity_cols[1].markdown(
+                        f"**memory_kind**  \n{batch_reconciliation_memory.get('memory_kind', '-') or '-'}"
+                    )
+                    identity_cols[2].markdown(
+                        f"**generation_event_id**  \n{batch_reconciliation_memory.get('generation_event_id', '-') or '-'}"
+                    )
+                    identity_cols[3].markdown(
+                        f"**classification**  \n{batch_reconciliation_memory.get('scientific_classification', '-') or '-'}"
+                    )
+                    identity_cols[4].markdown(f"**status prospectivo**  \n{batch_prospective_status}")
+                    role_cols = st.columns(3)
+                    role_cols[0].markdown(f"**memory_role**  \n{batch_memory_role}")
+                    role_cols[1].markdown(f"**dominant_memory**  \n{batch_dominant_memory}")
+                    role_cols[2].markdown(f"**selection_variant**  \n{batch_selection_variant}")
+                    control_cols = st.columns(2)
+                    control_cols[0].markdown(f"**cross_validation_reason**  \n{batch_cross_validation_reason}")
+                    control_cols[1].markdown(
+                        "**Registro técnico legado**  \nPreservado para auditoria histórica, sem comando operacional."
+                    )
         st.markdown("###### Validação histórica observacional")
         if batch_cross_windows:
             for label in ("10", "30", "60"):
@@ -2906,18 +3108,19 @@ def _render_scientific_memory_block() -> None:
                     }
                 )
             st.dataframe(_make_streamlit_dataframe_safe(pd.DataFrame(ranking_rows)), hide_index=True, use_container_width=True)
-        st.caption(
-            " | ".join(
-                [
-                    f"generation_event_id={batch_reconciliation_memory.get('generation_event_id', '-')}",
-                    f"generation_event_ids={batch_window.get('generation_event_ids', [])}",
-                    f"classification={batch_reconciliation_memory.get('scientific_classification', '-')}",
-                    f"memory_role={batch_memory_role}",
-                    f"dominant_memory={batch_dominant_memory}",
-                    f"cross_validation_reason={batch_cross_validation_reason}",
-                ]
+        if not compact:
+            st.caption(
+                " | ".join(
+                    [
+                        f"generation_event_id={batch_reconciliation_memory.get('generation_event_id', '-')}",
+                        f"generation_event_ids={batch_window.get('generation_event_ids', [])}",
+                        f"classification={batch_reconciliation_memory.get('scientific_classification', '-')}",
+                        f"memory_role={batch_memory_role}",
+                        f"dominant_memory={batch_dominant_memory}",
+                        f"cross_validation_reason={batch_cross_validation_reason}",
+                    ]
+                )
             )
-        )
         if official_15_memory:
             st.warning(
                 "Histórico antigo preservado para auditoria. "
@@ -2938,54 +3141,81 @@ def _render_scientific_memory_block() -> None:
         {},
     )
     if strong_near_miss_memory:
-        near_miss_title = "###### Histórico antigo / memória anterior à baseline oficial - Melhores near miss da última bateria" if official_15_memory else "###### Melhores near miss da última bateria"
-        st.markdown(near_miss_title)
         near_miss_window = dict(strong_near_miss_memory.get("generation_range") or {})
         near_miss_components = dict(strong_near_miss_memory.get("scientific_score_components") or {})
         near_miss_hit_decomposition = _scientific_hit_decomposition(strong_near_miss_memory)
-        near_miss_cols = st.columns(6)
-        near_miss_cols[0].metric("Melhor geração", int(near_miss_window.get("best_generation_event_id", 0) or 0))
-        near_miss_cols[1].metric(
-            "Jogos com 10",
-            int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0),
+        near_miss_redundant = compact and merge_reconciliation and int(
+            near_miss_hit_decomposition.get("count_10_exact", 0) or 0
+        ) == int(post_hit_decomposition.get("count_10_exact", 0) or 0) and int(
+            near_miss_hit_decomposition.get("scientific_validation_zone_count", near_miss_hit_decomposition.get("count_11_plus", 0)) or 0
+        ) == int(
+            post_hit_decomposition.get("scientific_validation_zone_count", post_hit_decomposition.get("count_11_plus", 0)) or 0
         )
-        near_miss_cols[2].metric(
-            f"Jogos com {near_miss_hit_decomposition.get('validation_threshold', 11)}+",
-            int(near_miss_hit_decomposition.get("scientific_validation_zone_count", near_miss_hit_decomposition.get("count_11_plus", 0)) or 0),
-        )
-        near_miss_cols[3].metric("Melhor acerto", int(near_miss_window.get("best_generation_best_hits", 0) or strong_near_miss_memory.get("best_hit", 0) or 0))
-        near_miss_cols[4].metric("Classificação", str(strong_near_miss_memory.get("scientific_classification", "-") or "-"))
-        near_miss_cols[5].metric(
-            "Registro técnico legado",
-            _institutional_safe_action_label(strong_near_miss_memory.get("recommended_action", "-")),
-        )
-        near_miss_exact_cols = st.columns(6)
-        near_miss_exact_cols[0].metric("count_10_exact", int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0))
-        near_miss_exact_cols[1].metric("count_11_exact", int(near_miss_hit_decomposition.get("count_11_exact", 0) or 0))
-        near_miss_exact_cols[2].metric("count_12_exact", int(near_miss_hit_decomposition.get("count_12_exact", 0) or 0))
-        near_miss_exact_cols[3].metric("count_13_exact", int(near_miss_hit_decomposition.get("count_13_exact", 0) or 0))
-        near_miss_exact_cols[4].metric("count_14_exact", int(near_miss_hit_decomposition.get("count_14_exact", 0) or 0))
-        near_miss_exact_cols[5].metric("count_15_exact", int(near_miss_hit_decomposition.get("count_15_exact", 0) or 0))
-        near_miss_plus_cols = st.columns(5)
-        near_miss_plus_cols[0].metric("count_11_plus", int(near_miss_hit_decomposition.get("count_11_plus", 0) or 0))
-        near_miss_plus_cols[1].metric("count_12_plus", int(near_miss_hit_decomposition.get("count_12_plus", 0) or 0))
-        near_miss_plus_cols[2].metric("count_13_plus", int(near_miss_hit_decomposition.get("count_13_plus", 0) or 0))
-        near_miss_plus_cols[3].metric("count_14_plus", int(near_miss_hit_decomposition.get("count_14_plus", 0) or 0))
-        near_miss_plus_cols[4].metric("count_15", int(near_miss_hit_decomposition.get("count_15", 0) or 0))
-        st.caption(
-            " | ".join(
-                [
-                    f"batch_id={strong_near_miss_memory.get('batch_id', '-')}",
-                    f"candidate_generation_event_ids={near_miss_window.get('candidate_generation_event_ids', [])}",
-                    f"total_generations_analyzed={near_miss_window.get('total_generations_analyzed', 0)}",
-                    f"secondary_reference_generation_event_id={near_miss_window.get('secondary_reference_generation_event_id', '-')}",
-                    f"count_10={near_miss_components.get('count_10', strong_near_miss_memory.get('count_10', 0))}",
-                ]
+        if not near_miss_redundant:
+            near_miss_title = "###### Histórico antigo / memória anterior à baseline oficial - Melhores near miss da última bateria" if official_15_memory else "###### Melhores near miss da última bateria"
+            st.markdown(near_miss_title)
+            near_miss_cols = st.columns(6)
+            near_miss_cols[0].metric("Melhor geração", int(near_miss_window.get("best_generation_event_id", 0) or 0))
+            near_miss_cols[1].metric(
+                "Jogos com 10",
+                int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0),
             )
-        )
-        with st.expander("Melhores near miss — detalhes", expanded=False):
-            if st.checkbox("Carregar near miss", value=False, key="load_strong_near_miss_memory"):
-                st.json(strong_near_miss_memory)
+            near_miss_cols[2].metric(
+                f"Jogos com {near_miss_hit_decomposition.get('validation_threshold', 11)}+",
+                int(
+                    near_miss_hit_decomposition.get(
+                        "scientific_validation_zone_count",
+                        near_miss_hit_decomposition.get("count_11_plus", 0),
+                    )
+                    or 0
+                ),
+            )
+            near_miss_cols[3].metric(
+                "Melhor acerto",
+                int(near_miss_window.get("best_generation_best_hits", 0) or strong_near_miss_memory.get("best_hit", 0) or 0),
+            )
+            near_miss_cols[4].metric(
+                "Classificação",
+                str(strong_near_miss_memory.get("scientific_classification", "-") or "-"),
+            )
+            near_miss_cols[5].metric(
+                "Registro técnico legado",
+                _institutional_safe_action_label(strong_near_miss_memory.get("recommended_action", "-")),
+            )
+            if compact:
+                _render_hit_decomposition_technical_expander(
+                    near_miss_hit_decomposition,
+                    key_prefix="near_miss",
+                )
+            else:
+                near_miss_exact_cols = st.columns(6)
+                near_miss_exact_cols[0].metric("count_10_exact", int(near_miss_hit_decomposition.get("count_10_exact", 0) or 0))
+                near_miss_exact_cols[1].metric("count_11_exact", int(near_miss_hit_decomposition.get("count_11_exact", 0) or 0))
+                near_miss_exact_cols[2].metric("count_12_exact", int(near_miss_hit_decomposition.get("count_12_exact", 0) or 0))
+                near_miss_exact_cols[3].metric("count_13_exact", int(near_miss_hit_decomposition.get("count_13_exact", 0) or 0))
+                near_miss_exact_cols[4].metric("count_14_exact", int(near_miss_hit_decomposition.get("count_14_exact", 0) or 0))
+                near_miss_exact_cols[5].metric("count_15_exact", int(near_miss_hit_decomposition.get("count_15_exact", 0) or 0))
+                near_miss_plus_cols = st.columns(5)
+                near_miss_plus_cols[0].metric("count_11_plus", int(near_miss_hit_decomposition.get("count_11_plus", 0) or 0))
+                near_miss_plus_cols[1].metric("count_12_plus", int(near_miss_hit_decomposition.get("count_12_plus", 0) or 0))
+                near_miss_plus_cols[2].metric("count_13_plus", int(near_miss_hit_decomposition.get("count_13_plus", 0) or 0))
+                near_miss_plus_cols[3].metric("count_14_plus", int(near_miss_hit_decomposition.get("count_14_plus", 0) or 0))
+                near_miss_plus_cols[4].metric("count_15", int(near_miss_hit_decomposition.get("count_15", 0) or 0))
+            if not compact:
+                st.caption(
+                    " | ".join(
+                        [
+                            f"batch_id={strong_near_miss_memory.get('batch_id', '-')}",
+                            f"candidate_generation_event_ids={near_miss_window.get('candidate_generation_event_ids', [])}",
+                            f"total_generations_analyzed={near_miss_window.get('total_generations_analyzed', 0)}",
+                            f"secondary_reference_generation_event_id={near_miss_window.get('secondary_reference_generation_event_id', '-')}",
+                            f"count_10={near_miss_components.get('count_10', strong_near_miss_memory.get('count_10', 0))}",
+                        ]
+                    )
+                )
+            with st.expander("Melhores near miss — detalhes", expanded=False):
+                if st.checkbox("Carregar near miss", value=False, key="load_strong_near_miss_memory"):
+                    st.json(strong_near_miss_memory)
     st.markdown("##### Histórico Oficial Lotofácil")
     official_rows_summary = _load_official_history_rows(limit=10, descending=True)
     if official_rows_summary:
@@ -7437,7 +7667,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     summary_cols[7].metric("melhor score", f"{best_score:.4f}")
     summary_cols[8].metric("última geração", latest_generation_label)
     summary_cols[9].metric("primeira geração", first_generation_label)
-    _render_scientific_memory_block()
+    _render_scientific_memory_block(compact=True)
 
     if not generation_df.empty:
         latest_commander = generation_df.iloc[0]

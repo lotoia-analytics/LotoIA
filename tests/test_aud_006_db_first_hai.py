@@ -184,3 +184,14 @@ def test_hai_monitoring_does_not_use_session_as_truth(monkeypatch: pytest.Monkey
 
     payload = admin_app._load_post_draw_monitoring_from_db()
     assert int(payload.get("latest_contest", 0) or 0) == 3700
+
+
+def test_reconciliation_memories_share_generation_matches_event_id() -> None:
+    post = {"generation_event_id": 493, "generation_range": {"generation_event_id": 493}}
+    batch = {"generation_event_id": 493, "generation_range": {"generation_event_ids": [491, 492, 493]}}
+    assert admin_app._reconciliation_memories_share_generation(post, batch) is True
+
+
+def test_reconciliation_memories_share_generation_false_when_missing() -> None:
+    assert admin_app._reconciliation_memories_share_generation({}, {"generation_event_id": 1}) is False
+    assert admin_app._reconciliation_memories_share_generation({"generation_event_id": 1}, {}) is False
