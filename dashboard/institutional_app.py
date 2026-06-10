@@ -413,7 +413,6 @@ PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 PAGE_TARGETS = {
     "Painel Inicial Institucional": "home",
     "Auditoria Runtime": "audit",
-    "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
     "Dezenas faltantes": "audit_monitoring_missing_numbers",
     "Dezenas sobrando": "audit_monitoring_extra_numbers",
@@ -9640,7 +9639,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Auditoria Runtime", "audit"),
-        ("Auditoria e Monitoramento", "audit_monitoring"),
         ("Confer?ncia por concurso", "audit_monitoring_conference"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
@@ -9694,7 +9692,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "history_institutional",
         "comparative_history",
         "audit",
-        "audit_monitoring",
         "audit_monitoring_conference",
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
@@ -10861,43 +10858,6 @@ def _official_15_group_registry_found() -> bool:
     return bool(OFFICIAL_15_GROUPS_REGISTRY)
 
 
-def _render_post_conference_monitoring_panel() -> None:
-    monitoring_payload = _load_post_draw_monitoring_from_db()
-    st.markdown("##### Auditoria e Monitoramento")
-    st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar a Lei.")
-    cols = st.columns(4)
-    cols[0].metric("Modo", "Observação pós-conferência")
-    cols[1].metric("Papel da tela", "Auditoria / Registro")
-    cols[2].metric("Lei 15", "Comando soberano")
-    cols[3].metric("Memória", "REGISTRY")
-    left, right = st.columns(2)
-    with left:
-        st.markdown("###### Status Institucional da Auditoria")
-        st.markdown(
-            "- Modo: Observação pós-conferência\n"
-            "- Papel da tela: Auditoria / Registro\n"
-            "- Recalibração silenciosa: Bloqueada\n"
-            "- Mutação automática da Lei: Bloqueada\n"
-            "- Evolução de Lei: Exige auditoria"
-        )
-    with right:
-        st.markdown(
-            "- Lei 15: Comando soberano da geração\n"
-            "- Lei 17: Validação / referência\n"
-            "- Lei 18: Validação / referência\n"
-            "- Meta ouro: 14 pontos\n"
-            "- Meta diamante: 15 pontos"
-        )
-    _render_signature_grid(
-        list(monitoring_payload.get("accepted_signatures", [])),
-        title="Dezenas organizadas no topo",
-        empty_label="Este painel não recebeu dezenas para exibir no topo.",
-    )
-    _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.json(monitoring_payload)
-
-
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     monitoring_payload = _load_post_draw_monitoring_from_db()
@@ -10905,69 +10865,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
     st.info("Sem recalibrar a Lei. Sem mutação automática. Sem comando de geração nesta camada.")
-    if section == "overview":
-        st.markdown("###### Página-mãe institucional da camada observacional")
-        st.markdown("##### Função da camada")
-        st.write(
-            "Esta camada observa resultados após a conferência. Ela registra, organiza e apresenta sinais de "
-            "monitoramento, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar o histórico institucional."
-        )
-        st.markdown("##### Status institucional")
-        cols = st.columns(4)
-        cols[0].metric("Monitoramento", "Ativo")
-        cols[1].metric("Papel", "Observador / Registro")
-        cols[2].metric("Recalibração", "Bloqueada")
-        cols[3].metric("Memória institucional", "Registro")
-        cols2 = st.columns(4)
-        cols2[0].metric("Lei 15", "Comando soberano")
-        cols2[1].metric("Lei 17", "Validação / referência")
-        cols2[2].metric("Lei 18", "Validação / referência")
-        cols2[3].metric("Dados", "Disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "Indisponível")
-        st.markdown("##### Resumo de monitoramento")
-        monitoring_cols = st.columns(5)
-        monitoring_cols[0].metric(
-            "Último concurso monitorado",
-            str(monitoring_payload.get("latest_contest", monitoring_payload.get("contest_number", "-")) or "-"),
-        )
-        monitoring_cols[1].metric(
-            "Total de concursos avaliados",
-            int(monitoring_payload.get("evaluated_contests", monitoring_payload.get("contests_evaluated", 0)) or 0),
-        )
-        monitoring_cols[2].metric(
-            "Total de gerações analisadas",
-            int(monitoring_payload.get("analyzed_generations", monitoring_payload.get("generations_analyzed", 0)) or 0),
-        )
-        monitoring_cols[3].metric(
-            "Última conferência registrada",
-            str(monitoring_payload.get("latest_conference", monitoring_payload.get("last_conference", "-")) or "-"),
-        )
-        monitoring_cols[4].metric(
-            "Status dos dados",
-            "disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "indisponível",
-        )
-        if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")):
-            _render_signature_grid(
-                list(monitoring_payload.get("accepted_signatures", [])),
-                title="Dezenas organizadas no topo",
-                empty_label="Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.",
-            )
-            _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
-        else:
-            st.info("Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.")
-        st.markdown("##### Acessos de auditoria")
-        st.markdown(
-            "- Conferência por concurso\n"
-            "- Dezenas faltantes\n"
-            "- Dezenas sobrando"
-        )
-        st.markdown("##### Camadas auditadas liberadas")
-        st.caption("Vazamento lateral liberado como camada observacional/auditada.")
-        with st.expander("Indicador auditado observacional", expanded=False):
-            st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-            st.markdown("status: LIBERADO / OBSERVACIONAL_AUDITADO")
-        with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(monitoring_payload)
-        return
     if section == "conference":
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
@@ -13492,7 +13389,7 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     shortcut_cols = st.columns(3)
     shortcut_cols[0].markdown("- Gerador ADM - Lei 15 Limpo\n- Conferir Resultados")
     shortcut_cols[1].markdown("- Simular Resultados\n- Histórico Analítico")
-    shortcut_cols[2].markdown("- Auditoria e Monitoramento\n- Histórico Institucional")
+    shortcut_cols[2].markdown("- Conferência por concurso\n- Histórico Institucional")
     st.markdown("##### Estado institucional")
     state_cols = st.columns(4)
     state_cols[0].metric("Gerador", "não carregado")
@@ -13532,8 +13429,6 @@ def main() -> None:
         _render_home_page(snapshot)
     elif page == "fallback":
         _render_fallback_page(snapshot)
-    elif page == "audit_monitoring":
-        _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
         _render_audit_monitoring_page(snapshot, "conference")
     elif page == "audit_monitoring_missing_numbers":
