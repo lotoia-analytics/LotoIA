@@ -2260,19 +2260,7 @@ def _load_official_history_rows(limit: int | None = None, *, descending: bool = 
     ]
 
 
-def _load_official_history_contest(contest_number: int | str | None) -> dict[str, Any] | None:
-    selected_contest = _safe_int(contest_number, default=None)
-    if selected_contest is None:
-        return None
-    with get_session(DB_PATH) as session:
-        row = (
-            session.query(LotofacilOfficialHistory)
-            .filter(LotofacilOfficialHistory.contest_number == int(selected_contest))
-            .limit(1)
-            .one_or_none()
-        )
-    if row is None:
-        return None
+def _format_official_history_contest_row(row: Any, selected_contest: int) -> dict[str, Any]:
     numbers = [
         int(str(value).lstrip("0") or "0")
         for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split()
@@ -2288,6 +2276,33 @@ def _load_official_history_contest(contest_number: int | str | None) -> dict[str
         "importado_em": row.imported_at.isoformat() if getattr(row, "imported_at", None) else "",
         "validado_em": row.validated_at.isoformat() if getattr(row, "validated_at", None) else "",
     }
+
+
+def _load_official_history_contest_with_session(
+    session: Any,
+    contest_number: int | str | None,
+) -> dict[str, Any] | None:
+    """Carrega concurso oficial reutilizando sessão DB existente (sem abrir nova conexão)."""
+    selected_contest = _safe_int(contest_number, default=None)
+    if selected_contest is None:
+        return None
+    row = (
+        session.query(LotofacilOfficialHistory)
+        .filter(LotofacilOfficialHistory.contest_number == int(selected_contest))
+        .limit(1)
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    return _format_official_history_contest_row(row, int(selected_contest))
+
+
+def _load_official_history_contest(contest_number: int | str | None) -> dict[str, Any] | None:
+    selected_contest = _safe_int(contest_number, default=None)
+    if selected_contest is None:
+        return None
+    with get_session(DB_PATH) as session:
+        return _load_official_history_contest_with_session(session, selected_contest)
 
 
 def _load_official_history_diagnostics() -> dict[str, Any]:
@@ -6079,7 +6094,11 @@ def _load_institutional_check_result_from_db(
 
         primary = generation_results[0]
         contest_number = int(primary.get("contest_number", 0) or 0)
-        official_contest = _load_official_history_contest(contest_number) if contest_number > 0 else None
+        official_contest = (
+            _load_official_history_contest_with_session(session, contest_number)
+            if contest_number > 0
+            else None
+        )
         dezenas = list(official_contest.get("dezenas", []) or []) if official_contest else []
         return {
             "status": "checked",
