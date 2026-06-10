@@ -97,6 +97,7 @@ OFFICIAL_15_QUANTITY_TO_GROUP = {
     30: "G30",
     50: "G50",
 }
+ALLOWED_GENERATION_QUANTITIES: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50)
 OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL_15_QUANTITY_TO_GROUP.items()}
 OFFICIAL_15_GROUP_SOURCE_REPORT = Path(__file__).resolve().parent.parent / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
 OFFICIAL_CARD_FORMATS = tuple(range(15, 24))
@@ -4635,6 +4636,11 @@ def _run_institutional_generation(
     seen_signatures: set[str] | None = None,
 ) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
+    try:
+        total_games = _validate_generation_quantity(total_games)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     st.session_state.pop("institutional_generation_batch_result", None)
     started = time.monotonic()
     seed = int(time.time()) % 1_000_000
@@ -5324,6 +5330,11 @@ def _run_institutional_generation_batch(
     batch_profile_usage: dict[tuple[int, int], int] | None = None,
     batch_total_games: int | None = None,
 ) -> None:
+    try:
+        total_games = _validate_generation_quantity(total_games)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
     batch_seen_signatures: set[str] = set(load_batch_output_signatures(batch_id))
@@ -9446,6 +9457,59 @@ def _official_15_group_games_for_quantity(quantity: int) -> list[tuple[int, ...]
     return list(OFFICIAL_15_GROUPS_REGISTRY.get(group, []))
 
 
+def _validate_generation_quantity(quantity: int | str | None) -> int:
+    parsed = _safe_int(quantity, default=None)
+    if parsed is None or int(parsed) not in ALLOWED_GENERATION_QUANTITIES:
+        allowed = ", ".join(str(value) for value in ALLOWED_GENERATION_QUANTITIES)
+        raise ValueError(f"Quantidade de jogos inválida: {quantity}. Valores permitidos: {allowed}")
+    return int(parsed)
+
+
+def _coerce_generation_quantity(quantity: int | str | None, *, default: int = 10) -> int:
+    parsed = _safe_int(quantity, default=None)
+    if parsed in ALLOWED_GENERATION_QUANTITIES:
+        return int(parsed)
+    fallback = _safe_int(default, default=10) or 10
+    if fallback in ALLOWED_GENERATION_QUANTITIES:
+        return int(fallback)
+    return 10
+
+
+def _build_generation_export_rows(games: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        numbers = [int(number) for number in (game.get("numbers") or game.get("final_card_numbers") or [])]
+        rows.append(
+            {
+                "jogo": index,
+                "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                "formato_cartao": int(game.get("formato_cartao", len(numbers) or 15) or (len(numbers) or 15)),
+            }
+        )
+    return rows
+
+
+def _compare_games_against_contest_for_export(
+    games: Sequence[dict[str, Any]],
+    contest_numbers: Sequence[int],
+) -> list[dict[str, Any]]:
+    official_numbers = {int(number) for number in contest_numbers}
+    rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        conference = _select_conference_numbers(dict(game))
+        conference_numbers = list(conference.get("conference_numbers") or [])
+        hits = len(set(conference_numbers) & official_numbers)
+        rows.append(
+            {
+                "jogo": index,
+                "hits": hits,
+                "cartao_final": " ".join(f"{number:02d}" for number in conference_numbers),
+                "origem_dezenas_conferencia": str(conference.get("origem_dezenas_conferencia", "cartao_final") or "cartao_final"),
+            }
+        )
+    return rows
+
+
 def _expand_official_card(
     core_numbers: Sequence[int],
     card_format: int,
@@ -10507,13 +10571,16 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.session_state.setdefault("institutional_operational_generation_runs", 10)
         st.session_state["institutional_repeat_limit"] = int(official_generation_policy.get("repeat_max", 10) or 10)
     controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_total_games = _coerce_generation_quantity(
+        st.session_state.get("institutional_operational_total_games", 10 if current_card_format == 15 else 15),
+        default=10,
+    )
     total_games = int(
-        controls_cols[0].number_input(
+        controls_cols[0].selectbox(
             "Quantidade de jogos por geração",
-            min_value=1,
-            max_value=100,
-            value=int(st.session_state.get("institutional_operational_total_games", 10 if current_card_format == 15 else 15) or (10 if current_card_format == 15 else 15)),
-            step=1,
+            options=quantity_options,
+            index=quantity_options.index(default_total_games),
             key="institutional_operational_total_games",
         )
     )
@@ -11440,7 +11507,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     fill_diagnostics: dict[str, Any] = {}
-    total_games = int(requested_count)
+    total_games = _validate_generation_quantity(requested_count)
     seed = int(time.time()) % 1_000_000
     latest_contest = get_latest_official_contest() or {}
     latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
@@ -11557,7 +11624,16 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Gerador ADM - Lei 15 Limpo")
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
-    requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
+    requested_count = int(
+        st.selectbox(
+            "Quantidade de jogos",
+            options=list(ALLOWED_GENERATION_QUANTITIES),
+            index=list(ALLOWED_GENERATION_QUANTITIES).index(
+                _coerce_generation_quantity(st.session_state.get("clean_law15_requested_count", 20), default=20)
+            ),
+            key="clean_law15_requested_count",
+        )
+    )
     st.session_state.setdefault("clean_law15_card_format", 15)
     current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
     selected_card_format = int(
@@ -11854,13 +11930,13 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     st.session_state["institutional_dezenas_per_game"] = selected_game_size
     st.markdown("##### Gerador ADM - Lei 15")
     direct_cols = st.columns([1.4, 1.0, 1.0])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_quantity = _coerce_generation_quantity(st.session_state.get("institutional_total_games", 30), default=30)
     selected_quantity = int(
-        direct_cols[0].number_input(
+        direct_cols[0].selectbox(
             "Quantidade de jogos",
-            min_value=1,
-            max_value=100,
-            value=int(st.session_state.get("institutional_total_games", 30) or 30),
-            step=1,
+            options=quantity_options,
+            index=quantity_options.index(default_quantity),
             key="institutional_total_games",
         )
     )
@@ -12102,14 +12178,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     st.markdown("#### Motor de gera??o")
     gen_cols = st.columns([1.1, 0.75, 0.95, 0.8, 0.95])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_sim_quantity = _coerce_generation_quantity(
+        st.session_state.get("institutional_simulation_total_games", 10),
+        default=10,
+    )
     total_games = int(
-        gen_cols[0].number_input(
+        gen_cols[0].selectbox(
             "Quantidade de jogos",
-            min_value=1,
-            max_value=100,
-            value=15,
-            step=1,
-            key="institutional_total_games",
+            options=quantity_options,
+            index=quantity_options.index(default_sim_quantity),
+            key="institutional_simulation_total_games",
         )
     )
     if gen_cols[1].button("LotoIA", type="primary"):
