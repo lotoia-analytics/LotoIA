@@ -1342,18 +1342,13 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
 
 
 def _get_latest_contest() -> dict[str, Any] | None:
-    sync_summary = st.session_state.get("institutional_last_official_sync_summary", {}) or {}
-    sync_record = _normalize_contest_record(sync_summary.get("latest_contest_record"))
-    if sync_record:
-        return sync_record
+    """Retorna o concurso mais recente com prioridade PostgreSQL (Lei 001)."""
+    latest_official = get_latest_official_contest()
+    if latest_official:
+        return _normalize_contest_record(latest_official)
     persisted_sync_record = _load_official_sync_contest_summary()
     if persisted_sync_record:
         return persisted_sync_record
-    sync_contest = sync_summary.get("latest_contest")
-    if str(sync_contest or "").isdigit():
-        synced_contest = _load_imported_contest(int(sync_contest))
-        if synced_contest and int(synced_contest.get("contest_number", 0) or 0) > 0:
-            return synced_contest
     latest_contest = _load_imported_contest()
     if latest_contest and int(latest_contest.get("contest_number", 0) or 0) > 0:
         return latest_contest
@@ -1364,14 +1359,6 @@ def _get_latest_contest() -> dict[str, Any] | None:
     target_contest = latest_generation.get("target_contest")
     if str(target_contest or "").isdigit():
         return _load_imported_contest(int(target_contest))
-    if str(sync_contest or "").isdigit():
-        return {
-            "contest_number": int(sync_contest),
-            "created_at": str(sync_summary.get("sync_timestamp", "") or ""),
-            "data": "",
-            "dezenas": list(sync_summary.get("imported_numbers", []) or []),
-            "metadata_json": "{}",
-        }
     return None
 
 
@@ -3183,14 +3170,31 @@ def _render_scientific_calibration_panel(
 
 
 @st.cache_data(show_spinner=False)
-
 def _history_number_frequency() -> dict[int, int]:
+    """Frequência histórica a partir de lotofacil_official_history (PostgreSQL)."""
     try:
-        draws = load_draws_csv()
+        with get_session(DB_PATH) as session:
+            rows = (
+                session.query(LotofacilOfficialHistory)
+                .filter(LotofacilOfficialHistory.is_valid == 1)
+                .order_by(LotofacilOfficialHistory.contest_number.asc())
+                .all()
+            )
+        draws: list[dict[str, list[int]]] = []
+        for row in rows:
+            numbers = [
+                int(value)
+                for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split()
+                if str(value).isdigit()
+            ]
+            if len(numbers) == 15:
+                draws.append(numbers)
+        if not draws:
+            return {}
+        frequencies = number_frequency(draws)
+        return {int(number): int(amount) for number, amount in frequencies.items()}
     except Exception:
         return {}
-    frequencies = number_frequency(draws)
-    return {int(number): int(amount) for number, amount in frequencies.items()}
 
 
 def _sequence_metrics(numbers: list[int]) -> dict[str, int]:
@@ -5993,6 +5997,127 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
+def _build_reconciliation_result_row(game_row: ReconciliationGame) -> dict[str, Any]:
+    context_json = dict(getattr(game_row, "context_json", {}) or {})
+    numbers = [int(number) for number in (game_row.numbers or [])]
+    card_size = len(numbers) or 15
+    return {
+        "game_index": int(getattr(game_row, "game_index", 0) or 0),
+        "numbers": numbers,
+        "cartao_final": numbers,
+        "nucleo_lei_15": str(context_json.get("nucleo_lei_15", "") or "-"),
+        "reservas_auditadas": str(context_json.get("reservas_auditadas", "") or "-"),
+        "hits": int(getattr(game_row, "hits", 0) or 0),
+        "matched_numbers": [int(number) for number in (game_row.matched_numbers or [])],
+        "prize_status": str(getattr(game_row, "prize_status", "") or ""),
+        "prize_tier": str(getattr(game_row, "prize_tier", "") or ""),
+        "formato_cartao": card_size,
+        "dezenas_conferidas_count": card_size,
+        "origem_dezenas_conferencia": "cartao_final",
+        "expected_card_size": card_size,
+        "actual_card_size": card_size,
+    }
+
+
+def _load_institutional_check_result_from_db(
+    generation_event_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Reconstrói o resultado da conferência a partir de reconciliation_runs persistidos."""
+    with get_session(DB_PATH) as session:
+        query = session.query(ReconciliationRun).order_by(
+            ReconciliationRun.created_at.desc(),
+            ReconciliationRun.id.desc(),
+        )
+        if generation_event_id is not None and int(generation_event_id) > 0:
+            query = query.filter(ReconciliationRun.generation_event_id == int(generation_event_id))
+        runs = query.limit(12).all()
+        if not runs:
+            return None
+
+        seen_generations: set[int] = set()
+        generation_results: list[dict[str, Any]] = []
+        for run in runs:
+            gen_id = int(getattr(run, "generation_event_id", 0) or 0)
+            if gen_id in seen_generations:
+                continue
+            seen_generations.add(gen_id)
+            games_rows = (
+                session.query(ReconciliationGame)
+                .filter(ReconciliationGame.reconciliation_run_id == run.id)
+                .order_by(ReconciliationGame.game_index.asc())
+                .all()
+            )
+            if not games_rows:
+                continue
+            event = session.get(GenerationEvent, gen_id)
+            results = [_build_reconciliation_result_row(game_row) for game_row in games_rows]
+            hit_counts = Counter(int(row.get("hits", 0) or 0) for row in results)
+            generation_results.append(
+                {
+                    "generation_event_id": gen_id,
+                    "created_at": event.created_at.isoformat() if event and getattr(event, "created_at", None) else "",
+                    "seed": int(getattr(event, "seed", 0) or 0) if event else 0,
+                    "total_games": len(results),
+                    "target_contest": int(getattr(run, "contest_id", 0) or 0),
+                    "best_hits": int(getattr(run, "best_hits", 0) or 0),
+                    "total_hits": int(getattr(run, "total_hits", 0) or 0),
+                    "prize_count": int(getattr(run, "prize_count", 0) or 0),
+                    "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
+                    "results": results,
+                    "contest_number": int(getattr(run, "contest_id", 0) or 0),
+                    "contest_date": "",
+                    "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+                    "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
+                    "origem_dezenas_conferencia": "cartao_final",
+                    "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+                    "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
+                }
+            )
+
+        if not generation_results:
+            return None
+
+        primary = generation_results[0]
+        contest_number = int(primary.get("contest_number", 0) or 0)
+        official_contest = _load_official_history_contest(contest_number) if contest_number > 0 else None
+        dezenas = list(official_contest.get("dezenas", []) or []) if official_contest else []
+        return {
+            "status": "checked",
+            "source": "reconciliation_runs",
+            "contest_number": contest_number,
+            "contest_date": str(official_contest.get("data", "") if official_contest else ""),
+            "dezenas": dezenas,
+            "official_numbers_from_db": dezenas,
+            "generation_results": generation_results,
+            "generation_event_id": int(primary.get("generation_event_id", 0) or 0),
+            "best_hits": max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0),
+            "total_hits": sum(int(item.get("total_hits", 0) or 0) for item in generation_results),
+            "prize_count": sum(int(item.get("prize_count", 0) or 0) for item in generation_results),
+            "formato_cartao": int(primary.get("formato_cartao", 15) or 15),
+            "dezenas_conferidas_count": int(primary.get("dezenas_conferidas_count", 0) or 0),
+            "origem_dezenas_conferencia": "cartao_final",
+            "expected_card_size": int(primary.get("expected_card_size", 15) or 15),
+            "actual_card_size": int(primary.get("actual_card_size", 0) or 0),
+            "results": list(primary.get("results", []) or []),
+        }
+
+
+def _resolve_institutional_check_result(
+    generation_event_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Prioriza reconciliation_runs persistido; session_state só para avisos transitórios."""
+    db_result = _load_institutional_check_result_from_db(generation_event_id=generation_event_id)
+    if db_result:
+        return db_result
+    session_result = dict(st.session_state.get("institutional_check_result") or {})
+    if session_result.get("warning"):
+        return {
+            "warning": str(session_result.get("warning", "") or ""),
+            "status": str(session_result.get("status", "waiting_contest") or "waiting_contest"),
+        }
+    return None
+
+
 def _mean_or_zero(values: list[float]) -> float:
     values = [float(value) for value in values if value is not None]
     return round(sum(values) / len(values), 4) if values else 0.0
@@ -7726,19 +7851,29 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         except Exception:
             pass
         payload = summary.to_dict()
-        payload["status"] = "ok"
+        commit_state = str(payload.get("commit_state", "") or "").strip().lower()
+        if commit_state == "ok":
+            payload["status"] = "ok"
+            payload["sync_error"] = ""
+        else:
+            payload["status"] = "error"
+            payload["sync_error"] = str(
+                payload.get("error_message")
+                or f"commit_state={commit_state or 'unknown'}"
+            )
         payload["http_status"] = getattr(service.client, "last_http_status", None)
         payload["request_url"] = getattr(service.client, "last_request_url", "")
         payload["request_headers"] = getattr(service.client, "last_request_headers", {})
         payload["response_headers"] = getattr(service.client, "last_response_headers", {})
         payload["response_preview"] = getattr(service.client, "last_response_preview", "")
-        payload["sync_error"] = ""
         payload["sync_timestamp"] = datetime.now(UTC).isoformat()
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
         payload["official_history_record"] = _load_official_history_summary().get("latest_contest", {})
         payload["official_history_diagnostics"] = _load_official_history_diagnostics()
+        if payload.get("status") != "ok":
+            return payload
         _persist_official_sync_diagnostics(
             {
                 "sync_status": payload.get("status", "unknown"),
@@ -11052,10 +11187,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         if imported_numbers:
             st.caption("dezenas importadas: " + " ".join(f"{int(number):02d}" for number in imported_numbers))
 
-    check_result = st.session_state.get("institutional_check_result")
+    check_result = _resolve_institutional_check_result(
+        generation_event_id=_safe_int(selected_generation_event_id, default=None),
+    )
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
-    if isinstance(check_result, dict):
+    if isinstance(check_result, dict) and check_result.get("generation_results"):
         st.caption(
             " | ".join(
                 [
@@ -12000,10 +12137,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     st.markdown("#### Cobertura estrutural")
 
-    check_result = st.session_state.get("institutional_check_result")
+    check_result = _resolve_institutional_check_result(
+        generation_event_id=_safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None),
+    )
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
-    if isinstance(check_result, dict) and check_result.get("results"):
+    conference_rows = list(check_result.get("results") or []) if isinstance(check_result, dict) else []
+    if not conference_rows and isinstance(check_result, dict):
+        generation_results = list(check_result.get("generation_results") or [])
+        if generation_results:
+            conference_rows = list(generation_results[0].get("results") or [])
+    if isinstance(check_result, dict) and conference_rows:
         st.markdown("#### Confer?ncia")
         st.dataframe(
             pd.DataFrame(
@@ -12022,7 +12166,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                         "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
                         "premiado": row["prize_status"],
                     }
-                    for row in check_result["results"]
+                    for row in conference_rows
                 ]
             ),
             hide_index=True,
