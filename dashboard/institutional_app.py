@@ -92,9 +92,13 @@ from lotoia.observability.ml_diagnostic_panels import (
     VERDICT_ACCEPT_DIAGNOSTIC,
     VERDICT_REJECT,
     VERDICT_REQUEST_MORE_EVIDENCE,
+    CENTRAL_EMPTY_NO_RECURRENT_MESSAGE,
+    LOCAL_DIAGNOSTIC_LABEL,
+    MIN_GENERATIONS_FOR_CENTRAL,
     build_central_ml_diagnostics_payload,
     build_evolution_13_14_panel_payload,
     build_evolution_14_15_panel_payload,
+    build_ml_diagnostic_alerts_bundle,
     build_side_leak_panel_payload,
     list_ml_diagnostic_decisions,
     load_latest_reconciliation_diagnostic_context,
@@ -8007,6 +8011,40 @@ def _render_ml_diagnostic_source_caption(
     st.caption(" | ".join(parts))
 
 
+def _render_local_ml_diagnostics(locals_for_panel: list[dict[str, Any]]) -> None:
+    if not locals_for_panel:
+        return
+    st.markdown(f"###### {LOCAL_DIAGNOSTIC_LABEL}")
+    for local_alert in locals_for_panel:
+        with st.container(border=True):
+            st.markdown(f"**{local_alert.get('tipo_alerta')}** — {local_alert.get('tipo_label')}")
+            meta_cols = st.columns(3)
+            meta_cols[0].write(f"Dezena: **{local_alert.get('dezena_fmt')}**")
+            meta_cols[1].write(f"Nível: `{local_alert.get('evidence_level')}`")
+            meta_cols[2].write(
+                f"Gerações: `{local_alert.get('distinct_generation_events')}` / "
+                f"`{local_alert.get('min_required_generations', MIN_GENERATIONS_FOR_CENTRAL)}`"
+            )
+            st.write(local_alert.get("evidencia") or "—")
+            st.caption(
+                f"Fórmula: `{local_alert.get('formula') or local_alert.get('regra_base')}` | "
+                f"Fonte: `{local_alert.get('fonte')}` | "
+                f"Motivo: {local_alert.get('routing_reason') or '—'}"
+            )
+            if local_alert.get("tipo_alerta") == ALERT_001:
+                leakage_evidence = dict(local_alert.get("leakage_evidence") or {})
+                drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
+                if drilldown_map:
+                    with st.expander("Drilldown auditável", expanded=False):
+                        for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
+                            st.markdown(f"**Dezena {dezena_key}**")
+                            st.dataframe(
+                                pd.DataFrame(drilldown_rows),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
+
+
 def _resolve_ml_diagnostic_adm_user(snapshot: dict[str, Any]) -> str:
     for key in ("adm_user", "institutional_user", "operator_email", "user_email"):
         value = str(snapshot.get(key) or st.session_state.get(key) or "").strip()
@@ -8039,8 +8077,11 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             "Os alertas permanecem indisponíveis até haver conferência persistida."
         )
     alerts = list(payload.get("alerts") or [])
-    if not alerts and payload.get("available"):
-        st.success("Nenhum alerta ML ativo no momento para a última reconciliation_run.")
+    local_alerts_count = int(payload.get("local_alerts_count", 0) or 0)
+    if not alerts and local_alerts_count > 0:
+        st.info(payload.get("empty_state_message") or CENTRAL_EMPTY_NO_RECURRENT_MESSAGE)
+    elif not alerts and payload.get("available"):
+        st.success("Nenhum alerta ML recorrente ativo no momento para a última reconciliation_run.")
     adm_user = _resolve_ml_diagnostic_adm_user(snapshot)
     for alert in alerts:
         status = str(alert.get("status") or STATUS_PENDENTE)
@@ -8094,7 +8135,7 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                                 hide_index=True,
                                 use_container_width=True,
                             )
-            if status in ACTIVE_ALERT_STATUSES:
+            if status in ACTIVE_ALERT_STATUSES and alert.get("verdict_buttons_allowed"):
                 reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
                 suggested_verdict = str(adm_guide.get("suggested_verdict") or "")
                 st.text_input(
@@ -11068,8 +11109,12 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             "Vazamento lateral = dezena em cartao_final e fora de resultado_oficial "
             "(sobra_real = cartao_final − resultado_oficial). ml_role=diagnostic_only."
         )
+        routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
-        side_leak = build_side_leak_panel_payload(diagnostic_context)
+        side_leak = build_side_leak_panel_payload(
+            diagnostic_context,
+            local_alerts=routing_bundle["local_alerts_by_panel"]["side_leak"],
+        )
         _render_ml_diagnostic_source_caption(side_leak, analysis_only=True)
         if not side_leak.get("available"):
             st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
@@ -11097,12 +11142,17 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                     )
         else:
             st.info("Nenhuma dezena de vazamento lateral detectada na última conferência.")
+        _render_local_ml_diagnostics(list(side_leak.get("local_diagnostics") or []))
     elif section == "13_to_14":
         st.markdown("##### Evolução 13 -> 14")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
         st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
+        routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
-        evolution = build_evolution_13_14_panel_payload(diagnostic_context)
+        evolution = build_evolution_13_14_panel_payload(
+            diagnostic_context,
+            local_alerts=routing_bundle["local_alerts_by_panel"]["evolution_13_14"],
+        )
         _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
         if not evolution.get("available"):
             st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
@@ -11119,12 +11169,17 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             )
         else:
             st.info("Sem dezenas faltantes para análise 13 → 14 nesta conferência.")
+        _render_local_ml_diagnostics(list(evolution.get("local_diagnostics") or []))
     elif section == "14_to_15":
         st.markdown("##### Evolução 14 -> 15")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
         st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
+        routing_bundle = build_ml_diagnostic_alerts_bundle(DB_PATH)
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
-        evolution = build_evolution_14_15_panel_payload(diagnostic_context)
+        evolution = build_evolution_14_15_panel_payload(
+            diagnostic_context,
+            local_alerts=routing_bundle["local_alerts_by_panel"]["evolution_14_15"],
+        )
         _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
         if not evolution.get("available"):
             st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
@@ -11141,6 +11196,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             )
         else:
             st.info("Sem dezenas faltantes para análise 14 → 15 nesta conferência.")
+        _render_local_ml_diagnostics(list(evolution.get("local_diagnostics") or []))
     elif section == "offline_hypotheses":
         st.markdown("##### Hipóteses para teste offline")
         st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
