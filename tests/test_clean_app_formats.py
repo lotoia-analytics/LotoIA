@@ -8,7 +8,9 @@ from dashboard.institutional_app import (
     build_institutional_matrix_rows,
     build_institutional_matrix_technical_view,
     build_lei15A_registration_card,
+    evaluate_institutional_panel_sync,
     infer_matrix_cell,
+    normalize_dezenas,
     summarize_institutional_matrix_reading,
 )
 
@@ -310,3 +312,75 @@ def test_build_lei15A_registration_card_remains_governance_only() -> None:
     registration = build_lei15A_registration_card(17)
     assert registration["operational"] is True
     assert registration["status"] == "registro_lei15a"
+
+
+def test_normalize_dezenas_accepts_plus_prefix_and_lists() -> None:
+    assert normalize_dezenas("+16 +21 +17") == ("16", "17", "21")
+    assert normalize_dezenas("16 17 21") == ("16", "17", "21")
+    assert normalize_dezenas(["16", "21", "17"]) == ("16", "17", "21")
+    assert normalize_dezenas("-") == tuple()
+    assert normalize_dezenas(None) == tuple()
+
+
+def test_evaluate_institutional_panel_sync_normalizes_reservas_format() -> None:
+    cartao = "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20"
+    assert evaluate_institutional_panel_sync(
+        cartao_final_superior=cartao,
+        cartao_final_lido=cartao,
+        reservas_auditadas_superior="+16 +21 +17",
+        auditadas_inferior="16 17 21",
+    ) is True
+
+
+def test_reported_games_6_8_9_10_sync_with_normalized_reservas() -> None:
+    """Casos reportados: cartões sincronizados; falha era comparação literal das reservas."""
+    cases = [
+        {
+            "jogo": 6,
+            "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "reservas_auditadas_superior": "+16 +21 +17 +19 +20",
+            "auditadas_inferior": "16 17 19 20 21",
+        },
+        {
+            "jogo": 8,
+            "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "reservas_auditadas_superior": "+05 +16 +17 +19 +20",
+            "auditadas_inferior": "05 16 17 19 20",
+        },
+        {
+            "jogo": 9,
+            "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "reservas_auditadas_superior": "+05 +07 +16 +19 +20",
+            "auditadas_inferior": "05 07 16 19 20",
+        },
+        {
+            "jogo": 10,
+            "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
+            "reservas_auditadas_superior": "+05 +07 +14 +16 +19",
+            "auditadas_inferior": "05 07 14 16 19",
+        },
+    ]
+
+    results = [
+        {
+            "jogo": case["jogo"],
+            "sincronizado": evaluate_institutional_panel_sync(
+                cartao_final_superior=case["cartao_final_superior"],
+                cartao_final_lido=case["cartao_final_lido"],
+                reservas_auditadas_superior=case["reservas_auditadas_superior"],
+                auditadas_inferior=case["auditadas_inferior"],
+            ),
+        }
+        for case in cases
+    ]
+
+    assert results == [
+        {"jogo": 6, "sincronizado": True},
+        {"jogo": 8, "sincronizado": True},
+        {"jogo": 9, "sincronizado": True},
+        {"jogo": 10, "sincronizado": True},
+    ]
