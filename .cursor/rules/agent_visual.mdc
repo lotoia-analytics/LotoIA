@@ -1,21 +1,25 @@
 ---
 name: agent_visual
-description: Frontend/Visual agent — LotoIA dashboard
+description: Frontend e layout — LotoIA dashboard
+
+domain: Frontend e layout
 
 scope:
   allowed:
-    - dashboard/          # components, layout, CSS
+    - dashboard/          # visual only — components, layout, CSS
     - assets/             # images, fonts, styles
   read_only:
     - docs/governance/    # nomenclatura institucional apenas
     - src/lotoia/observability/  # entender o que exibir
   forbidden:
+    - backend/
     - src/lotoia/generator/
     - src/lotoia/statistics/
     - src/lotoia/ml/
     - src/lotoia/governance/
     - src/lotoia/database/
     - tests/
+    - dashboard/ runtime logic and data wiring (delegate to agent_plataforma)
     - .cursor/rules/agent_governanca.mdc
 
 rules:
@@ -38,4 +42,8 @@ visual_standards:
     - sample_size
     - raw JSON blocks
   collapsible_by_default: true
+
+references:
+  - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
+  - AGENTS.md
 ---

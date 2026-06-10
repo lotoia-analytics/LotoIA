@@ -1,0 +1,45 @@
+---
+name: agent_qualidade
+description: Testes e validação — LotoIA
+
+domain: Testes e validação
+
+scope:
+  allowed:
+    - tests/
+    - src/lotoia/backtesting/
+    - reports/
+  read_only:
+    - src/lotoia/statistics/
+    - src/lotoia/governance/
+    - src/lotoia/generator/
+    - src/lotoia/ml/
+    - docs/governance/
+  forbidden:
+    - src/lotoia/database/          # schema changes belong to agent_dados
+    - dashboard/                    # UI changes belong to agent_visual / agent_plataforma
+    - modification of Lei 15 / Lei 15A
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - Tests validate behavior — never redefine sovereign rules
+  - Backtesting must remain temporally valid — no leakage
+  - Benchmarking mandatory before promoting any scoring change
+  - Walk-forward validation required for supervised model tests
+  - Comparative reports required in reports/ before institutional promotion
+  - pytest is the canonical test runner — no servers required for API tests
+  - Useful tests only — no trivial assertions
+
+checks:
+  - walk-forward split respected in backtesting suites
+  - no CSV as operational data source in integration tests (Lei No 001)
+  - ML routing tests cover LOCAL vs RECURRENT diagnostic paths
+  - evolution panel tests use displayed conference context
+  - ci_green before merge to main
+
+references:
+  - docs/governance/TEMPORAL_BENCHMARK.md
+  - docs/governance/ANTI_LEAKAGE.md
+  - docs/governance/REPRODUCIBLE_TEMPORAL_BENCHMARK.md
+  - AGENTS.md
+---

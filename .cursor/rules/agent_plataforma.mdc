@@ -1,0 +1,50 @@
+---
+name: agent_plataforma
+description: Runtime e API — LotoIA
+
+domain: Runtime e API
+
+scope:
+  allowed:
+    - dashboard/          # runtime logic, routes, data wiring — not visual/CSS
+    - backend/
+    - src/lotoia/reliability/
+    - scripts/
+  read_only:
+    - src/lotoia/observability/
+    - src/lotoia/database/
+    - docs/governance/
+  forbidden:
+    - src/lotoia/generator/
+    - src/lotoia/statistics/
+    - src/lotoia/ml/
+    - src/lotoia/governance/
+    - visual/CSS-only changes (delegate to agent_visual)
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - FastAPI on port 8000, Streamlit on port 8501 — one Streamlit app per port
+  - PostgreSQL is operational source — no CSV/session_state as truth
+  - session_state is ephemeral UI state only
+  - db_first guards must block panels without persisted PostgreSQL data
+  - Never break src modular architecture
+  - Business logic stays in src/ — dashboard wires and displays only
+  - operational_effect = false for observational/audit layers
+
+runtime:
+  fastapi: "uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000"
+  streamlit_institutional: "streamlit run dashboard/institutional_app.py --server.port 8501"
+  streamlit_public: "streamlit run dashboard/public_app.py --server.port 8501"
+  python: "3.11.15 (3.12 works on Cloud VMs)"
+
+checks:
+  - pytest exercises FastAPI in-process without running servers
+  - DATABASE_URL / LOTOIA_DATABASE_URL resolves correctly
+  - init_database.py run before UI tests needing tables
+  - no nested DB session leaks in institutional read paths
+
+references:
+  - AGENTS.md
+  - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
+  - backend/main.py
+---

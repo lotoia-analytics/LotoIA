@@ -1,6 +1,8 @@
 ---
 name: agent_geracao
-description: Generation engine agent — LotoIA
+description: Motor de geração Lei 15 — LotoIA
+
+domain: Motor de geração Lei 15
 
 scope:
   allowed:

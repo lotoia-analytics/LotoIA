@@ -1,18 +1,20 @@
 ---
 name: agent_governanca
-description: Institutional governance agent — LotoIA (sovereign approver)
+description: Governança institucional — LotoIA
+
+domain: Governança institucional
 
 scope:
   allowed:
     - docs/governance/
+    - ADRs/
     - src/lotoia/governance/
     - snapshots/
-    - .cursor/rules/          # create/review agent rules only
+    - .cursor/rules/
   read_only:
     - src/lotoia/generator/
     - src/lotoia/statistics/
     - src/lotoia/ml/
-    - src/lotoia/observability/
     - src/lotoia/database/
     - dashboard/
     - tests/
@@ -28,13 +30,12 @@ rules:
   - Every institutional change requires traceable ADR or archived decision
   - ML assistive policy (POLITICA_ML_ASSISTIVO) is mandatory reference
   - operational_effect = false for all diagnostic/observational verdicts
-  - Never approve temporal leakage or CSV as operational source
 
 roles:
-  scientific_commander: COMMANDER — structural validation, batch policy
-  output_commander: AUDITOR — output integrity, duplicate guard
-  institutional_memory: REGISTRY — scientific memory registry
-  generation_engine: EXECUTOR — subordinate to Lei 15
+  scientific_commander: COMMANDER
+  output_commander: AUDITOR
+  institutional_memory: REGISTRY
+  generation_engine: EXECUTOR
 
 approval_required_for:
   - FINAL_SCORE_WEIGHTS changes
@@ -44,17 +45,9 @@ approval_required_for:
   - nucleo_lei15_15D mutations
   - new agent rules in .cursor/rules/
 
-checks:
-  - ADR exists before sovereign rule change
-  - comparative benchmark report before scoring promotion
-  - walk-forward validation before supervised ML promotion
-  - no CSV/session_state as truth source
-  - all agent rules cross-reference this file correctly
-
 references:
   - docs/governance/POLITICA_ML_ASSISTIVO.md
   - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
   - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
-  - docs/governance/ADR_LEI15_NUCLEO_15D_CONGELADO.md
   - AGENTS.md
 ---

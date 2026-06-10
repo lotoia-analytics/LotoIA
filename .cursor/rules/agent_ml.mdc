@@ -1,15 +1,16 @@
 ---
 name: agent_ml
-description: ML assistive layer agent — LotoIA (auxiliary only)
+description: ML assistivo — LotoIA
+
+domain: ML assistivo
 
 scope:
   allowed:
     - src/lotoia/ml/
+    - src/lotoia/observability/
     - experiments/ml/
-    - src/lotoia/experiments/supervised_*.py
   read_only:
     - src/lotoia/statistics/
-    - src/lotoia/observability/
     - docs/governance/POLITICA_ML_ASSISTIVO.md
   forbidden:
     - src/lotoia/generator/
@@ -51,8 +52,8 @@ checks:
   - walk-forward split respected
   - no temporal leakage (feature_cutoff < scoring_contest)
   - model versioned and dataset versioned
-  - explainability artifact present for every promoted model
   - PostgreSQL source only for operational diagnostics
+  - conference and evolution panels share reconciliation_run_id
 
 references:
   - docs/governance/POLITICA_ML_ASSISTIVO.md
