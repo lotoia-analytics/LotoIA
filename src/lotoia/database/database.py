@@ -688,6 +688,37 @@ class ReconciliationGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class MlDiagnosticDecision(Base):
+    __tablename__ = "ml_diagnostic_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_type: Mapped[str] = mapped_column(String, nullable=False)
+    dezena: Mapped[int] = mapped_column(Integer, nullable=False)
+    ml_proposal: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    adm_decision: Mapped[str] = mapped_column(String, nullable=False)
+    adm_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    adm_user: Mapped[str] = mapped_column(String, default="", nullable=False)
+    reconciliation_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_ml_diagnostic_decisions_alert_type", "alert_type"),
+        Index("ix_ml_diagnostic_decisions_reconciliation_run_id", "reconciliation_run_id"),
+        Index("ix_ml_diagnostic_decisions_created_at", "created_at"),
+        Index(
+            "ix_ml_diagnostic_decisions_run_alert_dezena",
+            "reconciliation_run_id",
+            "alert_type",
+            "dezena",
+        ),
+    )
+
+
 class WorkflowRun(Base):
     __tablename__ = "workflow_runs"
 

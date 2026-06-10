@@ -76,11 +76,20 @@ from lotoia.governance.structural_rfe import (
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
 from lotoia.observability.ml_diagnostic_panels import (
+    ADM_ACEITO,
+    ADM_REJEITADO,
+    ALERT_001,
+    ALERT_002,
+    ALERT_003,
     ALERT_SIDE_LEAK,
+    STATUS_PENDENTE,
+    build_central_ml_diagnostics_payload,
     build_evolution_13_14_panel_payload,
     build_evolution_14_15_panel_payload,
     build_side_leak_panel_payload,
+    list_ml_diagnostic_decisions,
     load_latest_reconciliation_diagnostic_context,
+    register_ml_diagnostic_decision,
 )
 from lotoia.observability.observational_leftover import (
     ML_ROLE_DIAGNOSTIC_ONLY,
@@ -397,6 +406,7 @@ PAGE_TARGETS = {
     "Vazamento lateral": "audit_monitoring_side_leak",
     "Evolução 13 -> 14": "audit_monitoring_13_to_14",
     "Evolução 14 -> 15": "audit_monitoring_14_to_15",
+    "Central de Diagnósticos ML": "central_ml_diagnostics",
     "Hipóteses para teste offline": "audit_monitoring_offline_hypotheses",
     "Gerar Jogos": "generation",
     "Conferir Resultados": "conference",
@@ -8136,6 +8146,137 @@ def _render_ml_diagnostic_source_caption(payload: dict[str, Any]) -> None:
     )
 
 
+def _resolve_ml_diagnostic_adm_user(snapshot: dict[str, Any]) -> str:
+    for key in ("adm_user", "institutional_user", "operator_email", "user_email"):
+        value = str(snapshot.get(key) or st.session_state.get(key) or "").strip()
+        if value:
+            return value
+    return "adm@institucional.local"
+
+
+def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Central de Diagnósticos ML")
+    st.info(
+        "Princípio institucional: tudo o que o ML vê, o ADM vê. "
+        "O ML propõe; o ADM aceita ou rejeita; a execução ocorre somente após aceite. "
+        "Nenhum comando de geração, recalibração ou mutação da Lei 15 é emitido por este painel."
+    )
+    payload = build_central_ml_diagnostics_payload(DB_PATH)
+    _render_ml_diagnostic_source_caption(payload)
+    header_cols = st.columns(3)
+    header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
+    header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
+    header_cols[2].metric(
+        "Fonte",
+        f"PostgreSQL (run {payload.get('reconciliation_run_id', 0)})",
+    )
+    st.caption(f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)} | decisão: ML propõe → ADM aceita/rejeita")
+    if not payload.get("available"):
+        st.warning(
+            "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL. "
+            "Os alertas permanecem indisponíveis até haver conferência persistida."
+        )
+    alerts = list(payload.get("alerts") or [])
+    if not alerts and payload.get("available"):
+        st.success("Nenhum alerta ML ativo no momento para a última reconciliation_run.")
+    adm_user = _resolve_ml_diagnostic_adm_user(snapshot)
+    for alert in alerts:
+        status = str(alert.get("status") or STATUS_PENDENTE)
+        with st.container(border=True):
+            st.markdown(f"**{alert.get('tipo_alerta')}** — {alert.get('tipo_label')}")
+            info_cols = st.columns(4)
+            info_cols[0].write(f"Dezena: **{alert.get('dezena_fmt')}**")
+            info_cols[1].write(f"Status: **{status}**")
+            info_cols[2].write(f"Run: `{alert.get('reconciliation_run_id')}`")
+            info_cols[3].write(f"Chave: `{alert.get('alert_key')}`")
+            st.markdown("**Diagnóstico ML**")
+            st.json(alert.get("ml_diagnosis") or {})
+            st.markdown("**Proposta ML**")
+            st.json(alert.get("ml_proposal") or {})
+            if status == STATUS_PENDENTE:
+                reject_key = f"ml_diag_reject_reason_{alert.get('alert_key')}"
+                st.text_input(
+                    "Motivo da rejeição (obrigatório se REJEITAR)",
+                    key=reject_key,
+                )
+                action_cols = st.columns(2)
+                if action_cols[0].button(
+                    "ACEITAR",
+                    key=f"ml_diag_accept_{alert.get('alert_key')}",
+                    type="primary",
+                ):
+                    register_ml_diagnostic_decision(
+                        alert_type=str(alert.get("tipo_alerta")),
+                        dezena=int(alert.get("dezena") or 0),
+                        ml_proposal=dict(alert.get("ml_proposal") or {}),
+                        adm_decision=ADM_ACEITO,
+                        reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                        adm_user=adm_user,
+                        db_path=DB_PATH,
+                    )
+                    st.success("Decisão ACEITO registrada no PostgreSQL.")
+                    st.rerun()
+                if action_cols[1].button(
+                    "REJEITAR",
+                    key=f"ml_diag_reject_{alert.get('alert_key')}",
+                ):
+                    reason = str(st.session_state.get(reject_key) or "").strip()
+                    if not reason:
+                        st.error("Informe o motivo da rejeição antes de confirmar.")
+                    else:
+                        register_ml_diagnostic_decision(
+                            alert_type=str(alert.get("tipo_alerta")),
+                            dezena=int(alert.get("dezena") or 0),
+                            ml_proposal=dict(alert.get("ml_proposal") or {}),
+                            adm_decision=ADM_REJEITADO,
+                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                            adm_reason=reason,
+                            adm_user=adm_user,
+                            db_path=DB_PATH,
+                        )
+                        st.warning("Decisão REJEITADO registrada e arquivada.")
+                        st.rerun()
+            else:
+                if alert.get("adm_reason"):
+                    st.caption(f"Motivo ADM: {alert.get('adm_reason')}")
+                if alert.get("adm_user"):
+                    st.caption(f"ADM: {alert.get('adm_user')}")
+    st.markdown("### Histórico de decisões")
+    history = list_ml_diagnostic_decisions(db_path=DB_PATH, limit=200)
+    if not history:
+        st.caption("Nenhuma decisão ADM registrada ainda.")
+    else:
+        history_df = pd.DataFrame(
+            [
+                {
+                    "alert_type": row["alert_type"],
+                    "dezena": row["dezena_fmt"],
+                    "decision": row["decision"],
+                    "reason": row.get("reason") or "",
+                    "timestamp": row.get("timestamp") or "",
+                    "adm_user": row.get("adm_user") or "",
+                    "reconciliation_run_id": row.get("reconciliation_run_id"),
+                }
+                for row in history
+            ]
+        )
+        st.dataframe(history_df, hide_index=True, use_container_width=True)
+    with st.expander("Detalhes técnicos avançados", expanded=False):
+        st.json(
+            {
+                "alert_types": [ALERT_001, ALERT_002, ALERT_003],
+                "guards": {
+                    "generation_command": False,
+                    "recalibration_command": False,
+                    "nucleo_lei15_15d_sovereign": True,
+                    "ml_executes_only_after_aceito": True,
+                },
+                "payload": payload,
+            }
+        )
+
+
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
@@ -9503,6 +9644,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas disponíveis</div>', unsafe_allow_html=True)
     for label, page_id in [
+        ("Central de Diagnósticos ML", "central_ml_diagnostics"),
         ("Vazamento lateral", "audit_monitoring_side_leak"),
         ("Evolução 13 -> 14", "audit_monitoring_13_to_14"),
         ("Evolução 14 -> 15", "audit_monitoring_14_to_15"),
@@ -9549,6 +9691,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit_monitoring_side_leak",
         "audit_monitoring_13_to_14",
         "audit_monitoring_14_to_15",
+        "central_ml_diagnostics",
         "clear_histories",
         "delete_history",
     }
@@ -13358,6 +13501,8 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "13_to_14")
     elif page == "audit_monitoring_14_to_15":
         _render_audit_monitoring_page(snapshot, "14_to_15")
+    elif page == "central_ml_diagnostics":
+        _render_central_ml_diagnostics_page(snapshot)
     elif page == "audit_monitoring_offline_hypotheses":
         _render_audit_monitoring_page(snapshot, "offline_hypotheses")
     elif page == "generation":
