@@ -187,6 +187,75 @@ def test_conferencia_15d_bloqueia_nucleo_fixo_repetido() -> None:
     assert guard["jogos_gerados_15d_rows_variable"] is True
 
 
+def test_conferencia_15d_compare_blocks_before_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+    games = [_build_15d_game(index, core) for index, core in enumerate(
+        [
+            [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+            [1, 3, 4, 5, 6, 9, 10, 12, 14, 15, 17, 19, 21, 23, 24],
+        ],
+        start=1,
+    )]
+
+    def _blocked_guard(**_kwargs) -> dict[str, object]:
+        return {
+            "valid": False,
+            "classification": "CONFLITANTE",
+            "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+            "conferencia_15d_all_rows_identical": True,
+            "jogos_gerados_15d_rows_variable": True,
+        }
+
+    def _forbidden_persist(*_args, **_kwargs) -> None:
+        raise AssertionError("reconciliation must not persist when conference 15D guard blocks")
+
+    monkeypatch.setattr(admin_app, "validate_conference_15d_source", _blocked_guard)
+    monkeypatch.setattr(admin_app, "get_session", _forbidden_persist)
+
+    comparison = admin_app._compare_games_against_contest(
+        generation_event_id=1000,
+        games=games,
+        contest={"concurso": 3700, "data": "01/06/2026", "dezenas": list(games[0]["final_card_numbers"])},
+    )
+    assert comparison["status"] == "error"
+    assert comparison["persistence_guard_status"] == "BLOQUEADO_NUCLEO_FIXO_15D"
+
+
+def test_run_institutional_conference_aborts_on_15d_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked_comparison = {
+        "status": "error",
+        "message": "Conferência 15D bloqueada: núcleo fixo repetido enquanto jogos gerados são distintos.",
+        "contest_number": 3700,
+        "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+        "diagnostics": {
+            "conference_15d_guard": {
+                "valid": False,
+                "classification": "CONFLITANTE",
+                "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+            }
+        },
+    }
+    monkeypatch.setattr(admin_app, "_load_official_history_contest", lambda _contest: {"concurso": 3700, "dezenas": list(range(1, 16))})
+    monkeypatch.setattr(
+        admin_app,
+        "_load_persisted_generation_event_groups",
+        lambda batch_id=None: [{"generation_event_id": 42, "games": [{"numbers": list(range(1, 16))}], "total_games": 1}],
+    )
+    monkeypatch.setattr(admin_app, "_compare_games_against_contest", lambda **_: blocked_comparison)
+    monkeypatch.setattr(admin_app, "build_post_reconciliation_scientific_memory", lambda **_kwargs: {"memory_id": 1})
+    monkeypatch.setattr(admin_app, "_persist_scientific_reconciliation_memory", lambda _payload: None)
+
+    class _SessionState(dict):
+        pass
+
+    session_state = _SessionState({"active_reconciliation_generation_event_id": 42})
+    monkeypatch.setattr(admin_app.st, "session_state", session_state)
+
+    admin_app._run_institutional_conference(contest_number=3700, generation_event_id=42)
+
+    assert session_state.get("institutional_check_result", {}).get("status") == "blocked_conference_15d"
+    assert "institutional_batch_conference_result" not in session_state
+
+
 def test_conferencia_16d_regressao_preservada() -> None:
     game = _build_game(16)
     info = admin_app._select_conference_numbers(game)
