@@ -4,11 +4,14 @@ from dashboard.clean_core import _expand_official_card, _expand_generation_games
 from dashboard.institutional_app import (
     INSTITUTIONAL_MATRIX_PRIMARY_LABELS,
     INSTITUTIONAL_MATRIX_TECHNICAL_LABELS,
+    NUCLEO_LEI15A_15D_CONGELADO,
+    RESERVAS_LEI15A_PRIORITARIAS,
     build_institutional_matrix_primary_view,
     build_institutional_matrix_rows,
     build_institutional_matrix_technical_view,
     build_institutional_panel_sync_checks,
     build_lei15A_registration_card,
+    build_lei15a_operational_read,
     evaluate_institutional_panel_sync,
     infer_matrix_cell,
     normalize_dezenas,
@@ -19,6 +22,20 @@ from dashboard.institutional_app import (
 
 def _format_card(numbers: list[int]) -> str:
     return " ".join(f"{number:02d}" for number in sorted(numbers))
+
+
+def _lei15a_frozen_nucleus() -> list[int]:
+    return list(NUCLEO_LEI15A_15D_CONGELADO)
+
+
+def _lei15a_auditadas_from_cartao(cartao: list[int], formato_d: int) -> list[int]:
+    if formato_d <= 15:
+        return []
+    return sorted(set(cartao) - set(_lei15a_frozen_nucleus()))
+
+
+def _lei15a_vigilantes_from_auditadas(auditadas: list[int]) -> list[int]:
+    return sorted(set(auditadas).intersection(RESERVAS_LEI15A_PRIORITARIAS))
 
 
 def _build_game_row(core: list[int], card_format: int, game_index: int = 1) -> tuple[dict, list[int]]:
@@ -90,14 +107,16 @@ def test_build_institutional_matrix_rows_marks_15d_institutional_reading() -> No
 
     row = rows[0]
     assert row["cartao_final_lido"] == _format_card(final_card)
-    assert row["nucleo_a_dezenas"] == _format_card(final_card)
+    assert row["nucleo_a_dezenas"] == _format_card(_lei15a_frozen_nucleus())
+    assert row["nucleo_a_dezenas"] != _format_card(final_card)
     assert row["auditadas_escolhidas"] == "-"
     assert row["vigilantes_escolhidas"] == "-"
     assert row["sincronizado_com_cartao_final"] is True
-    assert "sincronizada com o cartão final gerado pela Lei 15" in row["leitura_institucional"]
+    assert "componentes próprios da Lei 15A" in row["leitura_institucional"]
+    assert row["lei15a_boundary_checks"]["no_direct_copy"] is True
 
 
-def test_build_institutional_matrix_rows_mirrors_upper_panel_for_16d() -> None:
+def test_build_institutional_matrix_rows_uses_lei15a_components_for_16d() -> None:
     generation_final = [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25, 9]
     core = generation_final[:15]
     reserves = [9]
@@ -110,15 +129,19 @@ def test_build_institutional_matrix_rows_mirrors_upper_panel_for_16d() -> None:
             "final_card_numbers": generation_final,
         }
     ]
+    expected_auditadas = _lei15a_auditadas_from_cartao(generation_final, 16)
+    expected_vigilantes = _lei15a_vigilantes_from_auditadas(expected_auditadas)
 
     rows = build_institutional_matrix_rows(games, 16, 20, superior_final_cards=[generation_final])
 
     row = rows[0]
     assert row["formato_d"] == "16D"
     assert row["cartao_final_lido"] == _format_card(generation_final)
-    assert row["nucleo_a_dezenas"] == _format_card(core)
-    assert row["auditadas_escolhidas"] == _format_card(reserves)
-    assert row["vigilantes_escolhidas"] == row["auditadas_escolhidas"]
+    assert row["nucleo_a_dezenas"] == _format_card(_lei15a_frozen_nucleus())
+    assert row["nucleo_a_dezenas"] != _format_card(core)
+    assert row["auditadas_escolhidas"] == _format_card(expected_auditadas)
+    assert row["auditadas_escolhidas"] != _format_card(reserves)
+    assert row["vigilantes_escolhidas"] == _format_card(expected_vigilantes)
     assert row["sincronizado_com_cartao_final"] is True
 
 
@@ -138,12 +161,14 @@ def test_build_institutional_matrix_rows_marks_final_card_mismatch() -> None:
     assert rows[0]["cartao_final_lido"] == _format_card(divergent_superior_card[0])
     assert rows[0]["sincronizado_com_cartao_final"] is True
     assert rows[0]["origem_geracao"] == "Lei15.generation"
-    assert rows[0]["origem_leitura"] == "Lei15A.operational_read"
+    assert rows[0]["origem_leitura"] == "Lei15A.validation"
 
 
-def test_build_institutional_matrix_rows_mirrors_generation_for_17d() -> None:
+def test_build_institutional_matrix_rows_uses_lei15a_components_for_17d() -> None:
     core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
     core_numbers, reserves, generation_final = _expand_official_card(core, 17, game_index=1)
+    expected_auditadas = _lei15a_auditadas_from_cartao(generation_final, 17)
+    expected_vigilantes = _lei15a_vigilantes_from_auditadas(expected_auditadas)
     games = [
         {
             "jogo": 1,
@@ -157,9 +182,10 @@ def test_build_institutional_matrix_rows_mirrors_generation_for_17d() -> None:
     rows = build_institutional_matrix_rows(games, 17, 20, superior_final_cards=[generation_final])
 
     assert rows[0]["cartao_final_lido"] == _format_card(generation_final)
-    assert rows[0]["nucleo_a_dezenas"] == _format_card(core_numbers)
-    assert rows[0]["auditadas_escolhidas"] == _format_card(reserves)
-    assert rows[0]["vigilantes_escolhidas"] == rows[0]["auditadas_escolhidas"]
+    assert rows[0]["nucleo_a_dezenas"] == _format_card(_lei15a_frozen_nucleus())
+    assert rows[0]["auditadas_escolhidas"] == _format_card(expected_auditadas)
+    assert rows[0]["auditadas_escolhidas"] != _format_card(reserves)
+    assert rows[0]["vigilantes_escolhidas"] == _format_card(expected_vigilantes)
     assert rows[0]["sincronizado_com_cartao_final"] is True
 
 
@@ -195,7 +221,7 @@ def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -
 
     assert list(primary_df.columns) == list(INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values())
     assert primary_df.iloc[0]["Cartão final"] == _format_card(final_card)
-    assert primary_df.iloc[0]["Núcleo Operacional GP"] == _format_card(final_card)
+    assert primary_df.iloc[0]["Núcleo Operacional GP"] == _format_card(_lei15a_frozen_nucleus())
 
 
 def test_institutional_matrix_technical_view_preserves_full_trace() -> None:
@@ -287,7 +313,7 @@ def test_lower_panel_mirrors_upper_panel_not_fixed_lei15a_card() -> None:
 
 
 @pytest.mark.parametrize("card_format", [16, 17, 18, 19, 20])
-def test_panel_sync_regression_upper_equals_lower(card_format: int) -> None:
+def test_panel_sync_regression_cartao_final_only(card_format: int) -> None:
     games = []
     superior_cards = []
     for index in range(10):
@@ -304,10 +330,15 @@ def test_panel_sync_regression_upper_equals_lower(card_format: int) -> None:
     assert inferior_labels == superior_labels
     for index, row in enumerate(rows):
         assert row["cartao_final_lido"] == _format_card(superior_cards[index])
-        assert row["nucleo_a_dezenas"] == _format_card(games[index]["core_numbers"])
-        assert row["auditadas_escolhidas"] == _format_card(games[index]["audited_reserve_numbers"])
-        assert row["vigilantes_escolhidas"] == row["auditadas_escolhidas"]
+        assert row["nucleo_a_dezenas"] == _format_card(_lei15a_frozen_nucleus())
+        assert row["nucleo_a_dezenas"] != _format_card(games[index]["core_numbers"])
+        expected_auditadas = _lei15a_auditadas_from_cartao(superior_cards[index], card_format)
+        assert row["auditadas_escolhidas"] == _format_card(expected_auditadas)
+        assert row["vigilantes_escolhidas"] == _format_card(
+            _lei15a_vigilantes_from_auditadas(expected_auditadas)
+        )
         assert row["sincronizado_com_cartao_final"] is True
+        assert row["lei15a_boundary_checks"]["no_direct_copy"] is True
 
 
 def test_build_lei15A_registration_card_remains_governance_only() -> None:
@@ -324,8 +355,14 @@ def test_normalize_dezenas_accepts_plus_prefix_and_lists() -> None:
     assert normalize_dezenas(None) == tuple()
 
 
-def test_evaluate_institutional_panel_sync_normalizes_reservas_format() -> None:
+def test_evaluate_institutional_panel_sync_compares_only_final_card() -> None:
     cartao = "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20"
+    assert evaluate_institutional_panel_sync(
+        cartao_final_superior=cartao,
+        cartao_final_lido=cartao,
+        reservas_auditadas_superior="+16 +21 +17",
+        auditadas_inferior="05 07 14",
+    ) is True
     assert evaluate_institutional_panel_sync(
         cartao_final_superior=cartao,
         cartao_final_lido=cartao,
@@ -334,36 +371,28 @@ def test_evaluate_institutional_panel_sync_normalizes_reservas_format() -> None:
     ) is True
 
 
-def test_reported_games_6_8_9_10_sync_with_normalized_reservas() -> None:
-    """Casos reportados: cartões sincronizados; falha era comparação literal das reservas."""
+def test_reported_games_6_8_9_10_sync_on_final_card_only() -> None:
+    """Casos reportados: sincronização valida apenas cartão final, não componentes."""
     cases = [
         {
             "jogo": 6,
             "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
             "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
-            "reservas_auditadas_superior": "+16 +21 +17 +19 +20",
-            "auditadas_inferior": "16 17 19 20 21",
         },
         {
             "jogo": 8,
             "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
             "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
-            "reservas_auditadas_superior": "+05 +16 +17 +19 +20",
-            "auditadas_inferior": "05 16 17 19 20",
         },
         {
             "jogo": 9,
             "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
             "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
-            "reservas_auditadas_superior": "+05 +07 +16 +19 +20",
-            "auditadas_inferior": "05 07 16 19 20",
         },
         {
             "jogo": 10,
             "cartao_final_superior": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
             "cartao_final_lido": "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20",
-            "reservas_auditadas_superior": "+05 +07 +14 +16 +19",
-            "auditadas_inferior": "05 07 14 16 19",
         },
     ]
 
@@ -373,8 +402,6 @@ def test_reported_games_6_8_9_10_sync_with_normalized_reservas() -> None:
             "sincronizado": evaluate_institutional_panel_sync(
                 cartao_final_superior=case["cartao_final_superior"],
                 cartao_final_lido=case["cartao_final_lido"],
-                reservas_auditadas_superior=case["reservas_auditadas_superior"],
-                auditadas_inferior=case["auditadas_inferior"],
             ),
         }
         for case in cases
@@ -395,7 +422,9 @@ def test_reported_games_6_8_9_10_sync_with_normalized_reservas() -> None:
         ("+21 +17 +05", "05 17 21", True),
     ],
 )
-def test_runtime_contract_regression_reservas_order(upper_reservas: str, lower_auditadas: str, expected_sync: bool) -> None:
+def test_runtime_contract_regression_cartao_final_only(
+    upper_reservas: str, lower_auditadas: str, expected_sync: bool
+) -> None:
     cartao = "01 02 03 04 07 08 09 14 15 16 17 18 19 20 21 23 24 25"
     assert (
         evaluate_institutional_panel_sync(
@@ -403,7 +432,6 @@ def test_runtime_contract_regression_reservas_order(upper_reservas: str, lower_a
             cartao_final_lido=cartao,
             reservas_auditadas_superior=upper_reservas,
             auditadas_inferior=lower_auditadas,
-            vigilantes_inferior=lower_auditadas,
         )
         is expected_sync
     )
@@ -411,8 +439,44 @@ def test_runtime_contract_regression_reservas_order(upper_reservas: str, lower_a
 
 def test_runtime_contract_detects_fixed_lower_card_override() -> None:
     institutional_rows = [
-        {"cartao_final_lido": "01 02 03", "auditadas_escolhidas": "15", "vigilantes_escolhidas": "15"},
-        {"cartao_final_lido": "01 02 03", "auditadas_escolhidas": "15", "vigilantes_escolhidas": "15"},
+        {
+            "cartao_final_lido": "01 02 03",
+            "auditadas_escolhidas": "15",
+            "vigilantes_escolhidas": "15",
+            "lei15a_origin_log": {
+                "lei15a": {
+                    "nucleo_operacional_gp": {"copied_from_lei15": False},
+                    "auditadas": {"copied_from_lei15_reservas": False, "fixed_constant_used": False},
+                    "vigilantes": {"copied_from_lei15_reservas": False, "fixed_constant_used": False},
+                    "cartao_validado": {"generated_new_card": False, "overrode_lei15_card": False},
+                }
+            },
+            "lei15a_boundary_checks": {
+                "component_boundary_preserved": True,
+                "no_direct_copy": True,
+                "no_fixed_override": True,
+            },
+            "sincronizado_com_cartao_final": True,
+        },
+        {
+            "cartao_final_lido": "01 02 03",
+            "auditadas_escolhidas": "15",
+            "vigilantes_escolhidas": "15",
+            "lei15a_origin_log": {
+                "lei15a": {
+                    "nucleo_operacional_gp": {"copied_from_lei15": False},
+                    "auditadas": {"copied_from_lei15_reservas": False, "fixed_constant_used": False},
+                    "vigilantes": {"copied_from_lei15_reservas": False, "fixed_constant_used": False},
+                    "cartao_validado": {"generated_new_card": False, "overrode_lei15_card": False},
+                }
+            },
+            "lei15a_boundary_checks": {
+                "component_boundary_preserved": True,
+                "no_direct_copy": True,
+                "no_fixed_override": True,
+            },
+            "sincronizado_com_cartao_final": False,
+        },
     ]
     games_table_rows = [
         {"cartão_final": "01 02 03", "reservas_auditadas": "+15"},
@@ -424,7 +488,7 @@ def test_runtime_contract_detects_fixed_lower_card_override() -> None:
     )
     assert contract["classification"] == "CONFLITANTE"
     assert contract["fixed_override_detected"] is True
-    assert contract["checks_results"]["CHECK_004_NO_FIXED_OVERRIDE"] is False
+    assert contract["checks_results"]["CHECK_008_PERSISTENCE_GUARD"] is False
     assert contract["persistence_allowed"] is False
 
 
@@ -455,5 +519,36 @@ def test_runtime_contract_validates_synced_generation_batch() -> None:
     )
     assert contract["classification"] == "COMPATIVEL"
     assert contract["persistence_allowed"] is True
-    assert all(contract["checks_results"].values())
+    assert contract["checks_results"]["CHECK_001_CARTAO_FINAL_SYNC"] is True
+    assert contract["checks_results"]["CHECK_002_NO_NUCLEO_COPY"] is True
+    assert contract["checks_results"]["CHECK_007_COMPONENT_BOUNDARY"] is True
+    assert contract["checks_results"]["CHECK_008_PERSISTENCE_GUARD"] is True
     assert len(contract["failed_checks"]) == 0
+
+
+def test_build_lei15a_operational_read_preserves_component_boundary() -> None:
+    core = [1, 3, 5, 6, 9, 10, 13, 14, 17, 18, 20, 23, 24, 25, 7]
+    core_numbers, reserves, generation_final = _expand_official_card(core, 17, game_index=1)
+    game = {
+        "jogo": 1,
+        "core_numbers": core_numbers,
+        "audited_reserve_numbers": reserves,
+        "final_card_numbers": generation_final,
+    }
+    read = build_lei15a_operational_read(
+        game=game,
+        cartao_final_lei15=generation_final,
+        formato_d=17,
+    )
+
+    assert read["nucleo_operacional_gp"] == _lei15a_frozen_nucleus()
+    assert read["nucleo_operacional_gp"] != core_numbers
+    assert read["auditadas"] == _lei15a_auditadas_from_cartao(generation_final, 17)
+    assert read["auditadas"] != reserves
+    assert read["cartao_validado"] == generation_final
+    assert read["sources"]["nucleo_operacional_gp"]["copied_from_lei15"] is False
+    assert read["sources"]["auditadas"]["copied_from_lei15_reservas"] is False
+    assert read["sources"]["auditadas"]["fixed_constant_used"] is False
+    assert read["sources"]["cartao_validado"]["generated_new_card"] is False
+    assert read["checks"]["cartao_final_sync"] is True
+    assert read["checks"]["no_direct_copy"] is True
