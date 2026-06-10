@@ -132,7 +132,7 @@ Entrega esperada:
 
 | De | Para | Condição |
 |----|------|----------|
-| `approved_candidate` | `approved_production` | Railway estável + AUD-005 encerrado + AUD-006 mergeado |
+| `approved_candidate` | `approved_production` | `RAILWAY_VALIDATION_STATUS=PASS` + AUD-005 encerrado + AUD-006 mergeado (#25) |
 
 ---
 
@@ -141,3 +141,4 @@ Entrega esperada:
 | Data | Evento |
 |------|--------|
 | 2026-06-10 | Registro `LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10` como `approved_candidate` |
+| 2026-06-10 | PR #28 mergeado; deploy Railway `f263197` state=success; validação deploy em `RAILWAY_PRODUCTION_VALIDATION_2026_06_10.md` |
