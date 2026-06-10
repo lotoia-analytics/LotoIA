@@ -7604,9 +7604,21 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
     }
 
 
+INST_HISTORY_DISPLAY_COLUMNS = [
+    "geração",
+    "data/hora",
+    "estratégia/modelo",
+    "quantidade solicitada",
+    "quantidade real gerada",
+    "status de conferência",
+    "concurso conferido",
+    "maior acerto",
+    "observações/alertas",
+]
+
+
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    live_counts = _database_snapshot()["counts"]
     institutional_guard = _evaluate_db_first_institutional_guard()
     if not institutional_guard.get("allowed"):
         st.error(
@@ -7615,203 +7627,62 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         st.caption(f"motivo={institutional_guard.get('reason', '-')}")
         return
     st.subheader("Histórico Institucional")
-    st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
+    st.write("Rastreabilidade das gerações persistidas e conferências realizadas.")
 
-    source_map = _institutional_source_map(snapshot)
-    latest_sync = _load_official_sync_contest_summary() or _load_official_sync_diagnostics() or {}
-    latest_contest = _load_hai_latest_contest_summary() or {}
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
-    source_cols = st.columns(8)
-    source_cols[0].metric("backend", snapshot["backend"])
-    source_cols[1].metric("database_source", snapshot["database_source"])
-    source_cols[2].metric("schema", "public" if str(snapshot.get("backend", "")).lower() == "postgresql" else "main")
-    source_cols[3].metric("operational_logs", int(live_counts.get("operational_logs", 0)))
-    source_cols[4].metric("institutional_output_signatures", int(live_counts.get("institutional_output_signatures", 0)))
-    source_cols[5].metric("Registros científicos legados", int(live_counts.get("scientific_calibration_decisions", 0)))
-    source_cols[6].metric("lotofacil_official_history", int(live_counts.get("lotofacil_official_history", 0)))
-    source_cols[7].metric("scientific_institutional_memory", int(live_counts.get("scientific_institutional_memory", 0)))
-    st.caption(
-        " | ".join(
-            [
-                f"build={BUILD_MARKER}",
-                f"commit={_resolve_active_commit()}",
-                f"last_imported_contest={latest_contest.get('contest_number', '-')}",
-                f"last_sync={latest_sync.get('sync_timestamp', '-')}",
-            ]
-        )
-    )
-    if int(live_counts.get("generation_events", 0) or 0) > 0 and not generation_rows:
+    if int(_database_snapshot()["counts"].get("generation_events", 0) or 0) > 0 and generation_df.empty:
         generation_rows = _load_accumulated_institutional_rows()
         generation_df = pd.DataFrame(generation_rows)
-    st.markdown("##### Rastreabilidade institucional principal")
-    summary_cols = st.columns(10)
-    total_generation_events = len(generation_df)
-    total_requested = int(generation_df["quantidade solicitada"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
-    total_generated = int(generation_df["quantidade real gerada"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
-    total_persisted = int(generation_df["quantidade persistida"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
-    total_recovered = int(generation_df["total de jogos recuperados"].fillna(0).astype(int).sum()) if not generation_df.empty else 0
-    total_contests_reconciled = int(generation_df["concurso conferido"].fillna(0).astype(int).ne(0).sum()) if not generation_df.empty else 0
-    highest_hits = int(generation_df["maior acerto"].fillna(0).astype(int).max()) if not generation_df.empty else 0
-    best_score = float(generation_df["melhor score"].fillna(0.0).astype(float).max()) if not generation_df.empty else 0.0
-    latest_generation_label = generation_df.iloc[0]["geração"] if not generation_df.empty else "-"
-    first_generation_label = generation_df.iloc[-1]["geração"] if not generation_df.empty else "-"
-    summary_cols[0].metric("total gerações", total_generation_events)
-    summary_cols[1].metric("jogos solicitados", total_requested)
-    summary_cols[2].metric("jogos gerados", total_generated)
-    summary_cols[3].metric("jogos persistidos", total_persisted)
-    summary_cols[4].metric("jogos recuperados", total_recovered)
-    summary_cols[5].metric("concursos conferidos", total_contests_reconciled)
-    summary_cols[6].metric("maior acerto", highest_hits)
-    summary_cols[7].metric("melhor score", f"{best_score:.4f}")
-    summary_cols[8].metric("última geração", latest_generation_label)
-    summary_cols[9].metric("primeira geração", first_generation_label)
-    _render_scientific_memory_block(compact=True)
 
-    if not generation_df.empty:
-        latest_commander = generation_df.iloc[0]
-        st.markdown("##### Status operacional da última memória consolidada")
-        commander_cols = st.columns(6)
-        commander_cols[0].metric("total_jogos_solicitados", int(latest_commander.get("quantidade solicitada", 0) or 0))
-        commander_cols[1].metric("total_jogos_gerados", int(latest_commander.get("quantidade real gerada", 0) or 0))
-        commander_cols[2].metric("total_jogos_unicos", int(latest_commander.get("total jogos únicos", 0) or 0))
-        commander_cols[3].metric("total_jogos_duplicados", int(latest_commander.get("total jogos duplicados", 0) or 0))
-        commander_cols[4].metric("taxa_duplicidade", f"{float(latest_commander.get('taxa duplicidade', 0.0) or 0.0):.4f}")
-        commander_cols[5].metric("Status do OutputCommander", str(latest_commander.get("status comandante saída", "APROVADO") or "APROVADO"))
-        st.caption(
-            f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
-            f"generation_event_id={int(latest_commander.get('generation_event_id', 0) or 0)}"
+    if generation_df.empty:
+        st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+    else:
+        total_generation_events = len(generation_df)
+        total_contests_reconciled = int(generation_df["concurso conferido"].fillna(0).astype(int).ne(0).sum())
+        highest_hits = int(generation_df["maior acerto"].fillna(0).astype(int).max())
+        best_score = float(generation_df["melhor score"].fillna(0.0).astype(float).max())
+        latest_generation_label = generation_df.iloc[0]["geração"]
+        summary_cols = st.columns(5)
+        summary_cols[0].metric("Total de gerações", total_generation_events)
+        summary_cols[1].metric("Concursos conferidos", total_contests_reconciled)
+        summary_cols[2].metric("Maior acerto", highest_hits)
+        summary_cols[3].metric("Melhor score", f"{best_score:.4f}")
+        summary_cols[4].metric("Última geração", latest_generation_label)
+
+        with st.expander("Memória científica", expanded=False):
+            _render_scientific_memory_block(compact=True)
+
+        filter_cols = st.columns(3)
+        generation_labels = list(generation_df["geração"].astype(str).tolist())
+        status_conference_options = sorted(
+            str(value) for value in generation_df["status de conferência"].dropna().astype(str).unique().tolist()
         )
-
-        scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = (
-            _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
-            if scientific_batch_id
-            else {}
+        selected_generation_labels = filter_cols[0].multiselect(
+            "Geração",
+            generation_labels,
+            default=generation_labels,
         )
-        latest_generated_games = list(latest_commander.get("generated_games", []) or [])
-        latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
-        scientific_game_size = int(
-            latest_generation_context.get("dezenas_per_game")
-            or latest_commander.get("quantidade_dezenas_por_jogo")
-            or latest_commander.get("quantidade solicitada", 15)
-            or 15
+        selected_conference_status = filter_cols[1].multiselect(
+            "Status de conferência",
+            status_conference_options,
+            default=status_conference_options,
         )
-        scientific_policy_discovery = discover_scientific_generation_policy(
-            scientific_game_size,
-            db_path=DB_PATH,
-            use_csv_fallback=False,
-        )
-        history_policy = dict(
-            scientific_policy_discovery.get("policy")
-            or {
-                "repeat_min": int(latest_commander.get("repeticao_ultimo_concurso_min", 7) or 7),
-                "repeat_max": int(latest_commander.get("repeticao_ultimo_concurso_max", 10) or 10),
-                "preferred_parity_pairs": list(latest_commander.get("perfis_paridade_preferenciais", [(7, 8), (8, 7)]) or [(7, 8), (8, 7)]),
-                "allowed_parity_pairs": list(latest_commander.get("perfis_paridade_permitidos", [(7, 8), (8, 7), (6, 9), (9, 6)]) or [(7, 8), (8, 7), (6, 9), (9, 6)]),
-                "sequence_max": int(latest_commander.get("limite_sequencia_max", 6) or 6),
-                "core_numbers": list(latest_commander.get("core_numbers", [7, 12, 16, 23]) or [7, 12, 16, 23]),
-                "discouraged_numbers": list(latest_commander.get("discouraged_numbers", [2, 4, 11, 15, 24, 25]) or [2, 4, 11, 15, 24, 25]),
-                "max_frequency_ratio": float(latest_commander.get("max_frequency_ratio", 0.7) or 0.7),
-                "min_frequency_ratio": float(latest_commander.get("min_frequency_ratio", 0.2) or 0.2),
-            }
-        )
-        scientific_state = None
-        scientific_recommendation = None
-        st.markdown("##### Diagnóstico histórico observacional")
-        st.info("Esta seção observa a memória consolidada. Os registros científicos sensíveis ficam recolhidos na quarentena documental.")
-        with st.expander("Memória científica legada — quarentena documental", expanded=False):
-            st.caption("Registro técnico legado preservado para auditoria histórica. Não atua como comando, seleção ou recalibração.")
-            if st.checkbox("Carregar payload científico legado", value=False, key="load_scientific_legacy_payload"):
-                _render_scientific_policy_panel(
-                    policy=history_policy,
-                    strategy_size=int(scientific_game_size),
-                    total_expected_games=int(latest_commander.get("quantidade solicitada", 0) or 0),
-                    games_per_generation=int(latest_commander.get("quantidade solicitada", 0) or 0),
-                    generations_in_batch=1,
-                    policy_discovery=scientific_policy_discovery if scientific_policy_discovery is not None else None,
-                    use_expander=False,
-                )
-                _render_scientific_calibration_panel(
-                    strategy_size=int(scientific_game_size),
-                    scientific_state=scientific_state,
-                    scientific_recommendation=scientific_recommendation,
-                    technical_payload=scientific_batch if scientific_batch else None,
-                    use_expander=False,
-                )
-                latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
-                if latest_scientific_decisions:
-                    st.dataframe(pd.DataFrame(latest_scientific_decisions), hide_index=True, use_container_width=True)
-
-
-
-    if not generation_df.empty:
-        filter_row_1 = st.columns([1, 1, 1, 1, 1])
-        generation_options = sorted(int(value) for value in generation_df["generation_event_id"].dropna().astype(int).unique().tolist())
-        strategy_options = sorted(str(value) for value in generation_df["estratégia/modelo"].dropna().astype(str).unique().tolist())
-        status_generation_options = sorted(str(value) for value in generation_df["status da geração"].dropna().astype(str).unique().tolist())
-        status_persistence_options = sorted(str(value) for value in generation_df["status de persistência"].dropna().astype(str).unique().tolist())
-        status_conference_options = sorted(str(value) for value in generation_df["status de conferência"].dropna().astype(str).unique().tolist())
-        selected_generations = filter_row_1[0].multiselect("geração", generation_options, default=generation_options)
-        selected_strategies = filter_row_1[1].multiselect("estratégia/modelo", strategy_options, default=strategy_options)
-        selected_generation_status = filter_row_1[2].multiselect("status da geração", status_generation_options, default=status_generation_options)
-        selected_persistence_status = filter_row_1[3].multiselect("status de persistência", status_persistence_options, default=status_persistence_options)
-        selected_conference_status = filter_row_1[4].multiselect("status de conferência", status_conference_options, default=status_conference_options)
-
-        filter_row_2 = st.columns([1, 1, 1, 1, 1])
-        contest_options = sorted(int(value) for value in generation_df["concurso conferido"].dropna().astype(int).unique().tolist() if int(value) > 0)
-        alert_only = filter_row_2[0].checkbox("somente gerações com alerta", value=False)
-        conference_only = filter_row_2[1].checkbox("somente gerações conferidas", value=False)
-        not_conference_only = filter_row_2[2].checkbox("somente gerações não conferidas", value=False)
-        min_score = filter_row_2[3].number_input("score mínimo", min_value=0.0, value=0.0, step=0.1)
-        min_hits = filter_row_2[4].number_input("maior acerto mínimo", min_value=0, value=0, step=1)
-
-        date_values = pd.to_datetime(generation_df["data/hora"], errors="coerce").dropna()
-        if not date_values.empty:
-            start_date = date_values.min().date()
-            end_date = date_values.max().date()
-            date_range = st.date_input("data inicial/final", value=(start_date, end_date))
-        else:
-            date_range = ()
+        order_by = filter_cols[2].selectbox("Ordenar por", ["data", "maior acerto"], index=0)
+        alert_only = st.checkbox("Somente gerações com alerta", value=False)
 
         filtered_df = generation_df.copy()
         filtered_df["data/hora_dt"] = pd.to_datetime(filtered_df["data/hora"], errors="coerce")
-        filtered_df["score_medio_num"] = pd.to_numeric(filtered_df["score médio"], errors="coerce").fillna(0.0)
-        if selected_generations:
-            filtered_df = filtered_df[filtered_df["generation_event_id"].isin(selected_generations)]
-        if selected_strategies:
-            filtered_df = filtered_df[filtered_df["estratégia/modelo"].isin(selected_strategies)]
-        if selected_generation_status:
-            filtered_df = filtered_df[filtered_df["status da geração"].isin(selected_generation_status)]
-        if selected_persistence_status:
-            filtered_df = filtered_df[filtered_df["status de persistência"].isin(selected_persistence_status)]
+        if selected_generation_labels:
+            filtered_df = filtered_df[filtered_df["geração"].astype(str).isin(selected_generation_labels)]
         if selected_conference_status:
-            filtered_df = filtered_df[filtered_df["status de conferência"].isin(selected_conference_status)]
-        if contest_options:
-            filtered_df = filtered_df[filtered_df["concurso conferido"].fillna(0).astype(int).isin(contest_options)]
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_date, end_date = date_range
-            filtered_df = filtered_df[filtered_df["data/hora_dt"].dt.date.between(start_date, end_date)]
+            filtered_df = filtered_df[filtered_df["status de conferência"].astype(str).isin(selected_conference_status)]
         if alert_only:
             filtered_df = filtered_df[filtered_df["observações/alertas"].astype(str) != "OK"]
-        if conference_only:
-            filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) == "Conferido"]
-        if not_conference_only:
-            filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) != "Conferido"]
-        filtered_df = filtered_df[filtered_df["score médio"].astype(float) >= float(min_score)]
-        filtered_df = filtered_df[filtered_df["maior acerto"].astype(int) >= int(min_hits)]
-
-        order_by = st.selectbox("ordenar por", ["data", "maior acerto", "score"], index=0)
         if order_by == "maior acerto":
             filtered_df = filtered_df.sort_values(
-                by=["maior acerto", "melhor score", "data/hora_dt", "generation_event_id"],
-                ascending=[False, False, False, False],
-            )
-        elif order_by == "score":
-            filtered_df = filtered_df.sort_values(
-                by=["score médio", "melhor score", "data/hora_dt", "generation_event_id"],
-                ascending=[False, False, False, False],
+                by=["maior acerto", "data/hora_dt", "generation_event_id"],
+                ascending=[False, False, False],
             )
         else:
             filtered_df = filtered_df.sort_values(
@@ -7820,204 +7691,136 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             )
 
         display_df = filtered_df.copy()
-        display_df["concurso conferido"] = display_df["concurso conferido"].apply(lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—")
+        display_df["concurso conferido"] = display_df["concurso conferido"].apply(
+            lambda value: f"{int(value)}" if pd.notna(value) and int(value) > 0 else "—"
+        )
         display_df["quantidade solicitada"] = display_df["quantidade solicitada"].fillna(0).astype(int)
         display_df["quantidade real gerada"] = display_df["quantidade real gerada"].fillna(0).astype(int)
-        display_df["quantidade persistida"] = display_df["quantidade persistida"].fillna(0).astype(int)
-        display_df["total de jogos recuperados"] = display_df["total de jogos recuperados"].fillna(0).astype(int)
         display_df["maior acerto"] = display_df["maior acerto"].fillna(0).astype(int)
-        display_df["média de acertos"] = display_df["média de acertos"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
-        display_df["melhor score"] = display_df["melhor score"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
-        display_df["score médio"] = display_df["score médio"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
         display_df["observações/alertas"] = display_df["observações/alertas"].astype(str)
         display_df["data/hora"] = display_df["data/hora"].fillna("—")
-        for column, default in (
-            ("status comandante saída", "APROVADO"),
-            ("batch_id", "-"),
-            ("total jogos únicos", 0),
-            ("total jogos duplicados", 0),
-            ("taxa duplicidade", 0.0),
-        ):
-            if column not in display_df.columns:
-                display_df[column] = default
-        display_df["status comandante saída"] = display_df["status comandante saída"].astype(str)
-        display_df["batch_id"] = display_df["batch_id"].astype(str)
-        display_df["total jogos únicos"] = display_df["total jogos únicos"].fillna(0).astype(int)
-        display_df["total jogos duplicados"] = display_df["total jogos duplicados"].fillna(0).astype(int)
-        display_df["taxa duplicidade"] = display_df["taxa duplicidade"].fillna(0.0).astype(float).map(lambda value: f"{value:.4f}")
-        display_df = display_df[
-            [
-                "geração",
-                "generation_event_id",
-                "data/hora",
-                "usuário/session_id",
-                "estratégia/modelo",
-                "quantidade solicitada",
-                "quantidade real gerada",
-                "quantidade persistida",
-                "total de jogos recuperados",
-                "status da geração",
-                "status de persistência",
-                "status de conferência",
-                "status comandante saída",
-                "concurso conferido",
-                "maior acerto",
-                "média de acertos",
-                "melhor score",
-                "score médio",
-                "origem da geração",
-                "batch_id",
-                "total jogos únicos",
-                "total jogos duplicados",
-                "taxa duplicidade",
-                "observações/alertas",
-            ]
-        ]
+        visible_columns = [column for column in INST_HISTORY_DISPLAY_COLUMNS if column in display_df.columns]
+        display_df = _make_arrow_safe(strip_adm_technical_columns(display_df[visible_columns]))
+
         st.markdown("##### Gerações institucionais")
-        st.dataframe(display_df, hide_index=True, use_container_width=True, height=540)
+        st.dataframe(display_df, hide_index=True, use_container_width=True, height=480)
 
         if filtered_df.empty:
             st.info("Nenhuma geração encontrada com os filtros atuais.")
         else:
+            generation_label_by_id = {
+                int(row.get("generation_event_id", 0) or 0): str(row.get("geração", "-") or "-")
+                for row in generation_rows
+                if int(row.get("generation_event_id", 0) or 0) > 0
+            }
+            generation_id_by_label = {label: event_id for event_id, label in generation_label_by_id.items()}
             selected_generation_label = st.selectbox(
-                "Detalhe da geração selecionada",
-                list(display_df["generation_event_id"].astype(int).tolist()),
+                "Geração para detalhe",
+                list(display_df["geração"].astype(str).tolist()),
                 index=0,
             )
-            selected_generation_id = int(selected_generation_label)
-            selected_generation = next((item for item in generation_rows if int(item.get("generation_event_id", 0) or 0) == selected_generation_id), {})
-            detail_cols = st.columns(6)
-            detail_cols[0].metric("generation_event_id", selected_generation.get("generation_event_id", "-"))
-            detail_cols[1].metric("data/hora", selected_generation.get("data/hora", "-"))
-            detail_cols[2].metric("solicitados", selected_generation.get("quantidade solicitada", 0))
-            detail_cols[3].metric("gerados", selected_generation.get("quantidade real gerada", 0))
-            detail_cols[4].metric("persistidos", selected_generation.get("quantidade persistida", 0))
-            detail_cols[5].metric("recuperados", selected_generation.get("total de jogos recuperados", 0))
-            st.caption(
-                " | ".join(
-                    [
-                        f"estratégia/modelo={selected_generation.get('estratégia/modelo', '-')}",
-                        f"status_conferência={selected_generation.get('status de conferência', '-')}",
-                        f"concurso={selected_generation.get('concurso conferido', '-') or '-'}",
-                        f"maior_acerto={selected_generation.get('maior acerto', '-')}",
-                        f"melhor_score={selected_generation.get('melhor score', '-')}",
-                    ]
-                )
+            selected_generation_id = int(generation_id_by_label.get(str(selected_generation_label), 0) or 0)
+            selected_generation = next(
+                (item for item in generation_rows if int(item.get("generation_event_id", 0) or 0) == selected_generation_id),
+                {},
             )
-            if selected_generation.get("observações/alertas") and selected_generation.get("observações/alertas") != "OK":
-                st.warning(f"Alerta: {selected_generation.get('observações/alertas')}")
-            selected_history = next((item for item in _load_generation_history(limit=None) if int(item.get("generation_event_id", 0) or 0) == selected_generation_id), {})
-            if selected_history:
-                selected_generation_batch_id = str(selected_generation.get("batch_id", "") or "").strip()
-                if selected_generation_batch_id and bool(selected_generation.get("is_conferible", False)):
-                    action_cols = st.columns([1.2, 1.0, 1.0])
-                    if action_cols[0].button("Enviar geração para conferência", type="primary"):
-                        st.session_state["institutional_active_batch_id"] = selected_generation_batch_id
-                        st.session_state["active_reconciliation_batch_id"] = selected_generation_batch_id
-                        st.session_state["active_reconciliation_generation_event_id"] = selected_generation_id
-                        st.session_state["active_reconciliation_scope"] = "generation"
-                        st.success(
-                            f"Geração {selected_generation_id} enviada para conferência da bateria {selected_generation_batch_id}."
-                        )
-                        st.rerun()
-                    action_cols[1].caption("Somente geração conferível")
-                    action_cols[2].caption("Vai abrir a conferência com esta geração")
-                st.markdown("###### Top jogos da geração selecionada")
-                st.dataframe(
-                    pd.DataFrame(
+            with st.expander("Detalhe da geração selecionada", expanded=False):
+                detail_cols = st.columns(4)
+                detail_cols[0].metric("Solicitados", int(selected_generation.get("quantidade solicitada", 0) or 0))
+                detail_cols[1].metric("Gerados", int(selected_generation.get("quantidade real gerada", 0) or 0))
+                detail_cols[2].metric("Persistidos", int(selected_generation.get("quantidade persistida", 0) or 0))
+                detail_cols[3].metric("Maior acerto", int(selected_generation.get("maior acerto", 0) or 0))
+                st.caption(
+                    " | ".join(
                         [
-                            {
-                                "jogo": game.get("game_index", "-"),
-                                "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                                "perfil": game.get("profile_type", "-"),
-                                "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                                "pares": int(game.get("even", 0) or 0),
-                                "Ímpares": int(game.get("odd", 0) or 0),
-                                "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
-                                "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
-                                "concurso conferido": game.get("contest_id", "-") or "-",
-                                "acertos": game.get("hits", "-") if game.get("hits") is not None else "-",
-                                "status": game.get("prize_status", "nao_premiado") or "nao_premiado",
-                            }
-                            for game in (selected_history.get("top_games") or [])
+                            f"estratégia={selected_generation.get('estratégia/modelo', '-')}",
+                            f"conferência={selected_generation.get('status de conferência', '-')}",
+                            f"concurso={selected_generation.get('concurso conferido', '-') or '—'}",
                         ]
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
+                    )
                 )
+                if selected_generation.get("observações/alertas") and selected_generation.get("observações/alertas") != "OK":
+                    st.warning(f"Alerta: {selected_generation.get('observações/alertas')}")
+                selected_history = next(
+                    (
+                        item
+                        for item in _load_generation_history(limit=None)
+                        if int(item.get("generation_event_id", 0) or 0) == selected_generation_id
+                    ),
+                    {},
+                )
+                if selected_history:
+                    selected_generation_batch_id = str(selected_generation.get("batch_id", "") or "").strip()
+                    if selected_generation_batch_id and bool(selected_generation.get("is_conferible", False)):
+                        if st.button("Enviar geração para conferência", type="primary"):
+                            st.session_state["institutional_active_batch_id"] = selected_generation_batch_id
+                            st.session_state["active_reconciliation_batch_id"] = selected_generation_batch_id
+                            st.session_state["active_reconciliation_generation_event_id"] = selected_generation_id
+                            st.session_state["active_reconciliation_scope"] = "generation"
+                            st.success(f"{selected_generation_label} enviada para conferência.")
+                            st.rerun()
+                    top_games = selected_history.get("top_games") or []
+                    if top_games:
+                        st.markdown("###### Top jogos")
+                        st.dataframe(
+                            _make_arrow_safe(
+                                pd.DataFrame(
+                                    [
+                                        {
+                                            "jogo": game.get("game_index", "-"),
+                                            "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
+                                            "perfil": game.get("profile_type", "-"),
+                                            "score": round(float(game.get("score", 0.0) or 0.0), 4),
+                                            "acertos": game.get("hits", "-") if game.get("hits") is not None else "-",
+                                            "status": game.get("prize_status", "nao_premiado") or "nao_premiado",
+                                        }
+                                        for game in top_games
+                                    ]
+                                )
+                            ),
+                            hide_index=True,
+                            use_container_width=True,
+                        )
 
-        st.markdown("##### Auditoria de integridade")
         issues = display_df[display_df["observações/alertas"].astype(str) != "OK"]
-        if issues.empty:
-            st.success("Nenhuma inconsistência detectada na visão institucional atual.")
-        else:
+        if not issues.empty:
+            st.markdown("##### Alertas de integridade")
             st.dataframe(
-                issues[
-                    [
-                        "geração",
-                        "generation_event_id",
-                        "quantidade solicitada",
-                        "quantidade real gerada",
-                        "quantidade persistida",
-                        "total de jogos recuperados",
-                        "status da geração",
-                        "status de persistência",
-                        "status de conferência",
-                        "observações/alertas",
+                _make_arrow_safe(
+                    issues[
+                        [
+                            column
+                            for column in ("geração", "quantidade solicitada", "quantidade real gerada", "observações/alertas")
+                            if column in issues.columns
+                        ]
                     ]
-                ],
+                ),
                 hide_index=True,
                 use_container_width=True,
             )
-        diag_cols = st.columns(10)
-        diag_cols[0].metric("total_generation_events_carregados", len(generation_rows))
-        diag_cols[1].metric("total_generation_events_exibidos", len(display_df))
-        diag_cols[2].metric("total_jogos_solicitados", total_requested)
-        diag_cols[3].metric("total_jogos_gerados", total_generated)
-        diag_cols[4].metric("total_jogos_persistidos", total_persisted)
-        diag_cols[5].metric("total_jogos_recuperados", total_recovered)
-        diag_cols[6].metric("generation_event_id_mais_antigo", int(generation_df["generation_event_id"].min()) if not generation_df.empty else "-")
-        diag_cols[7].metric("generation_event_id_mais_recente", int(generation_df["generation_event_id"].max()) if not generation_df.empty else "-")
-        diag_cols[8].metric("total_eventos_com_alerta", int((generation_df["observações/alertas"].astype(str) != "OK").sum()) if not generation_df.empty else 0)
-        diag_cols[9].metric("total_eventos_ok", int((generation_df["observações/alertas"].astype(str) == "OK").sum()) if not generation_df.empty else 0)
-        st.caption(f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}")
-    else:
-        st.info("Ainda não há gerações persistidas para reconstrução institucional.")
 
     latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
-    latest_reconciliation_id = int(generation_df["reconciliation_id"].fillna(0).astype(int).max()) if not generation_df.empty and "reconciliation_id" in generation_df.columns else 0
+    latest_reconciliation_id = (
+        int(generation_df["reconciliation_id"].fillna(0).astype(int).max())
+        if not generation_df.empty and "reconciliation_id" in generation_df.columns
+        else 0
+    )
     institutional_export = _build_db_derived_export_payload(
         generation_rows,
         db_table="generation_events",
         event_id=latest_generation_event_id or None,
         run_id=latest_reconciliation_id or None,
-        snapshot_id=str((institutional_guard.get("snapshot") or {}).get("memory_id") or (institutional_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+        snapshot_id=str(
+            (institutional_guard.get("snapshot") or {}).get("memory_id")
+            or (institutional_guard.get("snapshot") or {}).get("snapshot_id")
+            or ""
+        ),
     )
     _render_db_export_download(
         institutional_export,
         file_name="historico_institucional_export.csv",
         label="Exportar histórico institucional (PostgreSQL)",
     )
-
-    st.divider()
-    st.markdown("##### Tabelas Institucionais")
-    table_rows = []
-    for table, count in live_counts.items():
-        table_rows.append(
-            {
-                "tabela": table,
-                "contagem": int(count),
-                "ultima_persistencia": str(snapshot["latest"].get(table, "-") or "-"),
-            }
-        )
-    st.dataframe(_make_arrow_safe(pd.DataFrame(table_rows)), hide_index=True, use_container_width=True)
-
-    with st.expander("Timeline secundária", expanded=False):
-        timeline = _load_institutional_timeline_light(limit=25)
-        if timeline:
-            st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
-        else:
-            st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
