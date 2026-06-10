@@ -1,0 +1,41 @@
+baseline_id: LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10
+status: approved_candidate
+effective_date: "2026-06-10"
+locks:
+  - Lei_001_PostgreSQL_soberano
+  - Lei_15_geracao_soberana
+  - Lei_15A_registro_operacional
+  - Conferencia_cartao_final_por_jogo
+  - ML_assistivo_nao_gerador
+  - Main_protegida
+  - Legados_nao_operacionais
+next:
+  - validar_producao_railway_estavel
+  - encerrar_AUD_005_pos_deploy
+  - executar_AUD_006_DB_FIRST_HAI
+  - manter_legados_bloqueados
+audits_merged:
+  - id: AUD-004
+    pr: 15
+    topic: Conferencia_15D_cartao_final
+  - id: AUD-005
+    pr: 18
+    topic: Lei_001_P0_remediacao
+audits_open:
+  - id: AUD-006
+    pr: 25
+    branch: cursor/aud-006-db-first-hai-1a55
+    topic: HAI_DB_first
+docs_open:
+  - id: DOC-001
+    pr: 26
+    topic: ADR_expansao_dimensional
+  - id: DOC-002
+    pr: 27
+    topic: panel_semantic_labels
+promotion:
+  target_status: approved_production
+  requires:
+    - validar_producao_railway_estavel
+    - encerrar_AUD_005_pos_deploy
+    - executar_AUD_006_DB_FIRST_HAI

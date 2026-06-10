@@ -48,11 +48,11 @@ def test_select_conference_numbers_uses_final_card(card_format: int, reservas: i
     assert info["dezenas_conferidas_count"] == card_format
     assert info["actual_card_size"] == card_format
     assert info["expected_card_size"] == card_format
-    assert info["origem_dezenas_conferencia"] == (
-        "nucleo_lei_15a_congelado" if card_format == 15 else "cartao_final"
+    assert info["origem_dezenas_conferencia"] == "cartao_final"
+    expected_final = sorted(
+        list(game["core_numbers"]) + list(game["audited_reserve_numbers"][: max(0, card_format - 15)])
     )
-    if card_format == 15:
-        assert info["conference_numbers"] == sorted(admin_app.LEI15A_NUCLEO_15D_CONGELADO)
+    assert info["conference_numbers"] == expected_final
     assert len(info["conference_numbers"]) == card_format
     assert len(game["audited_reserve_numbers"]) == reservas
 
@@ -99,3 +99,166 @@ def test_conference_compare_uses_cartao_final_for_19d() -> None:
     assert result.get("actual_card_size") == 19
     assert result.get("hits") == 15
     assert result.get("matched_numbers") == [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 18]
+
+
+def _build_15d_game(index: int, core: list[int]) -> dict[str, object]:
+    final_card = sorted(core)
+    return {
+        "generation_event_id": 1000 + index,
+        "game_index": index,
+        "formato_cartao": 15,
+        "nucleo_lei_15": " ".join(f"{n:02d}" for n in core),
+        "cartao_final": " ".join(f"{n:02d}" for n in final_card),
+        "numbers": list(core),
+        "core_numbers": list(core),
+        "final_card_numbers": list(final_card),
+        "quantidade_nucleo": 15,
+        "quantidade_reservas": 0,
+        "quantidade_final": 15,
+        "game_signature": f"sig-15d-{index}",
+    }
+
+
+def test_conferencia_15d_usa_cartao_final_por_jogo() -> None:
+    cores = [
+        [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+        [1, 3, 4, 5, 6, 9, 10, 12, 14, 15, 17, 19, 21, 23, 24],
+        [2, 4, 6, 7, 8, 9, 11, 12, 13, 16, 17, 18, 20, 21, 25],
+    ]
+    games = [_build_15d_game(index, core) for index, core in enumerate(cores, start=1)]
+    contest = {"concurso": 3700, "data": "01/06/2026", "dezenas": cores[0]}
+
+    comparison = admin_app._compare_games_against_contest(
+        generation_event_id=1000,
+        games=games,
+        contest=contest,
+    )
+
+    results = list(comparison.get("results") or [])
+    assert len(results) == 3
+    for game, result in zip(games, results):
+        expected = sorted(game["final_card_numbers"])
+        assert result["numbers"] == expected
+        assert result["cartao_final"] == expected
+        assert result["origem_dezenas_conferencia"] == "cartao_final"
+    assert len({tuple(row["numbers"]) for row in results}) == 3
+
+
+def test_conferencia_15d_nao_repete_nucleo_fixo() -> None:
+    games = [_build_15d_game(index, core) for index, core in enumerate(
+        [
+            [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+            [1, 3, 4, 5, 6, 9, 10, 12, 14, 15, 17, 19, 21, 23, 24],
+        ],
+        start=1,
+    )]
+    guard = admin_app.validate_conference_15d_source(
+        games=games,
+        conference_results=[
+            {"numbers": sorted(g["final_card_numbers"]), "origem_dezenas_conferencia": "cartao_final"}
+            for g in games
+        ],
+    )
+    assert guard["valid"] is True
+    assert guard["classification"] == "COMPATIVEL"
+    assert guard["conferencia_15d_all_rows_identical"] is False
+
+
+def test_conferencia_15d_bloqueia_nucleo_fixo_repetido() -> None:
+    games = [_build_15d_game(index, core) for index, core in enumerate(
+        [
+            [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+            [1, 3, 4, 5, 6, 9, 10, 12, 14, 15, 17, 19, 21, 23, 24],
+        ],
+        start=1,
+    )]
+    frozen = sorted(admin_app.LEI15_NUCLEO_15D_CONGELADO)
+    guard = admin_app.validate_conference_15d_source(
+        games=games,
+        conference_results=[
+            {"numbers": frozen, "origem_dezenas_conferencia": "nucleo_lei_15a_congelado"},
+            {"numbers": frozen, "origem_dezenas_conferencia": "nucleo_lei_15a_congelado"},
+        ],
+    )
+    assert guard["valid"] is False
+    assert guard["classification"] == "CONFLITANTE"
+    assert guard["persistence_guard_status"] == "BLOQUEADO_NUCLEO_FIXO_15D"
+    assert guard["conferencia_15d_all_rows_identical"] is True
+    assert guard["jogos_gerados_15d_rows_variable"] is True
+
+
+def test_conferencia_15d_compare_blocks_before_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+    games = [_build_15d_game(index, core) for index, core in enumerate(
+        [
+            [1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 18, 20, 22, 23, 25],
+            [1, 3, 4, 5, 6, 9, 10, 12, 14, 15, 17, 19, 21, 23, 24],
+        ],
+        start=1,
+    )]
+
+    def _blocked_guard(**_kwargs) -> dict[str, object]:
+        return {
+            "valid": False,
+            "classification": "CONFLITANTE",
+            "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+            "conferencia_15d_all_rows_identical": True,
+            "jogos_gerados_15d_rows_variable": True,
+        }
+
+    def _forbidden_persist(*_args, **_kwargs) -> None:
+        raise AssertionError("reconciliation must not persist when conference 15D guard blocks")
+
+    monkeypatch.setattr(admin_app, "validate_conference_15d_source", _blocked_guard)
+    monkeypatch.setattr(admin_app, "get_session", _forbidden_persist)
+
+    comparison = admin_app._compare_games_against_contest(
+        generation_event_id=1000,
+        games=games,
+        contest={"concurso": 3700, "data": "01/06/2026", "dezenas": list(games[0]["final_card_numbers"])},
+    )
+    assert comparison["status"] == "error"
+    assert comparison["persistence_guard_status"] == "BLOQUEADO_NUCLEO_FIXO_15D"
+
+
+def test_run_institutional_conference_aborts_on_15d_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked_comparison = {
+        "status": "error",
+        "message": "Conferência 15D bloqueada: núcleo fixo repetido enquanto jogos gerados são distintos.",
+        "contest_number": 3700,
+        "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+        "diagnostics": {
+            "conference_15d_guard": {
+                "valid": False,
+                "classification": "CONFLITANTE",
+                "persistence_guard_status": "BLOQUEADO_NUCLEO_FIXO_15D",
+            }
+        },
+    }
+    monkeypatch.setattr(admin_app, "_load_official_history_contest", lambda _contest: {"concurso": 3700, "dezenas": list(range(1, 16))})
+    monkeypatch.setattr(
+        admin_app,
+        "_load_persisted_generation_event_groups",
+        lambda batch_id=None: [{"generation_event_id": 42, "games": [{"numbers": list(range(1, 16))}], "total_games": 1}],
+    )
+    monkeypatch.setattr(admin_app, "_compare_games_against_contest", lambda **_: blocked_comparison)
+    monkeypatch.setattr(admin_app, "build_post_reconciliation_scientific_memory", lambda **_kwargs: {"memory_id": 1})
+    monkeypatch.setattr(admin_app, "_persist_scientific_reconciliation_memory", lambda _payload: None)
+
+    class _SessionState(dict):
+        pass
+
+    session_state = _SessionState({"active_reconciliation_generation_event_id": 42})
+    monkeypatch.setattr(admin_app.st, "session_state", session_state)
+
+    admin_app._run_institutional_conference(contest_number=3700, generation_event_id=42)
+
+    assert session_state.get("institutional_check_result", {}).get("status") == "blocked_conference_15d"
+    assert "institutional_batch_conference_result" not in session_state
+
+
+def test_conferencia_16d_regressao_preservada() -> None:
+    game = _build_game(16)
+    info = admin_app._select_conference_numbers(game)
+    assert info["origem_dezenas_conferencia"] == "cartao_final"
+    assert info["conference_numbers"] == sorted(game["final_card_numbers"])
+    assert len(info["conference_numbers"]) == 16

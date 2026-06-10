@@ -73,15 +73,14 @@ LotoIA is a scientific statistical platform focused on:
 
 ## Cursor Cloud specific instructions
 
-### Stack
+LotoIA is a **Python monorepo** (no Node.js, no Docker required). See `README.md` for the canonical setup.
 
-Python monorepo (no Node.js, no Docker required). See `README.md` for the canonical setup commands.
+### Runtime
 
-- **Python**: 3.11+ (repo pins 3.11.15 in `.python-version`; Python 3.12 works on Cloud VMs).
-- **Package manager**: `pip` + `requirements.txt`; install the package with `pip install -e .` so the `lotoia` CLI resolves.
+- **Python**: repo pins `3.11.15` (`.python-version`, `runtime.txt`); **Python 3.12** works on Cloud VMs. One-time: `sudo apt-get install -y python3.12-venv`.
+- **Virtualenv**: `.venv/` at repo root — `source .venv/bin/activate` or `.venv/bin/pytest` directly.
+- **Package manager**: `pip install -r requirements.txt` and `pip install -e .` for the `lotoia` CLI.
 - **Persistence**: SQLite at `data/lotoia.db` by default; historical CSV at `data/raw/historico_lotofacil.csv`.
-
-On a fresh Ubuntu VM, `python3 -m venv` may require `sudo apt-get install -y python3.12-venv` once before the first venv creation.
 
 ### Environment bootstrap (first session)
 
@@ -96,27 +95,26 @@ python scripts/init_database.py
 
 ### Services (manual start; only one Streamlit app per port)
 
-| Service | Command | URL |
-|---------|---------|-----|
-| FastAPI | `uvicorn backend.main:app --reload` | http://127.0.0.1:8000 |
-| Streamlit (institutional) | `streamlit run dashboard/app.py` | http://127.0.0.1:8501 |
-| Streamlit (public/cloud) | `streamlit run dashboard/public_app.py` | http://127.0.0.1:8501 |
+| Service | Command | Port |
+|---------|---------|------|
+| FastAPI | `uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000` | 8000 |
+| Streamlit (institutional) | `streamlit run dashboard/institutional_app.py --server.port 8501 --server.headless true` | 8501 |
+| Streamlit (public/cloud) | `streamlit run dashboard/public_app.py --server.port 8501 --server.headless true` | 8501 |
 
-`pytest` exercises the FastAPI app in-process and imports dashboard modules directly — **no servers need to be running** for the test suite.
+`pytest` exercises the FastAPI app in-process — **no servers need to be running** for the test suite.
 
 ### Lint / test
 
 ```bash
 source .venv/bin/activate
-ruff check .
+ruff check src backend dashboard tests scripts
 python -m pytest
 ```
 
-`ruff check` may report pre-existing style issues; `pytest` currently has some failing tests on `main` (569+ pass). No Makefile or CI lint gate is defined in-repo.
+Optional PostgreSQL (`DATABASE_URL` / `LOTOIA_DATABASE_URL`) is not required for local development.
 
 ### Gotchas
 
-- Activate `.venv` (or call `.venv/bin/python` / `.venv/bin/pytest`) before running commands.
 - Streamlit binds port **8501**; FastAPI uses **8000** (`API_HOST` / `API_PORT` in `.env`).
-- The dashboard bootstraps SQLite schema on first run via `bootstrap_institutional_database`; run `python scripts/init_database.py` if you need tables before starting UI tests.
-- Historical analysis reads the CSV directly (`load_draws_csv`); the SQLite DB tracks operational/generated games separately from the CSV history.
+- Run `python scripts/init_database.py` if you need tables before UI tests.
+- Historical analysis may read CSV (`load_draws_csv`); operational data lives in SQLite/PostgreSQL.

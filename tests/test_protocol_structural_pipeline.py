@@ -155,7 +155,7 @@ def test_conference_uses_final_card_numbers_for_expanded_formats(card_format: in
     assert result.get("numbers") == final_card_numbers
     assert result.get("matched_numbers") == official_numbers
     assert result.get("game_signature") == "signature-383-1"
-    assert diagnostics.get("origem_dezenas_conferencia") == ("núcleo_lei_15" if card_format == 15 else "cartao_final")
+    assert diagnostics.get("origem_dezenas_conferencia") == "cartao_final"
 
 
 def test_generation_stops_before_attempts_when_previous_contest_missing() -> None:

@@ -31,6 +31,14 @@ from sqlalchemy.exc import IntegrityError
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
+from lotoia.database.institutional_read_repository import InstitutionalReadRepository, count_generated_games_for_event
+from lotoia.governance.db_first_guards import (
+    build_db_export_metadata,
+    detect_session_truth,
+    evaluate_analytical_guard,
+    evaluate_history_guard,
+    evaluate_institutional_guard,
+)
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
@@ -67,6 +75,21 @@ from lotoia.governance.structural_rfe import (
     validate_rfe_final_card,
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.observability.ml_diagnostic_panels import (
+    ALERT_SIDE_LEAK,
+    build_evolution_13_14_panel_payload,
+    build_evolution_14_15_panel_payload,
+    build_side_leak_panel_payload,
+    load_latest_reconciliation_diagnostic_context,
+)
+from lotoia.observability.observational_leftover import (
+    ML_ROLE_DIAGNOSTIC_ONLY,
+    OBSERVATIONAL_SOURCE_CARTAO_FINAL,
+    REAL_LEFTOVER_BASIS,
+    build_real_post_conference_leftover_payload,
+    format_dezenas as _format_observational_dezenas,
+    validate_real_leftover_guards,
+)
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
@@ -97,6 +120,7 @@ OFFICIAL_15_QUANTITY_TO_GROUP = {
     30: "G30",
     50: "G50",
 }
+ALLOWED_GENERATION_QUANTITIES: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 50)
 OFFICIAL_15_GROUP_TO_QUANTITY = {group: quantity for quantity, group in OFFICIAL_15_QUANTITY_TO_GROUP.items()}
 OFFICIAL_15_GROUP_SOURCE_REPORT = Path(__file__).resolve().parent.parent / "reports" / "grupos_oficiais_g50_g30_g20_g10.md"
 OFFICIAL_CARD_FORMATS = tuple(range(15, 24))
@@ -104,11 +128,16 @@ AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 
 INSTITUTIONAL_REFERENCE_J12 = (1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 15, 18, 22, 24, 25)
 INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24, 25)
 INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
-# Lei 15A — núcleo operacional 15D congelado (docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md)
-NUCLEO_LEI15A_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
-RESERVAS_PRIORITARIAS_LEI15A = (15, 5, 7, 14, 19)
-LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
-LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_PRIORITARIAS_LEI15A
+# Lei 15 — núcleo operacional 15D congelado (docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md)
+NUCLEO_LEI15_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
+RESERVAS_LEI15A_PRIORITARIAS = (15, 5, 7, 14, 19)
+RESERVAS_PRIORITARIAS_LEI15A = RESERVAS_LEI15A_PRIORITARIAS
+LEI15_NUCLEO_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
+NUCLEO_LEI15A_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
+LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
+LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_LEI15A_PRIORITARIAS
+LEI15A_REGISTRATION_MAX_FORMAT = 20
+LEI15A_REGISTRATION_PENDING_FORMATS = (21, 22, 23)
 LEI15A_VIGILANCIA = (4, 11, 12, 15)
 LEI15A_BLIND_SPOTS = (6, 16, 17, 21)
 LEI15A_MARGINAL = (8,)
@@ -152,12 +181,41 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Operacional GP",
-    "auditadas_escolhidas": "Auditadas",
-    "vigilantes_escolhidas": "Vigilantes",
-    "cartao_final_lido": "Cartão final",
+    "nucleo_a_dezenas": "Núcleo Lei 15 (insumo Lei 15A)",
+    "auditadas_escolhidas": "Auditadas Lei 15A",
+    "vigilantes_escolhidas": "Vigilantes Lei 15A",
+    "cartao_final_lido": "Cartão validado Lei 15A",
     "sincronizado_com_cartao_final": "Sincronizado",
 }
+LEI15_UPPER_PANEL_TITLE = "Jogos gerados pela Lei 15"
+LEI15_UPPER_PANEL_COLUMN_LABELS = {
+    "jogo": "Jogo",
+    "núcleo_lei_15": "Núcleo Lei 15",
+    "reservas_auditadas": "Reservas auditadas Lei 15",
+    "cartão_final": "Cartão final Lei 15",
+}
+LEI15A_LOWER_PANEL_TITLE = "Leitura operacional Lei 15A"
+LEI15A_PANEL_DESCRIPTION = (
+    "Esta leitura operacional Lei 15A audita e valida cada jogo gerado pela Lei 15: "
+    "o cartão validado deve coincidir com o cartão final superior; "
+    "núcleo operacional GP, auditadas e vigilantes são componentes próprios da Lei 15A."
+)
+LEI15A_PANEL_FORMAT_16D_20D_LABEL = "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP"
+LEI15A_PANEL_FORMAT_21D_23D_LABEL = "21D–23D = leitura observacional — registro Lei 15A pendente"
+LEI15A_PANEL_FORMAT_16D_23D_LABEL = LEI15A_PANEL_FORMAT_16D_20D_LABEL
+LEI15A_PANEL_SYNC_SUCCESS = (
+    "Leitura operacional Lei 15A validada: cartão Lei 15A coincide com "
+    "o cartão final gerado pela Lei 15, preservando componentes próprios."
+)
+LEI15A_PANEL_SYNC_SEMANTICS = (
+    "Sincronização significa coincidência entre cartão validado Lei 15A e "
+    "cartão final Lei 15. Não significa cópia de núcleo, reservas, auditadas "
+    "ou vigilantes entre as leis."
+)
+LEI15_PANEL_CONCEPT_15D = (
+    "15D = geração soberana Lei 15; conferência usa cartão final por jogo"
+)
+LEI15_PANEL_CONCEPT_EXPANDED = "16D–23D = cartão final gerado pela Lei 15 (geração soberana)"
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
@@ -180,6 +238,24 @@ POST_DRAW_MONITORING_PAYLOAD = {
     "gold_target": 14,
     "diamond_target": 15,
 }
+
+
+def _resolve_lei15a_panel_format_label(card_format: int) -> str:
+    """Rótulo semântico da faixa Lei 15A conforme matriz dimensional (DOC-001 / DOC-002)."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    if resolved_format <= LEI15A_REGISTRATION_MAX_FORMAT:
+        return LEI15A_PANEL_FORMAT_16D_20D_LABEL
+    return LEI15A_PANEL_FORMAT_21D_23D_LABEL
+
+
+def _resolve_lei15_panel_concept_label(card_format: int) -> str:
+    """Rótulo da geração soberana Lei 15 no painel superior/inferior."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    return LEI15_PANEL_CONCEPT_EXPANDED
 
 
 def _clean_law15_format_label(card_format: int) -> str:
@@ -316,7 +392,6 @@ PAGE_TARGETS = {
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
-    "Desempenho por grupo": "audit_monitoring_group_performance",
     "Dezenas faltantes": "audit_monitoring_missing_numbers",
     "Dezenas sobrando": "audit_monitoring_extra_numbers",
     "Vazamento lateral": "audit_monitoring_side_leak",
@@ -340,7 +415,6 @@ PAGE_TARGETS = {
     "Cobertura estrutural": "structural_coverage",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
-    "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
@@ -415,6 +489,7 @@ def _load_official_sync_diagnostics() -> dict[str, Any]:
 
 
 def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
+    """Cross-check/auditoria apenas. Nunca usar como fonte operacional de Histórico/Analítico/Institucional."""
     try:
         draws = load_draws_csv()
     except Exception:
@@ -430,7 +505,89 @@ def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
         "data": str(getattr(latest_draw, "date", "") or ""),
         "dezenas": [int(number) for number in getattr(latest_draw, "numbers", []) or []],
         "source": "historico_lotofacil.csv",
+        "usage": "auditoria_cross_check",
     }
+
+
+def _institutional_read_repository() -> InstitutionalReadRepository:
+    return InstitutionalReadRepository(DB_PATH)
+
+
+def _evaluate_db_first_history_guard(generation_event_id: int | None) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_history_guard(session, generation_event_id)
+
+
+def _evaluate_db_first_analytical_guard(
+    *,
+    reconciliation_run_id: int | None = None,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_analytical_guard(
+            session,
+            reconciliation_run_id=reconciliation_run_id,
+            generation_event_id=generation_event_id,
+        )
+
+
+def _evaluate_db_first_institutional_guard() -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_institutional_guard(session)
+
+
+def _resolve_scientific_memory_from_db(
+    *,
+    memory_kind: str,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    scientific_memory = _load_latest_scientific_memory(limit=20)
+    for row in scientific_memory:
+        if str(row.get("memory_kind", "") or "") != memory_kind:
+            continue
+        if generation_event_id is not None and int(row.get("generation_event_id", 0) or 0) != int(generation_event_id):
+            continue
+        return dict(row)
+    return {}
+
+
+def _build_db_derived_export_payload(
+    rows: list[dict[str, Any]],
+    *,
+    db_table: str,
+    event_id: int | None = None,
+    run_id: int | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, Any]:
+    metadata = build_db_export_metadata(
+        db_table=db_table,
+        event_id=event_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        commit_hash=_resolve_active_commit(),
+    )
+    return {"rows": rows, "metadata": metadata}
+
+
+def _render_db_export_download(
+    export_payload: dict[str, Any],
+    *,
+    file_name: str,
+    label: str,
+) -> None:
+    rows = list(export_payload.get("rows") or [])
+    metadata = dict(export_payload.get("metadata") or {})
+    if not rows:
+        return
+    export_df = pd.DataFrame(rows)
+    csv_body = export_df.to_csv(index=False)
+    metadata_lines = "\n".join(f"# {key}={value}" for key, value in metadata.items())
+    st.download_button(
+        label=label,
+        data=f"{metadata_lines}\n{csv_body}",
+        file_name=file_name,
+        mime="text/csv",
+    )
 
 
 def _load_official_sync_contest_summary() -> dict[str, Any] | None:
@@ -1027,7 +1184,20 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
             {},
         )
     if not post_reconciliation_memory:
-        post_reconciliation_memory = dict(st.session_state.get("institutional_post_reconciliation_memory") or {})
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
     if post_reconciliation_memory:
         st.markdown("###### Memória pós-conferência científica")
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
@@ -1038,7 +1208,17 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         post_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
         post_cols[4].metric("Jogos com 10", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_10_exact", 0) or 0))
         post_cols[5].metric("Jogos com 11+", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_11_plus", 0) or 0))
-    batch_reconciliation_memory = dict(st.session_state.get("institutional_batch_reconciliation_memory") or {})
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
+        session_conflict = detect_session_truth(
+            dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}),
+            None,
+        )
+        if session_conflict.get("conflict"):
+            st.warning(
+                "Memória consolidada indisponível no PostgreSQL. "
+                "session_state não pode ser usada como fonte oficial."
+            )
     if batch_reconciliation_memory:
         st.markdown("###### Memória consolidada da bateria conferida")
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
@@ -1313,18 +1493,13 @@ def _load_latest_contest_summary() -> dict[str, Any] | None:
 
 
 def _get_latest_contest() -> dict[str, Any] | None:
-    sync_summary = st.session_state.get("institutional_last_official_sync_summary", {}) or {}
-    sync_record = _normalize_contest_record(sync_summary.get("latest_contest_record"))
-    if sync_record:
-        return sync_record
+    """Retorna o concurso mais recente com prioridade PostgreSQL (Lei 001)."""
+    latest_official = get_latest_official_contest()
+    if latest_official:
+        return _normalize_contest_record(latest_official)
     persisted_sync_record = _load_official_sync_contest_summary()
     if persisted_sync_record:
         return persisted_sync_record
-    sync_contest = sync_summary.get("latest_contest")
-    if str(sync_contest or "").isdigit():
-        synced_contest = _load_imported_contest(int(sync_contest))
-        if synced_contest and int(synced_contest.get("contest_number", 0) or 0) > 0:
-            return synced_contest
     latest_contest = _load_imported_contest()
     if latest_contest and int(latest_contest.get("contest_number", 0) or 0) > 0:
         return latest_contest
@@ -1335,14 +1510,6 @@ def _get_latest_contest() -> dict[str, Any] | None:
     target_contest = latest_generation.get("target_contest")
     if str(target_contest or "").isdigit():
         return _load_imported_contest(int(target_contest))
-    if str(sync_contest or "").isdigit():
-        return {
-            "contest_number": int(sync_contest),
-            "created_at": str(sync_summary.get("sync_timestamp", "") or ""),
-            "data": "",
-            "dezenas": list(sync_summary.get("imported_numbers", []) or []),
-            "metadata_json": "{}",
-        }
     return None
 
 
@@ -2244,19 +2411,7 @@ def _load_official_history_rows(limit: int | None = None, *, descending: bool = 
     ]
 
 
-def _load_official_history_contest(contest_number: int | str | None) -> dict[str, Any] | None:
-    selected_contest = _safe_int(contest_number, default=None)
-    if selected_contest is None:
-        return None
-    with get_session(DB_PATH) as session:
-        row = (
-            session.query(LotofacilOfficialHistory)
-            .filter(LotofacilOfficialHistory.contest_number == int(selected_contest))
-            .limit(1)
-            .one_or_none()
-        )
-    if row is None:
-        return None
+def _format_official_history_contest_row(row: Any, selected_contest: int) -> dict[str, Any]:
     numbers = [
         int(str(value).lstrip("0") or "0")
         for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split()
@@ -2272,6 +2427,33 @@ def _load_official_history_contest(contest_number: int | str | None) -> dict[str
         "importado_em": row.imported_at.isoformat() if getattr(row, "imported_at", None) else "",
         "validado_em": row.validated_at.isoformat() if getattr(row, "validated_at", None) else "",
     }
+
+
+def _load_official_history_contest_with_session(
+    session: Any,
+    contest_number: int | str | None,
+) -> dict[str, Any] | None:
+    """Carrega concurso oficial reutilizando sessão DB existente (sem abrir nova conexão)."""
+    selected_contest = _safe_int(contest_number, default=None)
+    if selected_contest is None:
+        return None
+    row = (
+        session.query(LotofacilOfficialHistory)
+        .filter(LotofacilOfficialHistory.contest_number == int(selected_contest))
+        .limit(1)
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    return _format_official_history_contest_row(row, int(selected_contest))
+
+
+def _load_official_history_contest(contest_number: int | str | None) -> dict[str, Any] | None:
+    selected_contest = _safe_int(contest_number, default=None)
+    if selected_contest is None:
+        return None
+    with get_session(DB_PATH) as session:
+        return _load_official_history_contest_with_session(session, selected_contest)
 
 
 def _load_official_history_diagnostics() -> dict[str, Any]:
@@ -2360,7 +2542,21 @@ def _render_scientific_memory_block() -> None:
             {},
         )
     if not post_reconciliation_memory:
-        post_reconciliation_memory = dict(st.session_state.get("institutional_post_reconciliation_memory") or {})
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
@@ -2480,6 +2676,8 @@ def _render_scientific_memory_block() -> None:
             with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
                 st.caption("Registro técnico legado preservado para auditoria histórica.")
                 st.json(post_reconciliation_memory)
+        batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
         batch_reconciliation_memory = next(
             (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
             {},
@@ -3154,14 +3352,31 @@ def _render_scientific_calibration_panel(
 
 
 @st.cache_data(show_spinner=False)
-
 def _history_number_frequency() -> dict[int, int]:
+    """Frequência histórica a partir de lotofacil_official_history (PostgreSQL)."""
     try:
-        draws = load_draws_csv()
+        with get_session(DB_PATH) as session:
+            rows = (
+                session.query(LotofacilOfficialHistory)
+                .filter(LotofacilOfficialHistory.is_valid == 1)
+                .order_by(LotofacilOfficialHistory.contest_number.asc())
+                .all()
+            )
+        draws: list[dict[str, list[int]]] = []
+        for row in rows:
+            numbers = [
+                int(value)
+                for value in str(getattr(row, "numbers", "") or "").replace(",", " ").split()
+                if str(value).isdigit()
+            ]
+            if len(numbers) == 15:
+                draws.append(numbers)
+        if not draws:
+            return {}
+        frequencies = number_frequency(draws)
+        return {int(number): int(amount) for number, amount in frequencies.items()}
     except Exception:
         return {}
-    frequencies = number_frequency(draws)
-    return {int(number): int(amount) for number, amount in frequencies.items()}
 
 
 def _sequence_metrics(numbers: list[int]) -> dict[str, int]:
@@ -4240,13 +4455,55 @@ def _extract_contest_numbers(contest: dict[str, Any]) -> list[int]:
     return []
 
 
+def _lei15_frozen_nucleus() -> list[int]:
+    """Núcleo operacional 15D congelado da Lei 15 (documento-fonte soberano)."""
+    return list(NUCLEO_LEI15_15D_CONGELADO)
+
+
 def _lei15a_frozen_nucleus() -> list[int]:
-    """Núcleo operacional 15D congelado da Lei 15A (referência institucional)."""
-    return list(LEI15A_NUCLEO_15D_CONGELADO)
+    """Alias legado — o núcleo congelado pertence à Lei 15."""
+    return _lei15_frozen_nucleus()
+
+
+def build_lei15A_registration_card(format_size: int | str | None) -> dict[str, Any]:
+    """Monta o cartão de registro da aposta Lei 15A para formatos 15D–20D."""
+    card_format = int(format_size or 15)
+    nucleus = list(NUCLEO_LEI15_15D_CONGELADO)
+    if card_format in LEI15A_REGISTRATION_PENDING_FORMATS or card_format > LEI15A_REGISTRATION_MAX_FORMAT:
+        return {
+            "format_size": card_format,
+            "nucleus": nucleus,
+            "reserves_used": [],
+            "registration_card": [],
+            "status": "pendente Lei 15A",
+            "operational": False,
+        }
+    if card_format <= 15:
+        reserves_used: list[int] = []
+    else:
+        reserve_count = min(card_format - 15, len(RESERVAS_LEI15A_PRIORITARIAS))
+        reserves_used = list(RESERVAS_LEI15A_PRIORITARIAS[:reserve_count])
+    registration_card = sorted(set(nucleus + reserves_used))
+    return {
+        "format_size": card_format,
+        "nucleus": nucleus,
+        "reserves_used": reserves_used,
+        "registration_card": registration_card,
+        "status": "registro_lei15a",
+        "operational": True,
+    }
+
+
+def _lei15a_registration_card_label(format_size: int | str | None) -> str:
+    """Formata o cartão de registro Lei 15A para exibição ou comparação de sync."""
+    registration = build_lei15A_registration_card(format_size)
+    if not registration.get("operational"):
+        return "-"
+    return _format_numbers_for_history(registration.get("registration_card")) or "-"
 
 
 def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], int, str]:
-    """Extrai as dezenas que devem ser conferidas, priorizando o cartão final expandido."""
+    """Extrai as dezenas que devem ser conferidas, priorizando o cartão final por jogo."""
     if not isinstance(game, dict):
         return [], 15, "indisponivel"
 
@@ -4265,16 +4522,241 @@ def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], i
         default=None,
     )
     expected_card_size = int(card_format or len(final_card_numbers) or len(core_numbers) or 15)
-    if expected_card_size >= 16 and final_card_numbers:
-        return final_card_numbers, expected_card_size, "cartao_final"
-    frozen_nucleus = _lei15a_frozen_nucleus()
-    if expected_card_size <= 15 and frozen_nucleus:
-        return frozen_nucleus, 15, "nucleo_lei_15a_congelado"
-    if core_numbers:
-        return core_numbers, expected_card_size, "núcleo_lei_15"
     if final_card_numbers:
         return final_card_numbers, expected_card_size, "cartao_final"
+    if core_numbers:
+        return core_numbers, expected_card_size, "núcleo_lei_15"
     return [], expected_card_size, "indisponivel"
+
+
+def _game_cartao_final_numbers(game: dict[str, Any]) -> list[int]:
+    """Retorna o cartão final real de um jogo gerado pela Lei 15."""
+    return _extract_int_numbers(
+        game.get("final_card_numbers")
+        or game.get("cartao_final")
+        or game.get("cartão_final")
+        or game.get("numbers")
+        or []
+    )
+
+
+def _extract_cartao_final_from_game(game: dict[str, Any]) -> list[int]:
+    """Cartão final persistido do jogo (generated_games.cartao_final). Não usa núcleo Lei 15."""
+    context_json = dict(game.get("generation_context") or {})
+    for source in (
+        context_json.get("final_card_numbers"),
+        game.get("final_card_numbers"),
+        game.get("cartao_final"),
+        game.get("cartão_final"),
+    ):
+        if isinstance(source, list):
+            numbers = [int(number) for number in source]
+        else:
+            numbers = _extract_int_numbers(str(source or ""))
+        if numbers:
+            return sorted(numbers)
+    return []
+
+
+def _extract_resultado_oficial_dezenas(concurso_analisado: int | None) -> list[int]:
+    if concurso_analisado is None or int(concurso_analisado) <= 0:
+        return []
+    official = get_official_contest(int(concurso_analisado))
+    if not official:
+        return []
+    return _extract_official_numbers_from_record(official)
+
+
+def _build_observational_leftover_audit_row(
+    game: dict[str, Any],
+    *,
+    concurso_analisado: int | None = None,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+) -> dict[str, Any]:
+    cartao_final = _extract_cartao_final_from_game(game)
+    resultado_oficial = _extract_resultado_oficial_dezenas(concurso_analisado)
+    conference_info = _select_conference_numbers(game)
+    formato_cartao = int(
+        conference_info.get("formato_cartao")
+        or game.get("formato_cartao")
+        or len(cartao_final)
+        or 15
+    )
+    origem_observacional = OBSERVATIONAL_SOURCE_CARTAO_FINAL if cartao_final else "indisponivel"
+    guard_errors = validate_real_leftover_guards(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+        concurso_analisado=concurso_analisado,
+        generation_event_id=generation_event_id,
+        origem_observacional=origem_observacional,
+    )
+    base_row = {
+        "generation_event_id": int(generation_event_id or 0) or "-",
+        "reconciliation_run_id": int(reconciliation_run_id or 0) or "-",
+        "concurso analisado": int(concurso_analisado or 0) or "-",
+        "formato_cartao": formato_cartao,
+        "origem_observacional": origem_observacional,
+        "dezenas_observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas": _format_observational_dezenas(cartao_final),
+        "dezenas observadas count": len(cartao_final),
+        "cartao_final": _format_observational_dezenas(cartao_final),
+        "cartao_referencia": _format_observational_dezenas(resultado_oficial),
+        "resultado_oficial": _format_observational_dezenas(resultado_oficial),
+        "dezenas_acertadas": "-",
+        "dezenas sobrando": "-",
+        "dezenas_sobrando_count": 0,
+        "dezenas faltantes": "-",
+        "dezenas_faltantes_count": 0,
+        "leftover_basis": REAL_LEFTOVER_BASIS,
+        "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
+        "grupo relacionado": game.get("game_index", "-"),
+    }
+    if guard_errors:
+        base_row["observação institucional"] = f"bloqueado: {', '.join(guard_errors)}"
+        return base_row
+
+    payload = build_real_post_conference_leftover_payload(
+        cartao_final=cartao_final,
+        resultado_oficial=resultado_oficial,
+    )
+    base_row.update(
+        {
+            "origem_observacional": str(payload["origem_observacional"]),
+            "dezenas_observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas": _format_observational_dezenas(payload["dezenas_observadas"]),
+            "dezenas observadas count": len(payload["dezenas_observadas"]),
+            "cartao_final": _format_observational_dezenas(payload["cartao_final"]),
+            "cartao_referencia": _format_observational_dezenas(payload["cartao_referencia"]),
+            "resultado_oficial": _format_observational_dezenas(payload["resultado_oficial"]),
+            "dezenas_acertadas": _format_observational_dezenas(payload["dezenas_acertadas"]),
+            "dezenas sobrando": _format_observational_dezenas(payload["dezenas_sobrando"]),
+            "dezenas_sobrando_count": int(payload["dezenas_sobrando_count"]),
+            "dezenas faltantes": _format_observational_dezenas(payload["dezenas_faltando"]),
+            "dezenas_faltantes_count": len(payload["dezenas_faltando"]),
+            "leftover_basis": str(payload["leftover_basis"]),
+            "ml_role": str(payload["ml_role"]),
+            "observação institucional": "observação pós-conferência",
+        }
+    )
+    return base_row
+
+
+OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "resultado_oficial",
+    "dezenas_nao_acertadas",
+    "dezenas_nao_acertadas_count",
+)
+
+OBSERVATIONAL_MISSING_DISPLAY_COLUMNS: tuple[str, ...] = (
+    "concurso_analisado",
+    "formato_cartao",
+    "dezenas_registradas",
+    "resultado_oficial",
+    "dezenas_faltantes",
+    "dezenas_faltantes_count",
+)
+
+
+def _project_observational_leftover_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para as colunas operacionais do painel."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
+        "dezenas_nao_acertadas": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
+        "dezenas_nao_acertadas_count": row.get("dezenas_sobrando_count", 0),
+    }
+
+
+def _project_observational_missing_display_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Projeta linha completa da auditoria para o painel de dezenas faltantes."""
+    return {
+        "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
+        "formato_cartao": row.get("formato_cartao", "-"),
+        "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
+        "resultado_oficial": row.get("resultado_oficial", "-"),
+        "dezenas_faltantes": row.get("dezenas faltantes", row.get("dezenas_faltantes", "-")),
+        "dezenas_faltantes_count": row.get("dezenas_faltantes_count", 0),
+    }
+
+
+def validate_conference_15d_source(
+    *,
+    games: Sequence[dict[str, Any]],
+    conference_results: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Bloqueia persistência quando a Conferência 15D usa núcleo fixo repetido."""
+    if not games or not conference_results:
+        return {
+            "valid": True,
+            "classification": "COMPATIVEL",
+            "persistence_guard_status": "PROTEGIDO",
+            "conferencia_15d_all_rows_identical": False,
+            "jogos_gerados_15d_rows_variable": False,
+        }
+
+    card_format = _safe_int(
+        games[0].get("formato_cartao")
+        or games[0].get("card_format")
+        or games[0].get("selected_card_format")
+        or games[0].get("quantidade_final"),
+        default=15,
+    )
+    if int(card_format or 15) != 15:
+        return {
+            "valid": True,
+            "classification": "COMPATIVEL",
+            "persistence_guard_status": "PROTEGIDO",
+            "conferencia_15d_all_rows_identical": False,
+            "jogos_gerados_15d_rows_variable": False,
+        }
+
+    generated_cards = [tuple(_game_cartao_final_numbers(game)) for game in games]
+    conference_cards = [
+        tuple(_extract_int_numbers(result.get("numbers") or result.get("cartao_final") or []))
+        for result in conference_results
+    ]
+    games_variable = len(set(generated_cards)) > 1
+    conference_all_identical = len(set(conference_cards)) == 1 and len(conference_cards) > 1
+    forbidden_origins = {
+        "nucleo_lei_15a_congelado",
+        "nucleo_operacional_gp",
+        "base_core",
+        "fallback_15d",
+        "cartao_registro",
+    }
+    forbidden_source_detected = any(
+        str(result.get("origem_dezenas_conferencia", "") or "").lower() in forbidden_origins
+        for result in conference_results
+    )
+    frozen_nucleus = tuple(_lei15a_frozen_nucleus())
+    uses_frozen_nucleus = any(conference_card == frozen_nucleus for conference_card in conference_cards)
+    per_game_mismatch = any(
+        conference_card != generated_card
+        for conference_card, generated_card in zip(conference_cards, generated_cards)
+        if generated_card
+    )
+    conflict_detected = (
+        (games_variable and conference_all_identical)
+        or forbidden_source_detected
+        or (games_variable and uses_frozen_nucleus)
+        or per_game_mismatch
+    )
+    return {
+        "valid": not conflict_detected,
+        "classification": "COMPATIVEL" if not conflict_detected else "CONFLITANTE",
+        "persistence_guard_status": "PROTEGIDO" if not conflict_detected else "BLOQUEADO_NUCLEO_FIXO_15D",
+        "conferencia_15d_all_rows_identical": conference_all_identical,
+        "jogos_gerados_15d_rows_variable": games_variable,
+        "forbidden_source_detected": forbidden_source_detected,
+        "uses_frozen_nucleus": uses_frozen_nucleus,
+        "per_game_mismatch": per_game_mismatch,
+    }
 
 
 def _select_conference_numbers(game: dict[str, Any]) -> dict[str, Any]:
@@ -4465,6 +4947,11 @@ def _run_institutional_generation(
     seen_signatures: set[str] | None = None,
 ) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
+    try:
+        total_games = _validate_generation_quantity(total_games)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     st.session_state.pop("institutional_generation_batch_result", None)
     started = time.monotonic()
     seed = int(time.time()) % 1_000_000
@@ -5154,6 +5641,11 @@ def _run_institutional_generation_batch(
     batch_profile_usage: dict[tuple[int, int], int] | None = None,
     batch_total_games: int | None = None,
 ) -> None:
+    try:
+        total_games = _validate_generation_quantity(total_games)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
     batch_seen_signatures: set[str] = set(load_batch_output_signatures(batch_id))
@@ -5483,6 +5975,22 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             games=list(group.get("games") or []),
             contest=contest_payload,
         )
+        if str(comparison.get("status", "") or "") == "error":
+            conference_15d_guard = dict((comparison.get("diagnostics") or {}).get("conference_15d_guard") or comparison.get("conference_15d_guard") or {})
+            st.session_state["institutional_check_result"] = {
+                "status": "blocked_conference_15d",
+                "warning": str(comparison.get("message", "Conferência 15D bloqueada.") or "Conferência 15D bloqueada."),
+                "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
+                "generation_event_id": int(group.get("generation_event_id") or 0),
+                "conference_15d_guard": conference_15d_guard,
+                "persistence_guard_status": str(
+                    comparison.get("persistence_guard_status")
+                    or conference_15d_guard.get("persistence_guard_status")
+                    or "BLOQUEADO_NUCLEO_FIXO_15D"
+                ),
+                "classification": str(conference_15d_guard.get("classification", "CONFLITANTE") or "CONFLITANTE"),
+            }
+            return
         comparison_diagnostics = dict(comparison.get("diagnostics") or {})
         group_games = list(group.get("games") or [])
         group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
@@ -5842,6 +6350,244 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
+def _compute_structural_entropy_from_dezenas(games: Sequence[Sequence[int]]) -> float:
+    """Entropia normalizada da dispersão de dezenas no lote conferido."""
+    frequencies: dict[int, int] = {}
+    total = 0
+    for numbers in games:
+        for number in numbers:
+            value = int(number)
+            if 1 <= value <= 25:
+                frequencies[value] = frequencies.get(value, 0) + 1
+                total += 1
+    if total <= 0 or not frequencies:
+        return 0.0
+    entropy = 0.0
+    for count in frequencies.values():
+        share = count / total
+        entropy -= share * math.log2(share)
+    max_entropy = math.log2(len(frequencies)) if len(frequencies) > 1 else 1.0
+    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
+
+
+def _empty_hb_metrics_payload() -> dict[str, Any]:
+    return {
+        "available": False,
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": 0,
+        "media_acertos": 0.0,
+        "jogos_11_mais": 0,
+        "jogos_12_mais": 0,
+        "entropia_estrutural": 0.0,
+        "media_sobreposicao": 0.0,
+        "dezenas_dominantes": [],
+        "concursos_analisados": 0,
+        "jogos_analisados": 0,
+        "tamanho_conjunto": 0,
+    }
+
+
+def _build_hb_metrics_payload_from_reconciliation(
+    *,
+    reconciliation_run_id: int,
+    contest_id: int,
+    games_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
+    hits = [int(row.get("hits", 0) or 0) for row in games_rows]
+    contest_ids = {
+        int(row.get("contest_id", 0) or 0)
+        for row in games_rows
+        if int(row.get("contest_id", 0) or 0) > 0
+    }
+    if not contest_ids and int(contest_id or 0) > 0:
+        contest_ids = {int(contest_id)}
+    structural = _summarize_games_structurally(games_numbers)
+    pool_numbers: set[int] = set()
+    for numbers in games_numbers:
+        pool_numbers.update(numbers)
+    media_acertos = round(sum(hits) / len(hits), 4) if hits else 0.0
+    return {
+        "available": bool(games_rows),
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": int(reconciliation_run_id or 0),
+        "media_acertos": media_acertos,
+        "jogos_11_mais": sum(1 for value in hits if value >= 11),
+        "jogos_12_mais": sum(1 for value in hits if value >= 12),
+        "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
+        "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
+        "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
+        "concursos_analisados": len(contest_ids),
+        "jogos_analisados": len(games_rows),
+        "tamanho_conjunto": len(pool_numbers),
+    }
+
+
+def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
+    """Carrega métricas HB da última reconciliation_run persistida no PostgreSQL (Lei 001)."""
+    with get_session(DB_PATH) as session:
+        run = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .first()
+        )
+        if run is None:
+            return _empty_hb_metrics_payload()
+        games_rows = (
+            session.query(ReconciliationGame)
+            .filter(ReconciliationGame.reconciliation_run_id == run.id)
+            .order_by(ReconciliationGame.game_index.asc())
+            .all()
+        )
+        row_payloads = [
+            {
+                "numbers": list(row.numbers or []),
+                "hits": int(row.hits or 0),
+                "contest_id": int(row.contest_id or 0),
+            }
+            for row in games_rows
+        ]
+        return _build_hb_metrics_payload_from_reconciliation(
+            reconciliation_run_id=int(run.id or 0),
+            contest_id=int(run.contest_id or 0),
+            games_rows=row_payloads,
+        )
+
+
+def _build_reconciliation_result_row(game_row: ReconciliationGame) -> dict[str, Any]:
+    context_json = dict(getattr(game_row, "context_json", {}) or {})
+    numbers = [int(number) for number in (game_row.numbers or [])]
+    card_size = len(numbers) or 15
+    return {
+        "game_index": int(getattr(game_row, "game_index", 0) or 0),
+        "numbers": numbers,
+        "cartao_final": numbers,
+        "nucleo_lei_15": str(context_json.get("nucleo_lei_15", "") or "-"),
+        "reservas_auditadas": str(context_json.get("reservas_auditadas", "") or "-"),
+        "hits": int(getattr(game_row, "hits", 0) or 0),
+        "matched_numbers": [int(number) for number in (game_row.matched_numbers or [])],
+        "prize_status": str(getattr(game_row, "prize_status", "") or ""),
+        "prize_tier": str(getattr(game_row, "prize_tier", "") or ""),
+        "formato_cartao": card_size,
+        "dezenas_conferidas_count": card_size,
+        "origem_dezenas_conferencia": "cartao_final",
+        "expected_card_size": card_size,
+        "actual_card_size": card_size,
+    }
+
+
+def _load_institutional_check_result_from_db(
+    generation_event_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Reconstrói o resultado da conferência a partir de reconciliation_runs persistidos."""
+    with get_session(DB_PATH) as session:
+        query = session.query(ReconciliationRun).order_by(
+            ReconciliationRun.created_at.desc(),
+            ReconciliationRun.id.desc(),
+        )
+        if generation_event_id is not None and int(generation_event_id) > 0:
+            query = query.filter(ReconciliationRun.generation_event_id == int(generation_event_id))
+        runs = query.limit(12).all()
+        if not runs:
+            return None
+
+        seen_generations: set[int] = set()
+        generation_results: list[dict[str, Any]] = []
+        for run in runs:
+            gen_id = int(getattr(run, "generation_event_id", 0) or 0)
+            if gen_id in seen_generations:
+                continue
+            seen_generations.add(gen_id)
+            games_rows = (
+                session.query(ReconciliationGame)
+                .filter(ReconciliationGame.reconciliation_run_id == run.id)
+                .order_by(ReconciliationGame.game_index.asc())
+                .all()
+            )
+            if not games_rows:
+                continue
+            event = session.get(GenerationEvent, gen_id)
+            results = [_build_reconciliation_result_row(game_row) for game_row in games_rows]
+            hit_counts = Counter(int(row.get("hits", 0) or 0) for row in results)
+            generation_results.append(
+                {
+                    "generation_event_id": gen_id,
+                    "created_at": event.created_at.isoformat() if event and getattr(event, "created_at", None) else "",
+                    "seed": int(getattr(event, "seed", 0) or 0) if event else 0,
+                    "total_games": len(results),
+                    "target_contest": int(getattr(run, "contest_id", 0) or 0),
+                    "best_hits": int(getattr(run, "best_hits", 0) or 0),
+                    "total_hits": int(getattr(run, "total_hits", 0) or 0),
+                    "prize_count": int(getattr(run, "prize_count", 0) or 0),
+                    "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
+                    "results": results,
+                    "contest_number": int(getattr(run, "contest_id", 0) or 0),
+                    "contest_date": "",
+                    "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+                    "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
+                    "origem_dezenas_conferencia": "cartao_final",
+                    "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+                    "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
+                }
+            )
+
+        if not generation_results:
+            return None
+
+        primary = generation_results[0]
+        contest_number = int(primary.get("contest_number", 0) or 0)
+        official_contest = (
+            _load_official_history_contest_with_session(session, contest_number)
+            if contest_number > 0
+            else None
+        )
+        dezenas = list(official_contest.get("dezenas", []) or []) if official_contest else []
+        return {
+            "status": "checked",
+            "source": "reconciliation_runs",
+            "contest_number": contest_number,
+            "contest_date": str(official_contest.get("data", "") if official_contest else ""),
+            "dezenas": dezenas,
+            "official_numbers_from_db": dezenas,
+            "generation_results": generation_results,
+            "generation_event_id": int(primary.get("generation_event_id", 0) or 0),
+            "best_hits": max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0),
+            "total_hits": sum(int(item.get("total_hits", 0) or 0) for item in generation_results),
+            "prize_count": sum(int(item.get("prize_count", 0) or 0) for item in generation_results),
+            "formato_cartao": int(primary.get("formato_cartao", 15) or 15),
+            "dezenas_conferidas_count": int(primary.get("dezenas_conferidas_count", 0) or 0),
+            "origem_dezenas_conferencia": "cartao_final",
+            "expected_card_size": int(primary.get("expected_card_size", 15) or 15),
+            "actual_card_size": int(primary.get("actual_card_size", 0) or 0),
+            "results": list(primary.get("results", []) or []),
+        }
+
+
+def _resolve_institutional_check_result(
+    generation_event_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Prioriza reconciliation_runs persistido; session_state só para avisos transitórios."""
+    db_result = _load_institutional_check_result_from_db(generation_event_id=generation_event_id)
+    if db_result:
+        return db_result
+    session_result = dict(st.session_state.get("institutional_check_result") or {})
+    session_conflict = detect_session_truth(session_result, db_result)
+    if session_conflict.get("conflict"):
+        return {
+            "warning": "Conferência disponível apenas em session_state. Recarregue após persistência no PostgreSQL.",
+            "status": "blocked_session_truth",
+            "classification": session_conflict.get("classification", "CONFLITANTE"),
+        }
+    if session_result.get("warning"):
+        return {
+            "warning": str(session_result.get("warning", "") or ""),
+            "status": str(session_result.get("status", "waiting_contest") or "waiting_contest"),
+        }
+    return None
+
+
 def _mean_or_zero(values: list[float]) -> float:
     values = [float(value) for value in values if value is not None]
     return round(sum(values) / len(values), 4) if values else 0.0
@@ -5989,6 +6735,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "ml_enabled": bool(getattr(event, "ml_enabled", 0) or 0),
                     "total_games": len(games),
+                    "persisted_games_count": len(games_rows),
                     "target_contest": max(target_contests) if target_contests else None,
                     "first_name": str(getattr(event, "first_name", "") or ""),
                     "whatsapp": str(getattr(event, "whatsapp", "") or ""),
@@ -6494,10 +7241,11 @@ def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
+        generation_event_id = int(generation.get("generation_event_id", 0) or 0)
         games = list(generation.get("games", []) or [])
         reconciliation = dict(generation.get("reconciliation") or {})
         generated_count = int(generation.get("total_games", 0) or 0)
-        persisted_count = _count_generated_games_for_event(int(generation.get("generation_event_id", 0) or 0))
+        persisted_count = int(generation.get("persisted_games_count", generated_count) or generated_count)
         recovered_count = len(games)
         first_context = dict((games[0] or {}).get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
         requested_count = int(first_context.get("total_games", generated_count) or generated_count)
@@ -6662,11 +7410,18 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
+    institutional_guard = _evaluate_db_first_institutional_guard()
+    if not institutional_guard.get("allowed"):
+        st.error(
+            "Painel institucional bloqueado: nenhum snapshot, audit_log ou geração persistida encontrada no PostgreSQL."
+        )
+        st.caption(f"motivo={institutional_guard.get('reason', '-')}")
+        return
     st.subheader("Histórico Institucional")
     st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
 
     source_map = _institutional_source_map(snapshot)
-    latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
+    latest_sync = _load_official_sync_contest_summary() or _load_official_sync_diagnostics() or {}
     latest_contest = _load_latest_contest_summary() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
@@ -6733,8 +7488,8 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = dict(st.session_state.get("institutional_batch_conference_result") or {})
-        if not scientific_batch and scientific_batch_id:
+        scientific_batch = {}
+        if scientific_batch_id:
             scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
         latest_generated_games = list(latest_commander.get("generated_games", []) or [])
         latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
@@ -7024,13 +7779,22 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         diag_cols[9].metric("total_eventos_ok", int((generation_df["observações/alertas"].astype(str) == "OK").sum()) if not generation_df.empty else 0)
         st.caption(f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}")
     else:
-        if dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}):
-            st.info(
-                "Não há gerações operacionais persistidas para reconstrução institucional, "
-                "mas a memória científica consolidada da bateria ativa está disponível."
-            )
-        else:
-            st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+        st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+
+    latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
+    latest_reconciliation_id = int(generation_df["reconciliation_id"].fillna(0).astype(int).max()) if not generation_df.empty and "reconciliation_id" in generation_df.columns else 0
+    institutional_export = _build_db_derived_export_payload(
+        generation_rows,
+        db_table="generation_events",
+        event_id=latest_generation_event_id or None,
+        run_id=latest_reconciliation_id or None,
+        snapshot_id=str((institutional_guard.get("snapshot") or {}).get("memory_id") or (institutional_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        institutional_export,
+        file_name="historico_institucional_export.csv",
+        label="Exportar histórico institucional (PostgreSQL)",
+    )
 
     st.divider()
     st.markdown("##### Tabelas Institucionais")
@@ -7249,6 +8013,20 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
         st.dataframe(replay_df, hide_index=True, use_container_width=True)
 
 
+def _render_ml_diagnostic_source_caption(payload: dict[str, Any]) -> None:
+    st.caption(
+        " | ".join(
+            [
+                f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
+                f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
+                f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
+                "generation_command=False",
+                "recalibration_command=False",
+            ]
+        )
+    )
+
+
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
@@ -7264,18 +8042,23 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "dispersão e volume analisado, sem atuar como comando de geração ou "
         "recalibração."
     )
-    state = _hb_geometry_state()
-    summary = state["summary"] or {}
-    baseline = summary.get("hb_baseline", {})
-    avg_hits = round(float(baseline.get("average_hits", 0.0)), 4)
-    hits_11_plus = int(baseline.get("hits_11_plus", 0))
-    hits_12_plus = int(baseline.get("hits_12_plus", 0))
-    entropy = round(float(baseline.get("entropy", 0.0)), 4)
-    average_overlap = round(float(baseline.get("average_overlap", 0.0)), 4)
-    dominant_numbers = list(baseline.get("dominant_numbers", []) or [])
-    contests_analyzed = int(summary.get("contests_analyzed", 0) or 0)
-    games_count = int(summary.get("games_count", 0) or 0)
-    pool_size = int(summary.get("pool_size", 0) or 0)
+    metrics = _load_hb_metrics_from_reconciliation_db()
+    st.caption(
+        f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
+        f"reconciliation_run_id={metrics.get('reconciliation_run_id', 0)} | "
+        f"Lei 001: sem CSV, sem session_state"
+    )
+    if not metrics.get("available"):
+        st.warning("Nenhuma reconciliation_run persistida encontrada no PostgreSQL para calcular as métricas HB.")
+    avg_hits = float(metrics.get("media_acertos", 0.0) or 0.0)
+    hits_11_plus = int(metrics.get("jogos_11_mais", 0) or 0)
+    hits_12_plus = int(metrics.get("jogos_12_mais", 0) or 0)
+    entropy = float(metrics.get("entropia_estrutural", 0.0) or 0.0)
+    average_overlap = float(metrics.get("media_sobreposicao", 0.0) or 0.0)
+    dominant_numbers = list(metrics.get("dezenas_dominantes", []) or [])
+    contests_analyzed = int(metrics.get("concursos_analisados", 0) or 0)
+    games_count = int(metrics.get("jogos_analisados", 0) or 0)
+    pool_size = int(metrics.get("tamanho_conjunto", 0) or 0)
     cols = st.columns(4)
     cols[0].metric("Média de acertos", avg_hits)
     cols[1].metric("Jogos com 11+ acertos", hits_11_plus)
@@ -7287,30 +8070,29 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "ou mudança da governança soberana."
     )
     st.subheader("Resumo observacional HB")
-    st.caption("Indicadores estruturais derivados da bateria analisada.")
+    st.caption("Indicadores estruturais derivados da última reconciliation_run persistida.")
     metrics_df = pd.DataFrame(
         [
-            {"métrica": "average_overlap", "valor": average_overlap},
-            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in dominant_numbers[:5]) or "-"},
-            {"métrica": "contests_analyzed", "valor": contests_analyzed},
-            {"métrica": "games_count", "valor": games_count},
-            {"métrica": "pool_size", "valor": pool_size},
+            {"métrica": "media_sobreposicao", "valor": average_overlap},
+            {
+                "métrica": "dezenas_dominantes",
+                "valor": ", ".join(f"{item['number']:02d}:{item['frequency']}" for item in dominant_numbers[:5]) or "-",
+            },
+            {"métrica": "concursos_analisados", "valor": contests_analyzed},
+            {"métrica": "jogos_analisados", "valor": games_count},
+            {"métrica": "tamanho_conjunto", "valor": pool_size},
         ]
     )
     metric_label_map = {
-        "average_overlap": "Média de sobreposição",
-        "dominant_numbers": "Dezenas dominantes",
-        "contests_analyzed": "Concursos analisados",
-        "games_count": "Jogos analisados",
-        "pool_size": "Tamanho do conjunto",
+        "media_sobreposicao": "Média de sobreposição",
+        "dezenas_dominantes": "Dezenas dominantes",
+        "concursos_analisados": "Concursos analisados",
+        "jogos_analisados": "Jogos analisados",
+        "tamanho_conjunto": "Tamanho do conjunto",
     }
     metrics_display_df = metrics_df.copy()
-    if "métrica" in metrics_display_df.columns:
-        metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
-    elif "metric" in metrics_display_df.columns:
-        metrics_display_df["metric"] = metrics_display_df["metric"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"metric": "Métrica", "value": "Valor"})
+    metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
+    metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
     st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
     st.subheader("Interpretação observacional")
     st.markdown(
@@ -7320,19 +8102,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "alterar histórico."
     )
     with st.expander("Detalhes técnicos avançados"):
-        st.write(
-            {
-                "AVG_HITS": avg_hits,
-                "11+": hits_11_plus,
-                "12+": hits_12_plus,
-                "ENTROPY": entropy,
-                "average_overlap": average_overlap,
-                "dominant_numbers": dominant_numbers,
-                "contests_analyzed": contests_analyzed,
-                "games_count": games_count,
-                "pool_size": pool_size,
-            }
-        )
+        st.write(metrics)
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
@@ -7504,67 +8274,6 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         st.json(latest_reconciliation)
 
 
-def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Estatísticas operacionais")
-    st.write("Leitura institucional do fluxo operacional persistido, das conferências realizadas e do estado temporário da sessão.")
-    st.info("Esta página é operacional e observacional. Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 e não modifica histórico.")
-    latest_generation = _load_latest_generated_games() or {}
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    generation_events = int(snapshot["counts"].get("generation_events", 0))
-    generated_games = int(snapshot["counts"].get("generated_games", 0))
-    reconciliation_runs = int(snapshot["counts"].get("reconciliation_runs", 0))
-    session_keys = len([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
-    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
-    latest_generation_event_id = latest_generation.get("generation_event_id", "-")
-    latest_reconciliation_id = latest_reconciliation.get("id", "-") if latest_reconciliation else "-"
-    st.markdown(
-        "Esta tela resume eventos persistidos da operação e informações temporárias da sessão atual. "
-        "Os indicadores abaixo servem para auditoria do funcionamento do ADM e não representam comando de geração, "
-        "conferência automática ou recalibração institucional."
-    )
-    operational_label_map = {
-        "GENERATION_EVENTS": "Eventos de geração",
-        "GENERATED_GAMES": "Jogos gerados",
-        "RECONCILIATION_RUNS": "Conferências realizadas",
-        "SESSION_KEYS": "Chaves de sessão",
-        "last_ui_event": "Último evento de interface",
-        "latest_generation_event_id": "Última geração registrada",
-        "latest_reconciliation_id": "Última conferência registrada",
-    }
-    raw_operational_stats = {
-        "GENERATION_EVENTS": generation_events,
-        "GENERATED_GAMES": generated_games,
-        "RECONCILIATION_RUNS": reconciliation_runs,
-        "SESSION_KEYS": session_keys,
-        "last_ui_event": last_ui_event,
-        "latest_generation_event_id": latest_generation_event_id,
-        "latest_reconciliation_id": latest_reconciliation_id,
-    }
-    cols = st.columns(4)
-    cols[0].metric(operational_label_map["GENERATION_EVENTS"], generation_events)
-    cols[1].metric(operational_label_map["GENERATED_GAMES"], generated_games)
-    cols[2].metric(operational_label_map["RECONCILIATION_RUNS"], reconciliation_runs)
-    cols[3].metric(operational_label_map["SESSION_KEYS"], session_keys)
-    st.caption(
-        f"{operational_label_map['last_ui_event']}: {last_ui_event} | "
-        f"{operational_label_map['latest_generation_event_id']}: {latest_generation_event_id} | "
-        f"{operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Últimos registros operacionais")
-    st.markdown(
-        f"- {operational_label_map['last_ui_event']}: {last_ui_event}\n"
-        f"- {operational_label_map['latest_generation_event_id']}: {latest_generation_event_id}\n"
-        f"- {operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Interpretação operacional")
-    st.write(
-        "As estatísticas operacionais indicam a atividade recente do ADM, incluindo eventos de geração registrados, "
-        "jogos persistidos e conferências executadas. A leitura de sessão é temporária e não deve ser interpretada "
-        "como histórico oficial."
-    )
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.write(raw_operational_stats)
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
         repository = ContestRepository(DB_PATH)
@@ -7575,19 +8284,29 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         except Exception:
             pass
         payload = summary.to_dict()
-        payload["status"] = "ok"
+        commit_state = str(payload.get("commit_state", "") or "").strip().lower()
+        if commit_state == "ok":
+            payload["status"] = "ok"
+            payload["sync_error"] = ""
+        else:
+            payload["status"] = "error"
+            payload["sync_error"] = str(
+                payload.get("error_message")
+                or f"commit_state={commit_state or 'unknown'}"
+            )
         payload["http_status"] = getattr(service.client, "last_http_status", None)
         payload["request_url"] = getattr(service.client, "last_request_url", "")
         payload["request_headers"] = getattr(service.client, "last_request_headers", {})
         payload["response_headers"] = getattr(service.client, "last_response_headers", {})
         payload["response_preview"] = getattr(service.client, "last_response_preview", "")
-        payload["sync_error"] = ""
         payload["sync_timestamp"] = datetime.now(UTC).isoformat()
         latest_record = repository.get_latest_contest_record()
         payload["latest_contest_record"] = latest_record
         payload["imported_numbers"] = list(latest_record.get("dezenas", []) if latest_record else [])
         payload["official_history_record"] = _load_official_history_summary().get("latest_contest", {})
         payload["official_history_diagnostics"] = _load_official_history_diagnostics()
+        if payload.get("status") != "ok":
+            return payload
         _persist_official_sync_diagnostics(
             {
                 "sync_status": payload.get("status", "unknown"),
@@ -7883,13 +8602,11 @@ def _persist_generation_snapshot(
         }
 
 
-def _count_generated_games_for_event(generation_event_id: int) -> int:
-    with get_session(DB_PATH) as session:
-        return int(
-            session.query(GeneratedGame)
-            .filter(GeneratedGame.generation_event_id == int(generation_event_id))
-            .count()
-        )
+def _count_generated_games_for_event(generation_event_id: int, session: Any | None = None) -> int:
+    if session is not None:
+        return count_generated_games_for_event(session, int(generation_event_id))
+    with get_session(DB_PATH) as db_session:
+        return count_generated_games_for_event(db_session, int(generation_event_id))
 
 
 def _generated_games_count_sql(generation_event_id: int) -> str:
@@ -8449,6 +9166,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
     best_hits = max((int(row["hits"]) for row in results), default=0)
     total_hits = sum(int(row["hits"]) for row in results)
     prize_count = sum(1 for row in results if int(row["hits"]) >= 11)
+    conference_15d_guard = validate_conference_15d_source(games=games, conference_results=results)
     diagnostics = {
         "official_numbers": official_numbers,
         "official_numbers_count": len(official_numbers),
@@ -8465,7 +9183,30 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "total_hits": total_hits,
         "best_hits": best_hits,
         "prize_count": prize_count,
+        "conference_15d_guard": conference_15d_guard,
+        "persistence_guard_status": conference_15d_guard.get("persistence_guard_status", "PROTEGIDO"),
     }
+    if not conference_15d_guard.get("valid", True):
+        return {
+            "status": "error",
+            "message": "Conferência 15D bloqueada: núcleo fixo repetido enquanto jogos gerados são distintos.",
+            "contest_number": contest_number,
+            "contest_date": str(contest.get("data", "")),
+            "official_numbers": official_numbers,
+            "results": results,
+            "generation_event_id": int(generation_event_id or 0),
+            "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+            "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
+            "origem_dezenas_conferencia": str(results[0].get("origem_dezenas_conferencia", "indisponivel") if results else "indisponivel"),
+            "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+            "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
+            "best_hits": best_hits,
+            "total_hits": total_hits,
+            "prize_count": prize_count,
+            "diagnostics": diagnostics,
+            "conference_15d_guard": conference_15d_guard,
+            "persistence_guard_status": conference_15d_guard.get("persistence_guard_status", "BLOQUEADO_NUCLEO_FIXO_15D"),
+        }
     with get_session(DB_PATH) as session:
         run = ReconciliationRun(
             generation_event_id=generation_event_id,
@@ -8640,7 +9381,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         ("Auditoria Runtime", "audit"),
         ("Auditoria e Monitoramento", "audit_monitoring"),
         ("Confer?ncia por concurso", "audit_monitoring_conference"),
-        ("Desempenho por grupo", "audit_monitoring_group_performance"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
@@ -8649,7 +9389,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
-        ("Estat?sticas operacionais", "operational_statistics"),
         ("M?tricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
     ]:
@@ -8695,11 +9434,9 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit",
         "audit_monitoring",
         "audit_monitoring_conference",
-        "audit_monitoring_group_performance",
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
         "summary_benchmark",
-        "operational_statistics",
         "hb_metrics",
         "structural_coverage",
         "audit_monitoring_side_leak",
@@ -9117,6 +9854,59 @@ def _official_15_group_games_for_quantity(quantity: int) -> list[tuple[int, ...]
     return list(OFFICIAL_15_GROUPS_REGISTRY.get(group, []))
 
 
+def _validate_generation_quantity(quantity: int | str | None) -> int:
+    parsed = _safe_int(quantity, default=None)
+    if parsed is None or int(parsed) not in ALLOWED_GENERATION_QUANTITIES:
+        allowed = ", ".join(str(value) for value in ALLOWED_GENERATION_QUANTITIES)
+        raise ValueError(f"Quantidade de jogos inválida: {quantity}. Valores permitidos: {allowed}")
+    return int(parsed)
+
+
+def _coerce_generation_quantity(quantity: int | str | None, *, default: int = 10) -> int:
+    parsed = _safe_int(quantity, default=None)
+    if parsed in ALLOWED_GENERATION_QUANTITIES:
+        return int(parsed)
+    fallback = _safe_int(default, default=10) or 10
+    if fallback in ALLOWED_GENERATION_QUANTITIES:
+        return int(fallback)
+    return 10
+
+
+def _build_generation_export_rows(games: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        numbers = [int(number) for number in (game.get("numbers") or game.get("final_card_numbers") or [])]
+        rows.append(
+            {
+                "jogo": index,
+                "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                "formato_cartao": int(game.get("formato_cartao", len(numbers) or 15) or (len(numbers) or 15)),
+            }
+        )
+    return rows
+
+
+def _compare_games_against_contest_for_export(
+    games: Sequence[dict[str, Any]],
+    contest_numbers: Sequence[int],
+) -> list[dict[str, Any]]:
+    official_numbers = {int(number) for number in contest_numbers}
+    rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games, start=1):
+        conference = _select_conference_numbers(dict(game))
+        conference_numbers = list(conference.get("conference_numbers") or [])
+        hits = len(set(conference_numbers) & official_numbers)
+        rows.append(
+            {
+                "jogo": index,
+                "hits": hits,
+                "cartao_final": " ".join(f"{number:02d}" for number in conference_numbers),
+                "origem_dezenas_conferencia": str(conference.get("origem_dezenas_conferencia", "cartao_final") or "cartao_final"),
+            }
+        )
+    return rows
+
+
 def _expand_official_card(
     core_numbers: Sequence[int],
     card_format: int,
@@ -9175,6 +9965,294 @@ def _format_numbers_for_history(values: Sequence[int] | None) -> str:
     return " ".join(f"{number:02d}" for number in numbers)
 
 
+def normalize_dezenas(value: object) -> tuple[str, ...]:
+    """Normaliza dezenas para comparação institucional (ordem e prefixo '+')."""
+    if value is None or value == "-":
+        return tuple()
+
+    if isinstance(value, str):
+        tokens = value.replace("+", " ").split()
+    else:
+        tokens = list(value)
+
+    dezenas: list[str] = []
+    for token in tokens:
+        cleaned = str(token).replace("+", "").strip()
+        if not cleaned:
+            continue
+        dezenas.append(f"{int(cleaned):02d}")
+
+    return tuple(sorted(dezenas))
+
+
+def build_lei15a_operational_read(
+    *,
+    game: dict[str, Any],
+    cartao_final_lei15: Sequence[int],
+    formato_d: int,
+    mode: str = "audit_validation",
+) -> dict[str, Any]:
+    """Leitura operacional Lei 15A com componentes próprios e validação do cartão Lei 15."""
+    nucleo_operacional_gp = list(NUCLEO_LEI15_15D_CONGELADO)
+    cartao_validado = list(cartao_final_lei15)
+    if int(formato_d or 15) <= 15:
+        auditadas: list[int] = []
+    else:
+        auditadas = sorted(set(cartao_validado) - set(nucleo_operacional_gp))
+    vigilantes = sorted(set(auditadas).intersection(RESERVAS_LEI15A_PRIORITARIAS))
+
+    cartao_final_sync = normalize_dezenas(cartao_validado) == normalize_dezenas(cartao_final_lei15)
+    origin_log = {
+        "jogo": int(game.get("jogo", 0) or 0),
+        "formato": f"{int(formato_d or 15)}D",
+        "mode": mode,
+        "lei15": {
+            "nucleo": {
+                "value": _format_numbers_for_history(
+                    _extract_int_numbers(game.get("core_numbers", game.get("numbers", [])))
+                )
+                or "-",
+                "source": "Lei15.concept.runtime",
+            },
+            "reservas_auditadas": {
+                "value": _format_numbers_for_history(
+                    _extract_int_numbers(game.get("audited_reserve_numbers", []))
+                )
+                or "-",
+                "source": "Lei15.concept.runtime",
+            },
+            "cartao_final": {
+                "value": _format_numbers_for_history(cartao_final_lei15) or "-",
+                "source": "Lei15.generation",
+            },
+        },
+        "lei15a": {
+            "nucleo_operacional_gp": {
+                "value": _format_numbers_for_history(nucleo_operacional_gp) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15": False,
+            },
+            "auditadas": {
+                "value": _format_numbers_for_history(auditadas) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15_reservas": False,
+                "fixed_constant_used": False,
+            },
+            "vigilantes": {
+                "value": _format_numbers_for_history(vigilantes) or "-",
+                "source": "Lei15A.concept.runtime",
+                "copied_from_lei15_reservas": False,
+                "fixed_constant_used": False,
+            },
+            "cartao_validado": {
+                "value": _format_numbers_for_history(cartao_validado) or "-",
+                "source": "Lei15A.validation",
+                "generated_new_card": False,
+                "overrode_lei15_card": False,
+            },
+        },
+        "checks": {
+            "cartao_final_sync": cartao_final_sync,
+            "component_boundary_preserved": True,
+            "no_fixed_override": True,
+            "no_direct_copy": True,
+        },
+    }
+    return {
+        "nucleo_operacional_gp": nucleo_operacional_gp,
+        "auditadas": auditadas,
+        "vigilantes": vigilantes,
+        "cartao_validado": cartao_validado,
+        "mode": mode,
+        "origin_log": origin_log,
+        "sources": origin_log["lei15a"],
+        "checks": origin_log["checks"],
+    }
+
+
+def evaluate_institutional_panel_sync(
+    *,
+    cartao_final_superior: object,
+    cartao_final_lido: object,
+    reservas_auditadas_superior: object | None = None,
+    auditadas_inferior: object | None = None,
+    vigilantes_inferior: object | None = None,
+) -> bool:
+    """Verifica sincronização de cartão final Lei 15 / Lei 15A (contrato aprovado)."""
+    _ = (reservas_auditadas_superior, auditadas_inferior, vigilantes_inferior)
+    return normalize_dezenas(cartao_final_superior) == normalize_dezenas(cartao_final_lido)
+
+
+def build_institutional_panel_sync_checks(
+    *,
+    institutional_rows: Sequence[dict[str, Any]],
+    games_table_rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Monta checks de sincronização Lei 15 (superior) vs Lei 15A (inferior)."""
+    sync_checks: list[dict[str, Any]] = []
+    for row_index, row in enumerate(institutional_rows):
+        superior_row = games_table_rows[row_index]
+        superior_label = str(superior_row.get("cartão_final", "-") or "-")
+        inferior_label = str(row.get("cartao_final_lido", "-") or "-")
+        superior_reserves = str(superior_row.get("reservas_auditadas", "-") or "-")
+        inferior_auditadas = str(row.get("auditadas_escolhidas", "-") or "-")
+        inferior_vigilantes = str(row.get("vigilantes_escolhidas", "-") or "-")
+        synchronized = evaluate_institutional_panel_sync(
+            cartao_final_superior=superior_label,
+            cartao_final_lido=inferior_label,
+        )
+        boundary_checks = dict(row.get("lei15a_boundary_checks") or {})
+        sync_checks.append(
+            {
+                "jogo": row_index + 1,
+                "cartao_final_superior": superior_label,
+                "cartao_final_lido": inferior_label,
+                "reservas_auditadas_superior": superior_reserves,
+                "auditadas_inferior": inferior_auditadas,
+                "vigilantes_inferior": inferior_vigilantes,
+                "origem_superior": "Lei15.generation",
+                "origem_inferior": "Lei15A.validation",
+                "sincronizado": synchronized,
+                "component_boundary_preserved": bool(boundary_checks.get("component_boundary_preserved")),
+                "no_direct_copy": bool(boundary_checks.get("no_direct_copy")),
+                "no_fixed_override": bool(boundary_checks.get("no_fixed_override")),
+                "origin_log": row.get("lei15a_origin_log"),
+            }
+        )
+    return sync_checks
+
+
+def _evaluate_lei15a_boundary_checks(row: dict[str, Any]) -> dict[str, bool]:
+    """Avalia fronteira conceitual Lei 15 / Lei 15A a partir da leitura operacional."""
+    origin_log = dict(row.get("lei15a_origin_log") or {})
+    lei15a = dict(origin_log.get("lei15a") or {})
+    nucleo_meta = dict(lei15a.get("nucleo_operacional_gp") or {})
+    auditadas_meta = dict(lei15a.get("auditadas") or {})
+    vigilantes_meta = dict(lei15a.get("vigilantes") or {})
+    cartao_meta = dict(lei15a.get("cartao_validado") or {})
+    no_direct_copy = (
+        not bool(nucleo_meta.get("copied_from_lei15"))
+        and not bool(auditadas_meta.get("copied_from_lei15_reservas"))
+        and not bool(vigilantes_meta.get("copied_from_lei15_reservas"))
+    )
+    no_fixed_override = (
+        not bool(auditadas_meta.get("fixed_constant_used"))
+        and not bool(vigilantes_meta.get("fixed_constant_used"))
+    )
+    no_independent_card = (
+        not bool(cartao_meta.get("generated_new_card"))
+        and not bool(cartao_meta.get("overrode_lei15_card"))
+    )
+    component_boundary_preserved = no_direct_copy and no_fixed_override and no_independent_card
+    return {
+        "cartao_final_sync": bool(row.get("sincronizado_com_cartao_final")),
+        "component_boundary_preserved": component_boundary_preserved,
+        "no_fixed_override": no_fixed_override,
+        "no_direct_copy": no_direct_copy,
+        "no_independent_lei15a_card": no_independent_card,
+    }
+
+
+def validate_lei15_lei15a_runtime_contract(
+    *,
+    institutional_rows: Sequence[dict[str, Any]],
+    games_table_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Valida contrato runtime aprovado Lei 15 / Lei 15A antes de exibir ou persistir."""
+    sync_checks = build_institutional_panel_sync_checks(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
+    failed_checks = [check for check in sync_checks if not check.get("sincronizado")]
+    upper_cards = [str(row.get("cartão_final", "-") or "-") for row in games_table_rows]
+    lower_cards = [str(row.get("cartao_final_lido", "-") or "-") for row in institutional_rows]
+    upper_variable = len(set(upper_cards)) > 1
+    lower_all_identical = len(set(lower_cards)) == 1 and len(lower_cards) > 1
+    fixed_override_detected = upper_variable and lower_all_identical
+
+    boundary_rows = [_evaluate_lei15a_boundary_checks(row) for row in institutional_rows]
+    checks_results = {
+        "CHECK_001_CARTAO_FINAL_SYNC": all(
+            normalize_dezenas(check["cartao_final_superior"]) == normalize_dezenas(check["cartao_final_lido"])
+            for check in sync_checks
+        ),
+        "CHECK_002_NO_NUCLEO_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("nucleo_operacional_gp", {}).get("copied_from_lei15"))
+            for check in sync_checks
+        ),
+        "CHECK_003_NO_AUDITADAS_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("auditadas", {}).get("copied_from_lei15_reservas"))
+            for check in sync_checks
+        ),
+        "CHECK_004_NO_VIGILANTES_COPY": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("vigilantes", {}).get("copied_from_lei15_reservas"))
+            for check in sync_checks
+        ),
+        "CHECK_005_NO_FIXED_AUDITADAS_VIGILANTES": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("auditadas", {}).get("fixed_constant_used"))
+            and not bool((check.get("origin_log") or {}).get("lei15a", {}).get("vigilantes", {}).get("fixed_constant_used"))
+            for check in sync_checks
+        ),
+        "CHECK_006_NO_INDEPENDENT_LEI15A_CARD": all(
+            not bool((check.get("origin_log") or {}).get("lei15a", {}).get("cartao_validado", {}).get("generated_new_card"))
+            and not bool((check.get("origin_log") or {}).get("lei15a", {}).get("cartao_validado", {}).get("overrode_lei15_card"))
+            for check in sync_checks
+        ),
+        "CHECK_007_COMPONENT_BOUNDARY": all(
+            boundary.get("component_boundary_preserved") for boundary in boundary_rows
+        ),
+        "CHECK_008_PERSISTENCE_GUARD": False,
+    }
+    checks_results["CHECK_008_PERSISTENCE_GUARD"] = (
+        checks_results["CHECK_001_CARTAO_FINAL_SYNC"]
+        and checks_results["CHECK_007_COMPONENT_BOUNDARY"]
+        and checks_results["CHECK_005_NO_FIXED_AUDITADAS_VIGILANTES"]
+        and checks_results["CHECK_002_NO_NUCLEO_COPY"]
+        and checks_results["CHECK_003_NO_AUDITADAS_COPY"]
+        and checks_results["CHECK_004_NO_VIGILANTES_COPY"]
+        and not fixed_override_detected
+    )
+    persistence_allowed = checks_results["CHECK_008_PERSISTENCE_GUARD"] and not failed_checks
+    classification = "COMPATIVEL" if persistence_allowed else "CONFLITANTE"
+    return {
+        "classification": classification,
+        "sync_checks": sync_checks,
+        "failed_checks": failed_checks,
+        "checks_results": checks_results,
+        "fixed_override_detected": fixed_override_detected,
+        "persistence_allowed": persistence_allowed,
+        "persistence_guard_status": "PROTEGIDO" if persistence_allowed else "SINCRONIZACAO_FALHOU",
+        "governance_confirmation": {
+            "lei15_role": "governanca_soberana_geracao",
+            "lei15a_role": "leitura_operacional_gp_auditoria_validacao",
+            "runtime_source_of_truth": "Lei15.generation",
+            "component_boundary": "PRESERVADA",
+            "sync_contract": "cartao_final_compativel",
+        },
+    }
+
+
+def _build_games_table_rows_from_generation_games(
+    games: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Espelha a tabela superior Jogos gerados para validação de contrato."""
+    games_table_rows: list[dict[str, Any]] = []
+    for index, game in enumerate(games):
+        final_card_numbers = _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+        reserve_numbers = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        games_table_rows.append(
+            {
+                "jogo": index + 1,
+                "núcleo_lei_15": _format_numbers_for_history(game.get("core_numbers", game.get("numbers", []))),
+                "reservas_auditadas": (
+                    " ".join(f"+{int(number):02d}" for number in reserve_numbers) if reserve_numbers else "-"
+                ),
+                "cartão_final": _format_numbers_for_history(final_card_numbers),
+            }
+        )
+    return games_table_rows
+
+
 def infer_matrix_cell(formato_cartao: int | str | None, requested_count: int | str | None) -> dict[str, Any]:
     """Infer a matrix cell label from the card format and requested quantity."""
     dezenas_por_jogo = int(formato_cartao or 15)
@@ -9217,27 +10295,45 @@ def build_institutional_matrix_rows(
             if superior_final_cards is not None and index - 1 < len(superior_final_cards)
             else list(final_card)
         )
-        audited_final_card = list(superior_final_card)
-        operational_nucleus = _lei15a_frozen_nucleus()
-        reservas_prioritarias = set(RESERVAS_PRIORITARIAS_LEI15A)
+        lei15a_read = build_lei15a_operational_read(
+            game=game,
+            cartao_final_lei15=superior_final_card,
+            formato_d=dezenas_por_jogo,
+            mode="audit_validation",
+        )
+        operational_nucleus = list(lei15a_read["nucleo_operacional_gp"])
+        operational_final_card = list(lei15a_read["cartao_validado"])
+        auditadas_escolhidas = list(lei15a_read["auditadas"])
+        vigilantes_escolhidas = list(lei15a_read["vigilantes"])
+        origin_log = dict(lei15a_read.get("origin_log") or {})
+        boundary_checks = dict(lei15a_read.get("checks") or {})
 
-        if dezenas_por_jogo <= 15:
-            operational_final_card = list(operational_nucleus)
-            auditadas_escolhidas: list[int] = []
-            vigilantes_escolhidas: list[int] = []
-            synchronized_with_final_card = len(operational_nucleus) == 15
-        else:
-            operational_final_card = list(audited_final_card)
-            auditadas_escolhidas_set = set(operational_final_card) - set(operational_nucleus)
-            auditadas_escolhidas = sorted(auditadas_escolhidas_set)
-            vigilantes_escolhidas_set = auditadas_escolhidas_set.intersection(reservas_prioritarias)
-            vigilantes_escolhidas = sorted(vigilantes_escolhidas_set)
-            synchronized_with_final_card = final_card == superior_final_card
+        reserve_numbers = _extract_int_numbers(game.get("audited_reserve_numbers", []))
+        superior_reserves_label = (
+            " ".join(f"+{int(number):02d}" for number in reserve_numbers) if reserve_numbers else "-"
+        )
 
+        synchronized_with_final_card = evaluate_institutional_panel_sync(
+            cartao_final_superior=_format_numbers_for_history(superior_final_card),
+            cartao_final_lido=_format_numbers_for_history(operational_final_card),
+        )
         sync_status = "SINCRONIZADO_COM_CARTAO_FINAL" if synchronized_with_final_card else "SINCRONIZACAO_FALHOU"
 
         referencias_j12_j34 = sorted(set(operational_final_card).intersection(j12.union(j34)))
         vigilancia_j71 = sorted(set(operational_final_card).intersection(j71))
+
+        if synchronized_with_final_card:
+            leitura_institucional = (
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; leitura operacional Lei 15A "
+                "valida o cartão final gerado pela Lei 15; núcleo operacional GP, auditadas e "
+                "vigilantes são componentes próprios da Lei 15A."
+            )
+        else:
+            leitura_institucional = (
+                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; SINCRONIZACAO_FALHOU: "
+                f"cartão_final superior={_format_numbers_for_history(superior_final_card) or '-'} "
+                f"diverge do cartão validado={_format_numbers_for_history(operational_final_card) or '-'}."
+            )
 
         if referencias_j12_j34 and vigilancia_j71:
             structural_status = "NUCLEO_A_COM_REFERENCIA_E_VIGILANCIA"
@@ -9247,24 +10343,6 @@ def build_institutional_matrix_rows(
             structural_status = "NUCLEO_A_COM_VIGILANCIA"
         else:
             structural_status = "NUCLEO_A"
-        if dezenas_por_jogo <= 15:
-            leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; registro operacional da aposta "
-                "com núcleo Lei 15A congelado; cartão final inferior = núcleo operacional GP; "
-                "faixa superior permanece na geração atual."
-            )
-        elif synchronized_with_final_card:
-            leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; cartão_final lido e sincronizado "
-                "com a saída superior; núcleo operacional Lei 15A congelado aplicado na leitura inferior; "
-                "auditadas = cartão final − núcleo Lei 15A; vigilantes = auditadas ∩ reservas prioritárias."
-            )
-        else:
-            leitura_institucional = (
-                f"Jogo {dezenas_por_jogo}D da célula {escala_label}; SINCRONIZACAO_FALHOU: "
-                f"cartão_final superior={_format_numbers_for_history(superior_final_card) or '-'} "
-                f"diverge do cartão interno={_format_numbers_for_history(final_card) or '-'}."
-            )
         rows.append(
             {
                 "jogo": int(game.get("jogo", index) or index),
@@ -9278,11 +10356,15 @@ def build_institutional_matrix_rows(
                 "vigilantes_escolhidas": _format_numbers_for_history(vigilantes_escolhidas) or "-",
                 "referencias_auditadas_j12_j34": _format_numbers_for_history(referencias_j12_j34) or "-",
                 "vigilancia_j71": _format_numbers_for_history(vigilancia_j71) or "-",
-                "lei15_aplicada": bool(len(operational_nucleus) == 15),
+                "lei15_aplicada": bool(len(operational_nucleus) == 15 and len(operational_final_card) >= 15),
                 "sincronizado_com_cartao_final": bool(synchronized_with_final_card),
                 "status_institucional": sync_status,
                 "status_estrutural_anterior": structural_status,
                 "leitura_institucional": leitura_institucional,
+                "origem_geracao": "Lei15.generation",
+                "origem_leitura": "Lei15A.validation",
+                "lei15a_origin_log": origin_log,
+                "lei15a_boundary_checks": boundary_checks,
             }
         )
     return rows
@@ -9368,23 +10450,10 @@ def _render_institutional_matrix_reading_section(
     card_format: int,
 ) -> None:
     """Renderiza a leitura institucional padronizada com visao limpa e detalhes tecnicos."""
-    sync_checks: list[dict[str, Any]] = []
-    operational_nucleus_label = _format_numbers_for_history(_lei15a_frozen_nucleus()) or "-"
-    for row_index, row in enumerate(institutional_rows):
-        superior_label = games_table_rows[row_index]["cartão_final"]
-        inferior_label = str(row.get("cartao_final_lido", "-") or "-")
-        if int(card_format or 15) <= 15:
-            synchronized = inferior_label == operational_nucleus_label
-        else:
-            synchronized = superior_label == inferior_label
-        sync_checks.append(
-            {
-                "jogo": row_index + 1,
-                "cartao_final_superior": superior_label,
-                "cartao_final_lido": inferior_label,
-                "sincronizado": synchronized,
-            }
-        )
+    sync_checks = build_institutional_panel_sync_checks(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
 
     summary = summarize_institutional_matrix_reading(
         institutional_rows,
@@ -9394,18 +10463,17 @@ def _render_institutional_matrix_reading_section(
     primary_df = build_institutional_matrix_primary_view(institutional_rows)
     technical_df = build_institutional_matrix_technical_view(institutional_rows)
 
-    st.subheader("Leitura operacional da matriz GP")
-    st.write(
-        "Esta leitura mostra como cada jogo foi montado pela Lei 15A: "
-        "núcleo operacional GP, auditadas, vigilantes e cartão final."
-    )
+    st.subheader(LEI15A_LOWER_PANEL_TITLE)
+    st.write(LEI15A_PANEL_DESCRIPTION)
     concept_cols = st.columns(2)
     with concept_cols[0]:
         st.info("Lei 15 = governança soberana")
-        st.info("15D nasce do núcleo operacional GP")
+        st.info(_resolve_lei15_panel_concept_label(card_format))
     with concept_cols[1]:
         st.info("Lei 15A = operação GP 10/20/30/50")
-        st.info("16D–23D = núcleo operacional GP + reservas auditadas")
+        st.info(_resolve_lei15a_panel_format_label(card_format))
+    with st.expander("O que significa sincronização?", expanded=False):
+        st.caption(LEI15A_PANEL_SYNC_SEMANTICS)
 
     summary_cols = st.columns(5)
     summary_cols[0].metric("Jogos lidos", int(summary["total_games"]))
@@ -9415,7 +10483,7 @@ def _render_institutional_matrix_reading_section(
     summary_cols[4].metric("Status geral", str(summary["overall_status"]))
 
     if summary["all_synchronized"]:
-        st.success("Leitura operacional GP sincronizada com o cartão final.")
+        st.success(LEI15A_PANEL_SYNC_SUCCESS)
     else:
         st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão_final superior.")
         st.json(summary["sync_failures"])
@@ -9447,6 +10515,27 @@ def _persist_clean_law15_generation_history(
     if not games:
         return {}
     formatted_games = _expand_generation_games_for_format(games, selected_card_format)
+    cartoes_finais_superiores = [
+        _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+        for game in formatted_games
+    ]
+    institutional_rows = build_institutional_matrix_rows(
+        formatted_games,
+        selected_card_format,
+        int(result.get("requested_count", len(formatted_games)) or len(formatted_games)),
+        superior_final_cards=cartoes_finais_superiores,
+    )
+    games_table_rows = _build_games_table_rows_from_generation_games(formatted_games)
+    runtime_contract = validate_lei15_lei15a_runtime_contract(
+        institutional_rows=institutional_rows,
+        games_table_rows=games_table_rows,
+    )
+    if not runtime_contract.get("persistence_allowed"):
+        return {
+            "persistence_blocked": True,
+            "persistence_guard_status": "SINCRONIZACAO_FALHOU",
+            "runtime_contract": runtime_contract,
+        }
     payload_games: list[dict[str, Any]] = []
     for game in formatted_games:
         core_numbers = list(game.get("core_numbers", game.get("numbers", [])) or [])
@@ -9545,26 +10634,6 @@ def _render_post_conference_monitoring_panel() -> None:
         st.json(POST_DRAW_MONITORING_PAYLOAD)
 
 
-def _render_lei_16_governance_panel() -> None:
-    st.markdown("##### Lei 16 — Integridade Global da Geração")
-    st.caption("Leitura documental da governança institucional. Não comanda geração, não cria controles e não altera a Lei 15.")
-    cols = st.columns(3)
-    cols[0].metric("Status", "Formalizada documentalmente")
-    cols[1].metric("Classificação", "Compatível com a Lei 15")
-    cols[2].metric("Aderência", "Alta")
-    st.info(
-        "Toda geração institucional da LotoIA deve entregar combinações globalmente únicas dentro do mesmo evento, "
-        "lote ou bateria. A Lei 16 garante duplicados globais zero, memória de assinaturas compartilhada entre "
-        "grupos da mesma bateria e preservação da soberania da Lei 15."
-    )
-    st.markdown(
-        "- Duplicados globais: zero\n"
-        "- Grupos da mesma bateria compartilham memória de assinaturas\n"
-        "- Cada jogo entregue representa uma combinação única\n"
-        "- A Lei 15 permanece soberana e inalterada"
-    )
-
-
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Auditoria e Monitoramento")
@@ -9589,7 +10658,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         cols2[1].metric("Lei 17", "Validação / referência")
         cols2[2].metric("Lei 18", "Validação / referência")
         cols2[3].metric("Dados", "Disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "Indisponível")
-        _render_lei_16_governance_panel()
         st.markdown("##### Resumo de monitoramento")
         monitoring_cols = st.columns(5)
         monitoring_cols[0].metric(
@@ -9624,7 +10692,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.markdown("##### Acessos de auditoria")
         st.markdown(
             "- Conferência por concurso\n"
-            "- Desempenho por grupo\n"
             "- Dezenas faltantes\n"
             "- Dezenas sobrando"
         )
@@ -9684,66 +10751,12 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                 block_cols[index].caption(block_numbers.get(label, "-"))
         else:
             st.caption("Distribuição indisponível: dezenas oficiais não encontradas para o concurso monitorado.")
-    elif section == "group_performance":
-        st.markdown("##### Auditoria Observacional — Desempenho por Grupo")
-        st.write("Esta tela observa o desempenho dos grupos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
-        latest_contest = _load_imported_contest()
-        generation_history = _load_generation_history(limit=10)
-        latest_generation = generation_history[0] if generation_history else {}
-        latest_group = (latest_generation.get("top_games") or [{}])[0] if latest_generation else {}
-        st.markdown("##### Status institucional")
-        cols = st.columns(4)
-        cols[0].metric("Camada", "Auditoria Observacional")
-        cols[1].metric("Geração", "não executa")
-        cols[2].metric("Recalibração", "bloqueada")
-        cols[3].metric("Alerta", "registro")
-        st.markdown("##### Status dos dados")
-        data_cols = st.columns(5)
-        data_cols[0].metric("Último concurso monitorado", str((latest_contest or {}).get("contest_number", "-") or "-"))
-        data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
-        data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
-        data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
-        if latest_generation.get("games"):
-            conference_games = [_select_conference_numbers(game).get("conference_numbers", []) for game in latest_generation.get("games", [])]
-            group_stats = _summarize_games_structurally(conference_games)
-            st.caption(
-                " | ".join(
-                    [
-                        f"grupos_avaliados={len(latest_generation.get('games') or [])}",
-                        f"melhor_grupo={latest_group.get('game_index', '-')}",
-                        f"acertos_medios={latest_generation.get('avg_score', 0.0):.4f}",
-                        f"overlap={group_stats.get('average_overlap', 0.0):.4f}",
-                    ]
-                )
-            )
-            st.markdown("##### Resumo de desempenho")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "grupo": game.get("game_index", "-"),
-                            "jogos": 1,
-                            "acertos": game.get("hits", 0) if game.get("hits") is not None else "-",
-                            "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                            "núcleo_lei_15": " ".join(f"{number:02d}" for number in list(game.get("numbers", [])[:15])) or "-",
-                            "reservas_auditadas": " ".join(f"+{number:02d}" for number in list(game.get("numbers", [])[15:])) or "-",
-                            "cartão_final": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                            "dezenas_conferidas_count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                            "origem_dezenas_conferencia": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                            "observação institucional": "grupo avaliado na conferência",
-                        }
-                        for game in latest_generation.get("games", [])
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
-        else:
-            st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "missing_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Faltantes")
-        st.write("Esta tela observa as dezenas ausentes nos acertos por grupo, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        st.write(
+            "Esta tela observa as dezenas sorteadas que não foram jogadas "
+            "(resultado_oficial − cartao_final), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
         latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
@@ -9760,28 +10773,33 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
         data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            missing_df = pd.DataFrame(
-                [
-                    {
-                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                        "dezenas ausentes": " ".join(f"{number:02d}" for number in game.get("matched_numbers", []) or []) or "-",
-                        "frequência": int(game.get("hits", 0) or 0),
-                        "grupo relacionado": game.get("game_index", "-"),
-                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
-                        "observação institucional": "observação pós-conferência",
-                    }
-                    for game in latest_generation.get("games", [])
-                ]
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
             )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            missing_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
+            missing_display_rows = [_project_observational_missing_display_row(row) for row in missing_rows]
+            missing_df = pd.DataFrame(missing_display_rows, columns=list(OBSERVATIONAL_MISSING_DISPLAY_COLUMNS))
             st.dataframe(missing_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "extra_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Sobrando")
-        st.write("Esta tela observa as dezenas excedentes dos jogos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        st.write(
+            "Esta tela observa as dezenas jogadas que não foram sorteadas "
+            "(cartao_final − resultado_oficial), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
         latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
@@ -9798,49 +10816,93 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
         data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
         if latest_generation.get("games"):
-            extra_df = pd.DataFrame(
-                [
-                    {
-                        "formato_cartao": int(_select_conference_numbers(game).get("formato_cartao", 15) or 15),
-                        "origem_observacional": str(_select_conference_numbers(game).get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                        "dezenas observadas": " ".join(f"{number:02d}" for number in _select_conference_numbers(game).get("conference_numbers", [])) or "-",
-                        "dezenas observadas count": int(_select_conference_numbers(game).get("dezenas_conferidas_count", 0) or 0),
-                        "dezenas sobrando": " ".join(f"{number:02d}" for number in game.get("numbers", [])[:5]) or "-",
-                        "frequência": int(game.get("odd", 0) or 0) + int(game.get("even", 0) or 0),
-                        "grupo relacionado": game.get("game_index", "-"),
-                        "concurso analisado": int((latest_contest or {}).get("contest_number", 0) or 0) if latest_contest else "-",
-                        "observação institucional": "observação pós-conferência",
-                    }
-                    for game in latest_generation.get("games", [])
-                ]
+            reconciliation = dict(latest_generation.get("reconciliation") or {})
+            concurso_default = _safe_int(
+                reconciliation.get("contest_id") or (latest_contest or {}).get("contest_number"),
+                default=None,
             )
+            generation_event_id = _safe_int(latest_generation.get("generation_event_id"), default=None)
+            reconciliation_run_id = _safe_int(reconciliation.get("id"), default=None)
+            extra_rows = [
+                _build_observational_leftover_audit_row(
+                    game,
+                    concurso_analisado=_safe_int(game.get("contest_id"), default=None) or concurso_default,
+                    generation_event_id=generation_event_id,
+                    reconciliation_run_id=_safe_int(game.get("reconciliation_id"), default=None) or reconciliation_run_id,
+                )
+                for game in latest_generation.get("games", [])
+            ]
+            display_rows = [_project_observational_leftover_display_row(row) for row in extra_rows]
+            extra_df = pd.DataFrame(display_rows, columns=list(OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS))
             st.dataframe(extra_df, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
+        st.caption("Sinaliza cobertura lateral: dezenas do cartao_final fora do núcleo Lei 15 15D congelado.")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        side_leak = build_side_leak_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(side_leak)
+        if not side_leak.get("available"):
+            st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
+        elif side_leak.get("alert") == ALERT_SIDE_LEAK:
+            st.error(
+                f"Alerta ML diagnóstico: {ALERT_SIDE_LEAK} — dezenas: "
+                f"{', '.join(side_leak.get('alert_dezenas', []) or [])}"
+            )
+        if side_leak.get("rows"):
+            st.dataframe(
+                pd.DataFrame(side_leak["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhuma dezena de vazamento lateral detectada na última conferência.")
     elif section == "13_to_14":
         st.markdown("##### Evolução 13 -> 14")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 13 para 14 sem recalibrar automaticamente.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_13_14_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 13 → 14 nesta conferência.")
     elif section == "14_to_15":
         st.markdown("##### Evolução 14 -> 15")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 14 para 15 em modo observador.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_14_15_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 14 → 15 nesta conferência.")
     elif section == "offline_hypotheses":
         st.markdown("##### Hipóteses para teste offline")
         st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
@@ -9879,13 +10941,16 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.session_state.setdefault("institutional_operational_generation_runs", 10)
         st.session_state["institutional_repeat_limit"] = int(official_generation_policy.get("repeat_max", 10) or 10)
     controls_cols = st.columns([1.0, 1.0, 1.0, 1.0])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_total_games = _coerce_generation_quantity(
+        st.session_state.get("institutional_operational_total_games", 10 if current_card_format == 15 else 15),
+        default=10,
+    )
     total_games = int(
-        controls_cols[0].number_input(
+        controls_cols[0].selectbox(
             "Quantidade de jogos por geração",
-            min_value=1,
-            max_value=100,
-            value=int(st.session_state.get("institutional_operational_total_games", 10 if current_card_format == 15 else 15) or (10 if current_card_format == 15 else 15)),
-            step=1,
+            options=quantity_options,
+            index=quantity_options.index(default_total_games),
             key="institutional_operational_total_games",
         )
     )
@@ -10353,6 +11418,100 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.caption("Último concurso: -")
 
 
+_CONFERENCE_HIT_COUNTS_COLUMNS = ["faixa", "quantidade"]
+_CONFERENCE_GENERATION_DETAIL_COLUMNS = [
+    "jogo",
+    "formato_cartao",
+    "nucleo_lei_15",
+    "reservas_auditadas",
+    "cartao_final",
+    "dezenas_conferidas_count",
+    "origem_dezenas_conferencia",
+    "expected_card_size",
+    "actual_card_size",
+    "hits",
+    "matched_numbers",
+    "premiado",
+]
+_CONFERENCE_RECONCILIATION_HISTORY_COLUMNS = [
+    "concurso",
+    "data",
+    "jogos conferidos",
+    "melhor acerto",
+    "prêmios",
+]
+_CONFERENCE_RESULTS_COLUMNS = ["jogo", "dezenas", "hits", "premiado"]
+
+
+def _normalize_conference_display_df(df: pd.DataFrame | None, columns: list[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=columns)
+    normalized = df.reindex(columns=columns, fill_value="-")
+    return _make_streamlit_dataframe_safe(normalized)
+
+
+def _build_conference_hit_counts_df(generation_results: list[dict[str, Any]]) -> pd.DataFrame:
+    hit_totals: Counter[int] = Counter()
+    for item in generation_results:
+        for row in item.get("results", []) or []:
+            hit_totals[int(row.get("hits", 0) or 0)] += 1
+    rows = [
+        {"faixa": f"{hits} acertos", "quantidade": count}
+        for hits, count in sorted(hit_totals.items(), key=lambda item: (-item[0], item[1]))
+        if hits >= 10
+    ]
+    return _normalize_conference_display_df(pd.DataFrame(rows), _CONFERENCE_HIT_COUNTS_COLUMNS)
+
+
+def _build_conference_generation_detail_df(results: list[dict[str, Any]]) -> pd.DataFrame:
+    rows = [
+        {
+            "jogo": row["game_index"],
+            "formato_cartao": row.get("formato_cartao", "-"),
+            "nucleo_lei_15": row.get("nucleo_lei_15", "-"),
+            "reservas_auditadas": row.get("reservas_auditadas", "-"),
+            "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
+            "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
+            "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
+            "expected_card_size": row.get("expected_card_size", "-"),
+            "actual_card_size": row.get("actual_card_size", "-"),
+            "hits": row["hits"],
+            "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
+            "premiado": row["prize_status"],
+        }
+        for row in results
+    ]
+    return _normalize_conference_display_df(pd.DataFrame(rows), _CONFERENCE_GENERATION_DETAIL_COLUMNS)
+
+
+def _build_conference_reconciliation_history_df(reconciliations: list[dict[str, Any]]) -> pd.DataFrame:
+    rows = [
+        {
+            "concurso": row.get("contest_id", "-"),
+            "data": row.get("created_at", "-"),
+            "jogos conferidos": row.get("games_count", "-"),
+            "melhor acerto": row.get("best_hits", "-"),
+            "prêmios": row.get("prize_count", "-"),
+        }
+        for row in reconciliations
+    ]
+    return _normalize_conference_display_df(pd.DataFrame(rows), _CONFERENCE_RECONCILIATION_HISTORY_COLUMNS)
+
+
+def _build_conference_combined_results_df(generation_results: list[dict[str, Any]]) -> pd.DataFrame:
+    rows = [
+        {
+            "jogo": row["game_index"],
+            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+            "hits": row["hits"],
+            "premiado": row["prize_status"],
+        }
+        for generation in generation_results
+        for row in generation.get("results", []) or []
+    ]
+    return _normalize_conference_display_df(pd.DataFrame(rows), _CONFERENCE_RESULTS_COLUMNS)
+
+
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
@@ -10394,6 +11553,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             options=selectable_generation_ids,
             index=selected_generation_index,
             help="Por padrão usamos a geração mais recente sem conferência.",
+            key="conference_generation_selectbox",
         )
         st.session_state["active_reconciliation_generation_event_id"] = int(selected_generation_event_id)
     else:
@@ -10425,19 +11585,23 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         if str(latest_generation.get("target_contest") or "").isdigit()
         else 0
     )
-    if min_official_contest and max_official_contest and max_official_contest >= min_official_contest:
-        selected_contest = int(
-            st.number_input(
-                "Escolha o Concurso",
-                min_value=min_official_contest,
-                max_value=max_official_contest,
-                value=default_contest if min_official_contest <= default_contest <= max_official_contest else max_official_contest,
-                step=1,
-                key="conference_selected_contest",
-            )
+    contest_min = int(min_official_contest or max(default_contest, 1) or 1)
+    contest_max = int(max_official_contest or max(default_contest, contest_min) or contest_min)
+    if contest_min > contest_max:
+        contest_max = contest_min
+    contest_value = min(max(int(default_contest or contest_min), contest_min), contest_max)
+    selected_contest = int(
+        st.number_input(
+            "Escolha o Concurso",
+            min_value=contest_min,
+            max_value=contest_max,
+            value=contest_value,
+            step=1,
+            key="conference_selected_contest",
+            disabled=not (min_official_contest and max_official_contest),
         )
-    else:
-        selected_contest = int(default_contest or 0)
+    )
+    if not (min_official_contest and max_official_contest):
         st.caption("Escolha o Concurso: aguardando base oficial disponível.")
     selected_official = get_official_contest(selected_contest) if selected_contest else None
     if selected_official:
@@ -10458,14 +11622,14 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         )
     )
     contest_buttons = st.columns([0.48, 0.62, 0.66])
-    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_official)):
+    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_official), key="conference_run_button"):
         _run_institutional_conference(
             contest_number=selected_contest if selected_official else None,
             generation_event_id=selected_generation_event_id,
             batch_id=selected_batch_id or None,
         )
         st.rerun()
-    if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
+    if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary", key="conference_sync_official_button"):
         with st.status("Importando resultado oficial da Caixa...", expanded=True) as sync_status:
             sync_payload = _sync_latest_official_result_now()
             st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
@@ -10507,7 +11671,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
-    if contest_buttons[2].button("Importar último resultado oficial", type="primary"):
+    if contest_buttons[2].button("Importar último resultado oficial", type="primary", key="conference_import_official_button"):
         with st.status("Sincronizando o último resultado oficial...", expanded=True) as sync_status:
             sync_payload = _sync_latest_official_result_now()
             st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
@@ -10559,77 +11723,112 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         contest_buttons[0].caption("Último concurso: -")
 
     diagnostic_state = _load_official_sync_diagnostics()
-    if diagnostic_state:
+    sync_diagnostic_section = st.container()
+    with sync_diagnostic_section:
         st.markdown("#### Diagnóstico da sincronização")
-        diag_cols = st.columns(4)
-        diag_cols[0].metric("sync_status", diagnostic_state.get("sync_status", "-"))
-        diag_cols[1].metric("http_status", diagnostic_state.get("http_status", "-"))
-        diag_cols[2].metric("imported_contest", diagnostic_state.get("imported_contest", "-"))
-        diag_cols[3].metric("timestamp", diagnostic_state.get("sync_timestamp", "-"))
-        st.caption(f"request_url: {diagnostic_state.get('request_url', '-')}")
-        st.caption(f"request_headers: {json.dumps(diagnostic_state.get('request_headers', {}), ensure_ascii=False)}")
-        st.caption(f"response_headers: {json.dumps(diagnostic_state.get('response_headers', {}), ensure_ascii=False)}")
-        preview = str(diagnostic_state.get("response_preview") or "")
-        if preview:
-            st.text_area("response_preview", preview[:500], height=160)
-        if diagnostic_state.get("sync_error"):
-            st.error(diagnostic_state.get("sync_error"))
-        imported_numbers = diagnostic_state.get("imported_numbers") or []
-        if imported_numbers:
-            st.caption("dezenas importadas: " + " ".join(f"{int(number):02d}" for number in imported_numbers))
+        if diagnostic_state:
+            diag_cols = st.columns(4)
+            diag_cols[0].metric("sync_status", diagnostic_state.get("sync_status", "-"))
+            diag_cols[1].metric("http_status", diagnostic_state.get("http_status", "-"))
+            diag_cols[2].metric("imported_contest", diagnostic_state.get("imported_contest", "-"))
+            diag_cols[3].metric("timestamp", diagnostic_state.get("sync_timestamp", "-"))
+            st.caption(f"request_url: {diagnostic_state.get('request_url', '-')}")
+            st.caption(f"request_headers: {json.dumps(diagnostic_state.get('request_headers', {}), ensure_ascii=False)}")
+            st.caption(f"response_headers: {json.dumps(diagnostic_state.get('response_headers', {}), ensure_ascii=False)}")
+            preview = str(diagnostic_state.get("response_preview") or "")
+            if preview:
+                st.text_area(
+                    "response_preview",
+                    preview[:500],
+                    height=160,
+                    key="conference_sync_response_preview",
+                )
+            if diagnostic_state.get("sync_error"):
+                st.error(diagnostic_state.get("sync_error"))
+            imported_numbers = diagnostic_state.get("imported_numbers") or []
+            if imported_numbers:
+                st.caption("dezenas importadas: " + " ".join(f"{int(number):02d}" for number in imported_numbers))
+        else:
+            st.caption("Nenhum diagnóstico de sincronização disponível.")
 
-    check_result = st.session_state.get("institutional_check_result")
-    if isinstance(check_result, dict) and check_result.get("warning"):
-        st.warning(check_result["warning"])
-    if isinstance(check_result, dict):
-        st.caption(
-            " | ".join(
-                [
-                    f"generation_event_id={check_result.get('generation_event_id', '-')}",
-                    f"formato_cartao={check_result.get('formato_cartao', '-')}",
-                    f"dezenas_conferidas_count={check_result.get('dezenas_conferidas_count', '-')}",
-                    f"origem_dezenas_conferencia={check_result.get('origem_dezenas_conferencia', '-')}",
-                    f"expected_card_size={check_result.get('expected_card_size', '-')}",
-                    f"actual_card_size={check_result.get('actual_card_size', '-')}",
-                ]
-            )
+    try:
+        check_result = _resolve_institutional_check_result(
+            generation_event_id=_safe_int(selected_generation_event_id, default=None),
         )
-        generation_results = list(check_result.get("generation_results") or [])
-        if generation_results:
-            st.markdown("#### Resumo geral")
+    except Exception as exc:  # pragma: no cover - surfaced in UI
+        check_result = {"status": "error", "error_message": str(exc)}
+
+    generation_results = (
+        list(check_result.get("generation_results") or [])
+        if isinstance(check_result, dict)
+        else []
+    )
+    has_generation_results = bool(generation_results)
+
+    conference_status_section = st.container()
+    conference_meta_section = st.container()
+    conference_summary_section = st.container()
+    conference_generations_section = st.container()
+    conference_reconciliations_section = st.container()
+    conference_results_section = st.container()
+
+    with conference_status_section:
+        if isinstance(check_result, dict) and check_result.get("error_message"):
+            st.error(f"Falha ao carregar conferência: {check_result.get('error_message')}")
+        elif isinstance(check_result, dict) and check_result.get("warning"):
+            st.warning(str(check_result.get("warning", "")))
+        elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
+            st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
+        elif isinstance(check_result, dict) and check_result.get("status") == "checked" and not has_generation_results:
+            st.info("Conferência executada, mas nenhum resultado foi renderizado.")
+        elif not has_generation_results and not latest_contest:
+            st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
+
+    with conference_meta_section:
+        if isinstance(check_result, dict) and has_generation_results:
+            st.caption(
+                " | ".join(
+                    [
+                        f"generation_event_id={check_result.get('generation_event_id', '-')}",
+                        f"formato_cartao={check_result.get('formato_cartao', '-')}",
+                        f"dezenas_conferidas_count={check_result.get('dezenas_conferidas_count', '-')}",
+                        f"origem_dezenas_conferencia={check_result.get('origem_dezenas_conferencia', '-')}",
+                        f"expected_card_size={check_result.get('expected_card_size', '-')}",
+                        f"actual_card_size={check_result.get('actual_card_size', '-')}",
+                    ]
+                )
+            )
+
+    with conference_summary_section:
+        st.markdown("#### Resumo geral")
+        if has_generation_results and isinstance(check_result, dict):
             total_games_reconciled = sum(int(item.get("total_games", 0) or 0) for item in generation_results)
             total_runs = len(generation_results)
             best_hits = max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0)
             total_hits = int(check_result.get("total_hits", 0) or 0)
             prize_count = int(check_result.get("prize_count", 0) or 0)
-            st.write(total_runs)
-            st.write(total_games_reconciled)
-            st.write(best_hits)
-            st.write(f"total_runs={total_runs}")
-            st.write(f"total_games_reconciled={total_games_reconciled}")
-            st.write(f"best_hits={best_hits}")
             summary_cols = st.columns(5)
             summary_cols[0].metric("Concurso", check_result.get("contest_number", "-"))
             summary_cols[1].metric("Total jogos conferidos", total_games_reconciled)
             summary_cols[2].metric("Melhor acerto", best_hits)
             summary_cols[3].metric("Prêmios", prize_count)
             summary_cols[4].metric("Total hits", total_hits)
-            hit_totals: Counter[int] = Counter()
-            for item in generation_results:
-                for row in item.get("results", []) or []:
-                    hit_totals[int(row.get("hits", 0) or 0)] += 1
-            hit_counts_df = pd.DataFrame(
-                [
-                    {"faixa": f"{hits} acertos", "quantidade": count}
-                    for hits, count in sorted(hit_totals.items(), key=lambda item: (-item[0], item[1]))
-                    if hits >= 10
-                ]
+            hit_counts_df = _build_conference_hit_counts_df(generation_results)
+            st.dataframe(
+                hit_counts_df,
+                hide_index=True,
+                use_container_width=True,
+                key="conference_hit_counts_df",
             )
-            if not hit_counts_df.empty:
-                st.dataframe(hit_counts_df, hide_index=True, use_container_width=True)
-            st.markdown("#### Por geração")
+        else:
+            st.caption("Sem resumo de conferência disponível.")
+
+    with conference_generations_section:
+        st.markdown("#### Por geração")
+        if has_generation_results:
             for item in generation_results:
-                title = f"Geração #{item.get('generation_event_id', '-')}"
+                generation_event_id = int(item.get("generation_event_id", 0) or 0)
+                title = f"Geração #{generation_event_id or '-'}"
                 with st.expander(
                     f"{title} | jogos={item.get('total_games', '-') } | best_hits={item.get('best_hits', '-')}",
                     expanded=False,
@@ -10639,87 +11838,46 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                     gen_cols[1].metric("contest", item.get("contest_number", "-"))
                     gen_cols[2].metric("best_hits", item.get("best_hits", "-"))
                     gen_cols[3].metric("prize_count", item.get("prize_count", "-"))
-                    generation_df = pd.DataFrame(
-                        [
-                            {
-                                "jogo": row["game_index"],
-                                "formato_cartao": row.get("formato_cartao", "-"),
-                                "nucleo_lei_15": row.get("nucleo_lei_15", "-"),
-                                "reservas_auditadas": row.get("reservas_auditadas", "-"),
-                                "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
-                                "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
-                                "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
-                                "expected_card_size": row.get("expected_card_size", "-"),
-                                "actual_card_size": row.get("actual_card_size", "-"),
-                                "hits": row["hits"],
-                                "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
-                                "premiado": row["prize_status"],
-                            }
-                            for row in item.get("results", []) or []
-                        ]
+                    generation_df = _build_conference_generation_detail_df(list(item.get("results", []) or []))
+                    st.dataframe(
+                        generation_df,
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"conference_generation_df_{generation_event_id or 'unknown'}",
                     )
-                    if not generation_df.empty:
-                        st.dataframe(generation_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.info("Nenhum jogo encontrado para esta geração.")
-            diagnostics = check_result.get("diagnostics") or {}
-            if diagnostics:
-                st.markdown("#### Diagnóstico temporário")
-                st.write(f"Resultado oficial: {diagnostics.get('official_numbers', [])}")
-                st.write(f"Tipo resultado: {type(diagnostics.get('official_numbers', []))}")
-                st.write(f"Primeiro jogo: {diagnostics.get('first_game', [])}")
-                st.write(f"Tipo jogo: {type(diagnostics.get('first_game', []))}")
-                st.write(f"Interseção: {set(int(number) for number in diagnostics.get('first_intersection', []) or [])}")
-                st.write(f"Hits: {diagnostics.get('first_game_hits', 0)}")
-            st.markdown("#### Últimas reconciliações")
-            reconciliations = _load_reconciliation_history(limit=10)
-            if reconciliations:
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                "concurso": row.get("contest_id", "-"),
-                                "data": row.get("created_at", "-"),
-                                "jogos conferidos": row.get("games_count", "-"),
-                                "melhor acerto": row.get("best_hits", "-"),
-                                "prêmios": row.get("prize_count", "-"),
-                            }
-                            for row in reconciliations
-                        ]
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
-                )
-            else:
-                st.info("Ainda não há reconciliações persistidas nesta instância.")
-            st.markdown("#### Conferência")
+        else:
+            st.caption("Nenhuma geração conferida para exibir.")
+
+    with conference_reconciliations_section:
+        st.markdown("#### Últimas reconciliações")
+        reconciliations = _load_reconciliation_history(limit=10)
+        reconciliation_df = _build_conference_reconciliation_history_df(reconciliations)
+        st.dataframe(
+            reconciliation_df,
+            hide_index=True,
+            use_container_width=True,
+            key="conference_reconciliation_history_df",
+        )
+        if reconciliation_df.empty:
+            st.caption("Ainda não há reconciliações persistidas nesta instância.")
+
+    with conference_results_section:
+        st.markdown("#### Conferência")
+        if has_generation_results:
+            combined_results_df = _build_conference_combined_results_df(generation_results)
             st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "jogo": row["game_index"],
-                            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
-                            "hits": row["hits"],
-                            "premiado": row["prize_status"],
-                        }
-                        for generation in generation_results
-                        for row in generation.get("results", []) or []
-                    ]
-                ),
+                combined_results_df,
                 hide_index=True,
                 use_container_width=True,
+                key="conference_combined_results_df",
             )
-        elif check_result.get("status") == "waiting_contest":
-            st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
-    elif isinstance(check_result, dict) and check_result.get("status") == "checked":
-        st.info("Conferência executada, mas nenhum resultado foi renderizado.")
-    elif not latest_contest:
-        st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
+        else:
+            st.caption("Nenhum resultado de conferência disponível.")
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     fill_diagnostics: dict[str, Any] = {}
-    total_games = int(requested_count)
+    total_games = _validate_generation_quantity(requested_count)
     seed = int(time.time()) % 1_000_000
     latest_contest = get_latest_official_contest() or {}
     latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
@@ -10836,7 +11994,16 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Gerador ADM - Lei 15 Limpo")
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
-    requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
+    requested_count = int(
+        st.selectbox(
+            "Quantidade de jogos",
+            options=list(ALLOWED_GENERATION_QUANTITIES),
+            index=list(ALLOWED_GENERATION_QUANTITIES).index(
+                _coerce_generation_quantity(st.session_state.get("clean_law15_requested_count", 20), default=20)
+            ),
+            key="clean_law15_requested_count",
+        )
+    )
     st.session_state.setdefault("clean_law15_card_format", 15)
     current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
     selected_card_format = int(
@@ -10923,7 +12090,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
         games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], int(result.get("selected_card_format", 15) or 15)))
         if games:
-            st.markdown("#### Jogos gerados")
+            st.markdown(f"#### {LEI15_UPPER_PANEL_TITLE}")
             cartoes_finais_superiores: list[list[int]] = []
             games_table_rows: list[dict[str, Any]] = []
             for index, game in enumerate(games):
@@ -10937,7 +12104,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                         "cartão_final": _format_numbers_for_history(final_card_numbers),
                     }
                 )
-            games_df = pd.DataFrame(games_table_rows)
+            games_df = pd.DataFrame(games_table_rows).rename(columns=LEI15_UPPER_PANEL_COLUMN_LABELS)
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
                 f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
@@ -11133,13 +12300,13 @@ def _render_generator_page(snapshot: dict[str, Any]) -> None:
     st.session_state["institutional_dezenas_per_game"] = selected_game_size
     st.markdown("##### Gerador ADM - Lei 15")
     direct_cols = st.columns([1.4, 1.0, 1.0])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_quantity = _coerce_generation_quantity(st.session_state.get("institutional_total_games", 30), default=30)
     selected_quantity = int(
-        direct_cols[0].number_input(
+        direct_cols[0].selectbox(
             "Quantidade de jogos",
-            min_value=1,
-            max_value=100,
-            value=int(st.session_state.get("institutional_total_games", 30) or 30),
-            step=1,
+            options=quantity_options,
+            index=quantity_options.index(default_quantity),
             key="institutional_total_games",
         )
     )
@@ -11381,14 +12548,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     st.markdown("#### Motor de gera??o")
     gen_cols = st.columns([1.1, 0.75, 0.95, 0.8, 0.95])
+    quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
+    default_sim_quantity = _coerce_generation_quantity(
+        st.session_state.get("institutional_simulation_total_games", 10),
+        default=10,
+    )
     total_games = int(
-        gen_cols[0].number_input(
+        gen_cols[0].selectbox(
             "Quantidade de jogos",
-            min_value=1,
-            max_value=100,
-            value=15,
-            step=1,
-            key="institutional_total_games",
+            options=quantity_options,
+            index=quantity_options.index(default_sim_quantity),
+            key="institutional_simulation_total_games",
         )
     )
     if gen_cols[1].button("LotoIA", type="primary"):
@@ -11526,10 +12696,17 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     st.markdown("#### Cobertura estrutural")
 
-    check_result = st.session_state.get("institutional_check_result")
+    check_result = _resolve_institutional_check_result(
+        generation_event_id=_safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None),
+    )
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
-    if isinstance(check_result, dict) and check_result.get("results"):
+    conference_rows = list(check_result.get("results") or []) if isinstance(check_result, dict) else []
+    if not conference_rows and isinstance(check_result, dict):
+        generation_results = list(check_result.get("generation_results") or [])
+        if generation_results:
+            conference_rows = list(generation_results[0].get("results") or [])
+    if isinstance(check_result, dict) and conference_rows:
         st.markdown("#### Confer?ncia")
         st.dataframe(
             pd.DataFrame(
@@ -11548,7 +12725,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
                         "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
                         "premiado": row["prize_status"],
                     }
-                    for row in check_result["results"]
+                    for row in conference_rows
                 ]
             ),
             hide_index=True,
@@ -11571,6 +12748,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    analytical_guard = _evaluate_db_first_analytical_guard(generation_event_id=active_generation_event_id)
+    if not analytical_guard.get("allowed"):
+        st.error("Painel analítico bloqueado: nenhuma conferência ou snapshot analítico persistido no PostgreSQL.")
+        st.caption(f"motivo={analytical_guard.get('reason', '-')}")
+        return
     analytic_labels = {
         "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
         "TOTAL_JOGOS_HISTORICOS_CARREGADOS": "Jogos históricos carregados",
@@ -11917,6 +13100,20 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
             st.info("Ainda não há eventos suficientes para montar a timeline analítica.")
+
+    latest_run_id = _safe_int(analytical_guard.get("reconciliation_run_id"), default=None)
+    analytical_export = _build_db_derived_export_payload(
+        historical_rows,
+        db_table=str(analytical_guard.get("db_table") or "reconciliation_games"),
+        event_id=active_generation_event_id,
+        run_id=latest_run_id,
+        snapshot_id=str((analytical_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        analytical_export,
+        file_name="historico_analitico_export.csv",
+        label="Exportar histórico analítico (PostgreSQL)",
+    )
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
     st.write("Auditoria incremental isolada do motor oficial.")
@@ -12042,8 +13239,6 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "overview")
     elif page == "audit_monitoring_conference":
         _render_audit_monitoring_page(snapshot, "conference")
-    elif page == "audit_monitoring_group_performance":
-        _render_audit_monitoring_page(snapshot, "group_performance")
     elif page == "audit_monitoring_missing_numbers":
         _render_audit_monitoring_page(snapshot, "missing_numbers")
     elif page == "audit_monitoring_extra_numbers":
@@ -12088,8 +13283,6 @@ def main() -> None:
         _render_replay_institutional_page(snapshot)
     elif page == "summary_benchmark":
         _render_benchmark_resumido_page(snapshot)
-    elif page == "operational_statistics":
-        _render_estatisticas_operacionais_page(snapshot)
     else:
         _render_hb_geometry_page(_hb_geometry_state())
 

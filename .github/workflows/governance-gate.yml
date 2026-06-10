@@ -1,0 +1,80 @@
+name: governance-gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install lint dependencies
+        run: pip install ruff==0.8.4
+      - name: Ruff (artefatos de governança)
+        run: ruff check scripts/checks tests/governance/test_branch_protection_artifacts.py
+      - name: Syntax check (dashboard institucional)
+        run: python -m compileall -q dashboard/institutional_app.py scripts/checks
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Institutional regression tests
+        run: |
+          python -m pytest \
+            tests/test_clean_app_formats.py \
+            tests/dashboard/test_cloud_entrypoint.py \
+            tests/governance/test_branch_protection_artifacts.py \
+            -q
+
+  governance-contract-check:
+    name: governance-contract-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate governance contract artifacts
+        run: python scripts/checks/governance_contract_check.py
+
+  lei15-lei15a-boundary-check:
+    name: lei15-lei15a-boundary-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate Lei 15 / Lei 15A component boundary
+        run: python scripts/checks/lei15_lei15a_boundary_check.py
+
+  dashboard-semantic-label-check:
+    name: dashboard-semantic-label-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate dashboard semantic labels
+        run: python scripts/checks/dashboard_semantic_label_check.py
