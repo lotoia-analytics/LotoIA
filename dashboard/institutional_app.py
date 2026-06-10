@@ -112,7 +112,11 @@ from lotoia.observability.observational_leftover import (
     format_dezenas as _format_observational_dezenas,
     validate_real_leftover_guards,
 )
-from dashboard.display_dataframe import make_arrow_safe_dataframe
+from dashboard.display_dataframe import (
+    make_arrow_safe_dataframe,
+    strip_adm_technical_columns,
+    strip_adm_technical_records,
+)
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
@@ -1095,7 +1099,7 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     st.dataframe(audit_df, hide_index=True, use_container_width=True)
     error_rows = [row for row in audit_rows if row.get("status") == "error"]
     if error_rows:
-        with st.expander("Erros SQL da auditoria", expanded=True):
+        with st.expander("Erros SQL da auditoria", expanded=False):
             st.dataframe(
                 pd.DataFrame(error_rows)[["query", "error"]],
                 hide_index=True,
@@ -2208,7 +2212,7 @@ def _make_streamlit_dataframe_safe(df: pd.DataFrame | None) -> pd.DataFrame:
     for column in safe_df.columns:
         if safe_df[column].dtype == "object":
             safe_df[column] = safe_df[column].apply(lambda value: "" if value is None else str(value))
-    return safe_df
+    return strip_adm_technical_columns(safe_df)
 
 
 def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
@@ -2682,14 +2686,14 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
         post_reconciliation_memory,
         batch_reconciliation_memory,
     )
-    st.markdown("##### Mem?ria Cient?fica da LotoIA")
+    st.markdown("##### Memória Científica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
     summary_cols[1].metric("Primeiro concurso", str(official_diagnostics.get("contest_number_min", "-") or "-").zfill(4) if official_diagnostics.get("contest_number_min") is not None else "-")
-    summary_cols[2].metric("?ltimo concurso", official_diagnostics.get("contest_number_max", "-") or "-")
+    summary_cols[2].metric("Último concurso", official_diagnostics.get("contest_number_max", "-") or "-")
     summary_cols[3].metric("Concursos faltantes", int(official_diagnostics.get("total_concursos_faltantes", 0) or 0))
     summary_cols[4].metric("Status da base oficial", official_diagnostics.get("status_base_oficial", "-") or "-")
-    summary_cols[5].metric("?ltimo importado", official_diagnostics.get("ultimo_concurso_imported_contests", "-") or "-")
+    summary_cols[5].metric("Último importado", official_diagnostics.get("ultimo_concurso_imported_contests", "-") or "-")
     st.caption(
         " | ".join(
             [
@@ -2745,7 +2749,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
             f"**Concurso base**  \n{official_15_memory.get('baseline_contest_number', official_window.get('contest_number', '-')) or '-'}"
         )
         with st.expander("Ver baseline oficial da política 15 completa", expanded=False):
-            st.json(official_15_memory)
+            st.caption("Baseline persistida no PostgreSQL. Exporte via histórico institucional para auditoria técnica.")
     post_window: dict[str, Any] = {}
     cross_validation_summary: dict[str, Any] = {}
     scientific_components: dict[str, Any] = {}
@@ -2816,9 +2820,8 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                     f"Janela {label}",
                     int(window_payload.get("contest_count", 0) or 0),
                 )
-            with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
-                st.caption("Registro técnico legado preservado para auditoria histórica.")
-                st.json(post_reconciliation_memory)
+            with st.expander("Memória pós-conferência observacional — detalhes", expanded=False):
+                st.caption("Registro técnico legado preservado para auditoria histórica no PostgreSQL.")
     if batch_reconciliation_memory:
         if merge_reconciliation:
             batch_title = "###### Conferência científica consolidada"
@@ -3081,8 +3084,6 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                     "total_count_15" if validation_threshold >= 13 else f"total_count_{validation_threshold + 2}_plus",
                     int(window_payload.get("total_count_15", window_payload.get(f"total_count_{validation_threshold + 2}_plus", window_payload.get("total_count_13_plus", 0))) or 0),
                 )
-                with st.expander(f"Ver detalhes da janela {label}", expanded=False):
-                    st.json(window_payload)
         else:
             st.caption("Validação cruzada histórica não persistida nesta memória; usando o resumo consolidado disponível.")
         st.markdown("###### Validação prospectiva")
@@ -3132,8 +3133,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                 f"O uso recomendado é condicional/híbrido até produzir {batch_hit_decomposition.get('validation_threshold', 11)}+ na próxima bateria limpa."
             )
         with st.expander("Memória consolidada da bateria conferida — detalhes", expanded=False):
-            if st.checkbox("Carregar memória consolidada", value=False, key="load_batch_reconciliation_memory"):
-                st.json(batch_reconciliation_memory)
+            st.caption("Memória consolidada persistida no PostgreSQL.")
     else:
         st.caption("Memória de reconciliação em lote indisponível ou ainda não registrada para esta sessão.")
     strong_near_miss_memory = next(
@@ -3214,8 +3214,7 @@ def _render_scientific_memory_block(*, compact: bool = False) -> None:
                     )
                 )
             with st.expander("Melhores near miss — detalhes", expanded=False):
-                if st.checkbox("Carregar near miss", value=False, key="load_strong_near_miss_memory"):
-                    st.json(strong_near_miss_memory)
+                st.caption("Registro near miss persistido no PostgreSQL.")
     st.markdown("##### Histórico Oficial Lotofácil")
     official_rows_summary = _load_official_history_rows(limit=10, descending=True)
     if official_rows_summary:
@@ -3420,8 +3419,8 @@ def _render_scientific_policy_panel(
     meta_cols = st.columns(4)
     meta_cols[0].metric("Lei selecionada", selected_policy_name)
     meta_cols[1].metric("Janela analisada", selected_window)
-    meta_cols[2].metric("Crit?rio vencedor", selected_reason)
-    meta_cols[3].metric("Pol?tica ID", selected_policy_id)
+    meta_cols[2].metric("Critério vencedor", selected_reason)
+    meta_cols[3].metric("Política ID", selected_policy_id)
 
     score_cols = st.columns(2)
     score_cols[0].metric("Selection score", selected_score)
@@ -3442,19 +3441,17 @@ def _render_scientific_policy_panel(
             st.warning("Nenhuma lei aprovada encontrada.")
             st.caption(
                 f"Leis testadas: {tested_count} | "
-                f"descartadas pelo guardi?o: {rejected_by_guardian} | "
+                f"descartadas pelo guardião: {rejected_by_guardian} | "
                 f"descartadas pelas regras: {rejected_by_rules}"
             )
         else:
             st.info("Parâmetros: aguardando a LotoIA descobrir a lei.")
-        with st.expander("Ver payload t?cnico completo", expanded=False):
-            st.json({"status": "aguardando descoberta automática", "policy_discovery": policy_discovery or {}})
         return
 
     detail_cols = st.columns(3)
     repeat_min = int(policy_payload.get("repeat_min", 0) or 0)
     repeat_max = int(policy_payload.get("repeat_max", 0) or 0)
-    detail_cols[0].markdown(f"**Repeti??o do ?ltimo concurso**  \\n{repeat_min} a {repeat_max} dezenas")
+    detail_cols[0].markdown(f"**Repetição do Último concurso**  \\n{repeat_min} a {repeat_max} dezenas")
     detail_cols[1].markdown(
         f"**Paridade preferencial**  \\n{_format_scientific_parity_pairs(policy_payload.get('preferred_parity_pairs', []))}"
     )
@@ -3464,22 +3461,22 @@ def _render_scientific_policy_panel(
 
     detail_cols_2 = st.columns(3)
     detail_cols_2[0].markdown(
-        f"**Limite de sequ?ncia**  \\nM?ximo {int(policy_payload.get('sequence_max', 0) or 0)} dezenas consecutivas"
+        f"**Limite de sequência**  \\nMáximo {int(policy_payload.get('sequence_max', 0) or 0)} dezenas consecutivas"
     )
     detail_cols_2[1].markdown(
-        f"**N?cleo refor?ado**  \\n{_format_scientific_number_list(policy_payload.get('core_numbers', []))}"
+        f"**Núcleo reforçado**  \\n{_format_scientific_number_list(policy_payload.get('core_numbers', []))}"
     )
     detail_cols_2[2].markdown(
-        f"**Dezenas com redu??o de peso**  \\n{_format_scientific_number_list(policy_payload.get('discouraged_numbers', []))}"
+        f"**Dezenas com redução de peso**  \\n{_format_scientific_number_list(policy_payload.get('discouraged_numbers', []))}"
     )
 
     freq_cols = st.columns(2)
     freq_cols[0].metric(
-        "Controle de frequ?ncia (m?x.)",
+        "Controle de frequência (máx.)",
         f"{float(policy_payload.get('max_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
     freq_cols[1].metric(
-        "Controle de frequ?ncia (m?n. candidata)",
+        "Controle de frequência (mín. candidata)",
         f"{float(policy_payload.get('min_frequency_ratio', 0.0) or 0.0) * 100:.0f}%",
     )
 
@@ -3522,10 +3519,6 @@ def _render_scientific_policy_panel(
                 str(int(window_decomposition.get(f"count_{panel_validation_threshold}_plus", 0) or 0)),
             )
             st.caption(window_decomposition.get("validation_zone_label", panel_validation_zone_label))
-            window_context = st.expander(f"Ver detalhes da {label.lower()}", expanded=False) if use_expander else st.container()
-            with window_context:
-                st.json(window)
-
     if parameter_reasoning:
         st.markdown("###### Motivo de cada parâmetro")
         rationale_cols = st.columns(2)
@@ -3547,9 +3540,6 @@ def _render_scientific_policy_panel(
         with rationale_cols[1]:
             for label, text in rationale_right:
                 st.markdown(f"**{label}**  \n{text}")
-    policy_context = st.expander("Ver payload t?cnico completo", expanded=False) if use_expander else st.container()
-    with policy_context:
-        st.json({"policy": policy, "policy_discovery": policy_discovery})
 def _render_scientific_calibration_panel(
     *,
     strategy_size: int,
@@ -3644,15 +3634,19 @@ def _render_scientific_calibration_panel(
         st.caption(" | ".join(summary_bits))
     panel_context = st.expander("Ver diagnóstico científico completo", expanded=False) if use_expander else st.container()
     with panel_context:
-        payload: dict[str, Any] = {}
-        if technical_payload:
-            payload.update(technical_payload)
-        payload.setdefault("historical_view_only", True)
-        payload.setdefault("legacy_removed_from_runtime", True)
-        payload.setdefault("legacy_runtime_access", False)
-        payload.setdefault("scientific_state", scientific_state)
-        payload.setdefault("scientific_recommendation", scientific_recommendation)
-        st.json(payload)
+        st.markdown(
+            "\n\n".join(
+                [
+                    f"**Modo** — {scientific_state.get('mode', '-') or '-'}",
+                    f"**Classificação** — {scientific_state.get('classification', '-') or '-'}",
+                    f"**Status estrutural** — {scientific_state.get('structural_status', '-') or '-'}",
+                    f"**Status científico** — {scientific_state.get('scientific_status', '-') or '-'}",
+                    f"**Motivo** — {scientific_state.get('main_reason', '-') or '-'}",
+                    f"**Ação sugerida** — {scientific_recommendation.get('action_suggested', '-') or '-'}",
+                    f"**Status visual** — {scientific_recommendation.get('status_visual', scientific_state.get('status_visual', '-')) or '-'}",
+                ]
+            )
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -7938,7 +7932,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                                 "perfil": game.get("profile_type", "-"),
                                 "score": round(float(game.get("score", 0.0) or 0.0), 4),
                                 "pares": int(game.get("even", 0) or 0),
-                                "?mpares": int(game.get("odd", 0) or 0),
+                                "Ímpares": int(game.get("odd", 0) or 0),
                                 "cobertura": round(float(game.get("coverage", 0.0) or 0.0), 4),
                                 "entropia": round(float(game.get("entropy", 0.0) or 0.0), 4),
                                 "concurso conferido": game.get("contest_id", "-") or "-",
@@ -8076,7 +8070,10 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
         }
         st.success("Historico institucional apagado.")
         st.markdown("##### Resultado da limpeza")
-        st.json(result)
+        total_deleted = sum(int(value or 0) for value in (result.get("deleted") or {}).values())
+        st.caption(f"status={result.get('status', '-')} | registros removidos={total_deleted}")
+        if result.get("errors"):
+            st.warning(f"Tabelas com erro: {', '.join(sorted(result['errors'].keys()))}")
         st.markdown("##### Diagnostico depois da limpeza")
         st.dataframe(_make_arrow_safe(pd.DataFrame(after_rows + [preserved_row])), hide_index=True, use_container_width=True)
 
@@ -8145,33 +8142,6 @@ def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
         st.info("Nenhuma dezena dominante encontrada para a leitura atual.")
     st.markdown("##### Interpretação observacional")
     st.info("A tela compara a geração persistida com o concurso oficial selecionado. A frequência das dezenas mostra concentração dentro da bateria analisada, mas não representa recomendação automática, recalibração ou mudança da Lei 15.")
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.markdown("###### Geração atual")
-        if latest_generation:
-            st.json(
-                {
-                    "generation_event_id": latest_generation.get("generation_event_id", "-"),
-                    "seed": latest_generation.get("seed", "-"),
-                    "total_games": latest_generation.get("total_games", 0),
-                    "target_contest": latest_generation.get("target_contest", "-"),
-                }
-            )
-        else:
-            st.info("Nenhuma geração persistida encontrada.")
-        st.markdown("###### Concurso oficial")
-        if latest_contest:
-            st.json(
-                {
-                    "contest_number": latest_contest.get("contest_number", "-"),
-                    "data": latest_contest.get("data", "-"),
-                    "dezenas": latest_contest.get("dezenas", []),
-                }
-            )
-        else:
-            st.info("Nenhum concurso oficial importado ainda.")
-        if structural_stats.get("dominant_numbers"):
-            st.markdown("###### Números dominantes técnicos")
-            st.dataframe(pd.DataFrame(structural_stats.get("dominant_numbers") or []), hide_index=True, use_container_width=True)
 
 
 def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
@@ -8228,15 +8198,12 @@ def _render_ml_diagnostic_source_caption(
     analysis_only: bool = False,
 ) -> None:
     parts = [
-        f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
-        f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
-        "generation_command=False",
-        "recalibration_command=False",
+        "Fonte: PostgreSQL (reconciliation_runs / reconciliation_games)",
+        "Camada: diagnóstico observacional",
+        "Sem efeito operacional",
     ]
     if analysis_only:
-        parts.append("modo=analise_apenas")
-    else:
-        parts.insert(1, f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}")
+        parts.append("Modo: análise apenas")
     st.caption(" | ".join(parts))
 
 
@@ -8252,15 +8219,13 @@ def _load_displayed_conference_diagnostic_context() -> dict[str, Any]:
 
 def _render_evolution_panel_context_caption(payload: dict[str, Any]) -> None:
     _render_ml_diagnostic_source_caption(payload, analysis_only=True)
-    parts = [
-        f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
-        f"generation_event_id={payload.get('generation_event_id', 0)}",
-    ]
+    parts: list[str] = []
     if "target_hits" in payload:
-        parts.append(f"target_hits={payload.get('target_hits', '-')}")
+        parts.append(f"Faixa analisada: {payload.get('target_hits', '-')} acertos")
     if "count_hits_target" in payload:
-        parts.append(f"count_hits_target={payload.get('count_hits_target', 0)}")
-    st.caption(" | ".join(parts))
+        parts.append(f"Jogos na faixa: {payload.get('count_hits_target', 0)}")
+    if parts:
+        st.caption(" | ".join(parts))
 
 
 def _render_evolution_panel_hits_distribution(evolution: dict[str, Any]) -> None:
@@ -8284,14 +8249,6 @@ def _render_evolution_panel_empty_state(evolution: dict[str, Any], *, target_lab
     if count_hits_target > 0:
         return
     st.warning(f"Nenhum jogo com {target_label} acertos na conferência exibida.")
-    st.caption(
-        " | ".join(
-            [
-                f"reconciliation_run_id={evolution.get('reconciliation_run_id', 0)}",
-                f"generation_event_id={evolution.get('generation_event_id', 0)}",
-            ]
-        )
-    )
     _render_evolution_panel_hits_distribution(evolution)
 
 
@@ -8357,10 +8314,7 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
     header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
     header_cols[2].metric("Fonte", "PostgreSQL")
-    st.caption(
-        f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)} | "
-        "política: ADM_VERDICT_POLICY (3 vereditos, sem efeito operacional)"
-    )
+    st.caption("política: ADM_VERDICT_POLICY (3 vereditos, sem efeito operacional)")
     if not payload.get("available"):
         st.warning(
             "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL. "
@@ -8417,11 +8371,15 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                             "(sobra_real = cartao_final − resultado_oficial)."
                         )
                         if leakage_table:
-                            st.dataframe(pd.DataFrame(leakage_table), hide_index=True, use_container_width=True)
+                            st.dataframe(
+                                strip_adm_technical_columns(pd.DataFrame(leakage_table)),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
                         for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
                             st.markdown(f"**Dezena {dezena_key}**")
                             st.dataframe(
-                                pd.DataFrame(drilldown_rows),
+                                strip_adm_technical_columns(pd.DataFrame(strip_adm_technical_records(drilldown_rows))),
                                 hide_index=True,
                                 use_container_width=True,
                             )
@@ -8544,24 +8502,6 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             ]
         )
         st.dataframe(history_df, hide_index=True, use_container_width=True)
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.write(
-            {
-                "alert_types": [ALERT_001, ALERT_002, ALERT_003],
-                "verdict_options": [
-                    VERDICT_ACCEPT_DIAGNOSTIC,
-                    VERDICT_REQUEST_MORE_EVIDENCE,
-                    VERDICT_REJECT,
-                ],
-                "guards": {
-                    "generation_command": False,
-                    "recalibration_command": False,
-                    "operational_effect": False,
-                    "nucleo_lei15_15d_sovereign": True,
-                },
-                "reconciliation_run_id": payload.get("reconciliation_run_id", 0),
-            }
-        )
 
 
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
@@ -8582,11 +8522,9 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     metrics = _load_hb_metrics_from_reconciliation_db()
     st.caption(
         f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
-        f"reconciliation_run_id={metrics.get('reconciliation_run_id', 0)} | "
-        f"prize_count={metrics.get('prize_count', 0)} | "
-        f"best_hits={metrics.get('best_hits', 0)} | "
-        f"resultado_oficial={metrics.get('official_source', 'indisponivel')} | "
-        f"Lei 001: sem CSV, sem session_state"
+        f"Prêmios: {metrics.get('prize_count', 0)} | "
+        f"Melhor acerto: {metrics.get('best_hits', 0)} | "
+        f"Resultado oficial: {metrics.get('official_source', 'indisponivel')}"
     )
     if not metrics.get("available"):
         st.warning("Nenhuma reconciliation_run persistida encontrada no PostgreSQL para calcular as métricas HB.")
@@ -8683,9 +8621,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         st.dataframe(dominant_display_df[display_columns], hide_index=True, use_container_width=True)
         st.markdown("##### Interpretação observacional")
         st.info("A cobertura estrutural mostra como as dezenas se distribuem dentro da bateria persistida. A frequência indica recorrência interna da bateria, enquanto a média de dezenas únicas indica diversidade estrutural. Esta leitura não comanda novas gerações, não recalibra a Lei 15 e não altera histórico.")
-        with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(stats)
-            st.json(dominant_display_df.to_dict(orient="records"))
     else:
         st.info("Nenhuma dezena dominante encontrada na bateria atual.")
 
@@ -8818,11 +8753,6 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         "volume gerado, conferências realizadas, concursos oficiais importados e último vínculo entre geração e "
         "conferência. Esta leitura não substitui auditoria detalhada e não executa qualquer ação sobre a geração."
     )
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.markdown("**Última geração — dados brutos**")
-        st.json(latest_generation)
-        st.markdown("**Última conferência — dados brutos**")
-        st.json(latest_reconciliation)
 
 
 def _sync_latest_official_result_now() -> dict[str, Any]:
@@ -9900,7 +9830,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _apply_institutional_styles()
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption("Painel institucional ADM")
 
@@ -9910,7 +9840,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
         ("Gerador ADM - Lei 15 Limpo", "clean_law15_generation"),
@@ -9919,27 +9849,27 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos e Rastreabilidade</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Hist?rico Anal?tico", "history_analytical"),
-        ("Hist?rico Institucional", "history_institutional"),
-        ("Comparativos hist?rico", "comparative_history"),
+        ("Histórico Analítico", "history_analytical"),
+        ("Histórico Institucional", "history_institutional"),
+        ("Comparativos histórico", "comparative_history"),
     ]:
         _nav_entry(label, page_id)
 
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Auditoria Runtime", "audit"),
-        ("Confer?ncia por concurso", "audit_monitoring_conference"),
+        ("Conferência por concurso", "audit_monitoring_conference"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
-        ("M?tricas HB", "hb_metrics"),
+        ("Métricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
     ]:
         _nav_entry(label, page_id)
@@ -9954,10 +9884,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         _nav_entry(label, page_id)
     st.sidebar.caption("Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
-    for label, page_id in [("Limpar Hist?ricos", "clear_histories"), ("Apagar Hist?rico", "delete_history")]:
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Área Bloqueada / Restrita</div>', unsafe_allow_html=True)
+    for label, page_id in [("Limpar Históricos", "clear_histories"), ("Apagar Histórico", "delete_history")]:
         _nav_entry(label, page_id)
-    st.sidebar.caption("A??es destrutivas continuam protegidas pela confirma??o interna da tela.")
+    st.sidebar.caption("Ações destrutivas continuam protegidas pela confirmação interna da tela.")
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
@@ -11014,12 +10944,14 @@ def _render_institutional_matrix_reading_section(
         st.success(LEI15A_PANEL_SYNC_SUCCESS)
     else:
         st.error("SINCRONIZACAO_FALHOU: a leitura operacional GP inferior diverge do cartão_final superior.")
-        st.json(summary["sync_failures"])
+        failure_rows = [
+            {"jogo": item.get("game_index", "-"), "campo": item.get("field", "-"), "detalhe": item.get("detail", str(item))}
+            for item in list(summary.get("sync_failures") or [])
+        ]
+        if failure_rows:
+            st.dataframe(pd.DataFrame(failure_rows), hide_index=True, use_container_width=True)
 
     st.dataframe(primary_df, hide_index=True, use_container_width=True)
-
-    with st.expander("Detalhes técnicos da auditoria", expanded=False):
-        st.dataframe(technical_df, hide_index=True, use_container_width=True)
 
     first_row = institutional_rows[0]
     st.caption(
@@ -11159,8 +11091,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             )
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
-        with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(monitoring_payload)
         _render_signature_grid(
             list(monitoring_payload.get("accepted_signatures", [])),
             title="Dezenas organizadas no topo",
@@ -11292,16 +11222,16 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         if leakage_table:
             st.markdown("###### Tabela agregada de vazamento")
             st.dataframe(
-                pd.DataFrame(leakage_table),
+                strip_adm_technical_columns(pd.DataFrame(leakage_table)),
                 hide_index=True,
                 use_container_width=True,
             )
             drilldown_map = dict(side_leak.get("drilldown_per_dezena") or {})
             for dezena_key in sorted(drilldown_map):
-                drilldown_rows = drilldown_map.get(dezena_key) or []
+                drilldown_rows = strip_adm_technical_records(drilldown_map.get(dezena_key) or [])
                 with st.expander(f"Drilldown auditável — dezena {dezena_key}", expanded=False):
                     st.dataframe(
-                        pd.DataFrame(drilldown_rows),
+                        strip_adm_technical_columns(pd.DataFrame(drilldown_rows)),
                         hide_index=True,
                         use_container_width=True,
                     )
@@ -11708,7 +11638,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         )
         scientific_calibration_policy = generate_recalibration_policy(scientific_calibration_context)
         scientific_calibration_recommendation = recommend_next_strategy(scientific_calibration_context)
-        st.caption("Ajuste supervisionado da ?ltima bateria.")
+        st.caption("Ajuste supervisionado da Última bateria.")
         if st.button(
             "Registrar decisão científica",
             key=f"register_scientific_calibration_{scientific_batch_id}",
@@ -11728,7 +11658,16 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 f"mode={registered_decision.get('mode', '-')} | applied={registered_decision.get('applied', False)}"
             )
             with st.expander("Memória científica registrada", expanded=False):
-                st.json(registered_decision)
+                st.markdown(
+                    "\n\n".join(
+                        [
+                            f"**Classificação** — {registered_decision.get('classification', '-') or '-'}",
+                            f"**Modo** — {registered_decision.get('mode', '-') or '-'}",
+                            f"**Aplicada** — {'sim' if registered_decision.get('applied') else 'não'}",
+                            f"**Status visual** — {registered_decision.get('status_visual', '-') or '-'}",
+                        ]
+                    )
+                )
         latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
         if latest_scientific_decisions:
             st.markdown("###### Últimas decisões científicas")
@@ -11794,7 +11733,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
             f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))} | "
             f"generation_event_id={generation_result.get('generation_event_id', '-')}"
         )
-        with st.expander("Diagnóstico do Comandante de Saída", expanded=True):
+        with st.expander("Diagnóstico do Comandante de Saída", expanded=False):
             commander_diag = pd.DataFrame(
                 [
                     {
@@ -12123,7 +12062,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
             if sync_payload.get("traceback"):
                 st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
-        st.json(sync_payload)
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
@@ -12165,7 +12103,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
             if sync_payload.get("traceback"):
                 st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
-        st.json(sync_payload)
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
@@ -12660,7 +12597,15 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
         sim_diag_cols[2].metric("compared_games", int(simulation_state.get("compared_games", 0) or 0))
         sim_diag_cols[3].metric("premium_games", int(simulation_state.get("premium_games", 0) or 0))
         with st.expander("Diagnóstico da simulação", expanded=False):
-            st.json(simulation_state.get("summary") or {})
+            summary = dict(simulation_state.get("summary") or {})
+            if summary:
+                st.caption(
+                    " | ".join(
+                        f"{key}={value}"
+                        for key, value in summary.items()
+                        if key not in {"contest_numbers"}
+                    )
+                )
             st.write("Jogos carregados:", int(simulation_state.get("loaded_games", 0) or 0))
             st.write("Jogos comparados:", int(simulation_state.get("compared_games", 0) or 0))
             error_payload = st.session_state.get("institutional_simulation_error")
@@ -13002,7 +12947,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     top_cols[1].caption("Cada jogo respeita a quantidade selecionada.")
     top_cols[2].caption(f"last_ui_event: {st.session_state.get('institutional_last_ui_event', '-')}")
 
-    st.markdown("#### Motor de gera??o")
+    st.markdown("#### Motor de geração")
     gen_cols = st.columns([1.1, 0.75, 0.95, 0.8, 0.95])
     quantity_options = list(ALLOWED_GENERATION_QUANTITIES)
     default_sim_quantity = _coerce_generation_quantity(
@@ -13023,11 +12968,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     if gen_cols[2].button("Conferir Jogos", type="primary"):
         _run_institutional_conference(contest_number=selected_contest if selected_contest else None)
         st.rerun()
-    gen_cols[3].number_input("?ltimo concurso", min_value=max(1, contest_numbers[0]) if contest_numbers else 1, max_value=max(contest_numbers) if contest_numbers else 999999, value=selected_contest if selected_contest else 1, step=1, key="institutional_contest_nav")
+    gen_cols[3].number_input("Último concurso", min_value=max(1, contest_numbers[0]) if contest_numbers else 1, max_value=max(contest_numbers) if contest_numbers else 999999, value=selected_contest if selected_contest else 1, step=1, key="institutional_contest_nav")
     if gen_cols[4].button("Simular Resultado", type="primary"):
         parsed_draw = _parse_draw_numbers(st.session_state.get("institutional_draw_input", ""))
         if len(parsed_draw) != 15:
-            st.warning("Informe exatamente 15 dezenas v?lidas entre 1 e 25.")
+            st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
         else:
             _run_institutional_simulation(drawn_numbers=parsed_draw)
             st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
@@ -13038,7 +12983,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
     generation_result = st.session_state.get("institutional_generation_result") or {}
     if generation_result:
         st.success(
-            f"Gera??o conclu?da. generation_event_id={generation_result.get('generation_event_id', '-')} | jogos={len(generation_result.get('jogos') or [])} | seed={generation_result.get('seed', '-')}"
+            f"Geração concluída. jogos={len(generation_result.get('jogos') or [])}"
         )
         st.dataframe(
             pd.DataFrame(
@@ -13056,7 +13001,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             use_container_width=True,
         )
     elif generation_state.get("games"):
-        st.info("?ltima gera??o carregada. Use a barra lateral para gerar, conferir ou simular novamente.")
+        st.info("Última geração carregada. Use a barra lateral para gerar, conferir ou simular novamente.")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -13073,7 +13018,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
             use_container_width=True,
         )
     else:
-        st.caption("Use a barra lateral para acionar gera??o, confer?ncia e simula??o.")
+        st.caption("Use a barra lateral para acionar geração, conferência e simulação.")
 
     st.markdown("#### Simular Resultado")
     draw_input = st.text_input(
@@ -13086,8 +13031,8 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 
     cover_result = st.session_state.get("institutional_simulation_result")
     if cover_result:
-        st.markdown("#### Resultado da simula??o")
-        st.caption("Confer?ncia dos jogos gerados contra as dezenas sorteadas informadas acima.")
+        st.markdown("#### Resultado da simulação")
+        st.caption("Conferência dos jogos gerados contra as dezenas sorteadas informadas acima.")
         st.markdown(
             """
             <style>
@@ -13163,7 +13108,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         if generation_results:
             conference_rows = list(generation_results[0].get("results") or [])
     if isinstance(check_result, dict) and conference_rows:
-        st.markdown("#### Confer?ncia")
+        st.markdown("#### Conferência")
         st.dataframe(
             pd.DataFrame(
                 [
@@ -13193,7 +13138,7 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
         check_summary_cols[2].metric("prizes", check_result.get("prize_count", "-"))
         check_summary_cols[3].metric("total_hits", check_result.get("total_hits", "-"))
     elif isinstance(check_result, dict) and check_result.get("status") == "waiting_contest":
-        st.info("A confer?ncia est? pronta, mas ainda falta o concurso oficial em imported_contests.")
+        st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
 
     st.caption(
         f"Geração ativa: {selected_batch_id or '-'} | gerações ativas: "
@@ -13516,11 +13461,10 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             ]
         ]
         st.dataframe(visible_diagnostic_summary_df, hide_index=True, use_container_width=True, height=260)
-        with st.expander("Detalhes técnicos avançados", expanded=False):
+        with st.expander("Jogos rejeitados (detalhe)", expanded=False):
             if not diagnostic_df.empty:
                 rejected_view = diagnostic_df[
                     [
-                        "generation_event_id",
                         "jogo n°",
                         "dezenas",
                         "tipo visual",
@@ -13529,9 +13473,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
                         "classificação científica",
                         "motivo rejeição",
                         "ação sugerida",
-                        "policy_id",
-                        "policy_origin",
-                        "policy_variant",
                         "concurso conferido",
                         "acertos",
                         "premiação",
@@ -13661,8 +13602,6 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     state_cols[1].metric("Geração automática", "bloqueada na home")
     state_cols[2].metric("Camadas ML", "observacionais")
     state_cols[3].metric("Destrutivas", "bloqueadas")
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.caption("Home institucional leve, sem histórico pesado e sem execução operacional.")
 
 
 def _render_fallback_page(snapshot: dict[str, Any]) -> None:
@@ -13672,8 +13611,6 @@ def _render_fallback_page(snapshot: dict[str, Any]) -> None:
     cols[0].metric("Home", "disponível")
     cols[1].metric("Históricos", "acessíveis")
     cols[2].metric("Gerador", "fora do fallback")
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.caption("Fallback leve e não operacional.")
 
 
 def main() -> None:

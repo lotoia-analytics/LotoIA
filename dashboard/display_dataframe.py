@@ -26,6 +26,17 @@ DISPLAY_TEXT_COLUMNS = frozenset(
     }
 )
 
+ADM_HIDDEN_TABLE_COLUMNS = frozenset(
+    {
+        "generation_event_id",
+        "reconciliation_run_id",
+        "sample_size",
+        "leftover_basis",
+        "ml_role",
+        "origem_observacional",
+    }
+)
+
 PRESERVE_NUMERIC_COLUMNS = frozenset(
     {
         "frequencia",
@@ -33,11 +44,8 @@ PRESERVE_NUMERIC_COLUMNS = frozenset(
         "frequency",
         "percentual",
         "hits",
-        "sample_size",
         "concurso",
         "contest_id",
-        "generation_event_id",
-        "reconciliation_run_id",
         "Quantidade de jogos",
         "Quantidade",
         "count",
@@ -76,6 +84,31 @@ def normalize_display_dataframe(df: pd.DataFrame | None) -> pd.DataFrame:
     return normalized
 
 
+def strip_adm_technical_columns(df: pd.DataFrame | None) -> pd.DataFrame:
+    """Remove colunas técnicas não destinadas à leitura ADM em tabelas principais."""
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df.copy()
+    hidden = [column for column in df.columns if str(column) in ADM_HIDDEN_TABLE_COLUMNS]
+    if not hidden:
+        return df.copy()
+    return df.drop(columns=hidden, errors="ignore")
+
+
+def strip_adm_technical_records(records: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not records:
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for row in records:
+        cleaned.append(
+            {
+                key: value
+                for key, value in dict(row).items()
+                if str(key) not in ADM_HIDDEN_TABLE_COLUMNS
+            }
+        )
+    return cleaned
+
+
 def make_arrow_safe_dataframe(df: pd.DataFrame | None) -> pd.DataFrame:
     """Prepara DataFrame para st.dataframe sem warnings de tipos mistos no Arrow."""
     if df is None or df.empty:
@@ -91,4 +124,4 @@ def make_arrow_safe_dataframe(df: pd.DataFrame | None) -> pd.DataFrame:
         if dtype_name == "object" or dtype_name.startswith("string"):
             if column_name not in DISPLAY_TEXT_COLUMNS:
                 safe_df[column] = series.map(_stringify_display_value).astype("string")
-    return safe_df
+    return strip_adm_technical_columns(safe_df)
