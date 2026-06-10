@@ -18,17 +18,17 @@ A plataforma LotoIA opera com duas camadas normativas distintas:
 | **Lei 15** | Governança soberana | Gerar base e contexto estatístico- estrutural |
 | **Lei 15A** | Operação GP / registro da aposta | Montar o cartão final operacional para registro |
 
-Após o congelamento do núcleo operacional 15D (`ADR_LEI15A_NUCLEO_15D_CONGELADO`) e a
-aplicação desse núcleo na faixa inferior do painel institucional, surgiu ambiguidade
-operacional: a faixa superior exibe o cartão final da **geração Lei 15**, enquanto a faixa
-inferior passou a registrar o cartão montado pela **Lei 15A**.
+Após o congelamento do núcleo operacional 15D da **Lei 15** (`ADR_LEI15_NUCLEO_15D_CONGELADO`)
+e a aplicação desse núcleo como insumo na faixa inferior do painel institucional, surgiu
+ambiguidade operacional: a faixa superior exibe o cartão final da **geração Lei 15**, enquanto
+a faixa inferior passou a registrar o cartão montado pela **Lei 15A**.
 
 Sem política explícita, operadores poderiam confundir:
 
 - **reclassificação visual** do cartão final da Lei 15 (rótulos de núcleo / reservas sobre
   a mesma saída gerada); com
 - **cartão de registro da aposta** — documento operacional próprio, montado pela Lei 15A a
-  partir do núcleo congelado e das reservas auditadas Lei 15A.
+  partir do núcleo Lei 15 congelado e das reservas auditadas Lei 15A.
 
 Esta ADR elimina essa ambiguidade.
 
@@ -44,7 +44,8 @@ Lei 15A**, e **não** a reclassificação visual do cartão final da Lei 15.
 ```yaml
 cartao_registro_aposta:
   origem: Lei_15A
-  regra: nucleo_operacional_GP_congelado + reservas_auditadas_Lei15A
+  regra: nucleo_lei15_15D_congelado + reservas_auditadas_Lei15A
+  nucleo_fonte: Lei_15  # documento-fonte soberano — não pertence à Lei 15A
   nao_origem: cartao_final_reclassificado_da_Lei15
 ```
 
@@ -62,17 +63,17 @@ auditoria — mas o registro operacional da aposta obedece à montagem Lei 15A.
 
 | Formato | Composição do cartão de registro Lei 15A |
 |---------|------------------------------------------|
-| **15D** | `nucleo_lei15A_15D` |
-| **16D** | `nucleo_lei15A_15D` + 1 reserva Lei 15A |
-| **17D** | `nucleo_lei15A_15D` + 2 reservas Lei 15A |
-| **18D** | `nucleo_lei15A_15D` + 3 reservas Lei 15A |
-| **19D** | `nucleo_lei15A_15D` + 4 reservas Lei 15A |
-| **20D** | `nucleo_lei15A_15D` + `[15, 05, 07, 14, 19]` |
+| **15D** | `nucleo_lei15_15D` (fonte Lei 15) |
+| **16D** | `nucleo_lei15_15D` + 1 reserva Lei 15A |
+| **17D** | `nucleo_lei15_15D` + 2 reservas Lei 15A |
+| **18D** | `nucleo_lei15_15D` + 3 reservas Lei 15A |
+| **19D** | `nucleo_lei15_15D` + 4 reservas Lei 15A |
+| **20D** | `nucleo_lei15_15D` + `[15, 05, 07, 14, 19]` |
 | **21D** | **Pendente Lei 15A** — observacional; runtime bloqueado |
 | **22D** | **Observacional** — fora do registro operacional de aposta |
 | **23D** | **Observacional** — fora do registro operacional de aposta |
 
-**Núcleo congelado 15D:**
+**Núcleo congelado 15D (fonte Lei 15):**
 
 ```
 01 02 03 04 09 10 11 12 13 18 20 22 23 24 25
@@ -151,8 +152,8 @@ Status: `RUNTIME_LEI15A_APLICADO_ATE_20D`
 
 ## Referências
 
-- `docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md`
-- `docs/governance/ADR_LEI15A_NUCLEO_15D_CONGELADO.md`
+- `docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md`
+- `docs/governance/ADR_LEI15_NUCLEO_15D_CONGELADO.md`
 - `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - `AGENTS.md` — posicionamento LotoIA
 

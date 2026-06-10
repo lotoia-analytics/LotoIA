@@ -4,7 +4,7 @@ from dashboard.clean_core import _expand_official_card, _expand_generation_games
 from dashboard.institutional_app import (
     INSTITUTIONAL_MATRIX_PRIMARY_LABELS,
     INSTITUTIONAL_MATRIX_TECHNICAL_LABELS,
-    NUCLEO_LEI15A_15D_CONGELADO,
+    NUCLEO_LEI15_15D_CONGELADO,
     RESERVAS_LEI15A_PRIORITARIAS,
     build_institutional_matrix_primary_view,
     build_institutional_matrix_rows,
@@ -25,7 +25,7 @@ def _format_card(numbers: list[int]) -> str:
 
 
 def _lei15a_frozen_nucleus() -> list[int]:
-    return list(NUCLEO_LEI15A_15D_CONGELADO)
+    return list(NUCLEO_LEI15_15D_CONGELADO)
 
 
 def _lei15a_auditadas_from_cartao(cartao: list[int], formato_d: int) -> list[int]:

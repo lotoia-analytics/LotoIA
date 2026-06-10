@@ -172,7 +172,7 @@ def test_conferencia_15d_bloqueia_nucleo_fixo_repetido() -> None:
         ],
         start=1,
     )]
-    frozen = sorted(admin_app.LEI15A_NUCLEO_15D_CONGELADO)
+    frozen = sorted(admin_app.LEI15_NUCLEO_15D_CONGELADO)
     guard = admin_app.validate_conference_15d_source(
         games=games,
         conference_results=[
