@@ -105,6 +105,7 @@ from lotoia.observability.observational_leftover import (
     format_dezenas as _format_observational_dezenas,
     validate_real_leftover_guards,
 )
+from dashboard.display_dataframe import make_arrow_safe_dataframe
 from lotoia.experiments.hb_geometry_audit import DEFAULT_HB_GEOMETRY_DIR, run_hb_geometry_audit
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
@@ -7202,13 +7203,7 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
 
 
 def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
-    if df is None or df.empty:
-        return pd.DataFrame() if df is None else df.copy()
-    safe_df = df.copy()
-    for column in safe_df.columns:
-        if safe_df[column].dtype == "object":
-            safe_df[column] = safe_df[column].apply(lambda value: "" if value is None else str(value))
-    return safe_df
+    return make_arrow_safe_dataframe(df)
 @st.cache_data(show_spinner=False, ttl=5)
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -8230,6 +8225,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     metrics_display_df = metrics_df.copy()
     metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
     metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
+    metrics_display_df = make_arrow_safe_dataframe(metrics_display_df)
     st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
     st.subheader("Interpretação observacional")
     st.markdown(
@@ -8361,7 +8357,11 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         "Total de jogos": latest_generation.get("total_games", "-"),
         "Concurso alvo": latest_generation.get("target_contest", "-"),
     }
-    st.table([{ "Campo": key, "Valor": value } for key, value in latest_generation_display.items()])
+    st.table(
+        make_arrow_safe_dataframe(
+            pd.DataFrame([{"Campo": str(key), "Valor": value} for key, value in latest_generation_display.items()])
+        )
+    )
     st.subheader("Última conferência registrada")
     latest_reconciliation_display = {
         "Identificador da conferência": latest_reconciliation.get("id", "-"),
@@ -8373,7 +8373,11 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         "Maior acerto": latest_reconciliation.get("best_hits", "-"),
         "Jogos conferidos": latest_reconciliation.get("games_count", "-"),
     }
-    st.table([{ "Campo": key, "Valor": value } for key, value in latest_reconciliation_display.items()])
+    st.table(
+        make_arrow_safe_dataframe(
+            pd.DataFrame([{"Campo": str(key), "Valor": value} for key, value in latest_reconciliation_display.items()])
+        )
+    )
     matched_numbers = latest_reconciliation.get("matched_numbers") or []
     if matched_numbers:
         st.markdown("**Dezenas conferidas:**")
@@ -8393,7 +8397,11 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
             for key, value in sorted(hit_distribution.items(), key=_safe_hit_key)
         ]
         st.markdown("**Distribuição de acertos:**")
-        st.dataframe(hit_distribution_rows, use_container_width=True, hide_index=True)
+        st.dataframe(
+            make_arrow_safe_dataframe(pd.DataFrame(hit_distribution_rows)),
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
         st.caption("Distribuição de acertos indisponível para esta conferência.")
     st.subheader("Interpretação institucional")
@@ -13308,21 +13316,24 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
         )
     if summary:
         st.dataframe(
-            pd.DataFrame(
-                [
-                    {"Métrica": "avg_hits", "Valor": round(float(summary.get("hb_baseline", {}).get("average_hits", 0.0)), 4)},
-                    {"Métrica": "11+", "Valor": int(summary.get("hb_baseline", {}).get("hits_11_plus", 0))},
-                    {"Métrica": "12+", "Valor": int(summary.get("hb_baseline", {}).get("hits_12_plus", 0))},
-                    {"Métrica": "overlap", "Valor": round(float(summary.get("hb_baseline", {}).get("average_overlap", 0.0)), 4)},
-                    {"Métrica": "entropy", "Valor": round(float(summary.get("hb_baseline", {}).get("entropy", 0.0)), 4)},
-                    {
-                        "Métrica": "dominant_numbers",
-                        "Valor": ", ".join(
-                            f"{item['number']}:{item['frequency']}" for item in summary.get("hb_baseline", {}).get("dominant_numbers", [])[:5]
-                        )
-                        or "-",
-                    },
-                ]
+            make_arrow_safe_dataframe(
+                pd.DataFrame(
+                    [
+                        {"Métrica": "avg_hits", "Valor": round(float(summary.get("hb_baseline", {}).get("average_hits", 0.0)), 4)},
+                        {"Métrica": "11+", "Valor": int(summary.get("hb_baseline", {}).get("hits_11_plus", 0))},
+                        {"Métrica": "12+", "Valor": int(summary.get("hb_baseline", {}).get("hits_12_plus", 0))},
+                        {"Métrica": "overlap", "Valor": round(float(summary.get("hb_baseline", {}).get("average_overlap", 0.0)), 4)},
+                        {"Métrica": "entropy", "Valor": round(float(summary.get("hb_baseline", {}).get("entropy", 0.0)), 4)},
+                        {
+                            "Métrica": "dominant_numbers",
+                            "Valor": ", ".join(
+                                f"{item['number']}:{item['frequency']}"
+                                for item in summary.get("hb_baseline", {}).get("dominant_numbers", [])[:5]
+                            )
+                            or "-",
+                        },
+                    ]
+                )
             ),
             hide_index=True,
             use_container_width=True,
