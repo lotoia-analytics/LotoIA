@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from dashboard import institutional_app as app
+from pathlib import Path
+
+from lotoia.database.database import (
+    ImportedContest,
+    ReconciliationGame,
+    ReconciliationRun,
+    create_database,
+    get_session,
+)
+from lotoia.observability import hb_metrics
 
 
 def test_build_hb_metrics_payload_from_reconciliation_sample() -> None:
@@ -21,10 +30,14 @@ def test_build_hb_metrics_payload_from_reconciliation_sample() -> None:
             "contest_id": 3700,
         },
     ]
-    payload = app._build_hb_metrics_payload_from_reconciliation(
+    payload = hb_metrics.build_hb_metrics_payload_from_reconciliation(
         reconciliation_run_id=99,
         contest_id=3700,
         games_rows=games,
+        run_prize_count=2,
+        run_total_hits=33,
+        run_best_hits=12,
+        official_source="lotofacil_official_history",
     )
     assert payload["available"] is True
     assert payload["source"] == "postgresql"
@@ -32,6 +45,8 @@ def test_build_hb_metrics_payload_from_reconciliation_sample() -> None:
     assert payload["media_acertos"] == 11.0
     assert payload["jogos_11_mais"] == 2
     assert payload["jogos_12_mais"] == 1
+    assert payload["prize_count"] == 2
+    assert payload["best_hits"] == 12
     assert payload["jogos_analisados"] == 3
     assert payload["concursos_analisados"] == 1
     assert payload["tamanho_conjunto"] > 0
@@ -41,7 +56,7 @@ def test_build_hb_metrics_payload_from_reconciliation_sample() -> None:
 
 
 def test_empty_hb_metrics_payload_defaults() -> None:
-    payload = app._empty_hb_metrics_payload()
+    payload = hb_metrics.empty_hb_metrics_payload()
     assert payload["available"] is False
     assert payload["source"] == "postgresql"
     assert payload["media_acertos"] == 0.0
@@ -69,7 +84,7 @@ def test_build_hb_metrics_counts_hits_from_matched_numbers_when_hits_column_zero
             "contest_id": 3700,
         },
     ]
-    payload = app._build_hb_metrics_payload_from_reconciliation(
+    payload = hb_metrics.build_hb_metrics_payload_from_reconciliation(
         reconciliation_run_id=42,
         contest_id=3700,
         games_rows=games,
@@ -85,7 +100,7 @@ def test_format_hb_dominant_numbers_display() -> None:
         {"number": 25, "frequency": 27},
         {"number": 1, "frequency": 26},
     ]
-    assert app._format_hb_dominant_numbers(dominant_numbers) == "20(27x) 25(27x) 01(26x)"
+    assert hb_metrics.format_hb_dominant_numbers(dominant_numbers) == "20(27x) 25(27x) 01(26x)"
 
 
 def test_build_hb_metrics_recomputes_hits_from_official_numbers_when_db_hits_zero() -> None:
@@ -113,12 +128,83 @@ def test_build_hb_metrics_recomputes_hits_from_official_numbers_when_db_hits_zer
             "contest_id": 3700,
         },
     ]
-    payload = app._build_hb_metrics_payload_from_reconciliation(
+    payload = hb_metrics.build_hb_metrics_payload_from_reconciliation(
         reconciliation_run_id=786,
         contest_id=3700,
         games_rows=games,
         official_numbers=official,
+        run_prize_count=2,
     )
     assert payload["jogos_11_mais"] == 2
     assert payload["jogos_12_mais"] == 2
     assert payload["media_acertos"] > 11.0
+
+
+def test_build_hb_metrics_uses_run_prize_count_when_game_rows_lack_hits(tmp_path: Path) -> None:
+    games = [
+        {
+            "numbers": list(range(1, 16)),
+            "hits": 0,
+            "matched_numbers": [],
+            "prize_tier": "",
+            "contest_id": 3700,
+        }
+        for _ in range(3)
+    ]
+    payload = hb_metrics.build_hb_metrics_payload_from_reconciliation(
+        reconciliation_run_id=1,
+        contest_id=3700,
+        games_rows=games,
+        run_prize_count=3,
+        run_total_hits=33,
+        run_best_hits=11,
+    )
+    assert payload["jogos_11_mais"] == 3
+    assert payload["prize_count"] == 3
+
+
+def test_load_hb_metrics_uses_imported_contest_fallback(tmp_path: Path) -> None:
+    db_path = tmp_path / "hb_metrics.db"
+    create_database(db_path)
+    official = [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    with get_session(db_path) as session:
+        session.add(
+            ImportedContest(
+                contest_number=3700,
+                data="2026-01-01",
+                dezenas=" ".join(f"{number:02d}" for number in official),
+            )
+        )
+        run = ReconciliationRun(
+            generation_event_id=1,
+            contest_id=3700,
+            source="institutional",
+            status="reconciled",
+            prize_count=1,
+            total_hits=14,
+            best_hits=14,
+            payload={},
+        )
+        session.add(run)
+        session.flush()
+        session.add(
+            ReconciliationGame(
+                reconciliation_run_id=run.id,
+                generation_event_id=1,
+                contest_id=3700,
+                game_index=1,
+                numbers=[1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+                hits=0,
+                matched_numbers=[],
+                prize_status="nao_premiado",
+                prize_tier="",
+            )
+        )
+        session.commit()
+
+    payload = hb_metrics.load_hb_metrics_from_reconciliation_db(db_path)
+    assert payload["available"] is True
+    assert payload["official_source"] == "imported_contests"
+    assert payload["jogos_11_mais"] == 1
+    assert payload["jogos_12_mais"] == 1
+    assert payload["media_acertos"] == 15.0

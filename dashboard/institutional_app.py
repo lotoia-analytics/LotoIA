@@ -75,6 +75,12 @@ from lotoia.governance.structural_rfe import (
     validate_rfe_final_card,
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.observability.hb_metrics import (
+    build_hb_metrics_payload_from_reconciliation as _build_hb_metrics_payload_from_reconciliation,
+    empty_hb_metrics_payload as _empty_hb_metrics_payload,
+    format_hb_dominant_numbers as _format_hb_dominant_numbers,
+    load_hb_metrics_from_reconciliation_db as _load_hb_metrics_from_reconciliation_db_impl,
+)
 from lotoia.observability.ml_diagnostic_panels import (
     ADM_ACEITO,
     ADM_REJEITADO,
@@ -6417,193 +6423,9 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
-def _compute_structural_entropy_from_dezenas(games: Sequence[Sequence[int]]) -> float:
-    """Entropia normalizada da dispersão de dezenas no lote conferido."""
-    frequencies: dict[int, int] = {}
-    total = 0
-    for numbers in games:
-        for number in numbers:
-            value = int(number)
-            if 1 <= value <= 25:
-                frequencies[value] = frequencies.get(value, 0) + 1
-                total += 1
-    if total <= 0 or not frequencies:
-        return 0.0
-    entropy = 0.0
-    for count in frequencies.values():
-        share = count / total
-        entropy -= share * math.log2(share)
-    max_entropy = math.log2(len(frequencies)) if len(frequencies) > 1 else 1.0
-    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
-
-
-def _resolve_reconciliation_game_hits(
-    *,
-    hits: int | None,
-    matched_numbers: Sequence[int] | None,
-    numbers: Sequence[int] | None = None,
-    official_numbers: Sequence[int] | None = None,
-    prize_tier: str | None = None,
-) -> int:
-    candidates: list[int] = []
-    stored_hits = int(hits or 0)
-    if stored_hits > 0:
-        candidates.append(stored_hits)
-    matched_count = len([int(number) for number in (matched_numbers or [])])
-    if matched_count > 0:
-        candidates.append(matched_count)
-    card_numbers = [int(number) for number in (numbers or [])]
-    official = [int(number) for number in (official_numbers or [])]
-    if card_numbers and official:
-        candidates.append(len(set(card_numbers) & set(official)))
-    tier = str(prize_tier or "").strip().lower()
-    if tier.startswith("faixa_"):
-        try:
-            candidates.append(int(tier.split("_", 1)[1]))
-        except (ValueError, IndexError):
-            pass
-    return max(candidates) if candidates else 0
-
-
-def _count_reconciliation_games_with_min_hits(
-    games_rows: Sequence[dict[str, Any]],
-    *,
-    minimum_hits: int,
-    official_numbers: Sequence[int] | None = None,
-) -> int:
-    return sum(
-        1
-        for row in games_rows
-        if _resolve_reconciliation_game_hits(
-            hits=row.get("hits"),
-            matched_numbers=row.get("matched_numbers"),
-            numbers=row.get("numbers"),
-            official_numbers=official_numbers,
-            prize_tier=row.get("prize_tier"),
-        )
-        >= minimum_hits
-    )
-
-
-def _format_hb_dominant_numbers(dominant_numbers: Sequence[dict[str, Any]], *, limit: int = 5) -> str:
-    formatted = [
-        f"{int(item['number']):02d}({int(item['frequency'])}x)"
-        for item in dominant_numbers[:limit]
-        if item.get("number") is not None and item.get("frequency") is not None
-    ]
-    return " ".join(formatted) or "-"
-
-
-def _empty_hb_metrics_payload() -> dict[str, Any]:
-    return {
-        "available": False,
-        "source": "postgresql",
-        "tables": "reconciliation_runs / reconciliation_games",
-        "reconciliation_run_id": 0,
-        "media_acertos": 0.0,
-        "jogos_11_mais": 0,
-        "jogos_12_mais": 0,
-        "entropia_estrutural": 0.0,
-        "media_sobreposicao": 0.0,
-        "dezenas_dominantes": [],
-        "concursos_analisados": 0,
-        "jogos_analisados": 0,
-        "tamanho_conjunto": 0,
-    }
-
-
-def _build_hb_metrics_payload_from_reconciliation(
-    *,
-    reconciliation_run_id: int,
-    contest_id: int,
-    games_rows: Sequence[dict[str, Any]],
-    official_numbers: Sequence[int] | None = None,
-) -> dict[str, Any]:
-    games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
-    hits = [
-        _resolve_reconciliation_game_hits(
-            hits=row.get("hits"),
-            matched_numbers=row.get("matched_numbers"),
-            numbers=row.get("numbers"),
-            official_numbers=official_numbers,
-            prize_tier=row.get("prize_tier"),
-        )
-        for row in games_rows
-    ]
-    contest_ids = {
-        int(row.get("contest_id", 0) or 0)
-        for row in games_rows
-        if int(row.get("contest_id", 0) or 0) > 0
-    }
-    if not contest_ids and int(contest_id or 0) > 0:
-        contest_ids = {int(contest_id)}
-    structural = _summarize_games_structurally(games_numbers)
-    pool_numbers: set[int] = set()
-    for numbers in games_numbers:
-        pool_numbers.update(numbers)
-    media_acertos = round(sum(hits) / len(hits), 4) if hits else 0.0
-    return {
-        "available": bool(games_rows),
-        "source": "postgresql",
-        "tables": "reconciliation_runs / reconciliation_games",
-        "reconciliation_run_id": int(reconciliation_run_id or 0),
-        "media_acertos": media_acertos,
-        "jogos_11_mais": _count_reconciliation_games_with_min_hits(
-            games_rows,
-            minimum_hits=11,
-            official_numbers=official_numbers,
-        ),
-        "jogos_12_mais": _count_reconciliation_games_with_min_hits(
-            games_rows,
-            minimum_hits=12,
-            official_numbers=official_numbers,
-        ),
-        "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
-        "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
-        "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
-        "concursos_analisados": len(contest_ids),
-        "jogos_analisados": len(games_rows),
-        "tamanho_conjunto": len(pool_numbers),
-    }
-
-
 def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
-    """Carrega métricas HB da última reconciliation_run persistida no PostgreSQL (Lei 001)."""
-    with get_session(DB_PATH) as session:
-        run = (
-            session.query(ReconciliationRun)
-            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
-            .first()
-        )
-        if run is None:
-            return _empty_hb_metrics_payload()
-        contest_id = int(run.contest_id or 0)
-        official_numbers: list[int] = []
-        official_contest = _load_official_history_contest_with_session(session, contest_id)
-        if official_contest:
-            official_numbers = [int(number) for number in (official_contest.get("dezenas") or [])]
-        games_rows = (
-            session.query(ReconciliationGame)
-            .filter(ReconciliationGame.reconciliation_run_id == run.id)
-            .order_by(ReconciliationGame.game_index.asc())
-            .all()
-        )
-        row_payloads = [
-            {
-                "numbers": list(row.numbers or []),
-                "hits": int(row.hits or 0),
-                "matched_numbers": list(row.matched_numbers or []),
-                "prize_tier": str(row.prize_tier or ""),
-                "contest_id": int(row.contest_id or 0),
-            }
-            for row in games_rows
-        ]
-        return _build_hb_metrics_payload_from_reconciliation(
-            reconciliation_run_id=int(run.id or 0),
-            contest_id=contest_id,
-            games_rows=row_payloads,
-            official_numbers=official_numbers,
-        )
+    """Delega leitura HB para src/lotoia/observability/hb_metrics.py (Lei 001)."""
+    return _load_hb_metrics_from_reconciliation_db_impl(DB_PATH)
 
 
 def _build_reconciliation_result_row(game_row: ReconciliationGame) -> dict[str, Any]:
@@ -8358,6 +8180,9 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     st.caption(
         f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
         f"reconciliation_run_id={metrics.get('reconciliation_run_id', 0)} | "
+        f"prize_count={metrics.get('prize_count', 0)} | "
+        f"best_hits={metrics.get('best_hits', 0)} | "
+        f"resultado_oficial={metrics.get('official_source', 'indisponivel')} | "
         f"Lei 001: sem CSV, sem session_state"
     )
     if not metrics.get("available"):
