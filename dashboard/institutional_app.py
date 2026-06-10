@@ -677,168 +677,293 @@ def _resolve_active_commit() -> str:
         return "-"
 
 
-def _apply_institutional_styles() -> None:
+INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
+    {"icon": "🎯", "label": "Gerar Jogos", "page_id": "clean_law15_generation"},
+    {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
+    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
+    {"icon": "🏛️", "label": "Histórico Institucional", "page_id": "history_institutional"},
+    {"icon": "🔬", "label": "Auditoria Runtime", "page_id": "audit"},
+    {"icon": "🤖", "label": "Diagnósticos ML", "page_id": "central_ml_diagnostics"},
+]
+
+
+def _resolve_institutional_theme() -> str:
+    if "institutional_theme" not in st.session_state:
+        st.session_state["institutional_theme"] = "dark"
+    theme = str(st.session_state.get("institutional_theme", "dark") or "dark").strip().lower()
+    return "light" if theme == "light" else "dark"
+
+
+def _apply_institutional_styles(theme: str | None = None) -> None:
+    resolved_theme = theme or _resolve_institutional_theme()
+    is_dark = resolved_theme == "dark"
     st.markdown(
-        """
+        f"""
         <style>
-        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; max-width: 100%; }
-        section[data-testid="stMain"] > div.block-container {
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root {{
+            --lotoia-primary: #1a1f3c;
+            --lotoia-accent: #4f8ef7;
+            --lotoia-success: #2ecc71;
+            --lotoia-warning: #f39c12;
+            --lotoia-danger: #e74c3c;
+            --lotoia-bg: {"#0f1117" if is_dark else "#f8f9fa"};
+            --lotoia-card: {"#1e2340" if is_dark else "#ffffff"};
+            --lotoia-text: {"#e8ecf4" if is_dark else "#1a1f3c"};
+            --lotoia-text-muted: {"#9aa4b8" if is_dark else "#5a6b7e"};
+            --lotoia-border: {"rgba(79, 142, 247, 0.18)" if is_dark else "rgba(26, 31, 60, 0.10)"};
+            --lotoia-shadow: {"0 8px 24px rgba(0, 0, 0, 0.35)" if is_dark else "0 8px 24px rgba(26, 31, 60, 0.08)"};
+        }}
+        html, body, [class*="css"] {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }}
+        .block-container {{ padding-top: 1.0rem; padding-bottom: 2rem; max-width: 100%; }}
+        section[data-testid="stMain"] > div.block-container {{
             max-width: 100%;
             padding-left: 1.1rem;
             padding-right: 1.1rem;
-        }
-        .stApp { background: linear-gradient(180deg, #fbfdff 0%, #f2f6fb 100%); }
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #f7fbff 0%, #eef4fa 100%);
-            border-right: 1px solid rgba(18, 52, 86, 0.10);
-        }
-        section[data-testid="stSidebar"] .block-container {
+        }}
+        .stApp {{ background: var(--lotoia-bg); color: var(--lotoia-text); }}
+        section[data-testid="stSidebar"] {{
+            background: {"linear-gradient(180deg, #14182b 0%, #0f1117 100%)" if is_dark else "linear-gradient(180deg, #ffffff 0%, #f3f6fb 100%)"};
+            border-right: 1px solid var(--lotoia-border);
+        }}
+        section[data-testid="stSidebar"] .block-container {{
             padding-top: 0.55rem;
             padding-left: 0.8rem;
             padding-right: 0.8rem;
-        }
-        section[data-testid="stSidebar"] img {
+        }}
+        section[data-testid="stSidebar"] img {{
             width: 96% !important;
             max-width: 340px !important;
             display: block;
             margin: -0.2rem auto 0.7rem auto;
-        }
-        .lotoia-sidebar-divider {
-            border-top: 1px solid rgba(18, 52, 86, 0.14);
-            margin: 0.6rem 0;
-        }
-        .lotoia-nav-hint {
-            font-size: 0.84rem;
-            letter-spacing: 0.07em;
+        }}
+        .lotoia-sidebar-divider {{
+            border-top: 1px solid var(--lotoia-border);
+            margin: 0.75rem 0;
+        }}
+        .lotoia-nav-hint {{
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
-            color: #7a8795;
+            color: var(--lotoia-text-muted);
             margin-bottom: 0.35rem;
-        }
-        .lotoia-sidebar-title {
-            color: #123456;
-            font-size: 1.18rem;
+        }}
+        .lotoia-sidebar-group {{
+            font-size: 0.78rem;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: var(--lotoia-accent);
+            margin: 0.85rem 0 0.35rem 0;
             font-weight: 800;
-            letter-spacing: 0.01em;
-            margin: 0.1rem 0 0.15rem 0;
-        }
-        .lotoia-section-title {
-            font-size: 2.04rem;
-            font-weight: 800;
-            color: #123456;
-            margin-bottom: 0.2rem;
-            letter-spacing: 0.01em;
-        }
-        .lotoia-section-subtitle {
-            font-size: 1.10rem;
-            color: #5a6b7e;
+        }}
+        .lotoia-sidebar-subgroup {{
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--lotoia-text-muted);
+            margin: 0.55rem 0 0.25rem 0;
+        }}
+        .lotoia-home-header {{
+            background: var(--lotoia-card);
+            border: 1px solid var(--lotoia-border);
+            border-radius: 8px;
+            box-shadow: var(--lotoia-shadow);
+            padding: 1.25rem 1.5rem;
             margin-bottom: 1rem;
-            line-height: 1.5;
-        }
-        .lotoia-kpi-card {
-            background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-            border: 1px solid rgba(18, 52, 86, 0.10);
-            border-radius: 16px;
-            padding: 0.95rem 1rem 0.85rem 1rem;
-            box-shadow: 0 6px 22px rgba(18, 52, 86, 0.05);
-            min-height: 114px;
-        }
-        .lotoia-kpi-label {
-            color: #5a6b7e;
-            font-size: 0.76rem;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            margin-bottom: 0.35rem;
-        }
-        .lotoia-kpi-value {
-            color: #123456;
-            font-size: 1.72rem;
+        }}
+        .lotoia-home-brand {{
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }}
+        .lotoia-home-brand-name {{
+            font-size: 1.65rem;
             font-weight: 800;
+            color: var(--lotoia-text);
+            letter-spacing: -0.02em;
+        }}
+        .lotoia-home-brand-sub {{
+            font-size: 0.82rem;
+            color: var(--lotoia-text-muted);
+            margin-top: 0.15rem;
+        }}
+        .lotoia-home-clock {{
+            font-size: 0.95rem;
+            color: var(--lotoia-text-muted);
+            font-weight: 500;
+        }}
+        .lotoia-home-contest-label {{
+            font-size: 0.72rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--lotoia-text-muted);
+            margin-bottom: 0.2rem;
+        }}
+        .lotoia-home-contest-value {{
+            font-size: 2.4rem;
+            font-weight: 800;
+            color: var(--lotoia-accent);
+            line-height: 1;
+        }}
+        .lotoia-pill {{
+            display: inline-block;
+            padding: 0.28rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin: 0.15rem 0.35rem 0.15rem 0;
+        }}
+        .lotoia-pill-success {{ background: rgba(46, 204, 113, 0.18); color: var(--lotoia-success); border: 1px solid rgba(46, 204, 113, 0.35); }}
+        .lotoia-pill-warning {{ background: rgba(243, 156, 18, 0.18); color: var(--lotoia-warning); border: 1px solid rgba(243, 156, 18, 0.35); }}
+        .lotoia-pill-danger {{ background: rgba(231, 76, 60, 0.18); color: var(--lotoia-danger); border: 1px solid rgba(231, 76, 60, 0.35); }}
+        .lotoia-pill-info {{ background: rgba(79, 142, 247, 0.18); color: var(--lotoia-accent); border: 1px solid rgba(79, 142, 247, 0.35); }}
+        .lotoia-metric-card {{
+            background: var(--lotoia-card);
+            border: 1px solid var(--lotoia-border);
+            border-radius: 8px;
+            box-shadow: var(--lotoia-shadow);
+            padding: 1rem 1.1rem;
+            min-height: 118px;
+        }}
+        .lotoia-metric-label {{
+            font-size: 0.72rem;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: var(--lotoia-text-muted);
+            margin-bottom: 0.35rem;
+        }}
+        .lotoia-metric-value {{
+            font-size: 1.85rem;
+            font-weight: 800;
+            color: var(--lotoia-text);
             line-height: 1.1;
-            margin-bottom: 0.3rem;
-        }
-        .lotoia-kpi-caption {
-            color: #718399;
-            font-size: 0.8rem;
-            line-height: 1.4;
-        }
-        .lotoia-operational-hint {
-            color: #6d7f92;
-            font-size: 0.86rem;
-            margin-top: -0.15rem;
-            margin-bottom: 0.5rem;
-        }
-        div[data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid rgba(18, 52, 86, 0.10);
-            border-radius: 14px;
+        }}
+        .lotoia-metric-value-accent {{ color: var(--lotoia-accent); }}
+        .lotoia-metric-value-success {{ color: var(--lotoia-success); }}
+        .lotoia-metric-value-danger {{ color: var(--lotoia-danger); }}
+        .lotoia-metric-caption {{
+            font-size: 0.78rem;
+            color: var(--lotoia-text-muted);
+            margin-top: 0.35rem;
+        }}
+        .lotoia-status-panel {{
+            background: var(--lotoia-card);
+            border: 1px solid var(--lotoia-border);
+            border-radius: 8px;
+            box-shadow: var(--lotoia-shadow);
+            padding: 1rem 1.1rem;
+            margin: 0.75rem 0 1rem 0;
+        }}
+        .lotoia-section-heading {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--lotoia-text);
+            margin: 0 0 0.65rem 0;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }}
+        .lotoia-build-tag {{
+            font-size: 0.72rem;
+            color: var(--lotoia-text-muted);
+            opacity: 0.85;
+        }}
+        div[data-testid="stMetric"] {{
+            background: var(--lotoia-card);
+            border: 1px solid var(--lotoia-border);
+            border-radius: 8px;
             padding: 0.85rem 0.95rem;
-            box-shadow: 0 4px 14px rgba(18, 52, 86, 0.04);
-        }
-        div[data-testid="stMetric"] label {
-            color: #5a6b7e;
+            box-shadow: var(--lotoia-shadow);
+        }}
+        div[data-testid="stMetric"] label {{
+            color: var(--lotoia-text-muted);
             font-size: 0.78rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
-        }
-        div[data-testid="stMetric"] [data-testid="metric-container"] {
-            gap: 0.2rem;
-        }
-        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-            color: #123456;
+        }}
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
+            color: var(--lotoia-text);
             font-weight: 800;
-        }
-        section[data-testid="stMain"] .stButton > button {
-            border-radius: 12px;
-            border: 1px solid rgba(18, 52, 86, 0.12);
-            background: #ffffff;
-            color: #123456;
+        }}
+        section[data-testid="stMain"] .stButton > button {{
+            border-radius: 8px;
+            border: 1px solid var(--lotoia-border);
+            background: var(--lotoia-card);
+            color: var(--lotoia-text);
             min-height: 38px;
-            font-weight: 700;
-            box-shadow: 0 3px 10px rgba(18, 52, 86, 0.04);
-        }
-        section[data-testid="stMain"] .stButton > button:hover {
-            border-color: rgba(18, 52, 86, 0.20);
-            background: #f8fbff;
-        }
-        section[data-testid="stMain"] .stButton > button[kind="primary"] {
-            background: linear-gradient(180deg, #ff6666 0%, #ff4d4d 100%);
+            font-weight: 600;
+            box-shadow: var(--lotoia-shadow);
+        }}
+        section[data-testid="stMain"] .stButton > button:hover {{
+            border-color: var(--lotoia-accent);
+            color: var(--lotoia-accent);
+        }}
+        section[data-testid="stMain"] .stButton > button[kind="primary"] {{
+            background: linear-gradient(180deg, #5b9bff 0%, var(--lotoia-accent) 100%);
             color: #ffffff;
-            border-color: rgba(255, 77, 77, 0.35);
-        }
-        section[data-testid="stMain"] .stButton > button[kind="primary"]:hover {
-            background: linear-gradient(180deg, #ff7777 0%, #ff5f5f 100%);
-            color: #ffffff;
-        }
-        .lotoia-table-wrap {
-            padding-top: 0.15rem;
-            padding-bottom: 0.15rem;
-        }
-        section[data-testid="stSidebar"] .stButton > button {
+            border-color: rgba(79, 142, 247, 0.45);
+        }}
+        .lotoia-quick-access .stButton > button {{
+            min-height: 96px;
+            font-size: 0.95rem;
+            line-height: 1.35;
+            white-space: normal;
+        }}
+        section[data-testid="stSidebar"] .stButton > button {{
             min-height: 36px;
             padding-top: 0.4rem;
             padding-bottom: 0.4rem;
-            border-radius: 10px;
-            font-size: 1.02rem;
-        }
-        .lotoia-sidebar-group {
-            font-size: 0.88rem;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #6f8195;
-            margin: 0.55rem 0 0.30rem 0;
-            font-weight: 900;
-        }
-        .lotoia-sidebar-subgroup {
-            font-size: 0.80rem;
-            letter-spacing: 0.10em;
-            text-transform: uppercase;
-            color: #8b97a8;
-            margin: 0.55rem 0 0.25rem 0;
-        }
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def _render_institutional_theme_toggle() -> None:
+    dark_mode = st.sidebar.toggle("Tema escuro", value=_resolve_institutional_theme() == "dark", key="institutional_theme_toggle")
+    st.session_state["institutional_theme"] = "dark" if dark_mode else "light"
+
+
+def _render_home_metric_card(label: str, value: str, *, caption: str = "", value_class: str = "") -> None:
+    value_html = f'<div class="lotoia-metric-value {value_class}">{value}</div>'
+    caption_html = f'<div class="lotoia-metric-caption">{caption}</div>' if caption else ""
+    st.markdown(
+        f"""
+        <div class="lotoia-metric-card">
+            <div class="lotoia-metric-label">{label}</div>
+            {value_html}
+            {caption_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_home_status_pill(label: str, status: str, tone: str) -> None:
+    st.markdown(f'<span class="lotoia-pill lotoia-pill-{tone}">{label}: {status}</span>', unsafe_allow_html=True)
+
+
+def _render_home_quick_access() -> None:
+    st.markdown('<div class="lotoia-section-heading">Acesso rápido</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lotoia-quick-access">', unsafe_allow_html=True)
+    for row_start in (0, 3):
+        cols = st.columns(3)
+        for col_index, item in enumerate(INSTITUTIONAL_QUICK_ACCESS[row_start : row_start + 3]):
+            with cols[col_index]:
+                if st.button(
+                    f"{item['icon']} {item['label']}",
+                    key=f"home_quick_{item['page_id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["institutional_page_id"] = item["page_id"]
+                    st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_sidebar_logo() -> None:
@@ -9630,12 +9755,12 @@ def _reset_hb_geometry_job() -> None:
 
 
 def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
-    _apply_institutional_styles()
+    _render_institutional_theme_toggle()
+    _apply_institutional_styles(_resolve_institutional_theme())
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
-    st.sidebar.caption("Painel institucional ADM")
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
         resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
@@ -9643,7 +9768,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">NÚCLEO OPERACIONAL 🎯</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
         ("Gerador ADM - Lei 15 Limpo", "clean_law15_generation"),
@@ -9652,7 +9777,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos e Rastreabilidade</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">HISTÓRICOS E RASTREABILIDADE 📊</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Histórico Analítico", "history_analytical"),
         ("Histórico Institucional", "history_institutional"),
@@ -9660,7 +9786,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">AUDITORIA OBSERVACIONAL 🔍</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Auditoria Runtime", "audit"),
         ("Conferência por concurso", "audit_monitoring_conference"),
@@ -9669,7 +9796,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Analítico Observacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Analítico observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
         ("Métricas HB", "hb_metrics"),
@@ -9677,7 +9804,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas disponíveis</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">DIAGNÓSTICOS ML 🤖</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Central de Diagnósticos ML", "central_ml_diagnostics"),
         ("Vazamento lateral", "audit_monitoring_side_leak"),
@@ -9687,7 +9815,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         _nav_entry(label, page_id)
     st.sidebar.caption("Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Área Bloqueada / Restrita</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Área bloqueada / restrita</div>', unsafe_allow_html=True)
     for label, page_id in [("Limpar Históricos", "clear_histories"), ("Apagar Histórico", "delete_history")]:
         _nav_entry(label, page_id)
     st.sidebar.caption("Ações destrutivas continuam protegidas pela confirmação interna da tela.")
@@ -13383,28 +13512,145 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
 
 
 def _render_home_page(snapshot: dict[str, Any]) -> None:
-    st.subheader("Painel Institucional LotoIA")
-    st.write("Home institucional leve, sem geração, sem recalibração e sem carga histórica pesada.")
-    cols = st.columns(4)
-    cols[0].metric("status runtime", "ativo")
-    cols[1].metric("build", BUILD_MARKER)
-    cols[2].metric("backend conectado", snapshot.get("backend", "-"))
-    latest_contest = _load_latest_contest_summary()
-    cols[3].metric("último concurso", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
-    st.caption(
-        "Lei 15 é comando soberano | Lei 17/18 são validação/referência | áreas de quarentena e ações destrutivas permanecem bloqueadas."
+    snapshot = _live_institutional_snapshot(snapshot)
+    live_counts = dict(snapshot.get("counts") or {})
+    latest_contest = _load_hai_latest_contest_summary() or _load_latest_contest_summary() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_generation = (_load_generation_history_light(limit=1) or [{}])[0]
+    contest_number = int(latest_contest.get("contest_number", 0) or 0)
+    generated_games = int(live_counts.get("generated_games", 0) or 0)
+    generation_events = int(live_counts.get("generation_events", 0) or 0)
+    reconciliation_runs = int(live_counts.get("reconciliation_runs", 0) or 0)
+    best_hits = int(
+        latest_generation.get("maior acerto", latest_reconciliation.get("best_hits", 0)) or 0
     )
-    st.markdown("##### Atalhos institucionais")
-    shortcut_cols = st.columns(3)
-    shortcut_cols[0].markdown("- Gerador ADM - Lei 15 Limpo\n- Conferir Resultados")
-    shortcut_cols[1].markdown("- Simular Resultados\n- Histórico Analítico")
-    shortcut_cols[2].markdown("- Conferência por concurso\n- Histórico Institucional")
-    st.markdown("##### Estado institucional")
-    state_cols = st.columns(4)
-    state_cols[0].metric("Gerador", "não carregado")
-    state_cols[1].metric("Geração automática", "bloqueada na home")
-    state_cols[2].metric("Camadas ML", "observacionais")
-    state_cols[3].metric("Destrutivas", "bloqueadas")
+    backend = str(snapshot.get("backend", "-") or "-")
+    backend_ok = backend.lower() == "postgresql"
+    last_reconciliation_date = str(latest_reconciliation.get("created_at", "") or "")[:10] or "—"
+    generation_loaded = bool(
+        (st.session_state.get("institutional_generation") or {}).get("games")
+        or (st.session_state.get("institutional_generation_result") or {}).get("jogos")
+    )
+
+    st.markdown('<div class="lotoia-home-header">', unsafe_allow_html=True)
+    header_cols = st.columns([2.2, 1.2, 1.4, 0.8])
+    with header_cols[0]:
+        brand_cols = st.columns([0.28, 0.72])
+        with brand_cols[0]:
+            if LOGO_PATH.exists():
+                st.image(str(LOGO_PATH), width=72)
+        with brand_cols[1]:
+            st.markdown(
+                """
+                <div class="lotoia-home-brand">
+                    <div>
+                        <div class="lotoia-home-brand-name">LotoIA</div>
+                        <div class="lotoia-home-brand-sub">Painel Institucional</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    with header_cols[1]:
+        st.markdown(
+            """
+            <div class="lotoia-home-clock">
+                <div style="font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; opacity:0.8;">Agora</div>
+                <div id="lotoia-live-clock">—</div>
+            </div>
+            <script>
+            function lotoiaUpdateClock() {
+                const el = document.getElementById("lotoia-live-clock");
+                if (el) {
+                    el.textContent = new Date().toLocaleString("pt-BR", {
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                        hour: "2-digit", minute: "2-digit", second: "2-digit"
+                    });
+                }
+            }
+            lotoiaUpdateClock();
+            setInterval(lotoiaUpdateClock, 1000);
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
+    with header_cols[2]:
+        st.markdown(
+            f"""
+            <div>
+                <div class="lotoia-home-contest-label">Último concurso monitorado</div>
+                <div class="lotoia-home-contest-value">{contest_number or "—"}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with header_cols[3]:
+        st.markdown(
+            """
+            <div style="text-align:right;">
+                <span class="lotoia-pill lotoia-pill-success">ATIVO</span>
+                <div class="lotoia-build-tag" style="margin-top:0.55rem;">"""
+            + BUILD_MARKER
+            + """</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    metric_cols = st.columns(5)
+    with metric_cols[0]:
+        _render_home_metric_card(
+            "Último Concurso",
+            str(contest_number or "—"),
+            value_class="lotoia-metric-value-accent",
+        )
+    with metric_cols[1]:
+        _render_home_metric_card(
+            "Jogos Gerados",
+            str(generated_games),
+            caption=f"{'↑' if generation_events > 0 else '—'} {generation_events} gerações persistidas",
+        )
+    with metric_cols[2]:
+        _render_home_metric_card(
+            "Conferências Realizadas",
+            str(reconciliation_runs),
+            caption=f"última: {last_reconciliation_date}",
+        )
+    with metric_cols[3]:
+        _render_home_metric_card(
+            "Melhor Acerto",
+            str(best_hits),
+            value_class="lotoia-metric-value-success" if best_hits >= 13 else "",
+            caption="destaque institucional" if best_hits >= 13 else "",
+        )
+    with metric_cols[4]:
+        _render_home_metric_card(
+            "Status Backend",
+            "ONLINE" if backend_ok else "ATENÇÃO",
+            value_class="lotoia-metric-value-success" if backend_ok else "lotoia-metric-value-danger",
+            caption=backend,
+        )
+
+    st.markdown('<div class="lotoia-status-panel"><div class="lotoia-section-heading">Estado do sistema</div>', unsafe_allow_html=True)
+    status_cols = st.columns(5)
+    with status_cols[0]:
+        _render_home_status_pill("Lei 15", "SOBERANA", "success")
+    with status_cols[1]:
+        _render_home_status_pill(
+            "Geração",
+            "ATIVO" if generation_loaded else "NÃO CARREGADO",
+            "success" if generation_loaded else "warning",
+        )
+    with status_cols[2]:
+        _render_home_status_pill("Recalibração", "BLOQUEADA", "danger")
+    with status_cols[3]:
+        _render_home_status_pill("ML", "OBSERVACIONAL", "info")
+    with status_cols[4]:
+        _render_home_status_pill("Destrutivas", "BLOQUEADAS", "danger")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    _render_home_quick_access()
 
 
 def _render_fallback_page(snapshot: dict[str, Any]) -> None:
@@ -13426,8 +13672,6 @@ def main() -> None:
         snapshot,
     )
     st.session_state["institutional_page_id"] = page
-    st.success(BUILD_MARKER)
-    st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
     if page == "audit":
         _render_runtime_audit_page(snapshot)
     elif page == "home":
