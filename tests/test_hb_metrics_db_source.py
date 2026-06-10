@@ -46,3 +46,43 @@ def test_empty_hb_metrics_payload_defaults() -> None:
     assert payload["source"] == "postgresql"
     assert payload["media_acertos"] == 0.0
     assert payload["jogos_analisados"] == 0
+
+
+def test_build_hb_metrics_counts_hits_from_matched_numbers_when_hits_column_zero() -> None:
+    games = [
+        {
+            "numbers": list(range(1, 16)),
+            "hits": 0,
+            "matched_numbers": list(range(1, 12)),
+            "contest_id": 3700,
+        },
+        {
+            "numbers": list(range(1, 16)),
+            "hits": 0,
+            "matched_numbers": list(range(1, 13)),
+            "contest_id": 3700,
+        },
+        {
+            "numbers": list(range(1, 16)),
+            "hits": 0,
+            "matched_numbers": list(range(1, 11)),
+            "contest_id": 3700,
+        },
+    ]
+    payload = app._build_hb_metrics_payload_from_reconciliation(
+        reconciliation_run_id=42,
+        contest_id=3700,
+        games_rows=games,
+    )
+    assert payload["jogos_11_mais"] == 2
+    assert payload["jogos_12_mais"] == 1
+    assert payload["media_acertos"] == 11.0
+
+
+def test_format_hb_dominant_numbers_display() -> None:
+    dominant_numbers = [
+        {"number": 20, "frequency": 27},
+        {"number": 25, "frequency": 27},
+        {"number": 1, "frequency": 26},
+    ]
+    assert app._format_hb_dominant_numbers(dominant_numbers) == "20(27x) 25(27x) 01(26x)"
