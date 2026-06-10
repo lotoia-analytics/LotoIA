@@ -10387,26 +10387,6 @@ def _render_post_conference_monitoring_panel() -> None:
         st.json(POST_DRAW_MONITORING_PAYLOAD)
 
 
-def _render_lei_16_governance_panel() -> None:
-    st.markdown("##### Lei 16 — Integridade Global da Geração")
-    st.caption("Leitura documental da governança institucional. Não comanda geração, não cria controles e não altera a Lei 15.")
-    cols = st.columns(3)
-    cols[0].metric("Status", "Formalizada documentalmente")
-    cols[1].metric("Classificação", "Compatível com a Lei 15")
-    cols[2].metric("Aderência", "Alta")
-    st.info(
-        "Toda geração institucional da LotoIA deve entregar combinações globalmente únicas dentro do mesmo evento, "
-        "lote ou bateria. A Lei 16 garante duplicados globais zero, memória de assinaturas compartilhada entre "
-        "grupos da mesma bateria e preservação da soberania da Lei 15."
-    )
-    st.markdown(
-        "- Duplicados globais: zero\n"
-        "- Grupos da mesma bateria compartilham memória de assinaturas\n"
-        "- Cada jogo entregue representa uma combinação única\n"
-        "- A Lei 15 permanece soberana e inalterada"
-    )
-
-
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Auditoria e Monitoramento")
@@ -10431,7 +10411,6 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         cols2[1].metric("Lei 17", "Validação / referência")
         cols2[2].metric("Lei 18", "Validação / referência")
         cols2[3].metric("Dados", "Disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "Indisponível")
-        _render_lei_16_governance_panel()
         st.markdown("##### Resumo de monitoramento")
         monitoring_cols = st.columns(5)
         monitoring_cols[0].metric(
