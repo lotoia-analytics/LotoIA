@@ -25,3 +25,4 @@
 
 # Workflows e proteção de branch
 /.github/ @lotoia-analytics
+/dashboard/ @lotoia-analytics @SEU-USUARIO-PESSOAL
