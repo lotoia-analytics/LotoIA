@@ -86,3 +86,39 @@ def test_format_hb_dominant_numbers_display() -> None:
         {"number": 1, "frequency": 26},
     ]
     assert app._format_hb_dominant_numbers(dominant_numbers) == "20(27x) 25(27x) 01(26x)"
+
+
+def test_build_hb_metrics_recomputes_hits_from_official_numbers_when_db_hits_zero() -> None:
+    official = [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    games = [
+        {
+            "numbers": [1, 3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+            "hits": 0,
+            "matched_numbers": [],
+            "prize_tier": "",
+            "contest_id": 3700,
+        },
+        {
+            "numbers": [1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            "hits": 0,
+            "matched_numbers": [],
+            "prize_tier": "faixa_15",
+            "contest_id": 3700,
+        },
+        {
+            "numbers": [2, 4, 6, 8, 10, 14, 16, 17, 19, 21, 22, 23, 24, 25, 20],
+            "hits": 0,
+            "matched_numbers": [],
+            "prize_tier": "",
+            "contest_id": 3700,
+        },
+    ]
+    payload = app._build_hb_metrics_payload_from_reconciliation(
+        reconciliation_run_id=786,
+        contest_id=3700,
+        games_rows=games,
+        official_numbers=official,
+    )
+    assert payload["jogos_11_mais"] == 2
+    assert payload["jogos_12_mais"] == 2
+    assert payload["media_acertos"] > 11.0

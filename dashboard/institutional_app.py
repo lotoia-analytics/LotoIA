@@ -6441,17 +6441,35 @@ def _resolve_reconciliation_game_hits(
     *,
     hits: int | None,
     matched_numbers: Sequence[int] | None,
+    numbers: Sequence[int] | None = None,
+    official_numbers: Sequence[int] | None = None,
+    prize_tier: str | None = None,
 ) -> int:
-    resolved = int(hits or 0)
-    if resolved > 0:
-        return resolved
-    return len([int(number) for number in (matched_numbers or [])])
+    candidates: list[int] = []
+    stored_hits = int(hits or 0)
+    if stored_hits > 0:
+        candidates.append(stored_hits)
+    matched_count = len([int(number) for number in (matched_numbers or [])])
+    if matched_count > 0:
+        candidates.append(matched_count)
+    card_numbers = [int(number) for number in (numbers or [])]
+    official = [int(number) for number in (official_numbers or [])]
+    if card_numbers and official:
+        candidates.append(len(set(card_numbers) & set(official)))
+    tier = str(prize_tier or "").strip().lower()
+    if tier.startswith("faixa_"):
+        try:
+            candidates.append(int(tier.split("_", 1)[1]))
+        except (ValueError, IndexError):
+            pass
+    return max(candidates) if candidates else 0
 
 
 def _count_reconciliation_games_with_min_hits(
     games_rows: Sequence[dict[str, Any]],
     *,
     minimum_hits: int,
+    official_numbers: Sequence[int] | None = None,
 ) -> int:
     return sum(
         1
@@ -6459,6 +6477,9 @@ def _count_reconciliation_games_with_min_hits(
         if _resolve_reconciliation_game_hits(
             hits=row.get("hits"),
             matched_numbers=row.get("matched_numbers"),
+            numbers=row.get("numbers"),
+            official_numbers=official_numbers,
+            prize_tier=row.get("prize_tier"),
         )
         >= minimum_hits
     )
@@ -6496,12 +6517,16 @@ def _build_hb_metrics_payload_from_reconciliation(
     reconciliation_run_id: int,
     contest_id: int,
     games_rows: Sequence[dict[str, Any]],
+    official_numbers: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
     hits = [
         _resolve_reconciliation_game_hits(
             hits=row.get("hits"),
             matched_numbers=row.get("matched_numbers"),
+            numbers=row.get("numbers"),
+            official_numbers=official_numbers,
+            prize_tier=row.get("prize_tier"),
         )
         for row in games_rows
     ]
@@ -6523,8 +6548,16 @@ def _build_hb_metrics_payload_from_reconciliation(
         "tables": "reconciliation_runs / reconciliation_games",
         "reconciliation_run_id": int(reconciliation_run_id or 0),
         "media_acertos": media_acertos,
-        "jogos_11_mais": _count_reconciliation_games_with_min_hits(games_rows, minimum_hits=11),
-        "jogos_12_mais": _count_reconciliation_games_with_min_hits(games_rows, minimum_hits=12),
+        "jogos_11_mais": _count_reconciliation_games_with_min_hits(
+            games_rows,
+            minimum_hits=11,
+            official_numbers=official_numbers,
+        ),
+        "jogos_12_mais": _count_reconciliation_games_with_min_hits(
+            games_rows,
+            minimum_hits=12,
+            official_numbers=official_numbers,
+        ),
         "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
         "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
         "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
@@ -6544,6 +6577,11 @@ def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
         )
         if run is None:
             return _empty_hb_metrics_payload()
+        contest_id = int(run.contest_id or 0)
+        official_numbers: list[int] = []
+        official_contest = _load_official_history_contest_with_session(session, contest_id)
+        if official_contest:
+            official_numbers = [int(number) for number in (official_contest.get("dezenas") or [])]
         games_rows = (
             session.query(ReconciliationGame)
             .filter(ReconciliationGame.reconciliation_run_id == run.id)
@@ -6553,19 +6591,18 @@ def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
         row_payloads = [
             {
                 "numbers": list(row.numbers or []),
-                "hits": _resolve_reconciliation_game_hits(
-                    hits=row.hits,
-                    matched_numbers=list(row.matched_numbers or []),
-                ),
+                "hits": int(row.hits or 0),
                 "matched_numbers": list(row.matched_numbers or []),
+                "prize_tier": str(row.prize_tier or ""),
                 "contest_id": int(row.contest_id or 0),
             }
             for row in games_rows
         ]
         return _build_hb_metrics_payload_from_reconciliation(
             reconciliation_run_id=int(run.id or 0),
-            contest_id=int(run.contest_id or 0),
+            contest_id=contest_id,
             games_rows=row_payloads,
+            official_numbers=official_numbers,
         )
 
 
