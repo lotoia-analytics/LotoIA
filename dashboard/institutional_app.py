@@ -1031,111 +1031,76 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
+RUNTIME_AUDIT_COUNT_LABELS = {
+    "generation_events": "Gerações",
+    "generated_games": "Jogos gerados",
+    "reconciliation_runs": "Conferências",
+    "reconciliation_games": "Jogos conferidos",
+    "imported_contests": "Concursos importados",
+    "institutional_output_signatures": "Assinaturas de saída",
+}
+
+
 def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     audit = _runtime_audit_payload(snapshot)
     live_counts = _database_snapshot()["counts"]
-    st.subheader("Auditoria do Runtime")
-    st.write("Leitura ativa da infraestrutura institucional em execução.")
-    if audit["backend"] != "postgresql":
-        st.warning(f"Backend atual resolvido: {audit['backend']}. Esta instância não está apontando para PostgreSQL.")
-    st.markdown("##### Estado Atual do Runtime")
-    st.caption("Leitura ativa da infraestrutura institucional em execução.")
-    top_cols = st.columns(5)
-    top_cols[0].metric("Build ativo", audit["build_active"])
-    top_cols[1].metric("Commit ativo", audit["commit_active"])
-    top_cols[2].metric("Backend", audit["backend"])
-    top_cols[3].metric("Database source", audit["database_source"])
-    top_cols[4].metric("Schema", audit["schema"])
-    conn_cols = st.columns(3)
-    conn_cols[0].caption(f"DATABASE_URL: {audit['database_url']}")
-    conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
-    conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
-    source_cols = st.columns(5)
-    hai_summary = _load_hai_latest_contest_summary() or {}
-    sync_summary = _load_official_sync_contest_summary() or {}
     official_history = _load_official_history_diagnostics()
-    source_cols[0].metric("CSV oficial", "export/auditoria")
-    source_cols[1].metric("API sincronizada", int(sync_summary.get("contest_number", 0) or 0) or "-")
-    source_cols[2].metric("Banco oficial HAI", int(hai_summary.get("contest_number", 0) or 0) or "-")
-    source_cols[3].metric("Histórico oficial", int(official_history.get("total_lotofacil_official_history", 0) or 0))
-    source_cols[4].metric("Primeiro concurso", int(official_history.get("contest_number_min", 0) or 0) or "-")
-    official_cols = st.columns(4)
-    official_cols[0].metric("Último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
-    official_cols[1].metric("Faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
-    official_cols[2].metric("Status", str(official_history.get("status_base_oficial", "-") or "-"))
-    official_cols[3].metric("Fonte HAI", str(hai_summary.get("source", "lotofacil_official_history") or "lotofacil_official_history"))
-    st.caption(
-        " | ".join(
-            [
-                f"SELECT COUNT generation_events={int(live_counts.get('generation_events', 0))}",
-                f"SELECT COUNT generated_games={int(live_counts.get('generated_games', 0))}",
-                f"SELECT COUNT reconciliation_runs={int(live_counts.get('reconciliation_runs', 0))}",
-                f"SELECT COUNT reconciliation_games={int(live_counts.get('reconciliation_games', 0))}",
-                f"SELECT COUNT institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}",
-            ]
-        )
-    )
-    st.markdown("##### SELECT COUNT(*) no runtime")
-    audit_rows: list[dict[str, Any]] = []
-    with _get_engine_cached().begin() as connection:
-        for query in (
-            "SELECT COUNT(*) FROM generation_events;",
-            "SELECT COUNT(*) FROM generated_games;",
-            "SELECT COUNT(*) FROM reconciliation_runs;",
-            "SELECT COUNT(*) FROM reconciliation_games;",
-            "SELECT COUNT(*) FROM imported_contests;",
-            "SELECT COUNT(*) FROM institutional_output_signatures;",
-        ):
-            row: dict[str, Any] = {"query": query, "count": None, "status": "ok", "error": ""}
-            try:
-                value = connection.execute(text(query)).scalar()
-                row["count"] = int(value or 0)
-            except Exception as exc:
-                row["status"] = "error"
-                row["error"] = str(exc)
-                row["count"] = None
-            audit_rows.append(row)
-    audit_df = pd.DataFrame(audit_rows)
-    st.dataframe(audit_df, hide_index=True, use_container_width=True)
-    error_rows = [row for row in audit_rows if row.get("status") == "error"]
-    if error_rows:
-        with st.expander("Erros SQL da auditoria", expanded=False):
-            st.dataframe(
-                pd.DataFrame(error_rows)[["query", "error"]],
-                hide_index=True,
-                use_container_width=True,
-            )
-    st.markdown("##### Diferenças entre módulos")
-    source_map = _institutional_source_map(snapshot)
-    st.dataframe(pd.DataFrame(source_map), hide_index=True, use_container_width=True)
-    st.markdown("##### Auditoria Operacional Ativa")
-    st.caption("Resumo da geração e conferência operacional mais recente persistida no banco.")
+    hai_summary = _load_hai_latest_contest_summary() or {}
+
+    st.subheader("Auditoria do Runtime")
+    st.write("Saúde do runtime, contagens operacionais e última atividade persistida.")
+    if audit["backend"] != "postgresql":
+        st.warning(f"Backend atual: {audit['backend']}. Esta instância não está apontando para PostgreSQL.")
+
+    health_cols = st.columns(5)
+    health_cols[0].metric("Build", audit["build_active"])
+    health_cols[1].metric("Backend", audit["backend"])
+    health_cols[2].metric("Schema", audit["schema"])
+    health_cols[3].metric("Base oficial", str(official_history.get("status_base_oficial", "-") or "-"))
+    health_cols[4].metric("Último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
+
+    count_cols = st.columns(6)
+    for index, (table_key, label) in enumerate(RUNTIME_AUDIT_COUNT_LABELS.items()):
+        count_cols[index].metric(label, int(live_counts.get(table_key, 0) or 0))
+
     generation_history = _load_generation_history_light(limit=1)
     latest_generation = generation_history[0] if generation_history else {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_generation_event_id = int(latest_generation.get("generation_event_id", 0) or 0)
     latest_reconciliation_event_id = int(latest_reconciliation.get("generation_event_id", 0) or 0)
-    operational_reconciliation = latest_reconciliation if latest_generation_event_id and latest_reconciliation_event_id == latest_generation_event_id else {}
+    operational_reconciliation = (
+        latest_reconciliation
+        if latest_generation_event_id and latest_reconciliation_event_id == latest_generation_event_id
+        else {}
+    )
     operational_status = str(latest_generation.get("status de conferência", "não conferida") or "não conferida")
-    if operational_reconciliation:
-        operational_status = "conferida" if operational_status.lower() != "reconciliada" else operational_status
-    total_games_conferidos = int(operational_reconciliation.get("games_count", 0) or 0) if operational_reconciliation else 0
-    operational_cols = st.columns(10)
-    operational_cols[0].metric("Última geração persistida", latest_generation_event_id or "-")
-    operational_cols[1].metric("Quantidade solicitada", int(latest_generation.get("quantidade solicitada", 0) or 0))
-    operational_cols[2].metric("Quantidade gerada", int(latest_generation.get("quantidade real gerada", 0) or 0))
-    operational_cols[3].metric("Quantidade persistida", int(latest_generation.get("quantidade persistida", 0) or 0))
-    operational_cols[4].metric("Quantidade recuperada", int(latest_generation.get("total de jogos recuperados", 0) or 0))
-    operational_cols[5].metric("Status da geração", str(latest_generation.get("status da geração", "não conferida") or "não conferida"))
-    operational_cols[6].metric("Último concurso conferido", str(latest_generation.get("concurso conferido", operational_reconciliation.get("contest_number", "-")) or "-"))
-    operational_cols[7].metric("Status da conferência", operational_status)
-    operational_cols[8].metric("Maior acerto", int(latest_generation.get("maior acerto", operational_reconciliation.get("best_hits", 0)) or 0))
-    operational_cols[9].metric("Média de acertos", f"{float(latest_generation.get('média de acertos', latest_generation.get('media de acertos', 0.0)) or 0.0):.4f}")
-    operational_detail_cols = st.columns(2)
-    operational_detail_cols[0].metric("Total de jogos conferidos", total_games_conferidos if operational_reconciliation else 0)
-    operational_detail_cols[1].metric("Status operacional", operational_status)
-    st.markdown("##### Auditoria de integridade")
+    if operational_reconciliation and operational_status.lower() != "reconciliada":
+        operational_status = "conferida"
+
+    st.markdown("##### Última operação persistida")
+    if latest_generation:
+        latest_generation_label = (
+            str(latest_generation.get("geração", "")).strip()
+            or (f"Geração {latest_generation_event_id}" if latest_generation_event_id else "-")
+        )
+        operation_cols = st.columns(6)
+        operation_cols[0].metric("Geração", latest_generation_label)
+        operation_cols[1].metric("Solicitados", int(latest_generation.get("quantidade solicitada", 0) or 0))
+        operation_cols[2].metric("Gerados", int(latest_generation.get("quantidade real gerada", 0) or 0))
+        operation_cols[3].metric("Conferência", operational_status)
+        operation_cols[4].metric(
+            "Concurso",
+            str(latest_generation.get("concurso conferido", operational_reconciliation.get("contest_number", "-")) or "-"),
+        )
+        operation_cols[5].metric(
+            "Maior acerto",
+            int(latest_generation.get("maior acerto", operational_reconciliation.get("best_hits", 0)) or 0),
+        )
+    else:
+        st.info("Nenhuma geração persistida encontrada no runtime atual.")
+
+    st.markdown("##### Integridade")
     integrity_rows = pd.DataFrame(
         [
             {
@@ -1153,112 +1118,85 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
             {
                 "módulo": "operações",
                 "origem": "generation_events / reconciliation_runs",
-                "status": str(latest_generation.get("status da geração", latest_reconciliation.get("status", "não conferida")) or "não conferida"),
+                "status": str(
+                    latest_generation.get("status da geração", latest_reconciliation.get("status", "não conferida"))
+                    or "não conferida"
+                ),
                 "observação": f"concurso={latest_generation.get('concurso conferido', latest_reconciliation.get('contest_number', '-')) or '-'}",
             },
         ]
     )
-    st.dataframe(integrity_rows, hide_index=True, use_container_width=True)
-    st.markdown("##### Tabelas Institucionais")
-    table_rows = []
-    for table, count in live_counts.items():
-        table_rows.append(
+    st.dataframe(_make_arrow_safe(integrity_rows), hide_index=True, use_container_width=True)
+
+    with st.expander("Detalhes técnicos do runtime", expanded=False, key="audit_runtime_technical"):
+        st.caption(
+            " | ".join(
+                [
+                    f"database_source={audit['database_source']}",
+                    f"host={audit['host']}",
+                    f"database={audit['database']}",
+                    f"fonte_hai={hai_summary.get('source', 'lotofacil_official_history')}",
+                ]
+            )
+        )
+        st.caption(f"DATABASE_URL={audit['database_url']} | engine_url={audit['engine_url']}")
+
+        audit_rows: list[dict[str, Any]] = []
+        with _get_engine_cached().begin() as connection:
+            for query in (
+                "SELECT COUNT(*) FROM generation_events;",
+                "SELECT COUNT(*) FROM generated_games;",
+                "SELECT COUNT(*) FROM reconciliation_runs;",
+                "SELECT COUNT(*) FROM reconciliation_games;",
+                "SELECT COUNT(*) FROM imported_contests;",
+                "SELECT COUNT(*) FROM institutional_output_signatures;",
+            ):
+                row: dict[str, Any] = {"consulta": query.replace("SELECT COUNT(*) FROM ", "").replace(";", ""), "contagem": None, "status": "ok", "erro": ""}
+                try:
+                    value = connection.execute(text(query)).scalar()
+                    row["contagem"] = int(value or 0)
+                except Exception as exc:
+                    row["status"] = "erro"
+                    row["erro"] = str(exc)
+                    row["contagem"] = None
+                audit_rows.append(row)
+        st.markdown("###### Contagens SQL")
+        st.dataframe(_make_arrow_safe(pd.DataFrame(audit_rows)), hide_index=True, use_container_width=True)
+        error_rows = [row for row in audit_rows if row.get("status") == "erro"]
+        if error_rows:
+            st.warning("Erros detectados em consultas de auditoria.")
+            st.dataframe(
+                _make_arrow_safe(pd.DataFrame(error_rows)[["consulta", "erro"]]),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        st.markdown("###### Fontes por camada")
+        source_map = _institutional_source_map(snapshot)
+        st.dataframe(_make_arrow_safe(pd.DataFrame(source_map)), hide_index=True, use_container_width=True)
+
+        st.markdown("###### Tabelas institucionais")
+        table_rows = [
             {
                 "tabela": table,
                 "contagem": int(count),
                 "ultima_persistencia": str(snapshot["latest"].get(table, "-") or "-"),
             }
-        )
-    st.dataframe(_make_arrow_safe(pd.DataFrame(table_rows)), hide_index=True, use_container_width=True)
-    st.markdown("##### Timeline secundária")
-    timeline = _load_institutional_timeline_light(limit=25)
-    if timeline:
-        st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
-    else:
-        st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
-    st.markdown("##### Memória Científica Observacional / Legada")
-    st.caption("Registros preservados para auditoria histórica. Não representam comando do runtime ativo.")
-    st.info("Esta seção é documental. Não comanda geração, não recalibra a Lei 15 e não define o estado atual do runtime.")
-    scientific_memory = _load_latest_scientific_memory(limit=20)
-    official_15_memory = next((row for row in scientific_memory if _scientific_15_is_official_baseline(row)), {})
-    historical_scientific_memory = [row for row in scientific_memory if not _scientific_15_is_official_baseline(row)]
-    active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
-    latest_memory = official_15_memory or (scientific_memory[0] if scientific_memory else {})
-    if active_reconciliation_generation_event_id is not None:
-        post_reconciliation_memory = next(
-            (
-                row
-                for row in scientific_memory
-                if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"
-                and int(row.get("generation_event_id", 0) or 0) == int(active_reconciliation_generation_event_id or 0)
-            ),
-            {},
-        )
-    else:
-        post_reconciliation_memory = next(
-            (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_reconciliation"),
-            {},
-        )
-    if not post_reconciliation_memory:
-        post_reconciliation_memory = _resolve_scientific_memory_from_db(
-            memory_kind="scientific_reconciliation",
-            generation_event_id=active_reconciliation_generation_event_id,
-        )
-        if not post_reconciliation_memory:
-            session_conflict = detect_session_truth(
-                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
-                None,
-            )
-            if session_conflict.get("conflict"):
-                st.warning(
-                    "Memória pós-conferência indisponível no PostgreSQL. "
-                    "session_state não pode ser usada como fonte oficial."
-                )
-    if post_reconciliation_memory:
-        st.markdown("###### Memória pós-conferência científica")
-        post_window = dict(post_reconciliation_memory.get("generation_range") or {})
-        post_cols = st.columns(6)
-        post_cols[0].metric("Última geração registrada na memória científica", post_window.get("generation_event_id", "-") or "-")
-        post_cols[1].metric("Concurso conferido", post_window.get("contest_number", post_reconciliation_memory.get("official_history_last_contest", "-")) or "-")
-        post_cols[2].metric("Jogos conferidos", int(post_reconciliation_memory.get("total_games", 0) or 0))
-        post_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
-        post_cols[4].metric("Jogos com 10", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_10_exact", 0) or 0))
-        post_cols[5].metric("Jogos com 11+", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_11_plus", 0) or 0))
-    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
-    if not batch_reconciliation_memory:
-        session_conflict = detect_session_truth(
-            dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}),
-            None,
-        )
-        if session_conflict.get("conflict"):
-            st.warning(
-                "Memória consolidada indisponível no PostgreSQL. "
-                "session_state não pode ser usada como fonte oficial."
-            )
-    if batch_reconciliation_memory:
-        st.markdown("###### Memória consolidada da bateria conferida")
-        batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
-        batch_cols = st.columns(4)
-        batch_cols[0].metric("Memória consolidada", str(batch_reconciliation_memory.get("memory_kind", "-") or "-"))
-        batch_cols[1].metric("generation_event_id", str(batch_window.get("generation_event_id", batch_reconciliation_memory.get("generation_event_id", "-")) or "-"))
-        batch_cols[2].metric("Concurso conferido", batch_window.get("contest_number", batch_reconciliation_memory.get("contest_number", "-")) or "-")
-        batch_cols[3].metric("Melhor acerto", int(batch_reconciliation_memory.get("best_hit", 0) or 0))
-    strong_near_miss_memory = next(
-        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_strong_near_miss"),
-        {},
-    )
-    if strong_near_miss_memory:
-        st.markdown("###### Melhores near miss da última bateria")
-        near_miss_window = dict(strong_near_miss_memory.get("generation_range") or {})
-        near_miss_cols = st.columns(4)
-        near_miss_cols[0].metric("Melhor geração", int(near_miss_window.get("best_generation_event_id", 0) or 0))
-        near_miss_cols[1].metric("Registro técnico legado", _institutional_safe_action_label(str(strong_near_miss_memory.get("recommended_action", "") or "")))
-        near_miss_cols[2].metric("Concurso", int(near_miss_window.get("contest_number", 0) or 0))
-        near_miss_cols[3].metric("Status", "Preservado em quarentena documental")
-    st.markdown("##### Papel do session_state")
-    st.info(
-        "session_state é apenas estado temporário de interface. Não deve ser usado como fonte de verdade persistente, nem como origem de conferência."
-    )
+            for table, count in live_counts.items()
+        ]
+        st.dataframe(_make_arrow_safe(pd.DataFrame(table_rows)), hide_index=True, use_container_width=True)
+
+        timeline = _load_institutional_timeline_light(limit=25)
+        st.markdown("###### Timeline secundária")
+        if timeline:
+            st.dataframe(_make_arrow_safe(pd.DataFrame(timeline)), hide_index=True, use_container_width=True)
+        else:
+            st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
+
+    with st.expander("Memória científica (documental)", expanded=False, key="audit_runtime_scientific_memory"):
+        st.caption("Registro histórico. Não comanda geração nem recalibra a Lei 15.")
+        _render_scientific_memory_block(compact=True, inside_expander=True)
+
     st.caption(f"build={BUILD_MARKER} | commit={audit['commit_active']}")
 
 
