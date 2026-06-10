@@ -158,7 +158,7 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Operacional GP Lei 15A",
+    "nucleo_a_dezenas": "Núcleo Lei 15 (insumo Lei 15A)",
     "auditadas_escolhidas": "Auditadas Lei 15A",
     "vigilantes_escolhidas": "Vigilantes Lei 15A",
     "cartao_final_lido": "Cartão validado Lei 15A",
@@ -177,7 +177,9 @@ LEI15A_PANEL_DESCRIPTION = (
     "o cartão validado deve coincidir com o cartão final superior; "
     "núcleo operacional GP, auditadas e vigilantes são componentes próprios da Lei 15A."
 )
-LEI15A_PANEL_FORMAT_16D_23D_LABEL = "16D–23D = cartão validado pela matriz GP da Lei 15A"
+LEI15A_PANEL_FORMAT_16D_20D_LABEL = "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP"
+LEI15A_PANEL_FORMAT_21D_23D_LABEL = "21D–23D = leitura observacional — registro Lei 15A pendente"
+LEI15A_PANEL_FORMAT_16D_23D_LABEL = LEI15A_PANEL_FORMAT_16D_20D_LABEL
 LEI15A_PANEL_SYNC_SUCCESS = (
     "Leitura operacional Lei 15A validada: cartão Lei 15A coincide com "
     "o cartão final gerado pela Lei 15, preservando componentes próprios."
@@ -187,7 +189,10 @@ LEI15A_PANEL_SYNC_SEMANTICS = (
     "cartão final Lei 15. Não significa cópia de núcleo, reservas, auditadas "
     "ou vigilantes entre as leis."
 )
-LEI15_PANEL_CONCEPT_15D = "15D = núcleo Lei 15 (geração soberana)"
+LEI15_PANEL_CONCEPT_15D = (
+    "15D = geração soberana Lei 15; conferência usa cartão final por jogo"
+)
+LEI15_PANEL_CONCEPT_EXPANDED = "16D–23D = cartão final gerado pela Lei 15 (geração soberana)"
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
@@ -210,6 +215,24 @@ POST_DRAW_MONITORING_PAYLOAD = {
     "gold_target": 14,
     "diamond_target": 15,
 }
+
+
+def _resolve_lei15a_panel_format_label(card_format: int) -> str:
+    """Rótulo semântico da faixa Lei 15A conforme matriz dimensional (DOC-001 / DOC-002)."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    if resolved_format <= LEI15A_REGISTRATION_MAX_FORMAT:
+        return LEI15A_PANEL_FORMAT_16D_20D_LABEL
+    return LEI15A_PANEL_FORMAT_21D_23D_LABEL
+
+
+def _resolve_lei15_panel_concept_label(card_format: int) -> str:
+    """Rótulo da geração soberana Lei 15 no painel superior/inferior."""
+    resolved_format = int(card_format or 15)
+    if resolved_format <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    return LEI15_PANEL_CONCEPT_EXPANDED
 
 
 def _clean_law15_format_label(card_format: int) -> str:
@@ -10071,10 +10094,10 @@ def _render_institutional_matrix_reading_section(
     concept_cols = st.columns(2)
     with concept_cols[0]:
         st.info("Lei 15 = governança soberana")
-        st.info(LEI15_PANEL_CONCEPT_15D)
+        st.info(_resolve_lei15_panel_concept_label(card_format))
     with concept_cols[1]:
         st.info("Lei 15A = operação GP 10/20/30/50")
-        st.info(LEI15A_PANEL_FORMAT_16D_23D_LABEL)
+        st.info(_resolve_lei15a_panel_format_label(card_format))
     with st.expander("O que significa sincronização?", expanded=False):
         st.caption(LEI15A_PANEL_SYNC_SEMANTICS)
 
