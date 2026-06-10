@@ -6427,6 +6427,42 @@ def _compute_structural_entropy_from_dezenas(games: Sequence[Sequence[int]]) -> 
     return round((entropy / max_entropy) if max_entropy else 0.0, 4)
 
 
+def _resolve_reconciliation_game_hits(
+    *,
+    hits: int | None,
+    matched_numbers: Sequence[int] | None,
+) -> int:
+    resolved = int(hits or 0)
+    if resolved > 0:
+        return resolved
+    return len([int(number) for number in (matched_numbers or [])])
+
+
+def _count_reconciliation_games_with_min_hits(
+    games_rows: Sequence[dict[str, Any]],
+    *,
+    minimum_hits: int,
+) -> int:
+    return sum(
+        1
+        for row in games_rows
+        if _resolve_reconciliation_game_hits(
+            hits=row.get("hits"),
+            matched_numbers=row.get("matched_numbers"),
+        )
+        >= minimum_hits
+    )
+
+
+def _format_hb_dominant_numbers(dominant_numbers: Sequence[dict[str, Any]], *, limit: int = 5) -> str:
+    formatted = [
+        f"{int(item['number']):02d}({int(item['frequency'])}x)"
+        for item in dominant_numbers[:limit]
+        if item.get("number") is not None and item.get("frequency") is not None
+    ]
+    return " ".join(formatted) or "-"
+
+
 def _empty_hb_metrics_payload() -> dict[str, Any]:
     return {
         "available": False,
@@ -6452,7 +6488,13 @@ def _build_hb_metrics_payload_from_reconciliation(
     games_rows: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
     games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
-    hits = [int(row.get("hits", 0) or 0) for row in games_rows]
+    hits = [
+        _resolve_reconciliation_game_hits(
+            hits=row.get("hits"),
+            matched_numbers=row.get("matched_numbers"),
+        )
+        for row in games_rows
+    ]
     contest_ids = {
         int(row.get("contest_id", 0) or 0)
         for row in games_rows
@@ -6471,8 +6513,8 @@ def _build_hb_metrics_payload_from_reconciliation(
         "tables": "reconciliation_runs / reconciliation_games",
         "reconciliation_run_id": int(reconciliation_run_id or 0),
         "media_acertos": media_acertos,
-        "jogos_11_mais": sum(1 for value in hits if value >= 11),
-        "jogos_12_mais": sum(1 for value in hits if value >= 12),
+        "jogos_11_mais": _count_reconciliation_games_with_min_hits(games_rows, minimum_hits=11),
+        "jogos_12_mais": _count_reconciliation_games_with_min_hits(games_rows, minimum_hits=12),
         "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
         "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
         "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
@@ -6501,7 +6543,11 @@ def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
         row_payloads = [
             {
                 "numbers": list(row.numbers or []),
-                "hits": int(row.hits or 0),
+                "hits": _resolve_reconciliation_game_hits(
+                    hits=row.hits,
+                    matched_numbers=list(row.matched_numbers or []),
+                ),
+                "matched_numbers": list(row.matched_numbers or []),
                 "contest_id": int(row.contest_id or 0),
             }
             for row in games_rows
@@ -8139,7 +8185,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
             {"métrica": "media_sobreposicao", "valor": average_overlap},
             {
                 "métrica": "dezenas_dominantes",
-                "valor": ", ".join(f"{item['number']:02d}:{item['frequency']}" for item in dominant_numbers[:5]) or "-",
+                "valor": _format_hb_dominant_numbers(dominant_numbers),
             },
             {"métrica": "concursos_analisados", "valor": contests_analyzed},
             {"métrica": "jogos_analisados", "valor": games_count},
@@ -8164,8 +8210,6 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "e acompanhamento institucional, sem gerar jogos, sem recalibrar leis e sem "
         "alterar histórico."
     )
-    with st.expander("Detalhes técnicos avançados"):
-        st.write(metrics)
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
