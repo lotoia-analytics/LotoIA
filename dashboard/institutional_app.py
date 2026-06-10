@@ -67,6 +67,13 @@ from lotoia.governance.structural_rfe import (
     validate_rfe_final_card,
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.observability.ml_diagnostic_panels import (
+    ALERT_SIDE_LEAK,
+    build_evolution_13_14_panel_payload,
+    build_evolution_14_15_panel_payload,
+    build_side_leak_panel_payload,
+    load_latest_reconciliation_diagnostic_context,
+)
 from lotoia.observability.observational_leftover import (
     ML_ROLE_DIAGNOSTIC_ONLY,
     OBSERVATIONAL_SOURCE_CARTAO_FINAL,
@@ -7812,6 +7819,20 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
         st.dataframe(replay_df, hide_index=True, use_container_width=True)
 
 
+def _render_ml_diagnostic_source_caption(payload: dict[str, Any]) -> None:
+    st.caption(
+        " | ".join(
+            [
+                f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
+                f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
+                f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
+                "generation_command=False",
+                "recalibration_command=False",
+            ]
+        )
+    )
+
+
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Métricas HB")
@@ -10627,27 +10648,69 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Sinaliza cobertura lateral e deslocamento de dezenas fora do núcleo esperado.")
+        st.caption("Sinaliza cobertura lateral: dezenas do cartao_final fora do núcleo Lei 15 15D congelado.")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        side_leak = build_side_leak_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(side_leak)
+        if not side_leak.get("available"):
+            st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
+        elif side_leak.get("alert") == ALERT_SIDE_LEAK:
+            st.error(
+                f"Alerta ML diagnóstico: {ALERT_SIDE_LEAK} — dezenas: "
+                f"{', '.join(side_leak.get('alert_dezenas', []) or [])}"
+            )
+        if side_leak.get("rows"):
+            st.dataframe(
+                pd.DataFrame(side_leak["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Nenhuma dezena de vazamento lateral detectada na última conferência.")
     elif section == "13_to_14":
         st.markdown("##### Evolução 13 -> 14")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 13 para 14 sem recalibrar automaticamente.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_13_14_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 13 → 14 nesta conferência.")
     elif section == "14_to_15":
         st.markdown("##### Evolução 14 -> 15")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption(
-            "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
-            "generation_command=False | recalibration_command=False"
-        )
-        st.caption("Avalia hipóteses de conversão 14 para 15 em modo observador.")
+        st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
+        diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
+        evolution = build_evolution_14_15_panel_payload(diagnostic_context)
+        _render_ml_diagnostic_source_caption(evolution)
+        if not evolution.get("available"):
+            st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
+        elif evolution.get("candidata_conversao"):
+            st.info(
+                f"Candidata ML diagnóstico ({evolution.get('candidate_flag')}): "
+                f"{evolution.get('candidata_conversao')}"
+            )
+        if evolution.get("rows"):
+            st.dataframe(
+                pd.DataFrame(evolution["rows"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Sem dezenas faltantes para análise 14 → 15 nesta conferência.")
     elif section == "offline_hypotheses":
         st.markdown("##### Hipóteses para teste offline")
         st.caption("Somente hipóteses registradas para evolução futura após auditoria e versionamento.")
