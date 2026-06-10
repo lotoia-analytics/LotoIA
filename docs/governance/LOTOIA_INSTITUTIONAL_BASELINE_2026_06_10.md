@@ -141,3 +141,4 @@ Entrega esperada:
 | Data | Evento |
 |------|--------|
 | 2026-06-10 | Registro `LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10` como `approved_candidate` |
+| 2026-06-10 | PR #28 mergeado; deploy Railway `f263197` state=success; validação deploy em `RAILWAY_PRODUCTION_VALIDATION_2026_06_10.md` |
