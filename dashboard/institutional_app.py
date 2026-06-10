@@ -31,6 +31,14 @@ from sqlalchemy.exc import IntegrityError
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
+from lotoia.database.institutional_read_repository import InstitutionalReadRepository, count_generated_games_for_event
+from lotoia.governance.db_first_guards import (
+    build_db_export_metadata,
+    detect_session_truth,
+    evaluate_analytical_guard,
+    evaluate_history_guard,
+    evaluate_institutional_guard,
+)
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
@@ -444,6 +452,7 @@ def _load_official_sync_diagnostics() -> dict[str, Any]:
 
 
 def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
+    """Cross-check/auditoria apenas. Nunca usar como fonte operacional de Histórico/Analítico/Institucional."""
     try:
         draws = load_draws_csv()
     except Exception:
@@ -459,7 +468,89 @@ def _load_csv_latest_contest_summary() -> dict[str, Any] | None:
         "data": str(getattr(latest_draw, "date", "") or ""),
         "dezenas": [int(number) for number in getattr(latest_draw, "numbers", []) or []],
         "source": "historico_lotofacil.csv",
+        "usage": "auditoria_cross_check",
     }
+
+
+def _institutional_read_repository() -> InstitutionalReadRepository:
+    return InstitutionalReadRepository(DB_PATH)
+
+
+def _evaluate_db_first_history_guard(generation_event_id: int | None) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_history_guard(session, generation_event_id)
+
+
+def _evaluate_db_first_analytical_guard(
+    *,
+    reconciliation_run_id: int | None = None,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_analytical_guard(
+            session,
+            reconciliation_run_id=reconciliation_run_id,
+            generation_event_id=generation_event_id,
+        )
+
+
+def _evaluate_db_first_institutional_guard() -> dict[str, Any]:
+    with get_session(DB_PATH) as session:
+        return evaluate_institutional_guard(session)
+
+
+def _resolve_scientific_memory_from_db(
+    *,
+    memory_kind: str,
+    generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    scientific_memory = _load_latest_scientific_memory(limit=20)
+    for row in scientific_memory:
+        if str(row.get("memory_kind", "") or "") != memory_kind:
+            continue
+        if generation_event_id is not None and int(row.get("generation_event_id", 0) or 0) != int(generation_event_id):
+            continue
+        return dict(row)
+    return {}
+
+
+def _build_db_derived_export_payload(
+    rows: list[dict[str, Any]],
+    *,
+    db_table: str,
+    event_id: int | None = None,
+    run_id: int | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, Any]:
+    metadata = build_db_export_metadata(
+        db_table=db_table,
+        event_id=event_id,
+        run_id=run_id,
+        snapshot_id=snapshot_id,
+        commit_hash=_resolve_active_commit(),
+    )
+    return {"rows": rows, "metadata": metadata}
+
+
+def _render_db_export_download(
+    export_payload: dict[str, Any],
+    *,
+    file_name: str,
+    label: str,
+) -> None:
+    rows = list(export_payload.get("rows") or [])
+    metadata = dict(export_payload.get("metadata") or {})
+    if not rows:
+        return
+    export_df = pd.DataFrame(rows)
+    csv_body = export_df.to_csv(index=False)
+    metadata_lines = "\n".join(f"# {key}={value}" for key, value in metadata.items())
+    st.download_button(
+        label=label,
+        data=f"{metadata_lines}\n{csv_body}",
+        file_name=file_name,
+        mime="text/csv",
+    )
 
 
 def _load_official_sync_contest_summary() -> dict[str, Any] | None:
@@ -1056,7 +1147,20 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
             {},
         )
     if not post_reconciliation_memory:
-        post_reconciliation_memory = dict(st.session_state.get("institutional_post_reconciliation_memory") or {})
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
     if post_reconciliation_memory:
         st.markdown("###### Memória pós-conferência científica")
         post_window = dict(post_reconciliation_memory.get("generation_range") or {})
@@ -1067,7 +1171,17 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         post_cols[3].metric("Melhor acerto", int(post_reconciliation_memory.get("best_hit", 0) or 0))
         post_cols[4].metric("Jogos com 10", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_10_exact", 0) or 0))
         post_cols[5].metric("Jogos com 11+", int(_scientific_hit_decomposition(post_reconciliation_memory).get("count_11_plus", 0) or 0))
-    batch_reconciliation_memory = dict(st.session_state.get("institutional_batch_reconciliation_memory") or {})
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
+        session_conflict = detect_session_truth(
+            dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}),
+            None,
+        )
+        if session_conflict.get("conflict"):
+            st.warning(
+                "Memória consolidada indisponível no PostgreSQL. "
+                "session_state não pode ser usada como fonte oficial."
+            )
     if batch_reconciliation_memory:
         st.markdown("###### Memória consolidada da bateria conferida")
         batch_window = dict(batch_reconciliation_memory.get("generation_range") or {})
@@ -2391,7 +2505,21 @@ def _render_scientific_memory_block() -> None:
             {},
         )
     if not post_reconciliation_memory:
-        post_reconciliation_memory = dict(st.session_state.get("institutional_post_reconciliation_memory") or {})
+        post_reconciliation_memory = _resolve_scientific_memory_from_db(
+            memory_kind="scientific_reconciliation",
+            generation_event_id=active_reconciliation_generation_event_id,
+        )
+        if not post_reconciliation_memory:
+            session_conflict = detect_session_truth(
+                dict(st.session_state.get("institutional_post_reconciliation_memory") or {}),
+                None,
+            )
+            if session_conflict.get("conflict"):
+                st.warning(
+                    "Memória pós-conferência indisponível no PostgreSQL. "
+                    "session_state não pode ser usada como fonte oficial."
+                )
+    batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
     st.markdown("##### Mem?ria Cient?fica da LotoIA")
     summary_cols = st.columns(6)
     summary_cols[0].metric("Concursos oficiais carregados", int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0))
@@ -2511,6 +2639,8 @@ def _render_scientific_memory_block() -> None:
             with st.expander("Memória pós-conferência observacional — detalhes avançados", expanded=False):
                 st.caption("Registro técnico legado preservado para auditoria histórica.")
                 st.json(post_reconciliation_memory)
+        batch_reconciliation_memory = _resolve_scientific_memory_from_db(memory_kind="scientific_batch_reconciliation")
+    if not batch_reconciliation_memory:
         batch_reconciliation_memory = next(
             (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
             {},
@@ -5653,6 +5783,22 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             games=list(group.get("games") or []),
             contest=contest_payload,
         )
+        if str(comparison.get("status", "") or "") == "error":
+            conference_15d_guard = dict((comparison.get("diagnostics") or {}).get("conference_15d_guard") or comparison.get("conference_15d_guard") or {})
+            st.session_state["institutional_check_result"] = {
+                "status": "blocked_conference_15d",
+                "warning": str(comparison.get("message", "Conferência 15D bloqueada.") or "Conferência 15D bloqueada."),
+                "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
+                "generation_event_id": int(group.get("generation_event_id") or 0),
+                "conference_15d_guard": conference_15d_guard,
+                "persistence_guard_status": str(
+                    comparison.get("persistence_guard_status")
+                    or conference_15d_guard.get("persistence_guard_status")
+                    or "BLOQUEADO_NUCLEO_FIXO_15D"
+                ),
+                "classification": str(conference_15d_guard.get("classification", "CONFLITANTE") or "CONFLITANTE"),
+            }
+            return
         comparison_diagnostics = dict(comparison.get("diagnostics") or {})
         group_games = list(group.get("games") or [])
         group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
@@ -6129,6 +6275,13 @@ def _resolve_institutional_check_result(
     if db_result:
         return db_result
     session_result = dict(st.session_state.get("institutional_check_result") or {})
+    session_conflict = detect_session_truth(session_result, db_result)
+    if session_conflict.get("conflict"):
+        return {
+            "warning": "Conferência disponível apenas em session_state. Recarregue após persistência no PostgreSQL.",
+            "status": "blocked_session_truth",
+            "classification": session_conflict.get("classification", "CONFLITANTE"),
+        }
     if session_result.get("warning"):
         return {
             "warning": str(session_result.get("warning", "") or ""),
@@ -6284,6 +6437,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "ml_enabled": bool(getattr(event, "ml_enabled", 0) or 0),
                     "total_games": len(games),
+                    "persisted_games_count": len(games_rows),
                     "target_contest": max(target_contests) if target_contests else None,
                     "first_name": str(getattr(event, "first_name", "") or ""),
                     "whatsapp": str(getattr(event, "whatsapp", "") or ""),
@@ -6789,10 +6943,11 @@ def _make_arrow_safe(df: pd.DataFrame | None) -> pd.DataFrame:
 def _load_accumulated_institutional_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for generation in _load_generation_history(limit=None):
+        generation_event_id = int(generation.get("generation_event_id", 0) or 0)
         games = list(generation.get("games", []) or [])
         reconciliation = dict(generation.get("reconciliation") or {})
         generated_count = int(generation.get("total_games", 0) or 0)
-        persisted_count = _count_generated_games_for_event(int(generation.get("generation_event_id", 0) or 0))
+        persisted_count = int(generation.get("persisted_games_count", generated_count) or generated_count)
         recovered_count = len(games)
         first_context = dict((games[0] or {}).get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
         requested_count = int(first_context.get("total_games", generated_count) or generated_count)
@@ -6957,11 +7112,18 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
+    institutional_guard = _evaluate_db_first_institutional_guard()
+    if not institutional_guard.get("allowed"):
+        st.error(
+            "Painel institucional bloqueado: nenhum snapshot, audit_log ou geração persistida encontrada no PostgreSQL."
+        )
+        st.caption(f"motivo={institutional_guard.get('reason', '-')}")
+        return
     st.subheader("Histórico Institucional")
     st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
 
     source_map = _institutional_source_map(snapshot)
-    latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
+    latest_sync = _load_official_sync_contest_summary() or _load_official_sync_diagnostics() or {}
     latest_contest = _load_latest_contest_summary() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
@@ -7028,8 +7190,8 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = dict(st.session_state.get("institutional_batch_conference_result") or {})
-        if not scientific_batch and scientific_batch_id:
+        scientific_batch = {}
+        if scientific_batch_id:
             scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
         latest_generated_games = list(latest_commander.get("generated_games", []) or [])
         latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
@@ -7319,13 +7481,22 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         diag_cols[9].metric("total_eventos_ok", int((generation_df["observações/alertas"].astype(str) == "OK").sum()) if not generation_df.empty else 0)
         st.caption(f"institutional_output_signatures={int(live_counts.get('institutional_output_signatures', 0))}")
     else:
-        if dict(st.session_state.get("institutional_batch_reconciliation_memory") or {}):
-            st.info(
-                "Não há gerações operacionais persistidas para reconstrução institucional, "
-                "mas a memória científica consolidada da bateria ativa está disponível."
-            )
-        else:
-            st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+        st.info("Ainda não há gerações persistidas para reconstrução institucional.")
+
+    latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
+    latest_reconciliation_id = int(generation_df["reconciliation_id"].fillna(0).astype(int).max()) if not generation_df.empty and "reconciliation_id" in generation_df.columns else 0
+    institutional_export = _build_db_derived_export_payload(
+        generation_rows,
+        db_table="generation_events",
+        event_id=latest_generation_event_id or None,
+        run_id=latest_reconciliation_id or None,
+        snapshot_id=str((institutional_guard.get("snapshot") or {}).get("memory_id") or (institutional_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        institutional_export,
+        file_name="historico_institucional_export.csv",
+        label="Exportar histórico institucional (PostgreSQL)",
+    )
 
     st.divider()
     st.markdown("##### Tabelas Institucionais")
@@ -8188,13 +8359,11 @@ def _persist_generation_snapshot(
         }
 
 
-def _count_generated_games_for_event(generation_event_id: int) -> int:
-    with get_session(DB_PATH) as session:
-        return int(
-            session.query(GeneratedGame)
-            .filter(GeneratedGame.generation_event_id == int(generation_event_id))
-            .count()
-        )
+def _count_generated_games_for_event(generation_event_id: int, session: Any | None = None) -> int:
+    if session is not None:
+        return count_generated_games_for_event(session, int(generation_event_id))
+    with get_session(DB_PATH) as db_session:
+        return count_generated_games_for_event(db_session, int(generation_event_id))
 
 
 def _generated_games_count_sql(generation_event_id: int) -> str:
@@ -12299,6 +12468,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    analytical_guard = _evaluate_db_first_analytical_guard(generation_event_id=active_generation_event_id)
+    if not analytical_guard.get("allowed"):
+        st.error("Painel analítico bloqueado: nenhuma conferência ou snapshot analítico persistido no PostgreSQL.")
+        st.caption(f"motivo={analytical_guard.get('reason', '-')}")
+        return
     analytic_labels = {
         "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
         "TOTAL_JOGOS_HISTORICOS_CARREGADOS": "Jogos históricos carregados",
@@ -12645,6 +12820,20 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.dataframe(pd.DataFrame(timeline), hide_index=True, use_container_width=True)
         else:
             st.info("Ainda não há eventos suficientes para montar a timeline analítica.")
+
+    latest_run_id = _safe_int(analytical_guard.get("reconciliation_run_id"), default=None)
+    analytical_export = _build_db_derived_export_payload(
+        historical_rows,
+        db_table=str(analytical_guard.get("db_table") or "reconciliation_games"),
+        event_id=active_generation_event_id,
+        run_id=latest_run_id,
+        snapshot_id=str((analytical_guard.get("snapshot") or {}).get("snapshot_id") or ""),
+    )
+    _render_db_export_download(
+        analytical_export,
+        file_name="historico_analitico_export.csv",
+        label="Exportar histórico analítico (PostgreSQL)",
+    )
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
     st.subheader("HB Geometry")
     st.write("Auditoria incremental isolada do motor oficial.")
