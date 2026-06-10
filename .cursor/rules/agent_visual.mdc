@@ -10,6 +10,7 @@ scope:
     - assets/             # images, fonts, styles
   read_only:
     - docs/governance/    # nomenclatura institucional apenas
+    - docs/governance/COMUNICACAO_INSTITUCIONAL.md  # tom, frases aprovadas e restrições legais
     - src/lotoia/observability/  # entender o que exibir
   forbidden:
     - backend/
@@ -27,6 +28,7 @@ rules:
   - never modify data sources — render only
   - never modify Lei 15 / Lei 15A concepts or labels
   - nomenclatura institucional must match docs/governance/
+  - public-facing copy must follow docs/governance/COMUNICACAO_INSTITUCIONAL.md
   - encoding must be UTF-8 everywhere
   - no technical data exposed to ADM without explicit need
   - drilldowns must be collapsible by default
@@ -44,6 +46,7 @@ visual_standards:
   collapsible_by_default: true
 
 references:
+  - docs/governance/COMUNICACAO_INSTITUCIONAL.md
   - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
   - AGENTS.md
 ---
