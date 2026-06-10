@@ -6174,6 +6174,112 @@ def _load_latest_reconciliation_summary() -> dict[str, Any] | None:
         }
 
 
+def _compute_structural_entropy_from_dezenas(games: Sequence[Sequence[int]]) -> float:
+    """Entropia normalizada da dispersão de dezenas no lote conferido."""
+    frequencies: dict[int, int] = {}
+    total = 0
+    for numbers in games:
+        for number in numbers:
+            value = int(number)
+            if 1 <= value <= 25:
+                frequencies[value] = frequencies.get(value, 0) + 1
+                total += 1
+    if total <= 0 or not frequencies:
+        return 0.0
+    entropy = 0.0
+    for count in frequencies.values():
+        share = count / total
+        entropy -= share * math.log2(share)
+    max_entropy = math.log2(len(frequencies)) if len(frequencies) > 1 else 1.0
+    return round((entropy / max_entropy) if max_entropy else 0.0, 4)
+
+
+def _empty_hb_metrics_payload() -> dict[str, Any]:
+    return {
+        "available": False,
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": 0,
+        "media_acertos": 0.0,
+        "jogos_11_mais": 0,
+        "jogos_12_mais": 0,
+        "entropia_estrutural": 0.0,
+        "media_sobreposicao": 0.0,
+        "dezenas_dominantes": [],
+        "concursos_analisados": 0,
+        "jogos_analisados": 0,
+        "tamanho_conjunto": 0,
+    }
+
+
+def _build_hb_metrics_payload_from_reconciliation(
+    *,
+    reconciliation_run_id: int,
+    contest_id: int,
+    games_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    games_numbers = [[int(number) for number in (row.get("numbers") or [])] for row in games_rows]
+    hits = [int(row.get("hits", 0) or 0) for row in games_rows]
+    contest_ids = {
+        int(row.get("contest_id", 0) or 0)
+        for row in games_rows
+        if int(row.get("contest_id", 0) or 0) > 0
+    }
+    if not contest_ids and int(contest_id or 0) > 0:
+        contest_ids = {int(contest_id)}
+    structural = _summarize_games_structurally(games_numbers)
+    pool_numbers: set[int] = set()
+    for numbers in games_numbers:
+        pool_numbers.update(numbers)
+    media_acertos = round(sum(hits) / len(hits), 4) if hits else 0.0
+    return {
+        "available": bool(games_rows),
+        "source": "postgresql",
+        "tables": "reconciliation_runs / reconciliation_games",
+        "reconciliation_run_id": int(reconciliation_run_id or 0),
+        "media_acertos": media_acertos,
+        "jogos_11_mais": sum(1 for value in hits if value >= 11),
+        "jogos_12_mais": sum(1 for value in hits if value >= 12),
+        "entropia_estrutural": _compute_structural_entropy_from_dezenas(games_numbers),
+        "media_sobreposicao": float(structural.get("average_overlap", 0.0) or 0.0),
+        "dezenas_dominantes": list(structural.get("dominant_numbers", []) or []),
+        "concursos_analisados": len(contest_ids),
+        "jogos_analisados": len(games_rows),
+        "tamanho_conjunto": len(pool_numbers),
+    }
+
+
+def _load_hb_metrics_from_reconciliation_db() -> dict[str, Any]:
+    """Carrega métricas HB da última reconciliation_run persistida no PostgreSQL (Lei 001)."""
+    with get_session(DB_PATH) as session:
+        run = (
+            session.query(ReconciliationRun)
+            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            .first()
+        )
+        if run is None:
+            return _empty_hb_metrics_payload()
+        games_rows = (
+            session.query(ReconciliationGame)
+            .filter(ReconciliationGame.reconciliation_run_id == run.id)
+            .order_by(ReconciliationGame.game_index.asc())
+            .all()
+        )
+        row_payloads = [
+            {
+                "numbers": list(row.numbers or []),
+                "hits": int(row.hits or 0),
+                "contest_id": int(row.contest_id or 0),
+            }
+            for row in games_rows
+        ]
+        return _build_hb_metrics_payload_from_reconciliation(
+            reconciliation_run_id=int(run.id or 0),
+            contest_id=int(run.contest_id or 0),
+            games_rows=row_payloads,
+        )
+
+
 def _build_reconciliation_result_row(game_row: ReconciliationGame) -> dict[str, Any]:
     context_json = dict(getattr(game_row, "context_json", {}) or {})
     numbers = [int(number) for number in (game_row.numbers or [])]
@@ -7721,18 +7827,23 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "dispersão e volume analisado, sem atuar como comando de geração ou "
         "recalibração."
     )
-    state = _hb_geometry_state()
-    summary = state["summary"] or {}
-    baseline = summary.get("hb_baseline", {})
-    avg_hits = round(float(baseline.get("average_hits", 0.0)), 4)
-    hits_11_plus = int(baseline.get("hits_11_plus", 0))
-    hits_12_plus = int(baseline.get("hits_12_plus", 0))
-    entropy = round(float(baseline.get("entropy", 0.0)), 4)
-    average_overlap = round(float(baseline.get("average_overlap", 0.0)), 4)
-    dominant_numbers = list(baseline.get("dominant_numbers", []) or [])
-    contests_analyzed = int(summary.get("contests_analyzed", 0) or 0)
-    games_count = int(summary.get("games_count", 0) or 0)
-    pool_size = int(summary.get("pool_size", 0) or 0)
+    metrics = _load_hb_metrics_from_reconciliation_db()
+    st.caption(
+        f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
+        f"reconciliation_run_id={metrics.get('reconciliation_run_id', 0)} | "
+        f"Lei 001: sem CSV, sem session_state"
+    )
+    if not metrics.get("available"):
+        st.warning("Nenhuma reconciliation_run persistida encontrada no PostgreSQL para calcular as métricas HB.")
+    avg_hits = float(metrics.get("media_acertos", 0.0) or 0.0)
+    hits_11_plus = int(metrics.get("jogos_11_mais", 0) or 0)
+    hits_12_plus = int(metrics.get("jogos_12_mais", 0) or 0)
+    entropy = float(metrics.get("entropia_estrutural", 0.0) or 0.0)
+    average_overlap = float(metrics.get("media_sobreposicao", 0.0) or 0.0)
+    dominant_numbers = list(metrics.get("dezenas_dominantes", []) or [])
+    contests_analyzed = int(metrics.get("concursos_analisados", 0) or 0)
+    games_count = int(metrics.get("jogos_analisados", 0) or 0)
+    pool_size = int(metrics.get("tamanho_conjunto", 0) or 0)
     cols = st.columns(4)
     cols[0].metric("Média de acertos", avg_hits)
     cols[1].metric("Jogos com 11+ acertos", hits_11_plus)
@@ -7744,30 +7855,29 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "ou mudança da governança soberana."
     )
     st.subheader("Resumo observacional HB")
-    st.caption("Indicadores estruturais derivados da bateria analisada.")
+    st.caption("Indicadores estruturais derivados da última reconciliation_run persistida.")
     metrics_df = pd.DataFrame(
         [
-            {"métrica": "average_overlap", "valor": average_overlap},
-            {"métrica": "dominant_numbers", "valor": ", ".join(f"{item['number']}:{item['frequency']}" for item in dominant_numbers[:5]) or "-"},
-            {"métrica": "contests_analyzed", "valor": contests_analyzed},
-            {"métrica": "games_count", "valor": games_count},
-            {"métrica": "pool_size", "valor": pool_size},
+            {"métrica": "media_sobreposicao", "valor": average_overlap},
+            {
+                "métrica": "dezenas_dominantes",
+                "valor": ", ".join(f"{item['number']:02d}:{item['frequency']}" for item in dominant_numbers[:5]) or "-",
+            },
+            {"métrica": "concursos_analisados", "valor": contests_analyzed},
+            {"métrica": "jogos_analisados", "valor": games_count},
+            {"métrica": "tamanho_conjunto", "valor": pool_size},
         ]
     )
     metric_label_map = {
-        "average_overlap": "Média de sobreposição",
-        "dominant_numbers": "Dezenas dominantes",
-        "contests_analyzed": "Concursos analisados",
-        "games_count": "Jogos analisados",
-        "pool_size": "Tamanho do conjunto",
+        "media_sobreposicao": "Média de sobreposição",
+        "dezenas_dominantes": "Dezenas dominantes",
+        "concursos_analisados": "Concursos analisados",
+        "jogos_analisados": "Jogos analisados",
+        "tamanho_conjunto": "Tamanho do conjunto",
     }
     metrics_display_df = metrics_df.copy()
-    if "métrica" in metrics_display_df.columns:
-        metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
-    elif "metric" in metrics_display_df.columns:
-        metrics_display_df["metric"] = metrics_display_df["metric"].astype(str).replace(metric_label_map)
-        metrics_display_df = metrics_display_df.rename(columns={"metric": "Métrica", "value": "Valor"})
+    metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
+    metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
     st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
     st.subheader("Interpretação observacional")
     st.markdown(
@@ -7777,19 +7887,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         "alterar histórico."
     )
     with st.expander("Detalhes técnicos avançados"):
-        st.write(
-            {
-                "AVG_HITS": avg_hits,
-                "11+": hits_11_plus,
-                "12+": hits_12_plus,
-                "ENTROPY": entropy,
-                "average_overlap": average_overlap,
-                "dominant_numbers": dominant_numbers,
-                "contests_analyzed": contests_analyzed,
-                "games_count": games_count,
-                "pool_size": pool_size,
-            }
-        )
+        st.write(metrics)
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
