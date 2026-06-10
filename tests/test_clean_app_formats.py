@@ -221,7 +221,7 @@ def test_institutional_matrix_primary_view_keeps_only_human_readable_columns() -
 
     assert list(primary_df.columns) == list(INSTITUTIONAL_MATRIX_PRIMARY_LABELS.values())
     assert primary_df.iloc[0]["Cartão validado Lei 15A"] == _format_card(final_card)
-    assert primary_df.iloc[0]["Núcleo Operacional GP Lei 15A"] == _format_card(_lei15a_frozen_nucleus())
+    assert primary_df.iloc[0]["Núcleo Lei 15 (insumo Lei 15A)"] == _format_card(_lei15a_frozen_nucleus())
 
 
 def test_institutional_matrix_technical_view_preserves_full_trace() -> None:
@@ -560,11 +560,26 @@ def test_lei15a_panel_semantic_labels_avoid_ambiguous_wording() -> None:
     module_source = open(app.__file__, encoding="utf-8").read()
     assert "16D–23D = núcleo operacional GP + reservas auditadas" not in module_source
     assert "15D nasce do núcleo operacional GP" not in module_source
-    assert app.LEI15A_PANEL_FORMAT_16D_23D_LABEL == "16D–23D = cartão validado pela matriz GP da Lei 15A"
+    assert app.LEI15A_PANEL_FORMAT_16D_20D_LABEL == (
+        "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP"
+    )
+    assert app.LEI15A_PANEL_FORMAT_21D_23D_LABEL == (
+        "21D–23D = leitura observacional — registro Lei 15A pendente"
+    )
+    assert "conferência usa cartão final por jogo" in app.LEI15_PANEL_CONCEPT_15D
     assert "componentes próprios da Lei 15A" in app.LEI15A_PANEL_DESCRIPTION
     assert "cartão validado deve coincidir com o cartão final superior" in app.LEI15A_PANEL_DESCRIPTION
     assert "preservando componentes próprios" in app.LEI15A_PANEL_SYNC_SUCCESS
     assert "Não significa cópia de núcleo" in app.LEI15A_PANEL_SYNC_SEMANTICS
+
+
+def test_lei15a_panel_format_labels_follow_dimensional_matrix() -> None:
+    from dashboard import institutional_app as app
+
+    assert app._resolve_lei15a_panel_format_label(15) == app.LEI15_PANEL_CONCEPT_15D
+    assert app._resolve_lei15a_panel_format_label(18) == app.LEI15A_PANEL_FORMAT_16D_20D_LABEL
+    assert app._resolve_lei15a_panel_format_label(22) == app.LEI15A_PANEL_FORMAT_21D_23D_LABEL
+    assert app._resolve_lei15_panel_concept_label(17) == app.LEI15_PANEL_CONCEPT_EXPANDED
 
 
 def test_lei15a_panel_column_labels_differentiate_laws() -> None:
@@ -580,7 +595,7 @@ def test_lei15a_panel_column_labels_differentiate_laws() -> None:
     assert LEI15_UPPER_PANEL_COLUMN_LABELS["núcleo_lei_15"] == "Núcleo Lei 15"
     assert LEI15_UPPER_PANEL_COLUMN_LABELS["reservas_auditadas"] == "Reservas auditadas Lei 15"
     assert LEI15_UPPER_PANEL_COLUMN_LABELS["cartão_final"] == "Cartão final Lei 15"
-    assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["nucleo_a_dezenas"] == "Núcleo Operacional GP Lei 15A"
+    assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["nucleo_a_dezenas"] == "Núcleo Lei 15 (insumo Lei 15A)"
     assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["auditadas_escolhidas"] == "Auditadas Lei 15A"
     assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["vigilantes_escolhidas"] == "Vigilantes Lei 15A"
     assert INSTITUTIONAL_MATRIX_PRIMARY_LABELS["cartao_final_lido"] == "Cartão validado Lei 15A"
