@@ -4484,8 +4484,8 @@ OBSERVATIONAL_LEFTOVER_DISPLAY_COLUMNS: tuple[str, ...] = (
     "concurso_analisado",
     "formato_cartao",
     "dezenas_registradas",
-    "dezenas_sobrando",
-    "dezenas_sobrando_count",
+    "dezenas_nao_acertadas",
+    "dezenas_nao_acertadas_count",
 )
 
 
@@ -4495,8 +4495,8 @@ def _project_observational_leftover_display_row(row: dict[str, Any]) -> dict[str
         "concurso_analisado": row.get("concurso analisado", row.get("concurso_analisado", "-")),
         "formato_cartao": row.get("formato_cartao", "-"),
         "dezenas_registradas": row.get("cartao_final", row.get("dezenas_observadas", "-")),
-        "dezenas_sobrando": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
-        "dezenas_sobrando_count": row.get("dezenas_sobrando_count", 0),
+        "dezenas_nao_acertadas": row.get("dezenas sobrando", row.get("dezenas_sobrando", "-")),
+        "dezenas_nao_acertadas_count": row.get("dezenas_sobrando_count", 0),
     }
 
 
@@ -10599,7 +10599,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "extra_numbers":
         st.markdown("##### Auditoria Observacional — Dezenas Sobrando")
-        st.write("Esta tela observa as dezenas excedentes dos jogos conferidos, sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico.")
+        st.write(
+            "Esta tela observa as dezenas jogadas que não foram sorteadas "
+            "(cartao_final − resultado_oficial), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
+        )
         latest_contest = _load_imported_contest()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
