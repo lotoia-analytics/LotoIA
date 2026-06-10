@@ -34,6 +34,12 @@ from lotoia.observability.ml_diagnostic_panels import (
     build_alert_002_cards,
     build_alert_003_cards,
     build_central_ml_diagnostics_payload,
+    EVIDENCE_STATUS_COMPLETE,
+    EVIDENCE_STATUS_INSUFFICIENT,
+    EVIDENCE_STATUS_INVALID,
+    GOVERNANCE_STATUS_BLOCKED,
+    GOVERNANCE_STATUS_SAFE_OBSERVATIONAL,
+    build_adm_verdict_guide,
     enrich_alert_card_for_display,
     register_ml_diagnostic_decision,
     register_ml_diagnostic_verdict,
@@ -390,6 +396,64 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
     )
 
 
+def test_adm_guide_visible_and_suggests_accept_for_complete_alert() -> None:
+    leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
+    card = enrich_alert_card_for_display(
+        build_alert_001_cards(
+            [
+                _context_from_games([{"numbers": leak_card, "hits": 14}] * 3, run_id=2),
+                _context_from_games([{"numbers": leak_card, "hits": 14}] * 3, run_id=1),
+            ]
+        )[0]
+    )
+    guide = card["adm_guide"]
+    assert guide["title"] == "Guia ADM"
+    assert guide["evidence_status"] == EVIDENCE_STATUS_COMPLETE
+    assert guide["governance_status"] == GOVERNANCE_STATUS_SAFE_OBSERVATIONAL
+    assert guide["suggested_verdict"] == VERDICT_ACCEPT_DIAGNOSTIC
+    assert guide["suggested_verdict_display_only"] is True
+    assert guide["adm_can_override"] is True
+    assert guide["override_requires_reason"] is True
+    assert "sem efeito operacional" in guide["reason_hint"].lower() or "Evidência completa" in guide["reason_hint"]
+
+
+def test_adm_guide_suggests_request_more_for_insufficient_evidence() -> None:
+    card = enrich_alert_card_for_display(
+        {
+            "tipo_alerta": ALERT_002,
+            "ml_proposal": {"action": ACTION_VIGILANCIA_DEZENA},
+            "ml_diagnosis": {"aparicoes": 0, "faixa": "13->14"},
+            "fonte": "postgresql",
+            "generation_command": False,
+            "recalibration_command": False,
+        }
+    )
+    guide = build_adm_verdict_guide(card)
+    assert guide["evidence_status"] == EVIDENCE_STATUS_INSUFFICIENT
+    assert guide["governance_status"] == GOVERNANCE_STATUS_SAFE_OBSERVATIONAL
+    assert guide["suggested_verdict"] == VERDICT_REQUEST_MORE_EVIDENCE
+
+
+def test_adm_guide_suggests_reject_for_invalid_governance() -> None:
+    card = enrich_alert_card_for_display(
+        {
+            "tipo_alerta": ALERT_003,
+            "ml_proposal": {
+                "action": ACTION_AJUSTE_POOL,
+                "operational_effect": True,
+            },
+            "ml_diagnosis": {"faixa": "13->14", "taxa_conversao_13_14": 80.0},
+            "fonte": "postgresql",
+            "generation_command": False,
+            "recalibration_command": False,
+        }
+    )
+    guide = build_adm_verdict_guide(card)
+    assert guide["evidence_status"] == EVIDENCE_STATUS_INVALID
+    assert guide["governance_status"] == GOVERNANCE_STATUS_BLOCKED
+    assert guide["suggested_verdict"] == VERDICT_REJECT
+
+
 def test_sample_alert_cards_each_type() -> None:
     leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
     alert_001 = enrich_alert_card_for_display(
@@ -438,3 +502,9 @@ def test_sample_alert_cards_each_type() -> None:
         assert card["fonte"] == "postgresql"
         assert card["generation_cmd"] is False
         assert card["recalibration_cmd"] is False
+        assert card["adm_guide"]["title"] == "Guia ADM"
+        assert card["adm_guide"]["suggested_verdict"] in {
+            VERDICT_ACCEPT_DIAGNOSTIC,
+            VERDICT_REQUEST_MORE_EVIDENCE,
+            VERDICT_REJECT,
+        }
