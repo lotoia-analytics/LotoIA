@@ -1,0 +1,60 @@
+---
+name: agent_dados
+description: Data persistence and ingestion agent — LotoIA (Lei 001)
+
+scope:
+  allowed:
+    - src/lotoia/database/
+    - src/lotoia/ingestion/
+    - src/lotoia/data/
+    - src/lotoia/persistence/
+    - scripts/init_database.py
+    - scripts/migrate/
+  read_only:
+    - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
+    - src/lotoia/governance/
+  forbidden:
+    - src/lotoia/generator/
+    - src/lotoia/statistics/
+    - src/lotoia/ml/
+    - dashboard/
+    - business logic in persistence layer
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - PostgreSQL institutional is the sole operational source of truth (Lei No 001)
+  - Statistical logic must remain separated from persistence layer
+  - CSV is backup/export only — never operational source
+  - SQLite is dev/test isolation only — never production truth
+  - session_state is ephemeral UI state — never persisted as truth
+  - Every import must follow: Caixa -> Validacao -> PostgreSQL -> confirmacao pos-commit
+  - Migrations must be reversible and versioned
+  - generation_events, reconciliation_runs, reconciliation_games are audit trail tables
+
+official_chain:
+  - imported_contests / lotofacil_official_history
+  - generated_games / generation_events
+  - reconciliation_runs / reconciliation_games
+  - scientific_institutional_memory
+  - ml_diagnostic_decisions
+
+ingestion_guards:
+  - HTTP status valid before persist
+  - contest validated before upsert
+  - dezenas validated (15 numbers, range 1-25)
+  - SELECT pos-commit confirmation mandatory
+  - sync must not return OK without persistence proof
+
+checks:
+  - no CSV bootstrap on operational panel render
+  - DATABASE_URL resolves to PostgreSQL in production
+  - schema migrations idempotent
+  - foreign keys preserved on reconciliation_games
+  - no nested session leaks in institutional read paths
+
+references:
+  - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
+  - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
+  - src/lotoia/database/database.py
+  - AGENTS.md
+---

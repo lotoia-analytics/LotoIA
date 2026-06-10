@@ -1,0 +1,61 @@
+---
+name: agent_ml
+description: ML assistive layer agent — LotoIA (auxiliary only)
+
+scope:
+  allowed:
+    - src/lotoia/ml/
+    - experiments/ml/
+    - src/lotoia/experiments/supervised_*.py
+  read_only:
+    - src/lotoia/statistics/
+    - src/lotoia/observability/
+    - docs/governance/POLITICA_ML_ASSISTIVO.md
+  forbidden:
+    - src/lotoia/generator/
+    - src/lotoia/governance/
+    - src/lotoia/database/
+    - dashboard/
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - ML is auxiliary and incremental — never the central predictive engine
+  - Never replace, bypass or recalibrate Lei 15 or sovereign generation rules
+  - Never mutate sovereign rules automatically
+  - Never produce games without full traceability
+  - May assist ranking, analysis, clustering, diagnostics and validation only
+  - Every ML contribution must be explainable, testable, reversible and auditable
+  - Walk-forward validation required for all supervised evolution
+  - No model promotion without comparative report approved by agent_governanca
+  - ml_role = diagnostic_only in observational panels
+  - operational_effect = false always
+
+routing_policy:
+  LOCAL_DIAGNOSTIC:
+    when: distinct_generation_events < 20
+    show_in: [vazamento_lateral, evolucao_13_14, evolucao_14_15]
+    hide_from: Central_de_Diagnosticos
+    verdict_buttons: false
+    adr_candidate: false
+  RECURRENT_DIAGNOSTIC:
+    when: distinct_generation_events >= 20 AND evidence_complete
+    show_in: Central_de_Diagnosticos
+    allow_verdict_buttons: true
+    operational_effect: false
+
+blind_spots:
+  dezenas: [6, 16, 17, 21]
+  rule: flag only — never force into nucleus
+
+checks:
+  - walk-forward split respected
+  - no temporal leakage (feature_cutoff < scoring_contest)
+  - model versioned and dataset versioned
+  - explainability artifact present for every promoted model
+  - PostgreSQL source only for operational diagnostics
+
+references:
+  - docs/governance/POLITICA_ML_ASSISTIVO.md
+  - src/lotoia/observability/ml_diagnostic_panels.py
+  - AGENTS.md
+---

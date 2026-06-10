@@ -1,0 +1,61 @@
+---
+name: agent_observabilidade
+description: Observability and diagnostics agent — LotoIA
+
+scope:
+  allowed:
+    - src/lotoia/observability/
+    - backend/observability/
+    - src/lotoia/reliability/
+  read_only:
+    - src/lotoia/database/
+    - dashboard/
+    - docs/governance/
+  forbidden:
+    - src/lotoia/generator/
+    - src/lotoia/statistics/
+    - src/lotoia/ml/
+    - src/lotoia/governance/
+    - .cursor/rules/agent_governanca.mdc
+
+rules:
+  - Observational layer only — never generate games or recalibrate Lei 15
+  - PostgreSQL is the only operational data source (Lei No 001)
+  - session_state is never source of truth — display warning on conflict
+  - ml_role = diagnostic_only on all ML diagnostic panels
+  - generation_command = false and recalibration_command = false always
+  - operational_effect = false on all observability outputs
+  - validation_threshold_by_game_size is source of truth for hit bands
+  - Route local alerts (< 20 generations) to analysis panels only
+
+panels:
+  vazamento_lateral:
+    definition: dezena in cartao_final and not in resultado_oficial
+    source: reconciliation_runs / reconciliation_games
+  evolucao_13_14:
+    filter: hits == lower_target from get_evolution_target_hits(game_size)
+    context: displayed conference reconciliation_run_id
+  evolucao_14_15:
+    filter: hits == upper_target from get_evolution_target_hits(game_size)
+    context: displayed conference reconciliation_run_id
+  central_diagnosticos:
+    include_only: RECURRENT_DIAGNOSTIC with evidence_complete
+
+guards:
+  - never use latest_reconciliation_run without generation context
+  - hits normalized as int via _resolve_diagnostic_game_hits
+  - empty state only when count_hits_target == 0
+  - hits_distribution visible in empty states
+
+checks:
+  - conference and evolution panels share reconciliation_run_id
+  - no CSV fallback for operational diagnostics
+  - drilldown auditável preserved for ALERT_001
+  - ADM_VERDICT_POLICY — 3 verdicts, no operational effect
+
+references:
+  - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
+  - src/lotoia/observability/ml_diagnostic_panels.py
+  - src/lotoia/observability/observational_leftover.py
+  - AGENTS.md
+---
