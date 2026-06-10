@@ -119,9 +119,18 @@ def test_no_csv_operational_sources_remaining_in_history_render(monkeypatch: pyt
         return []
 
     monkeypatch.setattr(app, "load_draws_csv", _tracked_csv)
+    monkeypatch.setattr(
+        app,
+        "_load_hai_latest_contest_summary",
+        lambda: {"contest_number": 3700, "source": "lotofacil_official_history"},
+    )
+    monkeypatch.setattr(app, "_load_latest_generated_games", lambda: {})
+    monkeypatch.setattr(app, "_load_latest_reconciliation_summary", lambda: {})
+    monkeypatch.setattr(app, "_load_official_sync_contest_summary", lambda: {})
+    monkeypatch.setattr(app, "_load_official_history_diagnostics", lambda: {})
     monkeypatch.setattr(app, "_history_number_frequency", lambda: {1: 1})
     app._institutional_source_map({"counts": {}, "latest": {}})
-    assert "load_draws_csv" in calls
+    assert "load_draws_csv" not in calls
 
 
 def test_no_session_truth_after_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
