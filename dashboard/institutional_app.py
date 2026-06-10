@@ -960,10 +960,9 @@ def _live_institutional_snapshot(snapshot: dict[str, Any] | None = None) -> dict
 
 
 def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
-    latest_contest = _get_latest_contest() or _load_latest_contest_summary() or {}
+    latest_contest = _load_hai_latest_contest_summary() or {}
     latest_generation = _load_latest_generated_games() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    latest_csv = _load_csv_latest_contest_summary() or {}
     latest_sync = _load_official_sync_contest_summary() or {}
     official_history = _load_official_history_diagnostics()
     return [
@@ -971,11 +970,7 @@ def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
             "camada": "CSV histórico versionado",
             "origem": "historico_lotofacil.csv",
             "tabelas": "data/raw/historico_lotofacil.csv",
-            "uso": (
-                f"último concurso CSV={latest_csv.get('contest_number', '-')}"
-                f" | papel=seed/documentação"
-                f" | runtime=PostgreSQL"
-            ),
+            "uso": "papel=export/auditoria/migração | runtime=PostgreSQL",
         },
         {
             "camada": "API oficial",
@@ -1035,20 +1030,19 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
     conn_cols[1].caption(f"engine_url: {audit['engine_url']}")
     conn_cols[2].caption(f"host: {audit['host']} | database: {audit['database']}")
     source_cols = st.columns(5)
-    csv_summary = _load_csv_latest_contest_summary() or {}
+    hai_summary = _load_hai_latest_contest_summary() or {}
     sync_summary = _load_official_sync_contest_summary() or {}
-    db_summary = _load_imported_contest() or {}
     official_history = _load_official_history_diagnostics()
-    source_cols[0].metric("CSV oficial", int(csv_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[0].metric("CSV oficial", "export/auditoria")
     source_cols[1].metric("API sincronizada", int(sync_summary.get("contest_number", 0) or 0) or "-")
-    source_cols[2].metric("Banco persistido", int(db_summary.get("contest_number", 0) or 0) or "-")
+    source_cols[2].metric("Banco oficial HAI", int(hai_summary.get("contest_number", 0) or 0) or "-")
     source_cols[3].metric("Histórico oficial", int(official_history.get("total_lotofacil_official_history", 0) or 0))
     source_cols[4].metric("Primeiro concurso", int(official_history.get("contest_number_min", 0) or 0) or "-")
     official_cols = st.columns(4)
     official_cols[0].metric("Último concurso", int(official_history.get("contest_number_max", 0) or 0) or "-")
     official_cols[1].metric("Faltantes", int(official_history.get("total_concursos_faltantes", 0) or 0))
     official_cols[2].metric("Status", str(official_history.get("status_base_oficial", "-") or "-"))
-    official_cols[3].metric("Banco persistido", int(db_summary.get("contest_number", 0) or 0) or "-")
+    official_cols[3].metric("Fonte HAI", str(hai_summary.get("source", "lotofacil_official_history") or "lotofacil_official_history"))
     st.caption(
         " | ".join(
             [
@@ -1344,6 +1338,62 @@ def get_latest_official_contest() -> dict[str, Any] | None:
     if latest_contest_number is None or latest_contest_number <= 0:
         return None
     return get_official_contest(latest_contest_number)
+
+
+def _load_hai_latest_contest_summary() -> dict[str, Any] | None:
+    """Gateway DB-first para páginas HAI (Histórico/Analítico/Institucional)."""
+    latest_official = get_latest_official_contest()
+    if not latest_official:
+        return None
+    normalized = _normalize_contest_record(latest_official)
+    if not normalized:
+        return None
+    normalized["source"] = "lotofacil_official_history"
+    return normalized
+
+
+def _load_post_draw_monitoring_from_db() -> dict[str, Any]:
+    """Carrega monitoramento pós-conferência exclusivamente do PostgreSQL."""
+    payload = dict(POST_DRAW_MONITORING_PAYLOAD)
+    latest_contest = _load_hai_latest_contest_summary()
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    official_diagnostics = _load_official_history_diagnostics()
+    try:
+        generation_events_count = int(_database_snapshot()["counts"].get("generation_events", 0) or 0)
+    except Exception:
+        generation_events_count = 0
+
+    contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
+    dezenas = _extract_int_numbers((latest_contest or {}).get("dezenas", []) or [])
+    accepted_signatures: list[str] = []
+    if dezenas:
+        accepted_signatures.append(" ".join(f"{number:02d}" for number in sorted(dezenas)))
+    block_distribution = list(_block_distribution(dezenas).values()) if dezenas else []
+    latest_conference = str(latest_reconciliation.get("created_at", "") or "-")
+
+    payload.update(
+        {
+            "source": "postgresql",
+            "latest_contest": contest_number,
+            "contest_number": contest_number,
+            "evaluated_contests": int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0),
+            "contests_evaluated": int(official_diagnostics.get("total_lotofacil_official_history", 0) or 0),
+            "analyzed_generations": generation_events_count,
+            "generations_analyzed": generation_events_count,
+            "latest_conference": latest_conference,
+            "last_conference": latest_conference,
+            "accepted_signatures": accepted_signatures,
+            "block_distribution": block_distribution,
+            "reconciliation_generation_event_id": latest_reconciliation.get("generation_event_id"),
+            "reconciliation_best_hits": latest_reconciliation.get("best_hits"),
+        }
+    )
+    return payload
+
+
+def _build_hai_official_history_export_rows() -> list[dict[str, Any]]:
+    """Prepara linhas de exportação/auditoria a partir do histórico oficial persistido."""
+    return list(_load_official_history_rows() or [])
 
 
 def get_previous_official_contest(target_contest: int | None) -> RFEPreviousContestReference:
@@ -2515,13 +2565,20 @@ def _ensure_official_history_seeded() -> dict[str, Any]:
 
 
 def _render_scientific_memory_block() -> None:
-    seed_report = _ensure_official_history_seeded()
     official_diagnostics = _load_official_history_diagnostics()
+    seed_report = {
+        "status": official_diagnostics.get("status_base_oficial", "-"),
+        "seeded": 0,
+        **official_diagnostics,
+    }
     synthesized_batch_memory = _ensure_scientific_batch_memory_from_history()
     if synthesized_batch_memory:
         st.session_state["institutional_batch_reconciliation_memory"] = dict(synthesized_batch_memory)
     scientific_memory = _load_latest_scientific_memory(limit=20)
-    batch_reconciliation_memory: dict[str, Any] = {}
+    batch_reconciliation_memory = next(
+        (row for row in scientific_memory if str(row.get("memory_kind", "") or "") == "scientific_batch_reconciliation"),
+        {},
+    )
     official_15_memory = next((row for row in scientific_memory if _scientific_15_is_official_baseline(row)), {})
     historical_scientific_memory = [row for row in scientific_memory if not _scientific_15_is_official_baseline(row)]
     active_reconciliation_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
@@ -7422,7 +7479,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
     source_map = _institutional_source_map(snapshot)
     latest_sync = _load_official_sync_contest_summary() or _load_official_sync_diagnostics() or {}
-    latest_contest = _load_latest_contest_summary() or {}
+    latest_contest = _load_hai_latest_contest_summary() or {}
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     generation_rows = _load_accumulated_institutional_rows()
     generation_df = pd.DataFrame(generation_rows)
@@ -7488,9 +7545,11 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         )
 
         scientific_batch_id = str(latest_commander.get("batch_id", "") or "").strip()
-        scientific_batch = {}
-        if scientific_batch_id:
-            scientific_batch = _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
+        scientific_batch = (
+            _scientific_batch_diagnostics(batch_id=scientific_batch_id, games=[], game_size=0) or {}
+            if scientific_batch_id
+            else {}
+        )
         latest_generated_games = list(latest_commander.get("generated_games", []) or [])
         latest_generation_context = dict((latest_generated_games[0] or {}).get("generation_context") or {}) if latest_generated_games and isinstance(latest_generated_games[0], dict) else {}
         scientific_game_size = int(
@@ -7499,7 +7558,11 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             or latest_commander.get("quantidade solicitada", 15)
             or 15
         )
-        scientific_policy_discovery = discover_scientific_generation_policy(scientific_game_size, db_path=DB_PATH)
+        scientific_policy_discovery = discover_scientific_generation_policy(
+            scientific_game_size,
+            db_path=DB_PATH,
+            use_csv_fallback=False,
+        )
         history_policy = dict(
             scientific_policy_discovery.get("policy")
             or {
@@ -10599,6 +10662,7 @@ def _official_15_group_registry_found() -> bool:
 
 
 def _render_post_conference_monitoring_panel() -> None:
+    monitoring_payload = _load_post_draw_monitoring_from_db()
     st.markdown("##### Auditoria e Monitoramento")
     st.caption("Camada observadora pós-conferência: registra, audita e formula hipóteses sem recalibrar a Lei.")
     cols = st.columns(4)
@@ -10625,17 +10689,18 @@ def _render_post_conference_monitoring_panel() -> None:
             "- Meta diamante: 15 pontos"
         )
     _render_signature_grid(
-        list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+        list(monitoring_payload.get("accepted_signatures", [])),
         title="Dezenas organizadas no topo",
         empty_label="Este painel não recebeu dezenas para exibir no topo.",
     )
-    _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
+    _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
     with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.json(POST_DRAW_MONITORING_PAYLOAD)
+        st.json(monitoring_payload)
 
 
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    monitoring_payload = _load_post_draw_monitoring_from_db()
     st.subheader("Auditoria e Monitoramento")
     st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
@@ -10657,36 +10722,36 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         cols2[0].metric("Lei 15", "Comando soberano")
         cols2[1].metric("Lei 17", "Validação / referência")
         cols2[2].metric("Lei 18", "Validação / referência")
-        cols2[3].metric("Dados", "Disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "Indisponível")
+        cols2[3].metric("Dados", "Disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "Indisponível")
         st.markdown("##### Resumo de monitoramento")
         monitoring_cols = st.columns(5)
         monitoring_cols[0].metric(
             "Último concurso monitorado",
-            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_contest", POST_DRAW_MONITORING_PAYLOAD.get("contest_number", "-")) or "-"),
+            str(monitoring_payload.get("latest_contest", monitoring_payload.get("contest_number", "-")) or "-"),
         )
         monitoring_cols[1].metric(
             "Total de concursos avaliados",
-            int(POST_DRAW_MONITORING_PAYLOAD.get("evaluated_contests", POST_DRAW_MONITORING_PAYLOAD.get("contests_evaluated", 0)) or 0),
+            int(monitoring_payload.get("evaluated_contests", monitoring_payload.get("contests_evaluated", 0)) or 0),
         )
         monitoring_cols[2].metric(
             "Total de gerações analisadas",
-            int(POST_DRAW_MONITORING_PAYLOAD.get("analyzed_generations", POST_DRAW_MONITORING_PAYLOAD.get("generations_analyzed", 0)) or 0),
+            int(monitoring_payload.get("analyzed_generations", monitoring_payload.get("generations_analyzed", 0)) or 0),
         )
         monitoring_cols[3].metric(
             "Última conferência registrada",
-            str(POST_DRAW_MONITORING_PAYLOAD.get("latest_conference", POST_DRAW_MONITORING_PAYLOAD.get("last_conference", "-")) or "-"),
+            str(monitoring_payload.get("latest_conference", monitoring_payload.get("last_conference", "-")) or "-"),
         )
         monitoring_cols[4].metric(
             "Status dos dados",
-            "disponível" if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")) else "indisponível",
+            "disponível" if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")) else "indisponível",
         )
-        if bool(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures") or POST_DRAW_MONITORING_PAYLOAD.get("block_distribution")):
+        if bool(monitoring_payload.get("accepted_signatures") or monitoring_payload.get("block_distribution")):
             _render_signature_grid(
-                list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+                list(monitoring_payload.get("accepted_signatures", [])),
                 title="Dezenas organizadas no topo",
                 empty_label="Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.",
             )
-            _render_block_distribution(list(POST_DRAW_MONITORING_PAYLOAD.get("block_distribution", [])))
+            _render_block_distribution(list(monitoring_payload.get("block_distribution", [])))
         else:
             st.info("Nenhum dado de monitoramento pós-conferência disponível no momento. Execute ou consulte uma conferência operacional para alimentar esta camada.")
         st.markdown("##### Acessos de auditoria")
@@ -10701,14 +10766,14 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
             st.markdown("status: LIBERADO / OBSERVACIONAL_AUDITADO")
         with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(POST_DRAW_MONITORING_PAYLOAD)
+            st.json(monitoring_payload)
         return
     if section == "conference":
         st.markdown("##### Auditoria Observacional — Conferência por Concurso")
         st.info("Esta tela apenas observa resultados por concurso. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
         st.markdown("###### Camada observacional isolada")
-        latest_contest = _load_imported_contest()
-        latest_official_contest = _load_official_history_contest(_safe_int((latest_contest or {}).get("contest_number"), default=None)) if latest_contest else None
+        latest_contest = _load_hai_latest_contest_summary()
+        latest_official_contest = latest_contest
         latest_reconciliation = _load_latest_reconciliation_summary() or {}
         st.markdown("##### Status dos dados")
         data_cols = st.columns(5)
@@ -10716,7 +10781,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_reconciliation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_reconciliation.get("games_count", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str(latest_reconciliation.get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
         if latest_reconciliation:
             st.caption(
                 " | ".join(
@@ -10730,9 +10795,9 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
         with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(POST_DRAW_MONITORING_PAYLOAD)
+            st.json(monitoring_payload)
         _render_signature_grid(
-            list(POST_DRAW_MONITORING_PAYLOAD.get("accepted_signatures", [])),
+            list(monitoring_payload.get("accepted_signatures", [])),
             title="Dezenas organizadas no topo",
             empty_label="Esta conferência não recebeu dezenas para exibir no topo.",
         )
@@ -10757,7 +10822,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             "Esta tela observa as dezenas sorteadas que não foram jogadas "
             "(resultado_oficial − cartao_final), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
         )
-        latest_contest = _load_imported_contest()
+        latest_contest = _load_hai_latest_contest_summary()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
         cols = st.columns(4)
@@ -10771,7 +10836,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
         if latest_generation.get("games"):
             reconciliation = dict(latest_generation.get("reconciliation") or {})
             concurso_default = _safe_int(
@@ -10800,7 +10865,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             "Esta tela observa as dezenas jogadas que não foram sorteadas "
             "(cartao_final − resultado_oficial), sem gerar jogos, sem recalibrar a Lei 15 e sem alterar histórico."
         )
-        latest_contest = _load_imported_contest()
+        latest_contest = _load_hai_latest_contest_summary()
         latest_generation = (_load_generation_history(limit=1) or [{}])[0]
         st.markdown("##### Status institucional")
         cols = st.columns(4)
@@ -10814,7 +10879,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         data_cols[1].metric("Geração analisada", str(latest_generation.get("generation_event_id", "-") or "-"))
         data_cols[2].metric("Total de jogos avaliados", int(latest_generation.get("total_games", 0) or 0))
         data_cols[3].metric("Última conferência registrada", str((latest_generation.get("reconciliation") or {}).get("created_at", "-") or "-"))
-        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "banco oficial") or "banco oficial"))
+        data_cols[4].metric("Fonte dos dados", str((latest_contest or {}).get("source", "lotofacil_official_history") or "lotofacil_official_history"))
         if latest_generation.get("games"):
             reconciliation = dict(latest_generation.get("reconciliation") or {})
             concurso_default = _safe_int(
