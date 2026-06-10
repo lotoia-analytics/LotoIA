@@ -377,7 +377,6 @@ PAGE_TARGETS = {
     "Cobertura estrutural": "structural_coverage",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
-    "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
@@ -7962,67 +7961,6 @@ def _render_benchmark_resumido_page(snapshot: dict[str, Any]) -> None:
         st.json(latest_reconciliation)
 
 
-def _render_estatisticas_operacionais_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Estatísticas operacionais")
-    st.write("Leitura institucional do fluxo operacional persistido, das conferências realizadas e do estado temporário da sessão.")
-    st.info("Esta página é operacional e observacional. Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 e não modifica histórico.")
-    latest_generation = _load_latest_generated_games() or {}
-    latest_reconciliation = _load_latest_reconciliation_summary() or {}
-    generation_events = int(snapshot["counts"].get("generation_events", 0))
-    generated_games = int(snapshot["counts"].get("generated_games", 0))
-    reconciliation_runs = int(snapshot["counts"].get("reconciliation_runs", 0))
-    session_keys = len([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
-    last_ui_event = st.session_state.get("institutional_last_ui_event", "-")
-    latest_generation_event_id = latest_generation.get("generation_event_id", "-")
-    latest_reconciliation_id = latest_reconciliation.get("id", "-") if latest_reconciliation else "-"
-    st.markdown(
-        "Esta tela resume eventos persistidos da operação e informações temporárias da sessão atual. "
-        "Os indicadores abaixo servem para auditoria do funcionamento do ADM e não representam comando de geração, "
-        "conferência automática ou recalibração institucional."
-    )
-    operational_label_map = {
-        "GENERATION_EVENTS": "Eventos de geração",
-        "GENERATED_GAMES": "Jogos gerados",
-        "RECONCILIATION_RUNS": "Conferências realizadas",
-        "SESSION_KEYS": "Chaves de sessão",
-        "last_ui_event": "Último evento de interface",
-        "latest_generation_event_id": "Última geração registrada",
-        "latest_reconciliation_id": "Última conferência registrada",
-    }
-    raw_operational_stats = {
-        "GENERATION_EVENTS": generation_events,
-        "GENERATED_GAMES": generated_games,
-        "RECONCILIATION_RUNS": reconciliation_runs,
-        "SESSION_KEYS": session_keys,
-        "last_ui_event": last_ui_event,
-        "latest_generation_event_id": latest_generation_event_id,
-        "latest_reconciliation_id": latest_reconciliation_id,
-    }
-    cols = st.columns(4)
-    cols[0].metric(operational_label_map["GENERATION_EVENTS"], generation_events)
-    cols[1].metric(operational_label_map["GENERATED_GAMES"], generated_games)
-    cols[2].metric(operational_label_map["RECONCILIATION_RUNS"], reconciliation_runs)
-    cols[3].metric(operational_label_map["SESSION_KEYS"], session_keys)
-    st.caption(
-        f"{operational_label_map['last_ui_event']}: {last_ui_event} | "
-        f"{operational_label_map['latest_generation_event_id']}: {latest_generation_event_id} | "
-        f"{operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Últimos registros operacionais")
-    st.markdown(
-        f"- {operational_label_map['last_ui_event']}: {last_ui_event}\n"
-        f"- {operational_label_map['latest_generation_event_id']}: {latest_generation_event_id}\n"
-        f"- {operational_label_map['latest_reconciliation_id']}: {latest_reconciliation_id}"
-    )
-    st.markdown("##### Interpretação operacional")
-    st.write(
-        "As estatísticas operacionais indicam a atividade recente do ADM, incluindo eventos de geração registrados, "
-        "jogos persistidos e conferências executadas. A leitura de sessão é temporária e não deve ser interpretada "
-        "como histórico oficial."
-    )
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.write(raw_operational_stats)
 def _sync_latest_official_result_now() -> dict[str, Any]:
     try:
         repository = ContestRepository(DB_PATH)
@@ -9140,7 +9078,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
-        ("Estat?sticas operacionais", "operational_statistics"),
         ("M?tricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
     ]:
@@ -9189,7 +9126,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
         "summary_benchmark",
-        "operational_statistics",
         "hb_metrics",
         "structural_coverage",
         "audit_monitoring_side_leak",
@@ -12974,8 +12910,6 @@ def main() -> None:
         _render_replay_institutional_page(snapshot)
     elif page == "summary_benchmark":
         _render_benchmark_resumido_page(snapshot)
-    elif page == "operational_statistics":
-        _render_estatisticas_operacionais_page(snapshot)
     else:
         _render_hb_geometry_page(_hb_geometry_state())
 
