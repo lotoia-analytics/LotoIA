@@ -1193,10 +1193,10 @@ def _render_runtime_audit_page(snapshot: dict[str, Any]) -> None:
         else:
             st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
 
-    with st.expander("Memória científica (documental)", expanded=False):
-        st.caption("Registro histórico. Não comanda geração nem recalibra a Lei 15.")
-        _render_scientific_memory_block(compact=True, inside_expander=True)
-
+    st.caption(
+        "Memória científica, histórico oficial Lotofácil e papéis institucionais "
+        "estão no Histórico Institucional — esta página foca apenas na saúde do runtime."
+    )
     st.caption(f"build={BUILD_MARKER} | commit={audit['commit_active']}")
 
 
