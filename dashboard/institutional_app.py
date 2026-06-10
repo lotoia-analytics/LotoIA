@@ -8231,6 +8231,29 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             st.json(alert.get("ml_diagnosis") or {})
             st.markdown("**Proposta ML**")
             st.json(alert.get("ml_proposal") or {})
+            if alert.get("tipo_alerta") == ALERT_001:
+                leakage_evidence = dict(alert.get("leakage_evidence") or {})
+                leakage_table = list(leakage_evidence.get("leakage_table") or [])
+                drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
+                st.markdown("**Evidência agregada (vazamento lateral)**")
+                st.caption(
+                    "Vazamento = dezena em cartao_final e fora de resultado_oficial "
+                    "(sobra_real = cartao_final − resultado_oficial)."
+                )
+                if leakage_table:
+                    st.dataframe(pd.DataFrame(leakage_table), hide_index=True, use_container_width=True)
+                else:
+                    st.warning("Evidência agregada indisponível para esta dezena (missing_evidence).")
+                if drilldown_map:
+                    for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
+                        with st.expander(f"Drilldown por jogo — dezena {dezena_key}", expanded=False):
+                            st.dataframe(
+                                pd.DataFrame(drilldown_rows),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
+                else:
+                    st.warning("Drilldown por jogo indisponível; rejeição pode citar missing_evidence.")
             if status == STATUS_PENDENTE:
                 reject_key = f"ml_diag_reject_reason_{alert.get('alert_key')}"
                 st.text_input(
@@ -8250,6 +8273,7 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                         adm_decision=ADM_ACEITO,
                         reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
                         adm_user=adm_user,
+                        leakage_evidence=dict(alert.get("leakage_evidence") or {}),
                         db_path=DB_PATH,
                     )
                     st.success("Decisão ACEITO registrada no PostgreSQL.")
@@ -8270,6 +8294,7 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                             reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
                             adm_reason=reason,
                             adm_user=adm_user,
+                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
                             db_path=DB_PATH,
                         )
                         st.warning("Decisão REJEITADO registrada e arquivada.")
@@ -11129,7 +11154,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
     elif section == "side_leak":
         st.markdown("##### Vazamento lateral")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
-        st.caption("Sinaliza cobertura lateral: dezenas do cartao_final fora do núcleo Lei 15 15D congelado.")
+        st.caption(
+            "Vazamento lateral = dezena em cartao_final e fora de resultado_oficial "
+            "(sobra_real = cartao_final − resultado_oficial). ml_role=diagnostic_only."
+        )
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
         side_leak = build_side_leak_panel_payload(diagnostic_context)
         _render_ml_diagnostic_source_caption(side_leak)
@@ -11140,12 +11168,23 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
                 f"Alerta ML diagnóstico: {ALERT_SIDE_LEAK} — dezenas: "
                 f"{', '.join(side_leak.get('alert_dezenas', []) or [])}"
             )
-        if side_leak.get("rows"):
+        leakage_table = list(side_leak.get("leakage_table") or side_leak.get("rows") or [])
+        if leakage_table:
+            st.markdown("###### Tabela agregada de vazamento")
             st.dataframe(
-                pd.DataFrame(side_leak["rows"]),
+                pd.DataFrame(leakage_table),
                 hide_index=True,
                 use_container_width=True,
             )
+            drilldown_map = dict(side_leak.get("drilldown_per_dezena") or {})
+            for dezena_key in sorted(drilldown_map):
+                drilldown_rows = drilldown_map.get(dezena_key) or []
+                with st.expander(f"Drilldown auditável — dezena {dezena_key}", expanded=False):
+                    st.dataframe(
+                        pd.DataFrame(drilldown_rows),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
         else:
             st.info("Nenhuma dezena de vazamento lateral detectada na última conferência.")
     elif section == "13_to_14":

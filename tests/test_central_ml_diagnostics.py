@@ -114,11 +114,11 @@ def test_ml_diagnostic_decisions_table_created(tmp_path) -> None:
 
 
 def test_alert_001_recurrent_side_leak() -> None:
-    outside = sorted(set(range(1, 26)) - NUCLEO)[0]
+    leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
     games = [
-        {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
-        {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
-        {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
+        {"numbers": leak_card, "hits": 14},
+        {"numbers": leak_card, "hits": 14},
+        {"numbers": leak_card, "hits": 14},
     ]
     contexts = [
         _context_from_games(games, run_id=10),
@@ -128,10 +128,11 @@ def test_alert_001_recurrent_side_leak() -> None:
     assert len(cards) == 1
     card = cards[0]
     assert card["tipo_alerta"] == ALERT_001
-    assert card["dezena"] == outside
+    assert card["dezena"] == 6
     assert card["ml_proposal"]["action"] == ACTION_PROMOVER_RESERVA_ADR
     assert card["ml_diagnosis"]["consecutivas"] >= 2
     assert card["status"] == STATUS_PENDENTE
+    assert card["leakage_evidence"]["drilldown_per_dezena"]["06"]
 
 
 def test_alert_002_blind_spot_evolution() -> None:
@@ -163,16 +164,52 @@ def test_alert_003_candidate_conversion() -> None:
     assert card["ml_diagnosis"]["taxa_conversao_13_14"] > 50.0
 
 
+def _sample_leakage_evidence() -> dict:
+    return {
+        "leakage_table": [
+            {
+                "dezena": "06",
+                "frequencia_vazamento": 2,
+                "percentual_vazamento": 100.0,
+                "sample_size": 2,
+                "reconciliation_run_id": 99,
+            }
+        ],
+        "drilldown_per_dezena": {
+            "06": [
+                {
+                    "dezena": "06",
+                    "jogo_id": 1,
+                    "generation_event_id": 1,
+                    "reconciliation_run_id": 99,
+                    "concurso_analisado": 3700,
+                    "cartao_final": "06 18",
+                    "resultado_oficial": "18 20",
+                    "hits": 1,
+                    "sobra_real": "06",
+                    "vazou": True,
+                }
+            ]
+        },
+    }
+
+
 def test_register_ml_diagnostic_decision_persists_accept_and_reject(tmp_path) -> None:
     db_path = tmp_path / "decisions.db"
     create_database(db_path)
+    evidence = _sample_leakage_evidence()
     accepted = register_ml_diagnostic_decision(
         alert_type=ALERT_001,
         dezena=6,
-        ml_proposal={"action": ACTION_PROMOVER_RESERVA_ADR, "target_dezena": "06"},
+        ml_proposal={
+            "action": ACTION_PROMOVER_RESERVA_ADR,
+            "target_dezena": "06",
+            "drilldown_rows": 1,
+        },
         adm_decision=ADM_ACEITO,
         reconciliation_run_id=99,
         adm_user="adm@test.local",
+        leakage_evidence=evidence,
         db_path=db_path,
     )
     rejected = register_ml_diagnostic_decision(
@@ -214,11 +251,11 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
     create_database(db_path)
     with get_session(db_path) as session:
         _seed_official_history(session)
-        outside = sorted(set(range(1, 26)) - NUCLEO)[0]
+        leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
         games = [
-            {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
-            {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
-            {"numbers": sorted(NUCLEO | {outside}), "hits": 12},
+            {"numbers": leak_card, "hits": 14},
+            {"numbers": leak_card, "hits": 14},
+            {"numbers": leak_card, "hits": 14},
         ]
         run_id_1 = _seed_reconciliation_run(session, games=games, run_suffix=1)
         run_id_2 = _seed_reconciliation_run(session, games=games, run_suffix=2)
@@ -231,11 +268,12 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
     assert ALERT_001 in alert_types
     register_ml_diagnostic_decision(
         alert_type=ALERT_001,
-        dezena=sorted(set(range(1, 26)) - NUCLEO)[0],
-        ml_proposal={"action": ACTION_PROMOVER_RESERVA_ADR},
+        dezena=6,
+        ml_proposal={"action": ACTION_PROMOVER_RESERVA_ADR, "drilldown_rows": 1},
         adm_decision=ADM_ACEITO,
         reconciliation_run_id=run_id_2,
         adm_user="adm@test.local",
+        leakage_evidence=_sample_leakage_evidence(),
         db_path=db_path,
     )
     payload_after = build_central_ml_diagnostics_payload(db_path=db_path)
@@ -246,15 +284,15 @@ def test_central_payload_merges_decisions_and_counts_active(tmp_path) -> None:
 
 
 def test_sample_alert_cards_each_type() -> None:
-    outside = sorted(set(range(1, 26)) - NUCLEO)[0]
+    leak_card = sorted([1, 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 6])
     alert_001 = build_alert_001_cards(
         [
             _context_from_games(
-                [{"numbers": sorted(NUCLEO | {outside}), "hits": 12}] * 3,
+                [{"numbers": leak_card, "hits": 14}] * 3,
                 run_id=2,
             ),
             _context_from_games(
-                [{"numbers": sorted(NUCLEO | {outside}), "hits": 12}] * 3,
+                [{"numbers": leak_card, "hits": 14}] * 3,
                 run_id=1,
             ),
         ]

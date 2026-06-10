@@ -47,15 +47,15 @@ def _sample_context() -> dict:
     }
 
 
-def test_side_leak_panel_flags_outside_nucleo() -> None:
+def test_side_leak_panel_flags_sobra_real_dezenas() -> None:
     payload = build_side_leak_panel_payload(_sample_context())
     assert payload["ml_role"] == ML_ROLE_DIAGNOSTIC_ONLY
     assert payload["generation_command"] is False
-    assert payload["rows"]
-    dezenas = {row["dezena"] for row in payload["rows"]}
-    assert "05" in dezenas
-    assert "06" in dezenas
-    assert payload["rows"][0]["frequencia_vazamento"] >= 1
+    assert payload["leakage_table"]
+    dezenas = {row["dezena"] for row in payload["leakage_table"]}
+    assert "02" in dezenas
+    assert payload["leakage_table"][0]["sample_size"] == 4
+    assert payload["drilldown_per_dezena"]
 
 
 def test_evolution_13_14_ranks_missing_dezenas() -> None:
@@ -77,13 +77,13 @@ def test_evolution_14_15_ranks_missing_dezenas() -> None:
 
 def test_side_leak_alert_when_threshold_exceeded() -> None:
     context = _sample_context()
-    outside = sorted(set(range(1, 26)) - NUCLEO)[:3]
     context["games"] = [
-        {"game_index": index, "numbers": sorted(NUCLEO | {outside[0]}), "hits": 12}
+        {"game_index": index, "numbers": sorted(NUCLEO | {6}), "hits": 10}
         for index in range(1, 5)
     ] + [
-        {"game_index": 5, "numbers": sorted(NUCLEO | {outside[0]}), "hits": 12},
+        {"game_index": 5, "numbers": sorted(NUCLEO | {6}), "hits": 10},
     ]
     payload = build_side_leak_panel_payload(context)
     assert payload["alert"] == ALERT_SIDE_LEAK
     assert payload["alert_dezenas"]
+    assert payload["drilldown_per_dezena"]["06"]

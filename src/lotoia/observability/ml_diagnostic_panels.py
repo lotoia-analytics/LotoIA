@@ -14,7 +14,11 @@ from lotoia.database.database import (
     ReconciliationRun,
     get_session,
 )
-from lotoia.observability.observational_leftover import ML_ROLE_DIAGNOSTIC_ONLY
+from lotoia.observability.observational_leftover import (
+    ML_ROLE_DIAGNOSTIC_ONLY,
+    compute_dezenas_sobrando,
+    format_dezenas,
+)
 
 NUCLEO_LEI15_15D_CONGELADO: frozenset[int] = frozenset(
     {1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25}
@@ -102,6 +106,96 @@ def _serialize_game_row(row: ReconciliationGame) -> dict[str, Any]:
         "hits": int(row.hits or 0),
         "matched_numbers": [int(number) for number in (row.matched_numbers or [])],
         "contest_id": int(row.contest_id or 0),
+        "generation_event_id": int(row.generation_event_id or 0),
+    }
+
+
+def _resolve_diagnostic_game_hits(
+    game: dict[str, Any],
+    resultado_oficial: Sequence[int],
+) -> int:
+    hits = int(game.get("hits") or 0)
+    if hits > 0:
+        return hits
+    matched = [int(number) for number in (game.get("matched_numbers") or [])]
+    if matched:
+        return len(matched)
+    cartao = [int(number) for number in (game.get("numbers") or [])]
+    official = [int(number) for number in resultado_oficial]
+    if cartao and official:
+        return len(set(cartao) & set(official))
+    return 0
+
+
+def build_lateral_leakage_evidence(context: dict[str, Any]) -> dict[str, Any]:
+    """Evidência auditável de vazamento lateral: cartao_final − resultado_oficial."""
+    games = list(context.get("games") or [])
+    resultado_oficial = [int(number) for number in (context.get("resultado_oficial") or [])]
+    reconciliation_run_id = int(context.get("reconciliation_run_id", 0) or 0)
+    contest_id = int(context.get("contest_id", 0) or 0)
+    default_generation_event_id = int(context.get("generation_event_id", 0) or 0)
+    sample_size = len(games)
+    dezena_game_counts: Counter[int] = Counter()
+    drilldown_per_dezena: dict[str, list[dict[str, Any]]] = {}
+
+    for game in games:
+        cartao = [int(number) for number in (game.get("numbers") or [])]
+        sobra_real = compute_dezenas_sobrando(cartao, resultado_oficial)
+        hits = _resolve_diagnostic_game_hits(game, resultado_oficial)
+        jogo_id = int(game.get("game_index", 0) or 0)
+        generation_event_id = int(game.get("generation_event_id", 0) or default_generation_event_id)
+        resultado_fmt = format_dezenas(resultado_oficial)
+        cartao_fmt = format_dezenas(cartao)
+        sobra_fmt = format_dezenas(sobra_real)
+        for dezena in sobra_real:
+            dezena_game_counts[dezena] += 1
+            drilldown_row = {
+                "dezena": f"{dezena:02d}",
+                "jogo_id": jogo_id,
+                "generation_event_id": generation_event_id,
+                "reconciliation_run_id": reconciliation_run_id,
+                "concurso_analisado": contest_id,
+                "cartao_final": cartao_fmt,
+                "resultado_oficial": resultado_fmt,
+                "hits": hits,
+                "sobra_real": sobra_fmt,
+                "vazou": True,
+            }
+            drilldown_per_dezena.setdefault(f"{dezena:02d}", []).append(drilldown_row)
+
+    leakage_table: list[dict[str, Any]] = []
+    alert_dezenas: list[str] = []
+    for dezena, frequencia in sorted(dezena_game_counts.items()):
+        percentual = round((frequencia / sample_size) * 100.0, 2) if sample_size else 0.0
+        leakage_table.append(
+            {
+                "dezena": f"{dezena:02d}",
+                "frequencia_vazamento": int(frequencia),
+                "percentual_vazamento": percentual,
+                "sample_size": sample_size,
+                "reconciliation_run_id": reconciliation_run_id,
+            }
+        )
+        if sample_size and (frequencia / sample_size) > SIDE_LEAK_ALERT_THRESHOLD:
+            alert_dezenas.append(f"{dezena:02d}")
+
+    return {
+        "available": bool(context.get("available") and games and resultado_oficial),
+        "source": SOURCE_POSTGRESQL,
+        "tables": RECONCILIATION_TABLES,
+        "reconciliation_run_id": reconciliation_run_id,
+        "contest_id": contest_id,
+        "generation_event_id": default_generation_event_id,
+        "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
+        "generation_command": False,
+        "recalibration_command": False,
+        "leakage_table": leakage_table,
+        "drilldown_per_dezena": drilldown_per_dezena,
+        "sample_size": sample_size,
+        "alert": ALERT_SIDE_LEAK if alert_dezenas else None,
+        "alert_dezenas": alert_dezenas,
+        "vazamento_definition": "dezena in cartao_final and dezena not in resultado_oficial",
+        "sobra_real_definition": "cartao_final - resultado_oficial",
     }
 
 
@@ -132,6 +226,7 @@ def load_latest_reconciliation_diagnostic_context(
             "tables": RECONCILIATION_TABLES,
             "reconciliation_run_id": int(run.id or 0),
             "contest_id": contest_id,
+            "generation_event_id": int(getattr(run, "generation_event_id", 0) or 0),
             "resultado_oficial": resultado_oficial,
             "games": games,
             "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
@@ -171,6 +266,7 @@ def load_recent_reconciliation_runs_context(
                     "tables": RECONCILIATION_TABLES,
                     "reconciliation_run_id": int(run.id or 0),
                     "contest_id": contest_id,
+                    "generation_event_id": int(getattr(run, "generation_event_id", 0) or 0),
                     "resultado_oficial": resultado_oficial,
                     "games": games,
                     "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
@@ -182,20 +278,11 @@ def load_recent_reconciliation_runs_context(
 
 
 def _side_leak_dezenas_for_context(context: dict[str, Any]) -> dict[int, float]:
-    games = list(context.get("games") or [])
-    nucleo = set(NUCLEO_LEI15_15D_CONGELADO)
-    total_games = len(games)
-    if not total_games:
-        return {}
-    dezena_game_counts: Counter[int] = Counter()
-    for game in games:
-        cartao = set(int(number) for number in (game.get("numbers") or []))
-        for dezena in sorted(cartao - nucleo):
-            dezena_game_counts[dezena] += 1
+    evidence = build_lateral_leakage_evidence(context)
     return {
-        dezena: round((count / total_games) * 100.0, 2)
-        for dezena, count in dezena_game_counts.items()
-        if (count / total_games) > SIDE_LEAK_ALERT_THRESHOLD
+        int(row["dezena"]): float(row["percentual_vazamento"])
+        for row in evidence.get("leakage_table", [])
+        if float(row.get("percentual_vazamento", 0) or 0) > (SIDE_LEAK_ALERT_THRESHOLD * 100.0)
     }
 
 
@@ -283,24 +370,41 @@ def build_alert_001_cards(contexts: Sequence[dict[str, Any]]) -> list[dict[str, 
             "frequencia": frequencia,
             "consecutivas": consecutivas,
         }
+        latest_evidence = build_lateral_leakage_evidence(latest)
+        dezena_key = f"{dezena:02d}"
+        leakage_row = next(
+            (row for row in latest_evidence.get("leakage_table", []) if row.get("dezena") == dezena_key),
+            None,
+        )
+        drilldown_rows = list(latest_evidence.get("drilldown_per_dezena", {}).get(dezena_key, []) or [])
+        ml_diagnosis["sample_size"] = int((leakage_row or {}).get("sample_size", 0) or 0)
+        ml_diagnosis["frequencia_vazamento"] = int((leakage_row or {}).get("frequencia_vazamento", 0) or 0)
+        ml_diagnosis["drilldown_available"] = bool(drilldown_rows)
         ml_proposal = {
             "action": ACTION_PROMOVER_RESERVA_ADR,
-            "target_dezena": f"{dezena:02d}",
+            "target_dezena": dezena_key,
             "justificativa": (
-                f"Dezena {dezena:02d} fora do núcleo Lei 15 15D com "
+                f"Dezena {dezena_key} em sobra_real (cartao_final − resultado_oficial) com "
                 f"{frequencia}% de vazamento em {consecutivas} runs consecutivas."
             ),
+            "requires_drilldown": True,
+            "drilldown_rows": len(drilldown_rows),
         }
-        cards.append(
-            _base_alert_card(
-                alert_type=ALERT_001,
-                tipo_label=ALERT_001_LABEL,
-                dezena=dezena,
-                ml_diagnosis=ml_diagnosis,
-                ml_proposal=ml_proposal,
-                reconciliation_run_id=run_id,
-            )
+        card = _base_alert_card(
+            alert_type=ALERT_001,
+            tipo_label=ALERT_001_LABEL,
+            dezena=dezena,
+            ml_diagnosis=ml_diagnosis,
+            ml_proposal=ml_proposal,
+            reconciliation_run_id=run_id,
         )
+        card["leakage_evidence"] = {
+            "leakage_table": [leakage_row] if leakage_row else [],
+            "drilldown_per_dezena": {dezena_key: drilldown_rows},
+            "vazamento_definition": latest_evidence.get("vazamento_definition"),
+            "sobra_real_definition": latest_evidence.get("sobra_real_definition"),
+        }
+        cards.append(card)
     return cards
 
 
@@ -471,14 +575,24 @@ def _serialize_decision_row(row: MlDiagnosticDecision) -> dict[str, Any]:
     }
 
 
-def _build_acceptance_effects(alert_type: str, ml_proposal: dict[str, Any]) -> dict[str, Any]:
+def _build_acceptance_effects(
+    alert_type: str,
+    ml_proposal: dict[str, Any],
+    *,
+    leakage_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if alert_type == ALERT_001:
+        drilldown_count = int(ml_proposal.get("drilldown_rows", 0) or 0)
+        evidence = dict(leakage_evidence or {})
+        if drilldown_count <= 0 and not evidence.get("drilldown_per_dezena"):
+            raise ValueError("ALERT_001 não pode escalar para ADR sem drilldown auditável por jogo.")
         return {
             "effect": "adr_draft_registered",
             "action": ACTION_PROMOVER_RESERVA_ADR,
             "target_dezena": ml_proposal.get("target_dezena"),
             "executed": False,
-            "note": "Rascunho ADR registrado; execução aguarda fluxo institucional.",
+            "drilldown_attached": True,
+            "note": "Rascunho ADR registrado com evidência drilldown; execução aguarda fluxo institucional.",
         }
     if alert_type == ALERT_002:
         return {
@@ -507,6 +621,7 @@ def register_ml_diagnostic_decision(
     reconciliation_run_id: int,
     adm_reason: str = "",
     adm_user: str = "",
+    leakage_evidence: dict[str, Any] | None = None,
     db_path: str = DEFAULT_DATABASE_PATH,
 ) -> dict[str, Any]:
     """Persiste decisão ADM (aceita ou rejeitada). ML nunca executa sem ACEITO."""
@@ -532,9 +647,17 @@ def register_ml_diagnostic_decision(
             return _serialize_decision_row(existing)
         payload = dict(proposal)
         if normalized_decision == ADM_ACEITO:
-            payload["acceptance_effects"] = _build_acceptance_effects(alert_type, proposal)
+            payload["acceptance_effects"] = _build_acceptance_effects(
+                alert_type,
+                proposal,
+                leakage_evidence=leakage_evidence,
+            )
+            if leakage_evidence:
+                payload["leakage_evidence"] = dict(leakage_evidence)
         else:
             payload["archived"] = True
+            if leakage_evidence:
+                payload["leakage_evidence"] = dict(leakage_evidence)
         row = MlDiagnosticDecision(
             alert_type=alert_type,
             dezena=int(dezena),
@@ -553,40 +676,26 @@ def register_ml_diagnostic_decision(
 
 
 def build_side_leak_panel_payload(context: dict[str, Any]) -> dict[str, Any]:
-    games = list(context.get("games") or [])
-    nucleo = set(NUCLEO_LEI15_15D_CONGELADO)
-    total_games = len(games)
-    dezena_game_counts: Counter[int] = Counter()
-    for game in games:
-        cartao = set(int(number) for number in (game.get("numbers") or []))
-        for dezena in sorted(cartao - nucleo):
-            dezena_game_counts[dezena] += 1
-    rows: list[dict[str, Any]] = []
-    alert_dezenas: list[int] = []
-    for dezena, frequencia in sorted(dezena_game_counts.items()):
-        percentual = round((frequencia / total_games) * 100.0, 2) if total_games else 0.0
-        rows.append(
-            {
-                "dezena": f"{dezena:02d}",
-                "frequencia_vazamento": int(frequencia),
-                "percentual_vazamento": percentual,
-            }
-        )
-        if total_games and (frequencia / total_games) > SIDE_LEAK_ALERT_THRESHOLD:
-            alert_dezenas.append(int(dezena))
+    evidence = build_lateral_leakage_evidence(context)
+    leakage_table = list(evidence.get("leakage_table") or [])
     return {
-        "available": bool(context.get("available")),
+        "available": bool(evidence.get("available")),
         "source": SOURCE_POSTGRESQL,
         "tables": RECONCILIATION_TABLES,
-        "reconciliation_run_id": int(context.get("reconciliation_run_id", 0) or 0),
+        "reconciliation_run_id": int(evidence.get("reconciliation_run_id", 0) or 0),
         "ml_role": ML_ROLE_DIAGNOSTIC_ONLY,
         "generation_command": False,
         "recalibration_command": False,
-        "rows": rows,
-        "total_games": total_games,
-        "alert": ALERT_SIDE_LEAK if alert_dezenas else None,
-        "alert_dezenas": [f"{dezena:02d}" for dezena in alert_dezenas],
-        "nucleo_lei15_15d": sorted(nucleo),
+        "rows": leakage_table,
+        "leakage_table": leakage_table,
+        "drilldown_per_dezena": dict(evidence.get("drilldown_per_dezena") or {}),
+        "total_games": int(evidence.get("sample_size", 0) or 0),
+        "sample_size": int(evidence.get("sample_size", 0) or 0),
+        "alert": evidence.get("alert"),
+        "alert_dezenas": list(evidence.get("alert_dezenas") or []),
+        "vazamento_definition": evidence.get("vazamento_definition"),
+        "sobra_real_definition": evidence.get("sobra_real_definition"),
+        "nucleo_lei15_15d": sorted(NUCLEO_LEI15_15D_CONGELADO),
     }
 
 
