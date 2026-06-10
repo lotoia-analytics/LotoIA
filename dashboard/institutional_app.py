@@ -82,20 +82,23 @@ from lotoia.observability.hb_metrics import (
     load_hb_metrics_from_reconciliation_db as _load_hb_metrics_from_reconciliation_db_impl,
 )
 from lotoia.observability.ml_diagnostic_panels import (
-    ADM_ACEITO,
-    ADM_REJEITADO,
+    ACTIVE_ALERT_STATUSES,
     ALERT_001,
     ALERT_002,
     ALERT_003,
     ALERT_SIDE_LEAK,
     STATUS_PENDENTE,
+    STATUS_PENDENTE_EVIDENCIA,
+    VERDICT_ACCEPT_DIAGNOSTIC,
+    VERDICT_REJECT,
+    VERDICT_REQUEST_MORE_EVIDENCE,
     build_central_ml_diagnostics_payload,
     build_evolution_13_14_panel_payload,
     build_evolution_14_15_panel_payload,
     build_side_leak_panel_payload,
     list_ml_diagnostic_decisions,
     load_latest_reconciliation_diagnostic_context,
-    register_ml_diagnostic_decision,
+    register_ml_diagnostic_verdict,
 )
 from lotoia.observability.observational_leftover import (
     ML_ROLE_DIAGNOSTIC_ONLY,
@@ -7986,18 +7989,22 @@ def _render_strategies_page(page_title: str, snapshot: dict[str, Any]) -> None:
         st.dataframe(replay_df, hide_index=True, use_container_width=True)
 
 
-def _render_ml_diagnostic_source_caption(payload: dict[str, Any]) -> None:
-    st.caption(
-        " | ".join(
-            [
-                f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
-                f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}",
-                f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
-                "generation_command=False",
-                "recalibration_command=False",
-            ]
-        )
-    )
+def _render_ml_diagnostic_source_caption(
+    payload: dict[str, Any],
+    *,
+    analysis_only: bool = False,
+) -> None:
+    parts = [
+        f"Fonte: PostgreSQL ({payload.get('tables', 'reconciliation_runs / reconciliation_games')})",
+        f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)}",
+        "generation_command=False",
+        "recalibration_command=False",
+    ]
+    if analysis_only:
+        parts.append("modo=analise_apenas")
+    else:
+        parts.insert(1, f"reconciliation_run_id={payload.get('reconciliation_run_id', 0)}")
+    st.caption(" | ".join(parts))
 
 
 def _resolve_ml_diagnostic_adm_user(snapshot: dict[str, Any]) -> str:
@@ -8013,19 +8020,19 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Central de Diagnósticos ML")
     st.info(
         "Princípio institucional: tudo o que o ML vê, o ADM vê. "
-        "O ML propõe; o ADM aceita ou rejeita; a execução ocorre somente após aceite. "
-        "Nenhum comando de geração, recalibração ou mutação da Lei 15 é emitido por este painel."
+        "O ML propõe; o ADM emite veredito (ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT). "
+        "Nenhum veredito gera efeito operacional, comando de geração, recalibração ou mutação da Lei 15."
     )
     payload = build_central_ml_diagnostics_payload(DB_PATH)
     _render_ml_diagnostic_source_caption(payload)
     header_cols = st.columns(3)
     header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
     header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
-    header_cols[2].metric(
-        "Fonte",
-        f"PostgreSQL (run {payload.get('reconciliation_run_id', 0)})",
+    header_cols[2].metric("Fonte", "PostgreSQL")
+    st.caption(
+        f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)} | "
+        "política: ADM_VERDICT_POLICY (3 vereditos, sem efeito operacional)"
     )
-    st.caption(f"ml_role={payload.get('ml_role', ML_ROLE_DIAGNOSTIC_ONLY)} | decisão: ML propõe → ADM aceita/rejeita")
     if not payload.get("available"):
         st.warning(
             "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL. "
@@ -8039,86 +8046,120 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
         status = str(alert.get("status") or STATUS_PENDENTE)
         with st.container(border=True):
             st.markdown(f"**{alert.get('tipo_alerta')}** — {alert.get('tipo_label')}")
-            info_cols = st.columns(4)
+            info_cols = st.columns(3)
             info_cols[0].write(f"Dezena: **{alert.get('dezena_fmt')}**")
             info_cols[1].write(f"Status: **{status}**")
-            info_cols[2].write(f"Run: `{alert.get('reconciliation_run_id')}`")
-            info_cols[3].write(f"Chave: `{alert.get('alert_key')}`")
-            st.markdown("**Diagnóstico ML**")
-            st.json(alert.get("ml_diagnosis") or {})
-            st.markdown("**Proposta ML**")
-            st.json(alert.get("ml_proposal") or {})
+            info_cols[2].write(f"Veredito: **{alert.get('verdict_type') or '—'}**")
+            st.markdown("**Evidência**")
+            st.write(alert.get("evidencia") or "—")
+            detail_cols = st.columns(2)
+            detail_cols[0].write(f"Regra base: `{alert.get('regra_base')}`")
+            detail_cols[1].write(f"Threshold: `{alert.get('threshold_usado')}`")
+            guard_cols = st.columns(3)
+            guard_cols[0].write(f"Fonte: `{alert.get('fonte')}`")
+            guard_cols[1].write(f"generation_cmd: `{alert.get('generation_cmd')}`")
+            guard_cols[2].write(f"recalibration_cmd: `{alert.get('recalibration_cmd')}`")
+            if alert.get("evidence_gaps"):
+                st.caption(f"Lacunas detectadas: {', '.join(alert.get('evidence_gaps') or [])}")
             if alert.get("tipo_alerta") == ALERT_001:
                 leakage_evidence = dict(alert.get("leakage_evidence") or {})
                 leakage_table = list(leakage_evidence.get("leakage_table") or [])
                 drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
-                st.markdown("**Evidência agregada (vazamento lateral)**")
-                st.caption(
-                    "Vazamento = dezena em cartao_final e fora de resultado_oficial "
-                    "(sobra_real = cartao_final − resultado_oficial)."
-                )
-                if leakage_table:
-                    st.dataframe(pd.DataFrame(leakage_table), hide_index=True, use_container_width=True)
-                else:
-                    st.warning("Evidência agregada indisponível para esta dezena (missing_evidence).")
-                if drilldown_map:
-                    for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
-                        with st.expander(f"Drilldown por jogo — dezena {dezena_key}", expanded=False):
+                if leakage_table or drilldown_map:
+                    with st.expander("Drilldown auditável (vazamento lateral)", expanded=False):
+                        st.caption(
+                            "Vazamento = dezena em cartao_final e fora de resultado_oficial "
+                            "(sobra_real = cartao_final − resultado_oficial)."
+                        )
+                        if leakage_table:
+                            st.dataframe(pd.DataFrame(leakage_table), hide_index=True, use_container_width=True)
+                        for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
+                            st.markdown(f"**Dezena {dezena_key}**")
                             st.dataframe(
                                 pd.DataFrame(drilldown_rows),
                                 hide_index=True,
                                 use_container_width=True,
                             )
-                else:
-                    st.warning("Drilldown por jogo indisponível; rejeição pode citar missing_evidence.")
-            if status == STATUS_PENDENTE:
-                reject_key = f"ml_diag_reject_reason_{alert.get('alert_key')}"
+            if status in ACTIVE_ALERT_STATUSES:
+                reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
                 st.text_input(
-                    "Motivo da rejeição (obrigatório se REJEITAR)",
-                    key=reject_key,
+                    "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE e REJECT)",
+                    key=reason_key,
                 )
-                action_cols = st.columns(2)
+                action_cols = st.columns(3)
                 if action_cols[0].button(
-                    "ACEITAR",
+                    "ACCEPT_DIAGNOSTIC",
                     key=f"ml_diag_accept_{alert.get('alert_key')}",
                     type="primary",
                 ):
-                    register_ml_diagnostic_decision(
-                        alert_type=str(alert.get("tipo_alerta")),
-                        dezena=int(alert.get("dezena") or 0),
-                        ml_proposal=dict(alert.get("ml_proposal") or {}),
-                        adm_decision=ADM_ACEITO,
-                        reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                        adm_user=adm_user,
-                        leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                        db_path=DB_PATH,
-                    )
-                    st.success("Decisão ACEITO registrada no PostgreSQL.")
-                    st.rerun()
-                if action_cols[1].button(
-                    "REJEITAR",
-                    key=f"ml_diag_reject_{alert.get('alert_key')}",
-                ):
-                    reason = str(st.session_state.get(reject_key) or "").strip()
-                    if not reason:
-                        st.error("Informe o motivo da rejeição antes de confirmar.")
-                    else:
-                        register_ml_diagnostic_decision(
+                    try:
+                        register_ml_diagnostic_verdict(
                             alert_type=str(alert.get("tipo_alerta")),
                             dezena=int(alert.get("dezena") or 0),
                             ml_proposal=dict(alert.get("ml_proposal") or {}),
-                            adm_decision=ADM_REJEITADO,
+                            verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
                             reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                            adm_reason=reason,
                             adm_user=adm_user,
                             leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                            alert_card=alert,
                             db_path=DB_PATH,
                         )
-                        st.warning("Decisão REJEITADO registrada e arquivada.")
+                        st.success("Veredito ACCEPT_DIAGNOSTIC registrado (status=ACEITO).")
                         st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+                if action_cols[1].button(
+                    "REQUEST_MORE_EVIDENCE",
+                    key=f"ml_diag_more_evidence_{alert.get('alert_key')}",
+                ):
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    try:
+                        register_ml_diagnostic_verdict(
+                            alert_type=str(alert.get("tipo_alerta")),
+                            dezena=int(alert.get("dezena") or 0),
+                            ml_proposal=dict(alert.get("ml_proposal") or {}),
+                            verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
+                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                            verdict_reason=reason,
+                            adm_user=adm_user,
+                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                            alert_card=alert,
+                            missing_evidence=list(alert.get("evidence_gaps") or []),
+                            db_path=DB_PATH,
+                        )
+                        st.info("Veredito REQUEST_MORE_EVIDENCE registrado (status=PENDENTE_EVIDENCIA).")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+                if action_cols[2].button(
+                    "REJECT",
+                    key=f"ml_diag_reject_{alert.get('alert_key')}",
+                ):
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    try:
+                        register_ml_diagnostic_verdict(
+                            alert_type=str(alert.get("tipo_alerta")),
+                            dezena=int(alert.get("dezena") or 0),
+                            ml_proposal=dict(alert.get("ml_proposal") or {}),
+                            verdict_type=VERDICT_REJECT,
+                            reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                            verdict_reason=reason,
+                            adm_user=adm_user,
+                            leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                            alert_card=alert,
+                            db_path=DB_PATH,
+                        )
+                        st.warning("Veredito REJECT registrado (status=REJEITADO).")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
             else:
-                if alert.get("adm_reason"):
-                    st.caption(f"Motivo ADM: {alert.get('adm_reason')}")
+                if alert.get("verdict_reason") or alert.get("adm_reason"):
+                    st.caption(f"Motivo: {alert.get('verdict_reason') or alert.get('adm_reason')}")
+                if alert.get("missing_evidence"):
+                    st.caption(f"Evidência faltante: {', '.join(alert.get('missing_evidence') or [])}")
+                if alert.get("adr_candidate"):
+                    st.caption("ADR candidate: sim (sem efeito operacional)")
                 if alert.get("adm_user"):
                     st.caption(f"ADM: {alert.get('adm_user')}")
     st.markdown("### Histórico de decisões")
@@ -8131,27 +8172,34 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
                 {
                     "alert_type": row["alert_type"],
                     "dezena": row["dezena_fmt"],
-                    "decision": row["decision"],
-                    "reason": row.get("reason") or "",
+                    "verdict_type": row.get("verdict_type") or "",
+                    "status": row.get("status") or row.get("decision") or "",
+                    "reason": row.get("verdict_reason") or row.get("reason") or "",
+                    "missing_evidence": ", ".join(row.get("missing_evidence") or []),
+                    "adr_candidate": row.get("adr_candidate"),
                     "timestamp": row.get("timestamp") or "",
                     "adm_user": row.get("adm_user") or "",
-                    "reconciliation_run_id": row.get("reconciliation_run_id"),
                 }
                 for row in history
             ]
         )
         st.dataframe(history_df, hide_index=True, use_container_width=True)
     with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.json(
+        st.write(
             {
                 "alert_types": [ALERT_001, ALERT_002, ALERT_003],
+                "verdict_options": [
+                    VERDICT_ACCEPT_DIAGNOSTIC,
+                    VERDICT_REQUEST_MORE_EVIDENCE,
+                    VERDICT_REJECT,
+                ],
                 "guards": {
                     "generation_command": False,
                     "recalibration_command": False,
+                    "operational_effect": False,
                     "nucleo_lei15_15d_sovereign": True,
-                    "ml_executes_only_after_aceito": True,
                 },
-                "payload": payload,
+                "reconciliation_run_id": payload.get("reconciliation_run_id", 0),
             }
         )
 
@@ -10993,7 +11041,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         )
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
         side_leak = build_side_leak_panel_payload(diagnostic_context)
-        _render_ml_diagnostic_source_caption(side_leak)
+        _render_ml_diagnostic_source_caption(side_leak, analysis_only=True)
         if not side_leak.get("available"):
             st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
         elif side_leak.get("alert") == ALERT_SIDE_LEAK:
@@ -11026,7 +11074,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.caption("Dezenas sorteadas ausentes em jogos com 13 acertos (resultado_oficial − cartao_final).")
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
         evolution = build_evolution_13_14_panel_payload(diagnostic_context)
-        _render_ml_diagnostic_source_caption(evolution)
+        _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
         if not evolution.get("available"):
             st.warning("Nenhum jogo com 13 acertos na última reconciliation_run persistida.")
         elif evolution.get("candidata_conversao"):
@@ -11048,7 +11096,7 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         st.caption("Dezenas sorteadas ausentes em jogos com 14 acertos (resultado_oficial − cartao_final).")
         diagnostic_context = load_latest_reconciliation_diagnostic_context(DB_PATH)
         evolution = build_evolution_14_15_panel_payload(diagnostic_context)
-        _render_ml_diagnostic_source_caption(evolution)
+        _render_ml_diagnostic_source_caption(evolution, analysis_only=True)
         if not evolution.get("available"):
             st.warning("Nenhum jogo com 14 acertos na última reconciliation_run persistida.")
         elif evolution.get("candidata_conversao"):

@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine, inspect
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine, inspect
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -697,6 +697,11 @@ class MlDiagnosticDecision(Base):
     ml_proposal: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     adm_decision: Mapped[str] = mapped_column(String, nullable=False)
     adm_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    verdict_type: Mapped[str] = mapped_column(String, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="", nullable=False)
+    verdict_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    missing_evidence: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    adr_candidate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     adm_user: Mapped[str] = mapped_column(String, default="", nullable=False)
     reconciliation_run_id: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -1007,6 +1012,20 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 connection.exec_driver_sql("ALTER TABLE generated_games ALTER COLUMN lead_id DROP NOT NULL")
             except Exception:
                 pass
+            ml_diag_columns = {
+                column["name"]
+                for column in inspector.get_columns("ml_diagnostic_decisions")
+            }
+            for column_sql, column_name in (
+                ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN verdict_type TEXT NOT NULL DEFAULT ''", "verdict_type"),
+                ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN status TEXT NOT NULL DEFAULT ''", "status"),
+                ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN verdict_reason TEXT", "verdict_reason"),
+                ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN missing_evidence JSON NOT NULL DEFAULT '[]'", "missing_evidence"),
+                ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN adr_candidate BOOLEAN NOT NULL DEFAULT FALSE", "adr_candidate"),
+            ):
+                if column_name not in ml_diag_columns:
+                    connection.exec_driver_sql(column_sql)
+                    applied_migrations.append(f"ml_diagnostic_decisions.{column_name}")
         if applied_migrations:
             logger.info(
                 "Institutional schema migration applied on %s: %s",
@@ -1654,6 +1673,20 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             if column_name not in lead_columns:
                 connection.exec_driver_sql(column_sql)
                 applied_migrations.append(f"leads.{column_name}")
+        ml_diag_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(ml_diagnostic_decisions)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN verdict_type TEXT NOT NULL DEFAULT ''", "verdict_type"),
+            ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN status TEXT NOT NULL DEFAULT ''", "status"),
+            ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN verdict_reason TEXT", "verdict_reason"),
+            ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN missing_evidence JSON NOT NULL DEFAULT '[]'", "missing_evidence"),
+            ("ALTER TABLE ml_diagnostic_decisions ADD COLUMN adr_candidate INTEGER NOT NULL DEFAULT 0", "adr_candidate"),
+        ):
+            if column_name not in ml_diag_columns:
+                connection.exec_driver_sql(column_sql)
+                applied_migrations.append(f"ml_diagnostic_decisions.{column_name}")
     if applied_migrations:
         logger.info(
             "Institutional schema migration applied on %s: %s",
