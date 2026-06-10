@@ -4310,7 +4310,7 @@ def _lei15a_registration_card_label(format_size: int | str | None) -> str:
 
 
 def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], int, str]:
-    """Extrai as dezenas que devem ser conferidas, priorizando o cartão final expandido."""
+    """Extrai as dezenas que devem ser conferidas, priorizando o cartão final por jogo."""
     if not isinstance(game, dict):
         return [], 15, "indisponivel"
 
@@ -4329,16 +4329,96 @@ def _extract_conference_card_numbers(game: dict[str, Any]) -> tuple[list[int], i
         default=None,
     )
     expected_card_size = int(card_format or len(final_card_numbers) or len(core_numbers) or 15)
-    if expected_card_size >= 16 and final_card_numbers:
-        return final_card_numbers, expected_card_size, "cartao_final"
-    frozen_nucleus = _lei15a_frozen_nucleus()
-    if expected_card_size <= 15 and frozen_nucleus:
-        return frozen_nucleus, 15, "nucleo_lei_15a_congelado"
-    if core_numbers:
-        return core_numbers, expected_card_size, "núcleo_lei_15"
     if final_card_numbers:
         return final_card_numbers, expected_card_size, "cartao_final"
+    if core_numbers:
+        return core_numbers, expected_card_size, "núcleo_lei_15"
     return [], expected_card_size, "indisponivel"
+
+
+def _game_cartao_final_numbers(game: dict[str, Any]) -> list[int]:
+    """Retorna o cartão final real de um jogo gerado pela Lei 15."""
+    return _extract_int_numbers(
+        game.get("final_card_numbers")
+        or game.get("cartao_final")
+        or game.get("cartão_final")
+        or game.get("numbers")
+        or []
+    )
+
+
+def validate_conference_15d_source(
+    *,
+    games: Sequence[dict[str, Any]],
+    conference_results: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Bloqueia persistência quando a Conferência 15D usa núcleo fixo repetido."""
+    if not games or not conference_results:
+        return {
+            "valid": True,
+            "classification": "COMPATIVEL",
+            "persistence_guard_status": "PROTEGIDO",
+            "conferencia_15d_all_rows_identical": False,
+            "jogos_gerados_15d_rows_variable": False,
+        }
+
+    card_format = _safe_int(
+        games[0].get("formato_cartao")
+        or games[0].get("card_format")
+        or games[0].get("selected_card_format")
+        or games[0].get("quantidade_final"),
+        default=15,
+    )
+    if int(card_format or 15) != 15:
+        return {
+            "valid": True,
+            "classification": "COMPATIVEL",
+            "persistence_guard_status": "PROTEGIDO",
+            "conferencia_15d_all_rows_identical": False,
+            "jogos_gerados_15d_rows_variable": False,
+        }
+
+    generated_cards = [tuple(_game_cartao_final_numbers(game)) for game in games]
+    conference_cards = [
+        tuple(_extract_int_numbers(result.get("numbers") or result.get("cartao_final") or []))
+        for result in conference_results
+    ]
+    games_variable = len(set(generated_cards)) > 1
+    conference_all_identical = len(set(conference_cards)) == 1 and len(conference_cards) > 1
+    forbidden_origins = {
+        "nucleo_lei_15a_congelado",
+        "nucleo_operacional_gp",
+        "base_core",
+        "fallback_15d",
+        "cartao_registro",
+    }
+    forbidden_source_detected = any(
+        str(result.get("origem_dezenas_conferencia", "") or "").lower() in forbidden_origins
+        for result in conference_results
+    )
+    frozen_nucleus = tuple(_lei15a_frozen_nucleus())
+    uses_frozen_nucleus = any(conference_card == frozen_nucleus for conference_card in conference_cards)
+    per_game_mismatch = any(
+        conference_card != generated_card
+        for conference_card, generated_card in zip(conference_cards, generated_cards)
+        if generated_card
+    )
+    conflict_detected = (
+        (games_variable and conference_all_identical)
+        or forbidden_source_detected
+        or (games_variable and uses_frozen_nucleus)
+        or per_game_mismatch
+    )
+    return {
+        "valid": not conflict_detected,
+        "classification": "COMPATIVEL" if not conflict_detected else "CONFLITANTE",
+        "persistence_guard_status": "PROTEGIDO" if not conflict_detected else "BLOQUEADO_NUCLEO_FIXO_15D",
+        "conferencia_15d_all_rows_identical": conference_all_identical,
+        "jogos_gerados_15d_rows_variable": games_variable,
+        "forbidden_source_detected": forbidden_source_detected,
+        "uses_frozen_nucleus": uses_frozen_nucleus,
+        "per_game_mismatch": per_game_mismatch,
+    }
 
 
 def _select_conference_numbers(game: dict[str, Any]) -> dict[str, Any]:
@@ -8513,6 +8593,7 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
     best_hits = max((int(row["hits"]) for row in results), default=0)
     total_hits = sum(int(row["hits"]) for row in results)
     prize_count = sum(1 for row in results if int(row["hits"]) >= 11)
+    conference_15d_guard = validate_conference_15d_source(games=games, conference_results=results)
     diagnostics = {
         "official_numbers": official_numbers,
         "official_numbers_count": len(official_numbers),
@@ -8529,7 +8610,30 @@ def _compare_games_against_contest(*, generation_event_id: int, games: list[dict
         "total_hits": total_hits,
         "best_hits": best_hits,
         "prize_count": prize_count,
+        "conference_15d_guard": conference_15d_guard,
+        "persistence_guard_status": conference_15d_guard.get("persistence_guard_status", "PROTEGIDO"),
     }
+    if not conference_15d_guard.get("valid", True):
+        return {
+            "status": "error",
+            "message": "Conferência 15D bloqueada: núcleo fixo repetido enquanto jogos gerados são distintos.",
+            "contest_number": contest_number,
+            "contest_date": str(contest.get("data", "")),
+            "official_numbers": official_numbers,
+            "results": results,
+            "generation_event_id": int(generation_event_id or 0),
+            "formato_cartao": int(results[0].get("formato_cartao", 15) if results else 15),
+            "dezenas_conferidas_count": int(results[0].get("dezenas_conferidas_count", 0) if results else 0),
+            "origem_dezenas_conferencia": str(results[0].get("origem_dezenas_conferencia", "indisponivel") if results else "indisponivel"),
+            "expected_card_size": int(results[0].get("expected_card_size", 15) if results else 15),
+            "actual_card_size": int(results[0].get("actual_card_size", 0) if results else 0),
+            "best_hits": best_hits,
+            "total_hits": total_hits,
+            "prize_count": prize_count,
+            "diagnostics": diagnostics,
+            "conference_15d_guard": conference_15d_guard,
+            "persistence_guard_status": conference_15d_guard.get("persistence_guard_status", "BLOQUEADO_NUCLEO_FIXO_15D"),
+        }
     with get_session(DB_PATH) as session:
         run = ReconciliationRun(
             generation_event_id=generation_event_id,
