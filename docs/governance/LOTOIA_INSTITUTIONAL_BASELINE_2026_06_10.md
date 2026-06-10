@@ -132,7 +132,7 @@ Entrega esperada:
 
 | De | Para | Condição |
 |----|------|----------|
-| `approved_candidate` | `approved_production` | Railway estável + AUD-005 encerrado + AUD-006 mergeado |
+| `approved_candidate` | `approved_production` | `RAILWAY_VALIDATION_STATUS=PASS` + AUD-005 encerrado + AUD-006 mergeado (#25) |
 
 ---
 

@@ -74,8 +74,34 @@ python scripts/checks/railway_production_validation.py --deploy-only --expected-
 
 ---
 
-## 5. Próximo passo (`next` baseline)
+## 5. Próxima ação (`next_action`)
 
-1. Rodar script completo no Railway shell → registrar `RAILWAY_VALIDATION_STATUS=PASS`
-2. `encerrar_AUD_005_pos_deploy` — checklist em `LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10.md`
-3. `executar_AUD_006_DB_FIRST_HAI` — merge PR #25
+**Pré-requisito:** merge PR #30 (script de validação) e redeploy Railway antes do comando abaixo.
+
+```yaml
+next_action:
+  id: RAILWAY_FULL_VALIDATION
+  where: Railway shell
+  command: "python scripts/checks/railway_production_validation.py --expected-sha f263197"
+  expected:
+    - backend_postgresql_ok
+    - institutional_tables_ok
+    - lotofacil_official_history_populated
+    - get_latest_official_contest_ok
+    - RAILWAY_VALIDATION_STATUS_PASS
+```
+
+## 6. Sequência pós-validação
+
+```yaml
+sequence:
+  - encerrar_AUD_005_pos_deploy
+  - revisar_mergear_PR_25_AUD_006
+  - promover_baseline_de_approved_candidate_para_approved_production
+```
+
+| Etapa | Critério de conclusão |
+|-------|----------------------|
+| `encerrar_AUD_005_pos_deploy` | Checklist em `LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10.md` + `AUD_005_STATUS=ENCERRADO_POS_DEPLOY` |
+| `revisar_mergear_PR_25_AUD_006` | PR #25 mergeado; fechar PR #24 (duplicado) |
+| `promover_baseline` | `status: approved_production` em `snapshots/baselines/LOTOIA_INSTITUTIONAL_BASELINE_2026_06_10.yaml` |
