@@ -1,0 +1,27 @@
+# LotoIA — governança institucional (revisão obrigatória de CODEOWNER)
+# Responsável: substituir @lotoia-analytics se a organização/equipe mudar.
+
+# Governança normativa
+/docs/governance/ @lotoia-analytics
+
+# Dashboard e runtime institucional
+/dashboard/ @lotoia-analytics
+/runtime/ @lotoia-analytics
+/lotoia_runtime.py @lotoia-analytics
+
+# Histórico, analítico e institucional
+/history/ @lotoia-analytics
+/analytics/ @lotoia-analytics
+/institutional/ @lotoia-analytics
+/src/lotoia/analytics/ @lotoia-analytics
+
+# Lei 15 / Lei 15A — arquivos e caminhos sensíveis
+*lei15* @lotoia-analytics
+*lei15a* @lotoia-analytics
+*Lei15* @lotoia-analytics
+*Lei15A* @lotoia-analytics
+*LEI15* @lotoia-analytics
+*LEI15A* @lotoia-analytics
+
+# Workflows e proteção de branch
+/.github/ @lotoia-analytics
