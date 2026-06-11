@@ -19,6 +19,7 @@ from lotoia.clients.interactive_menu import (
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
+    is_greeting,
     parse_menu_selection,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
@@ -267,6 +268,7 @@ def process_whatsapp_webhook(
 
     if not parsed:
         if client_status:
+            logger.info("MENU_REQUEST phone=%s text=%r greeting=%s", phone, text, is_greeting(text))
             return {
                 "status": "menu",
                 "phone": phone,

@@ -16,6 +16,22 @@ UNREGISTERED_MESSAGE = (
 )
 
 _PENDING_QUANTITY: dict[str, int] = {}
+_PENDING_QUICK_OPTIONS: dict[str, list[tuple[str, str]]] = {}
+
+_GREETINGS = {
+    "oi",
+    "ola",
+    "olá",
+    "oie",
+    "bom dia",
+    "boa tarde",
+    "boa noite",
+    "eai",
+    "e aí",
+    "hey",
+    "hello",
+    "hi",
+}
 
 
 def _available_quantities(*, saldo_hoje: int) -> list[int]:
@@ -33,6 +49,26 @@ def _reply_buttons(options: list[tuple[str, str]]) -> list[dict[str, str]]:
     ]
 
 
+def is_greeting(text: str) -> bool:
+    normalized = " ".join(str(text or "").strip().lower().split())
+    normalized = normalized.strip("!?.")
+    return normalized in _GREETINGS
+
+
+def register_quick_options(phone: str, button_options: list[tuple[str, str]]) -> str:
+    _PENDING_QUICK_OPTIONS[str(phone)] = list(button_options[:3])
+    lines = ["👋 *Olá! Bem-vindo à LotoIA*", "", "*Escolha uma opção:*", ""]
+    for index, (label, _) in enumerate(button_options[:3], start=1):
+        lines.append(f"*{index}* — {label}")
+    lines.extend(
+        [
+            "",
+            "Toque nos botões abaixo ou responda só o número (1, 2 ou 3).",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _menu_bundle(
     *,
     description: str,
@@ -43,6 +79,7 @@ def _menu_bundle(
     text_fallback: str = "",
 ) -> dict[str, Any]:
     return {
+        "button_options": button_options,
         "buttons_payload": {
             "title": "LotoIA",
             "description": description,
@@ -77,12 +114,17 @@ def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, An
         {"title": label, "description": "Selecionar", "rowId": selection_id}
         for label, selection_id in button_options
     ] or [{"title": "Limite diário atingido", "description": "Volte amanhã", "rowId": "noop:limit"}]
-    return _menu_bundle(
+    bundle = _menu_bundle(
         description=description,
         button_options=button_options,
         list_rows=rows,
         list_button_text="Escolher quantidade",
     )
+    bundle["text_fallback"] = _build_quantity_text_intro(
+        button_options=button_options,
+        client_status=client_status,
+    )
+    return bundle
 
 
 def build_quantity_more_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +186,35 @@ def build_format_more_menu_bundle(*, quantidade: int, client_status: dict[str, A
     )
 
 
+def _build_quantity_text_intro(
+    *,
+    button_options: list[tuple[str, str]],
+    client_status: dict[str, Any],
+) -> str:
+    plan = str(client_status.get("plan", "basico") or "basico")
+    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
+    lines = [
+        "👋 *Olá! Bem-vindo à LotoIA*",
+        "",
+        f"Plano *{plan}* — até *{formato_maximo}D*",
+        f"Saldo hoje: *{saldo_hoje} jogos*",
+        "",
+        "*Escolha quantos jogos gerar:*",
+        "",
+    ]
+    for index, (label, _) in enumerate(button_options[:3], start=1):
+        lines.append(f"*{index}* — {label}")
+    lines.extend(
+        [
+            "",
+            "Toque nos botões abaixo ou responda só o número.",
+            "Exemplo: *5 jogos de 15D*",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def remember_pending_quantity(phone: str, quantidade: int) -> None:
     _PENDING_QUANTITY[str(phone)] = int(quantidade)
 
@@ -175,8 +246,14 @@ def parse_menu_selection(selection_id: str, *, text: str = "", phone: str = "") 
 
 def _selection_id_from_text(text: str, *, phone: str) -> str:
     normalized = " ".join(str(text or "").strip().split()).lower()
+    normalized = normalized.strip("!?.")
     if not normalized:
         return ""
+    if normalized.isdigit():
+        options = _PENDING_QUICK_OPTIONS.get(str(phone), [])
+        index = int(normalized) - 1
+        if 0 <= index < len(options):
+            return str(options[index][1])
     if normalized in {"gerar jogos", "gerar"}:
         pending = _PENDING_QUANTITY.get(str(phone))
         if pending:
