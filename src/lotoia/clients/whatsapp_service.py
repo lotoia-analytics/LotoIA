@@ -45,8 +45,17 @@ def _remember_message_id(message_id: str) -> bool:
 def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload.get("data") or payload)
     key = dict(data.get("key") or {})
-    remote_jid = str(key.get("remoteJid") or data.get("remoteJid") or "")
+    from_me = bool(key.get("fromMe") or data.get("fromMe"))
+    remote_jid = str(
+        key.get("remoteJid")
+        or key.get("remoteJidAlt")
+        or data.get("remoteJid")
+        or payload.get("sender")
+        or ""
+    )
     phone = re.sub(r"\D", "", remote_jid.split("@", maxsplit=1)[0])
+    if not phone:
+        phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or ""))
     message = dict(data.get("message") or {})
     text = (
         message.get("conversation")
@@ -60,6 +69,7 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "phone": phone,
         "text": str(text).strip(),
         "message_id": message_id,
+        "from_me": from_me,
     }
 
 
@@ -130,6 +140,13 @@ def process_whatsapp_webhook(
     phone = str(extracted.get("phone") or "")
     text = str(extracted.get("text") or "")
     message_id = str(extracted.get("message_id") or "")
+
+    if extracted.get("from_me"):
+        return {
+            "status": "ignored",
+            "reason": "from_me",
+            "phone": phone,
+        }
 
     if message_id and _remember_message_id(message_id):
         return {

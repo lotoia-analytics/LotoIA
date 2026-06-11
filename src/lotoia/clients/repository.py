@@ -15,6 +15,7 @@ from lotoia.database.database import (
     create_database,
     get_session,
 )
+from lotoia.clients.phone_utils import canonical_brazil_phone, phone_lookup_candidates
 from lotoia.public.services import normalize_whatsapp
 
 
@@ -28,10 +29,12 @@ class ClientRepository:
         create_database(db_path)
 
     def get_by_phone(self, phone: str) -> dict[str, Any] | None:
-        normalized_phone = normalize_whatsapp(phone)
         with get_session(self.db_path) as session:
-            row = session.query(LotoiaClient).filter(LotoiaClient.phone == normalized_phone).one_or_none()
-            return _model_to_dict(row) if row else None
+            for candidate in phone_lookup_candidates(phone):
+                row = session.query(LotoiaClient).filter(LotoiaClient.phone == candidate).one_or_none()
+                if row is not None:
+                    return _model_to_dict(row)
+        return None
 
     def activate_client(
         self,
@@ -42,7 +45,7 @@ class ClientRepository:
         name: str = "",
         duration_days: int = 30,
     ) -> dict[str, Any]:
-        normalized_phone = normalize_whatsapp(phone)
+        normalized_phone = canonical_brazil_phone(phone)
         plan_key = str(plan or "basico").strip().lower()
         if plan_key not in PLANS:
             raise ValueError(f"Plano inválido: {plan}")
