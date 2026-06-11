@@ -4,17 +4,8 @@ import re
 from typing import Any
 
 HELP_MESSAGE = (
-    "Olá! Para receber seus jogos envie:\n"
-    "\n"
-    "*[quantidade] jogos de [formato]D*\n"
-    "\n"
-    "Exemplos:\n"
-    "• 5 jogos de 15D\n"
-    "• 10 jogos de 17D\n"
-    "• 30 jogos de 15D\n"
-    "\n"
-    "Quantidades: 1 a 9, 10, 20 ou 30\n"
-    "Formatos: conforme seu plano"
+    "Olá! Para gerar jogos, use o menu abaixo.\n"
+    "Toque em *Escolher* e selecione quantidade e formato."
 )
 
 _QUANTITY_FORMAT_PATTERNS = (

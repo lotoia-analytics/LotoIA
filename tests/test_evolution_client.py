@@ -79,3 +79,25 @@ def test_evolution_client_send_games_formats_message() -> None:
 
 def test_generation_error_message_defined() -> None:
     assert "Erro ao gerar jogos" in GENERATION_ERROR_MESSAGE
+
+
+def test_evolution_client_send_list_success() -> None:
+    session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
+    client = EvolutionApiClient(
+        base_url="https://evolution.example.app",
+        api_key="secret-key",
+        instance="lotoia-main",
+        session=session,
+    )
+    list_payload = {
+        "title": "LotoIA",
+        "description": "Escolha",
+        "buttonText": "Escolher",
+        "footerText": "Footer",
+        "sections": [{"title": "Qtd", "rows": [{"title": "5 jogos", "rowId": "qty:5"}]}],
+    }
+
+    assert client.send_list("5511999999999", list_payload) is True
+    assert session.calls[0]["url"] == "https://evolution.example.app/message/sendList/lotoia-main"
+    assert session.calls[0]["json"]["buttonText"] == "Escolher"
+    assert session.calls[0]["json"]["sections"][0]["rows"][0]["rowId"] == "qty:5"
