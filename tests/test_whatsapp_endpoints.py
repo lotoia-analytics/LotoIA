@@ -70,6 +70,9 @@ class _FakeEvolutionClient:
         self.sent_texts: list[tuple[str, str]] = []
         self.sent_games: list[tuple[str, list[dict[str, object]], int]] = []
         self.sent_lists: list[tuple[str, dict[str, object]]] = []
+        self.sent_buttons: list[tuple[str, dict[str, object]]] = []
+        self.sent_polls: list[tuple[str, dict[str, object]]] = []
+        self.sent_menu_bundles: list[tuple[str, dict[str, object]]] = []
         self.last_error_message = ""
         self.should_fail = False
 
@@ -97,6 +100,27 @@ class _FakeEvolutionClient:
             return False
         self.sent_lists.append((phone, list_payload))
         return True
+
+    def send_buttons(self, phone: str, buttons_payload: dict[str, object]) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_buttons.append((phone, buttons_payload))
+        return False
+
+    def send_poll(self, phone: str, poll_payload: dict[str, object]) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_polls.append((phone, poll_payload))
+        return True
+
+    def send_menu_bundle(self, phone: str, menu_bundle: dict[str, object]) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_menu_bundles.append((phone, menu_bundle))
+        return self.send_poll(phone, dict(menu_bundle.get("poll_payload") or {}))
 
 
 _FAKE_EVOLUTION: _FakeEvolutionClient | None = None
@@ -225,10 +249,26 @@ def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db:
     assert body["status"] == "menu"
     assert body.get("delivered") is True
     assert _FAKE_EVOLUTION is not None
-    assert len(_FAKE_EVOLUTION.sent_lists) == 1
-    list_payload = _FAKE_EVOLUTION.sent_lists[0][1]
-    rows = list_payload["sections"][0]["rows"]
-    assert rows[0]["rowId"] == "qty:5"
+    assert len(_FAKE_EVOLUTION.sent_menu_bundles) == 1
+    poll_payload = _FAKE_EVOLUTION.sent_polls[0][1]
+    assert poll_payload["values"][0] == "5 jogos"
+
+
+def test_whatsapp_webhook_advances_menu_from_poll_text_vote(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-poll"},
+                "message": {"conversation": "10 jogos"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "menu_format"
+    assert body["quantidade"] == 10
 
 
 def test_whatsapp_webhook_generates_games_from_list_selection(isolated_db: Path) -> None:
