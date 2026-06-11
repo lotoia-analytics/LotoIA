@@ -3,6 +3,7 @@ import type { PlanId } from "@/lib/plans";
 export type CheckoutRequest = {
   nome: string;
   whatsapp: string;
+  cpf: string;
   plano: PlanId;
 };
 

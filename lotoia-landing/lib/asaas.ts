@@ -84,13 +84,18 @@ async function asaasRequest<T>(path: string, init: RequestInit = {}): Promise<T>
   return body as T;
 }
 
-export async function createCustomer(nome: string, whatsapp: string): Promise<string> {
+export async function createCustomer(
+  nome: string,
+  whatsapp: string,
+  cpfCnpj: string,
+): Promise<string> {
   const mobilePhone = formatMobilePhoneForAsaas(whatsapp);
   const payload = await asaasRequest<{ id: string }>("/customers", {
     method: "POST",
     body: JSON.stringify({
       name: nome,
       mobilePhone,
+      cpfCnpj,
     }),
   });
   return payload.id;
@@ -134,10 +139,11 @@ export async function getPixQrCode(paymentId: string): Promise<{
 export async function createPixCheckout(input: {
   nome: string;
   whatsapp: string;
+  cpfCnpj: string;
   plano: string;
   valor: number;
 }): Promise<AsaasPixCheckoutResult & { expiracaoLabel: string }> {
-  const customerId = await createCustomer(input.nome, input.whatsapp);
+  const customerId = await createCustomer(input.nome, input.whatsapp, input.cpfCnpj);
   const paymentId = await createPixCharge(
     customerId,
     input.plano,

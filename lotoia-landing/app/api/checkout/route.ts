@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 
 import { createPixCheckout, toPixQrDataUri } from "@/lib/asaas";
 import { getPlanById, isOfficialPlan } from "@/lib/plans";
-import { canonicalWhatsapp, isValidBrazilianWhatsapp } from "@/lib/validation";
+import {
+  canonicalWhatsapp,
+  isValidBrazilianWhatsapp,
+  isValidCpfCnpj,
+  normalizeCpfCnpj,
+} from "@/lib/validation";
 
 type CheckoutBody = {
   nome?: string;
   whatsapp?: string;
+  cpf?: string;
   plano?: string;
 };
 
@@ -20,6 +26,7 @@ export async function POST(request: Request) {
 
   const nome = String(body.nome ?? "").trim();
   const whatsapp = String(body.whatsapp ?? "").trim();
+  const cpf = String(body.cpf ?? "").trim();
   const plano = String(body.plano ?? "").trim().toLowerCase();
 
   if (!nome || nome.length < 2) {
@@ -31,6 +38,10 @@ export async function POST(request: Request) {
       { error: "WhatsApp inválido. Use DDD + número (ex.: 11999999999)." },
       { status: 400 },
     );
+  }
+
+  if (!isValidCpfCnpj(cpf)) {
+    return NextResponse.json({ error: "CPF ou CNPJ inválido." }, { status: 400 });
   }
 
   if (!isOfficialPlan(plano)) {
@@ -49,6 +60,7 @@ export async function POST(request: Request) {
     const result = await createPixCheckout({
       nome,
       whatsapp: phone,
+      cpfCnpj: normalizeCpfCnpj(cpf),
       plano,
       valor,
     });

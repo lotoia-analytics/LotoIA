@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { createCheckout } from "@/lib/api";
 import { getPlanById, PLANS, type PlanId } from "@/lib/plans";
-import { isValidBrazilianWhatsapp } from "@/lib/validation";
+import { isValidBrazilianWhatsapp, isValidCpfCnpj } from "@/lib/validation";
 
 type FormProps = {
   isOpen: boolean;
@@ -17,6 +17,7 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
   const router = useRouter();
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [cpf, setCpf] = useState("");
   const [plano, setPlano] = useState<PlanId>("pro");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,11 +59,17 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
       return;
     }
 
+    if (!isValidCpfCnpj(cpf)) {
+      setError("CPF ou CNPJ inválido.");
+      return;
+    }
+
     setLoading(true);
     try {
       const checkout = await createCheckout({
         nome: nome.trim(),
         whatsapp,
+        cpf,
         plano,
       });
       sessionStorage.setItem("lotoia_checkout", JSON.stringify(checkout));
@@ -120,6 +127,21 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
               inputMode="numeric"
               className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1328] px-4 py-3 text-white outline-none transition focus:border-accent"
               autoComplete="tel"
+              required
+            />
+          </label>
+
+          <label className="block text-sm text-muted">
+            CPF ou CNPJ
+            <input
+              type="text"
+              name="cpf"
+              value={cpf}
+              onChange={(event) => setCpf(event.target.value)}
+              placeholder="000.000.000-00"
+              inputMode="numeric"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1328] px-4 py-3 text-white outline-none transition focus:border-accent"
+              autoComplete="off"
               required
             />
           </label>
