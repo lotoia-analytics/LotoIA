@@ -15,6 +15,6 @@ def test_parse_whatsapp_message_unrecognized() -> None:
     assert parse_whatsapp_message("") is None
 
 
-def test_help_message_contains_examples() -> None:
-    assert "5 jogos de 15D" in HELP_MESSAGE
-    assert "30 jogos de 15D" in HELP_MESSAGE
+def test_help_message_mentions_menu() -> None:
+    assert "menu" in HELP_MESSAGE.lower()
+    assert "escolher" in HELP_MESSAGE.lower()

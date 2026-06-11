@@ -12,7 +12,14 @@ from uuid import uuid4
 from lotoia.clients.client_guard import ValidationResult, validate_request
 from lotoia.clients.evolution_client import EvolutionApiClient, GENERATION_ERROR_MESSAGE
 from lotoia.clients.game_expansion import expand_generation_games_for_format
-from lotoia.clients.message_parser import HELP_MESSAGE, parse_whatsapp_message
+from lotoia.clients.interactive_menu import (
+    HELP_MESSAGE,
+    UNREGISTERED_MESSAGE,
+    build_format_list_payload,
+    build_quantity_list_payload,
+    parse_menu_selection,
+)
+from lotoia.clients.message_parser import parse_whatsapp_message
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.engine import generate_ranked_games
@@ -73,9 +80,15 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not phone:
         phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or ""))
     message = dict(data.get("message") or {})
+    list_reply = dict(message.get("listResponseMessage") or {})
+    button_reply = dict(message.get("buttonsResponseMessage") or {})
+    single_select = dict(list_reply.get("singleSelectReply") or {})
+    selection_id = str(single_select.get("selectedRowId") or button_reply.get("selectedButtonId") or "")
     text = (
         message.get("conversation")
         or message.get("extendedTextMessage", {}).get("text")
+        or list_reply.get("title")
+        or button_reply.get("selectedDisplayText")
         or data.get("text")
         or payload.get("text")
         or ""
@@ -84,6 +97,7 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "phone": phone,
         "text": str(text).strip(),
+        "selection_id": selection_id,
         "message_id": message_id,
         "from_me": from_me,
     }
@@ -175,12 +189,45 @@ def process_whatsapp_webhook(
     if not phone:
         return {"status": "error", "error_code": "INVALID_PAYLOAD", "message": "Telefone não identificado no payload."}
 
+    repository = ClientRepository(db_path)
+    client_status = repository.get_client_status(phone)
+    selection_id = str(extracted.get("selection_id") or "")
+    menu_parsed = parse_menu_selection(selection_id) if selection_id else None
     parsed = parse_whatsapp_message(text)
-    if not parsed:
+
+    if menu_parsed and menu_parsed.get("next_menu") == "format":
+        if not client_status:
+            return {
+                "status": "error",
+                "error_code": "CLIENT_NOT_FOUND",
+                "phone": phone,
+                "message": UNREGISTERED_MESSAGE,
+            }
+        quantidade = int(menu_parsed["quantidade"])
         return {
-            "status": "help",
+            "status": "menu_format",
             "phone": phone,
+            "quantidade": quantidade,
+            "list_payload": build_format_list_payload(quantidade=quantidade, client_status=client_status),
             "message": HELP_MESSAGE,
+        }
+
+    if menu_parsed and menu_parsed.get("formato") is not None:
+        parsed = menu_parsed
+
+    if not parsed:
+        if client_status:
+            return {
+                "status": "menu",
+                "phone": phone,
+                "list_payload": build_quantity_list_payload(client_status=client_status),
+                "message": HELP_MESSAGE,
+            }
+        return {
+            "status": "error",
+            "error_code": "CLIENT_NOT_FOUND",
+            "phone": phone,
+            "message": UNREGISTERED_MESSAGE,
         }
 
     quantidade = int(parsed["quantidade"])
@@ -305,9 +352,13 @@ def deliver_whatsapp_webhook(
                 list(result.get("games") or []),
                 int(result.get("formato") or 15),
             )
+        elif status in {"menu", "menu_format"} and phone and result.get("list_payload"):
+            delivered = client.send_list(phone, dict(result.get("list_payload") or {}))
+            if not delivered and str(result.get("message") or "").strip():
+                delivered = client.send_text(phone, str(result.get("message") or ""))
         elif phone and str(result.get("message") or "").strip():
             delivered = client.send_text(phone, str(result.get("message") or ""))
-        if not delivered and phone and status in {"ok", "help", "error"}:
+        if not delivered and phone and status in {"ok", "menu", "menu_format", "error"}:
             delivery_error = client.last_error_message or "EVOLUTION_DELIVERY_FAILED"
             if status == "ok":
                 logger.error(

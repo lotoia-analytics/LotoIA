@@ -64,6 +64,29 @@ class EvolutionApiClient:
         )
         return False
 
+    def send_list(self, phone: str, list_payload: dict[str, Any]) -> bool:
+        if not self.is_configured:
+            self.last_error_message = "Evolution API não configurada (EVOLUTION_API_URL/API_KEY/INSTANCE_NAME)."
+            logger.error("EVOLUTION_ERROR: %s", self.last_error_message)
+            return False
+        normalized_phone = re.sub(r"\D", "", str(phone or ""))
+        if not normalized_phone:
+            self.last_error_message = "Telefone inválido para envio de menu Evolution API."
+            logger.error("EVOLUTION_ERROR: %s", self.last_error_message)
+            return False
+        for attempt in range(2):
+            if self._send_list_once(normalized_phone, list_payload):
+                return True
+            if attempt == 0:
+                time.sleep(0.5)
+        logger.error(
+            "EVOLUTION_ERROR: falha ao enviar menu para %s (status=%s, error=%s)",
+            normalized_phone,
+            self.last_http_status,
+            self.last_error_message,
+        )
+        return False
+
     def send_games(self, phone: str, games: list[dict[str, Any]], formato: int) -> bool:
         message = self.format_games_message(games=games, formato=int(formato))
         return self.send_text(phone, message)
@@ -86,6 +109,39 @@ class EvolutionApiClient:
             ]
         )
         return "\n".join(lines)
+
+    def _send_list_once(self, phone: str, list_payload: dict[str, Any]) -> bool:
+        url = f"{self.base_url}/message/sendList/{self.instance}"
+        headers = {
+            "apikey": self.api_key,
+            "Content-Type": "application/json",
+        }
+        body = {
+            "number": phone,
+            "title": str(list_payload.get("title") or "LotoIA"),
+            "description": str(list_payload.get("description") or ""),
+            "buttonText": str(list_payload.get("buttonText") or "Escolher"),
+            "footerText": str(list_payload.get("footerText") or ""),
+            "sections": list(list_payload.get("sections") or []),
+        }
+        self.last_request_url = url
+        self.last_http_status = None
+        self.last_error_message = ""
+        try:
+            response = self.session.post(
+                url,
+                json=body,
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+            self.last_http_status = int(response.status_code)
+            if 200 <= self.last_http_status < 300:
+                return True
+            self.last_error_message = (response.text or "")[:500]
+            return False
+        except Exception as exc:  # noqa: BLE001 - outbound integration boundary
+            self.last_error_message = str(exc)
+            return False
 
     def _send_text_once(self, phone: str, message: str) -> bool:
         url = f"{self.base_url}/message/sendText/{self.instance}"

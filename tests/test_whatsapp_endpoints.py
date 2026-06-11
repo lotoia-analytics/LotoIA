@@ -69,6 +69,7 @@ class _FakeEvolutionClient:
     def __init__(self) -> None:
         self.sent_texts: list[tuple[str, str]] = []
         self.sent_games: list[tuple[str, list[dict[str, object]], int]] = []
+        self.sent_lists: list[tuple[str, dict[str, object]]] = []
         self.last_error_message = ""
         self.should_fail = False
 
@@ -88,6 +89,13 @@ class _FakeEvolutionClient:
             self.last_error_message = "simulated failure"
             return False
         self.sent_games.append((phone, games, formato))
+        return True
+
+    def send_list(self, phone: str, list_payload: dict[str, object]) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_lists.append((phone, list_payload))
         return True
 
 
@@ -201,8 +209,8 @@ def test_whatsapp_webhook_matches_client_without_country_code(isolated_db: Path)
     assert body["quantidade"] == 5
 
 
-def test_whatsapp_webhook_help_message(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -214,8 +222,33 @@ def test_whatsapp_webhook_help_message(isolated_db: Path) -> None:
         },
     )
     assert status_code == 200
-    assert body["status"] == "help"
-    assert "5 jogos de 15D" in str(body["message"])
+    assert body["status"] == "menu"
+    assert body.get("delivered") is True
+    assert _FAKE_EVOLUTION is not None
+    assert len(_FAKE_EVOLUTION.sent_lists) == 1
+    list_payload = _FAKE_EVOLUTION.sent_lists[0][1]
+    rows = list_payload["sections"][0]["rows"]
+    assert rows[0]["rowId"] == "qty:5"
+
+
+def test_whatsapp_webhook_generates_games_from_list_selection(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    payload = {
+        "data": {
+            "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-list"},
+            "message": {
+                "listResponseMessage": {
+                    "title": "15 dezenas (15D)",
+                    "singleSelectReply": {"selectedRowId": "gen:5:15"},
+                }
+            },
+        }
+    }
+    status_code, body = _request("POST", "/whatsapp/webhook", payload)
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body["quantidade"] == 5
+    assert body["formato"] == 15
 
 
 def test_whatsapp_webhook_idempotency(isolated_db: Path) -> None:
