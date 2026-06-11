@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, create_engine, inspect
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, create_engine, inspect
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -199,6 +199,81 @@ class Lead(Base):
         Index("ix_leads_created_at", "created_at"),
         Index("ix_leads_whatsapp", "whatsapp"),
         Index("ix_leads_source", "source"),
+    )
+
+
+class LotoiaClient(Base):
+    __tablename__ = "lotoia_clients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, default="", nullable=False)
+    plan: Mapped[str] = mapped_column(String, default="basico", nullable=False)
+    formato_maximo: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    valor_pago: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    data_inicio: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    data_expiracao: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String, default="ativo", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    __table_args__ = (
+        Index("ix_lotoia_clients_phone", "phone"),
+        Index("ix_lotoia_clients_status", "status"),
+        Index("ix_lotoia_clients_data_expiracao", "data_expiracao"),
+    )
+
+
+class LotoiaClientDailyUsage(Base):
+    __tablename__ = "lotoia_client_daily_usage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("lotoia_clients.id"), nullable=False)
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False)
+    geracoes_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    jogos_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    __table_args__ = (
+        UniqueConstraint("client_id", "usage_date", name="uq_lotoia_client_daily_usage_client_date"),
+        Index("ix_lotoia_client_daily_usage_client_id", "client_id"),
+        Index("ix_lotoia_client_daily_usage_usage_date", "usage_date"),
+    )
+
+
+class LotoiaClientGeneration(Base):
+    __tablename__ = "lotoia_client_generations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("lotoia_clients.id"), nullable=False)
+    phone: Mapped[str] = mapped_column(String, nullable=False)
+    formato: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    jogos: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    __table_args__ = (
+        Index("ix_lotoia_client_generations_client_id", "client_id"),
+        Index("ix_lotoia_client_generations_phone", "phone"),
+        Index("ix_lotoia_client_generations_created_at", "created_at"),
+        Index("ix_lotoia_client_generations_generation_event_id", "generation_event_id"),
     )
 
 

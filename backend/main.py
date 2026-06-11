@@ -21,11 +21,15 @@ from lotoia.public.service import (  # noqa: E402
 )
 from lotoia.statistics.basic import summarize_draws  # noqa: E402
 
+from backend.whatsapp import router as whatsapp_router  # noqa: E402
+
 app = FastAPI(
     title=settings.app_name,
     description="API para analises estatisticas da LOTOFACIL.",
     version="0.1.0",
 )
+
+app.include_router(whatsapp_router)
 
 
 @app.get("/health")
