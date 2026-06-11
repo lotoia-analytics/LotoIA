@@ -81,6 +81,55 @@ def test_generation_error_message_defined() -> None:
     assert "Erro ao gerar jogos" in GENERATION_ERROR_MESSAGE
 
 
+def test_evolution_client_send_poll_success() -> None:
+    session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
+    client = EvolutionApiClient(
+        base_url="https://evolution.example.app",
+        api_key="secret-key",
+        instance="lotoia-main",
+        session=session,
+    )
+    poll_payload = {
+        "name": "Quantos jogos?",
+        "selectableCount": 1,
+        "values": ["5 jogos", "10 jogos"],
+    }
+
+    assert client.send_poll("5511999999999", poll_payload) is True
+    assert session.calls[0]["url"] == "https://evolution.example.app/message/sendPoll/lotoia-main"
+    assert session.calls[0]["json"]["values"] == ["5 jogos", "10 jogos"]
+
+
+def test_evolution_client_send_menu_bundle_falls_back_to_buttons() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(400, "poll failed"),
+            FakeResponse(400, "poll failed retry"),
+            FakeResponse(200, '{"status":"ok"}'),
+        ]
+    )
+    client = EvolutionApiClient(
+        base_url="https://evolution.example.app",
+        api_key="secret-key",
+        instance="lotoia-main",
+        session=session,
+    )
+    bundle = {
+        "poll_payload": {"name": "Q", "selectableCount": 1, "values": ["5 jogos"]},
+        "buttons_payload": {
+            "title": "LotoIA",
+            "description": "Escolha",
+            "footer": "LotoIA",
+            "buttons": [{"type": "reply", "displayText": "5 jogos", "id": "qty:5"}],
+        },
+    }
+
+    assert client.send_menu_bundle("5511999999999", bundle) is True
+    assert len(session.calls) == 3
+    assert "/sendPoll/" in session.calls[0]["url"]
+    assert "/sendButtons/" in session.calls[2]["url"]
+
+
 def test_evolution_client_send_list_success() -> None:
     session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
     client = EvolutionApiClient(

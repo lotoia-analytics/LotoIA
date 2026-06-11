@@ -15,8 +15,10 @@ from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.interactive_menu import (
     HELP_MESSAGE,
     UNREGISTERED_MESSAGE,
-    build_format_list_payload,
-    build_quantity_list_payload,
+    build_format_menu_bundle,
+    build_format_more_menu_bundle,
+    build_quantity_menu_bundle,
+    build_quantity_more_menu_bundle,
     parse_menu_selection,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
@@ -192,8 +194,40 @@ def process_whatsapp_webhook(
     repository = ClientRepository(db_path)
     client_status = repository.get_client_status(phone)
     selection_id = str(extracted.get("selection_id") or "")
-    menu_parsed = parse_menu_selection(selection_id) if selection_id else None
+    menu_parsed = parse_menu_selection(selection_id, text=text, phone=phone)
     parsed = parse_whatsapp_message(text)
+
+    if menu_parsed and menu_parsed.get("next_menu") == "quantity_more":
+        if not client_status:
+            return {
+                "status": "error",
+                "error_code": "CLIENT_NOT_FOUND",
+                "phone": phone,
+                "message": UNREGISTERED_MESSAGE,
+            }
+        return {
+            "status": "menu",
+            "phone": phone,
+            "menu_bundle": build_quantity_more_menu_bundle(client_status=client_status),
+            "message": HELP_MESSAGE,
+        }
+
+    if menu_parsed and menu_parsed.get("next_menu") == "format_more":
+        if not client_status:
+            return {
+                "status": "error",
+                "error_code": "CLIENT_NOT_FOUND",
+                "phone": phone,
+                "message": UNREGISTERED_MESSAGE,
+            }
+        quantidade = int(menu_parsed["quantidade"])
+        return {
+            "status": "menu_format",
+            "phone": phone,
+            "quantidade": quantidade,
+            "menu_bundle": build_format_more_menu_bundle(quantidade=quantidade, client_status=client_status),
+            "message": HELP_MESSAGE,
+        }
 
     if menu_parsed and menu_parsed.get("next_menu") == "format":
         if not client_status:
@@ -208,7 +242,7 @@ def process_whatsapp_webhook(
             "status": "menu_format",
             "phone": phone,
             "quantidade": quantidade,
-            "list_payload": build_format_list_payload(quantidade=quantidade, client_status=client_status),
+            "menu_bundle": build_format_menu_bundle(quantidade=quantidade, client_status=client_status),
             "message": HELP_MESSAGE,
         }
 
@@ -220,7 +254,7 @@ def process_whatsapp_webhook(
             return {
                 "status": "menu",
                 "phone": phone,
-                "list_payload": build_quantity_list_payload(client_status=client_status),
+                "menu_bundle": build_quantity_menu_bundle(client_status=client_status),
                 "message": HELP_MESSAGE,
             }
         return {
@@ -352,8 +386,8 @@ def deliver_whatsapp_webhook(
                 list(result.get("games") or []),
                 int(result.get("formato") or 15),
             )
-        elif status in {"menu", "menu_format"} and phone and result.get("list_payload"):
-            delivered = client.send_list(phone, dict(result.get("list_payload") or {}))
+        elif status in {"menu", "menu_format"} and phone and result.get("menu_bundle"):
+            delivered = client.send_menu_bundle(phone, dict(result.get("menu_bundle") or {}))
             if not delivered and str(result.get("message") or "").strip():
                 delivered = client.send_text(phone, str(result.get("message") or ""))
         elif phone and str(result.get("message") or "").strip():
