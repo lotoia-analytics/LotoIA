@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { createPixCheckout, toPixQrDataUri } from "@/lib/asaas";
 import { getPlanById, isOfficialPlan } from "@/lib/plans";
 import { canonicalWhatsapp, isValidBrazilianWhatsapp } from "@/lib/validation";
 
@@ -43,17 +44,25 @@ export async function POST(request: Request) {
 
   const phone = canonicalWhatsapp(whatsapp);
   const valor = plan.price;
-  const pixCopiaCola = `00020126580014BR.GOV.BCB.PIX0136${phone}520400005303986540${valor
-    .toFixed(2)
-    .replace(".", "")}5802BR5925LotoIA Assinatura6009SAO PAULO62070503***6304ABCD`;
 
-  return NextResponse.json({
-    pix_qr_code: `data:image/svg+xml;base64,${Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="100%" height="100%" fill="#fff"/><text x="50%" y="50%" text-anchor="middle" font-size="14" fill="#1a1f3c">PIX MOCK</text></svg>`,
-    ).toString("base64")}`,
-    pix_copia_cola: pixCopiaCola,
-    valor,
-    plano,
-    expiracao: "30 minutos",
-  });
+  try {
+    const result = await createPixCheckout({
+      nome,
+      whatsapp: phone,
+      plano,
+      valor,
+    });
+
+    return NextResponse.json({
+      pix_qr_code: toPixQrDataUri(result.encodedImage),
+      pix_copia_cola: result.payload,
+      valor,
+      plano,
+      expiracao: result.expiracaoLabel,
+      payment_id: result.paymentId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro ao gerar PIX.";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 }

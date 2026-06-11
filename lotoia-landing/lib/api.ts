@@ -12,6 +12,7 @@ export type CheckoutResponse = {
   valor: number;
   plano: PlanId;
   expiracao: string;
+  payment_id?: string;
 };
 
 export async function createCheckout(payload: CheckoutRequest): Promise<CheckoutResponse> {
