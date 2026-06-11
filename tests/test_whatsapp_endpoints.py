@@ -65,14 +65,50 @@ def _request(method: str, path: str, payload: dict | None = None) -> tuple[int, 
     return anyio.run(run)
 
 
+class _FakeEvolutionClient:
+    def __init__(self) -> None:
+        self.sent_texts: list[tuple[str, str]] = []
+        self.sent_games: list[tuple[str, list[dict[str, object]], int]] = []
+        self.last_error_message = ""
+        self.should_fail = False
+
+    @property
+    def is_configured(self) -> bool:
+        return True
+
+    def send_text(self, phone: str, message: str) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_texts.append((phone, message))
+        return True
+
+    def send_games(self, phone: str, games: list[dict[str, object]], formato: int) -> bool:
+        if self.should_fail:
+            self.last_error_message = "simulated failure"
+            return False
+        self.sent_games.append((phone, games, formato))
+        return True
+
+
+_FAKE_EVOLUTION: _FakeEvolutionClient | None = None
+
+
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    global _FAKE_EVOLUTION
     db_path = tmp_path / "lotoia.db"
     create_database(db_path)
+    fake_evolution = _FakeEvolutionClient()
+    _FAKE_EVOLUTION = fake_evolution
     monkeypatch.setattr("backend.whatsapp.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr("lotoia.clients.whatsapp_service.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr("lotoia.clients.client_guard.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr("lotoia.clients.repository.DEFAULT_DATABASE_PATH", db_path)
+    monkeypatch.setattr(
+        "lotoia.clients.whatsapp_service.EvolutionApiClient",
+        lambda *args, **kwargs: fake_evolution,
+    )
     return db_path
 
 
@@ -154,3 +190,47 @@ def test_whatsapp_webhook_idempotency(isolated_db: Path) -> None:
     second_status, second_body = _request("POST", "/whatsapp/webhook", payload)
     assert first_status == 200 and first_body["status"] == "ok"
     assert second_status == 200 and second_body["status"] == "ignored"
+
+
+def test_whatsapp_webhook_delivers_games_via_evolution(isolated_db: Path) -> None:
+    _request(
+        "POST",
+        "/client/activate",
+        {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99, "name": "Ana"},
+    )
+    payload = {
+        "data": {
+            "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-deliver"},
+            "message": {"conversation": "2 jogos de 15D"},
+        }
+    }
+    status_code, body = _request("POST", "/whatsapp/webhook", payload)
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body.get("delivered") is True
+    assert _FAKE_EVOLUTION is not None
+    assert len(_FAKE_EVOLUTION.sent_games) == 1
+
+
+def test_whatsapp_webhook_returns_200_when_evolution_fails(isolated_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    failing_client = _FakeEvolutionClient()
+    failing_client.should_fail = True
+    monkeypatch.setattr(
+        "lotoia.clients.whatsapp_service.EvolutionApiClient",
+        lambda *args, **kwargs: failing_client,
+    )
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-fail"},
+                "message": {"conversation": "1 jogos de 15D"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body.get("delivered") is False
+    assert "delivery_error" in body

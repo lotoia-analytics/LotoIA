@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 import re
 import time
@@ -9,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from lotoia.clients.client_guard import ValidationResult, validate_request
+from lotoia.clients.evolution_client import EvolutionApiClient, GENERATION_ERROR_MESSAGE
 from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.message_parser import HELP_MESSAGE, parse_whatsapp_message
 from lotoia.clients.repository import ClientRepository
@@ -16,6 +18,8 @@ from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository
 from lotoia.public.services import normalize_whatsapp
+
+logger = logging.getLogger(__name__)
 
 _PROCESSED_MESSAGE_IDS: dict[str, datetime] = {}
 _IDEMPOTENCY_TTL = timedelta(hours=6)
@@ -157,7 +161,16 @@ def process_whatsapp_webhook(
             "message": validation.message,
         }
 
-    return _execute_valid_generation(phone=phone, validation=validation, db_path=db_path)
+    try:
+        return _execute_valid_generation(phone=phone, validation=validation, db_path=db_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced to WhatsApp delivery layer
+        logger.exception("GENERATION_ERROR for phone=%s: %s", phone, exc)
+        return {
+            "status": "error",
+            "error_code": "GENERATION_ERROR",
+            "phone": phone,
+            "message": GENERATION_ERROR_MESSAGE,
+        }
 
 
 def _execute_valid_generation(
@@ -229,3 +242,49 @@ def activate_client(
 def get_client_status(phone: str, *, db_path: Path = DEFAULT_DATABASE_PATH) -> dict[str, Any] | None:
     repository = ClientRepository(db_path)
     return repository.get_client_status(phone)
+
+
+def deliver_whatsapp_webhook(
+    payload: dict[str, Any],
+    *,
+    db_path: Path = DEFAULT_DATABASE_PATH,
+    evolution_client: EvolutionApiClient | None = None,
+) -> dict[str, Any]:
+    """Process webhook payload and deliver the response via Evolution API."""
+    result = dict(process_whatsapp_webhook(payload, db_path=db_path))
+    status = str(result.get("status", "") or "")
+    phone = str(result.get("phone") or "")
+    client = evolution_client or EvolutionApiClient()
+    delivered = False
+    delivery_error = ""
+
+    if status == "ignored":
+        result["delivered"] = False
+        result["delivery_skipped"] = True
+        return result
+
+    try:
+        if status == "ok" and phone and result.get("games"):
+            delivered = client.send_games(
+                phone,
+                list(result.get("games") or []),
+                int(result.get("formato") or 15),
+            )
+        elif phone and str(result.get("message") or "").strip():
+            delivered = client.send_text(phone, str(result.get("message") or ""))
+        if not delivered and phone and status in {"ok", "help", "error"}:
+            delivery_error = client.last_error_message or "EVOLUTION_DELIVERY_FAILED"
+            if status == "ok":
+                logger.error(
+                    "EVOLUTION_ERROR: jogos gerados mas não entregues para %s (%s)",
+                    phone,
+                    delivery_error,
+                )
+    except Exception as exc:  # noqa: BLE001 - webhook must remain stable
+        delivery_error = str(exc)
+        logger.exception("EVOLUTION_ERROR during delivery for phone=%s: %s", phone, exc)
+
+    result["delivered"] = delivered
+    if delivery_error:
+        result["delivery_error"] = delivery_error
+    return result
