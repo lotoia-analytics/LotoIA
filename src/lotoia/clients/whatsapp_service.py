@@ -15,7 +15,7 @@ from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.interactive_menu import (
     HELP_MESSAGE,
     UNREGISTERED_MESSAGE,
-    build_format_menu_bundle,
+    build_confirm_menu_bundle,
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
@@ -82,15 +82,23 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not phone:
         phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or ""))
     message = dict(data.get("message") or {})
+    is_poll_update = bool(message.get("pollUpdateMessage"))
     list_reply = dict(message.get("listResponseMessage") or {})
     button_reply = dict(message.get("buttonsResponseMessage") or {})
+    template_reply = dict(message.get("templateButtonReplyMessage") or {})
     single_select = dict(list_reply.get("singleSelectReply") or {})
-    selection_id = str(single_select.get("selectedRowId") or button_reply.get("selectedButtonId") or "")
+    selection_id = str(
+        single_select.get("selectedRowId")
+        or button_reply.get("selectedButtonId")
+        or template_reply.get("selectedId")
+        or ""
+    )
     text = (
         message.get("conversation")
         or message.get("extendedTextMessage", {}).get("text")
         or list_reply.get("title")
         or button_reply.get("selectedDisplayText")
+        or template_reply.get("selectedDisplayText")
         or data.get("text")
         or payload.get("text")
         or ""
@@ -102,6 +110,7 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "selection_id": selection_id,
         "message_id": message_id,
         "from_me": from_me,
+        "is_poll_update": is_poll_update,
     }
 
 
@@ -180,6 +189,13 @@ def process_whatsapp_webhook(
             "phone": phone,
         }
 
+    if extracted.get("is_poll_update"):
+        return {
+            "status": "ignored",
+            "reason": "poll_update",
+            "phone": phone,
+        }
+
     if message_id and _remember_message_id(message_id):
         return {
             "status": "ignored",
@@ -229,7 +245,7 @@ def process_whatsapp_webhook(
             "message": HELP_MESSAGE,
         }
 
-    if menu_parsed and menu_parsed.get("next_menu") == "format":
+    if menu_parsed and menu_parsed.get("next_menu") == "confirm":
         if not client_status:
             return {
                 "status": "error",
@@ -239,10 +255,10 @@ def process_whatsapp_webhook(
             }
         quantidade = int(menu_parsed["quantidade"])
         return {
-            "status": "menu_format",
+            "status": "menu_confirm",
             "phone": phone,
             "quantidade": quantidade,
-            "menu_bundle": build_format_menu_bundle(quantidade=quantidade, client_status=client_status),
+            "menu_bundle": build_confirm_menu_bundle(quantidade=quantidade, client_status=client_status),
             "message": HELP_MESSAGE,
         }
 
@@ -386,13 +402,13 @@ def deliver_whatsapp_webhook(
                 list(result.get("games") or []),
                 int(result.get("formato") or 15),
             )
-        elif status in {"menu", "menu_format"} and phone and result.get("menu_bundle"):
+        elif status in {"menu", "menu_confirm", "menu_format"} and phone and result.get("menu_bundle"):
             delivered = client.send_menu_bundle(phone, dict(result.get("menu_bundle") or {}))
             if not delivered and str(result.get("message") or "").strip():
                 delivered = client.send_text(phone, str(result.get("message") or ""))
         elif phone and str(result.get("message") or "").strip():
             delivered = client.send_text(phone, str(result.get("message") or ""))
-        if not delivered and phone and status in {"ok", "menu", "menu_format", "error"}:
+        if not delivered and phone and status in {"ok", "menu", "menu_confirm", "menu_format", "error"}:
             delivery_error = client.last_error_message or "EVOLUTION_DELIVERY_FAILED"
             if status == "ok":
                 logger.error(

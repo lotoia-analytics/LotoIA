@@ -65,10 +65,9 @@ class EvolutionApiClient:
         return False
 
     def send_menu_bundle(self, phone: str, menu_bundle: dict[str, Any]) -> bool:
-        """Try poll, buttons, then list — Baileys often breaks list messages."""
-        for method_name in ("send_poll", "send_buttons", "send_list"):
+        """Try buttons first, then list — polls are not used (vote UX breaks the flow)."""
+        for method_name in ("send_buttons", "send_list"):
             payload_key = {
-                "send_poll": "poll_payload",
                 "send_buttons": "buttons_payload",
                 "send_list": "list_payload",
             }[method_name]
