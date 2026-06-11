@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 
 from lotoia.clients.constants import PLANS
 from lotoia.clients.whatsapp_service import (
     activate_client,
+    deliver_whatsapp_webhook,
     get_client_status,
-    process_whatsapp_webhook,
 )
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 
 router = APIRouter(tags=["whatsapp"])
+logger = logging.getLogger(__name__)
 
 
 class ActivateClientRequest(BaseModel):
@@ -25,13 +27,17 @@ class ActivateClientRequest(BaseModel):
 
 
 @router.post("/whatsapp/webhook")
-def whatsapp_webhook(payload: dict[str, Any]) -> dict[str, Any]:
+def whatsapp_webhook(payload: dict[str, Any]) -> JSONResponse:
     try:
-        return process_whatsapp_webhook(payload, db_path=DEFAULT_DATABASE_PATH)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Erro ao processar webhook do WhatsApp.") from exc
+        result = deliver_whatsapp_webhook(payload, db_path=DEFAULT_DATABASE_PATH)
+    except Exception as exc:  # noqa: BLE001 - Evolution API requires HTTP 200
+        logger.exception("Unhandled WhatsApp webhook error: %s", exc)
+        result = {
+            "status": "error",
+            "error_code": "WEBHOOK_PROCESSING_ERROR",
+            "delivered": False,
+        }
+    return JSONResponse(status_code=200, content=result)
 
 
 @router.get("/client/{phone}/status")
