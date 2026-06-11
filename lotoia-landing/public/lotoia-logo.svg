@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 72" role="img" aria-label="LotoIA">
+  <defs>
+    <linearGradient id="cloudGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2f5fd4"/>
+      <stop offset="50%" stop-color="#4f8ef7"/>
+      <stop offset="100%" stop-color="#9b7cf6"/>
+    </linearGradient>
+    <linearGradient id="iaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6fa8ff"/>
+      <stop offset="100%" stop-color="#b794f6"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <ellipse cx="34" cy="38" rx="30" ry="22" fill="url(#cloudGrad)"/>
+    <ellipse cx="18" cy="42" rx="14" ry="12" fill="url(#cloudGrad)"/>
+    <ellipse cx="50" cy="42" rx="16" ry="13" fill="url(#cloudGrad)"/>
+    <ellipse cx="34" cy="28" rx="18" ry="13" fill="url(#cloudGrad)"/>
+    <text x="16" y="44" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">&gt; _</text>
+    <polyline points="42,24 48,18 54,22 60,14" fill="none" stroke="#e0edff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="42" cy="24" r="1.8" fill="#e0edff"/>
+    <circle cx="48" cy="18" r="1.8" fill="#e0edff"/>
+    <circle cx="54" cy="22" r="1.8" fill="#e0edff"/>
+    <circle cx="60" cy="14" r="1.8" fill="#e0edff"/>
+    <circle cx="66" cy="10" r="2.5" fill="#4f8ef7"/>
+    <circle cx="8" cy="16" r="2" fill="#4f8ef7" opacity="0.8"/>
+  </g>
+  <text x="88" y="46" fill="#f8fbff" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">Loto</text>
+  <text x="170" y="46" fill="url(#iaGrad)" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">IA</text>
+</svg>

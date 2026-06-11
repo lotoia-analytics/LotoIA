@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { Logo } from "@/components/Logo";
 import type { CheckoutResponse } from "@/lib/api";
 import { getPlanById } from "@/lib/plans";
 
@@ -47,7 +48,8 @@ export default function PagamentoPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-4 py-10 sm:py-16">
-      <Link href="/" className="text-sm text-accent hover:underline">
+      <Logo />
+      <Link href="/" className="mt-6 inline-block text-sm text-accent hover:underline">
         ← Voltar
       </Link>
       <h1 className="mt-6 text-3xl font-bold text-white sm:text-4xl">Pagamento PIX</h1>
