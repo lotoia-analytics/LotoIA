@@ -6604,13 +6604,32 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     }
 
 
-def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
+def _run_institutional_simulation(
+    *,
+    drawn_numbers: list[int] | None = None,
+    generation_event_id: int | None = None,
+) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
     try:
         simulated_numbers = sorted(drawn_numbers or _build_simulated_draw(15))
-        source = "session_generation"
-        generation_state = st.session_state.get("institutional_generation") or {}
-        games = list(generation_state.get("games") or [])
+        selected_generation_event_id = _safe_int(generation_event_id, default=None)
+        games: list[dict[str, Any]] = []
+        source = "selected_persisted_generation"
+        if selected_generation_event_id:
+            selected_group = next(
+                (
+                    group
+                    for group in _load_persisted_generation_event_groups(batch_id=None)
+                    if int(group.get("generation_event_id", 0) or 0) == int(selected_generation_event_id)
+                ),
+                None,
+            )
+            games = list(selected_group.get("games") or []) if selected_group else []
+            source = f"generation_{selected_generation_event_id}"
+        if not games:
+            source = "session_generation"
+            generation_state = st.session_state.get("institutional_generation") or {}
+            games = list(generation_state.get("games") or [])
         if not games:
             source = "session_generation_result"
             generation_result = st.session_state.get("institutional_generation_result") or {}
@@ -11839,6 +11858,30 @@ def _build_conference_combined_results_df(generation_results: list[dict[str, Any
     return _normalize_conference_display_df(pd.DataFrame(rows), _CONFERENCE_RESULTS_COLUMNS)
 
 
+def _format_generation_option_label(group: dict[str, Any]) -> str:
+    generation_id = int(group.get("generation_event_id", 0) or 0)
+    total_games = int(group.get("total_games", 0) or 0)
+    created_at = str(group.get("created_at", "") or "")[:10] or "—"
+    conference_status = str(group.get("conference_status", "Nao conferido") or "Nao conferido")
+    strategy = str(group.get("strategy", "") or "—")
+    return f"Geração {generation_id} · {total_games} jogos · {created_at} · {conference_status} · {strategy}"
+
+
+def _load_generation_select_options() -> tuple[list[int], dict[int, dict[str, Any]], dict[int, str]]:
+    groups = _load_persisted_generation_event_groups(batch_id=None)
+    generation_by_id = {
+        int(group.get("generation_event_id", 0) or 0): group
+        for group in groups
+        if int(group.get("generation_event_id", 0) or 0) > 0
+    }
+    options = sorted(generation_by_id.keys(), reverse=True)
+    labels = {
+        generation_id: _format_generation_option_label(generation_by_id[generation_id])
+        for generation_id in options
+    }
+    return options, generation_by_id, labels
+
+
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
@@ -11849,43 +11892,38 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
-    active_generation_groups = _load_persisted_generation_event_groups(batch_id=None)
-    active_generation_event_ids = sorted(
-        {
-            int(group.get("generation_event_id", 0) or 0)
-            for group in active_generation_groups
-            if int(group.get("generation_event_id", 0) or 0) > 0
-        },
-        reverse=True,
-    )
-    generation_group_by_id = {
-        int(group.get("generation_event_id", 0) or 0): group
-        for group in active_generation_groups
-        if int(group.get("generation_event_id", 0) or 0) > 0
-    }
-    selectable_generation_ids = [
-        generation_id
-        for generation_id in active_generation_event_ids
-    ]
+    selectable_generation_ids, generation_group_by_id, generation_option_labels = _load_generation_select_options()
     latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=None)
     if "active_reconciliation_generation_event_id" not in st.session_state:
         st.session_state["active_reconciliation_generation_event_id"] = (
             latest_unreconciled_generation_id if latest_unreconciled_generation_id is not None else (selectable_generation_ids[0] if selectable_generation_ids else None)
         )
     active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
+    st.markdown("##### Escolher geração")
     if selectable_generation_ids:
         selected_generation_index = selectable_generation_ids.index(active_generation_event_id) if active_generation_event_id in selectable_generation_ids else 0
         selected_generation_event_id = st.selectbox(
-            "Selecionar geração para conferência",
+            "Geração para conferir",
             options=selectable_generation_ids,
             index=selected_generation_index,
-            help="Por padrão usamos a geração mais recente sem conferência.",
+            format_func=lambda generation_id: generation_option_labels.get(
+                int(generation_id),
+                f"Geração {generation_id}",
+            ),
+            help="Escolha qual geração persistida será conferida contra o concurso selecionado.",
             key="conference_generation_selectbox",
         )
         st.session_state["active_reconciliation_generation_event_id"] = int(selected_generation_event_id)
+        selected_generation_group = generation_group_by_id.get(int(selected_generation_event_id or 0), {})
+        preview_cols = st.columns(4)
+        preview_cols[0].metric("Jogos", int(selected_generation_group.get("total_games", 0) or 0))
+        preview_cols[1].metric("Status", str(selected_generation_group.get("conference_status", "Nao conferido") or "Nao conferido"))
+        preview_cols[2].metric("Estratégia", str(selected_generation_group.get("strategy", "—") or "—"))
+        preview_cols[3].metric("Data", str(selected_generation_group.get("created_at", "") or "")[:10] or "—")
     else:
         selected_generation_event_id = None
-    selected_generation_group = generation_group_by_id.get(int(selected_generation_event_id or 0), {}) if selected_generation_event_id else {}
+        selected_generation_group = {}
+        st.info("Nenhuma geração persistida encontrada. Gere jogos antes de conferir.")
     selected_batch_id = str(selected_generation_group.get("batch_id", "") or "").strip()
     st.session_state["institutional_active_batch_id"] = selected_batch_id
 
@@ -11942,8 +11980,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     st.caption(
         " | ".join(
             [
-                f"Geração ativa: {selected_generation_event_id or '-'}",
-                f"gerações ativas: {', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}",
+                f"Geração selecionada: {generation_option_labels.get(int(selected_generation_event_id or 0), selected_generation_event_id or '-')}",
                 f"concurso escolhido: {selected_contest or '-'}",
             ]
         )
@@ -12505,18 +12542,53 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     status_cols[2].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
     status_cols[3].metric("runtime", st.session_state.get("institutional_simulation", {}).get("runtime_status", "idle"))
 
+    simulation_generation_ids, simulation_generation_by_id, simulation_generation_labels = _load_generation_select_options()
+    st.markdown("##### Escolher geração")
+    selected_simulation_generation_id: int | None = None
+    if simulation_generation_ids:
+        default_simulation_generation_id = _safe_int(
+            st.session_state.get("institutional_simulation_generation_event_id"),
+            default=simulation_generation_ids[0],
+        )
+        if default_simulation_generation_id not in simulation_generation_ids:
+            default_simulation_generation_id = simulation_generation_ids[0]
+        selected_simulation_generation_id = int(
+            st.selectbox(
+                "Geração para simular",
+                options=simulation_generation_ids,
+                index=simulation_generation_ids.index(default_simulation_generation_id),
+                format_func=lambda generation_id: simulation_generation_labels.get(
+                    int(generation_id),
+                    f"Geração {generation_id}",
+                ),
+                help="Escolha qual geração persistida será comparada com as dezenas informadas.",
+                key="simulation_generation_selectbox",
+            )
+        )
+        st.session_state["institutional_simulation_generation_event_id"] = selected_simulation_generation_id
+        selected_simulation_group = simulation_generation_by_id.get(selected_simulation_generation_id, {})
+        preview_cols = st.columns(3)
+        preview_cols[0].metric("Jogos", int(selected_simulation_group.get("total_games", 0) or 0))
+        preview_cols[1].metric("Status", str(selected_simulation_group.get("conference_status", "Nao conferido") or "Nao conferido"))
+        preview_cols[2].metric("Data", str(selected_simulation_group.get("created_at", "") or "")[:10] or "—")
+    else:
+        st.info("Nenhuma geração persistida encontrada. Gere jogos antes de simular.")
+
     draw_input = st.text_input(
         "Dezenas sorteadas",
         value=st.session_state.get("institutional_draw_input", ""),
         placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
     )
     st.session_state["institutional_draw_input"] = draw_input
-    if st.button("Simular Resultados", type="primary"):
+    if st.button("Simular Resultados", type="primary", disabled=not simulation_generation_ids):
         parsed_draw = _parse_draw_numbers(draw_input)
         if len(parsed_draw) != 15:
             st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
         else:
-            _run_institutional_simulation(drawn_numbers=parsed_draw)
+            _run_institutional_simulation(
+                drawn_numbers=parsed_draw,
+                generation_event_id=selected_simulation_generation_id,
+            )
             st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
             st.rerun()
     st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
