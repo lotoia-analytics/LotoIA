@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lotoia.data.loader import load_draws_csv
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.ingestion.caixa_api_client import CaixaApiClient, CaixaContestResult
@@ -152,6 +153,8 @@ class ResultSyncService:
                     raise
             latest_contest = int(latest.contest_number)
             last_imported = int(self.repository.get_last_contest() or 0)
+            if last_imported <= 0:
+                last_imported = int(self.repository.get_official_history_max_contest() or 0)
 
             synced_contests: list[int] = []
             contests_to_sync = [latest_contest]
@@ -209,6 +212,27 @@ class ResultSyncService:
             )
 
     def _controlled_fallback_latest(self) -> CaixaContestResult | None:
+        try:
+            draws = load_draws_csv()
+            if draws:
+                latest_draw = max(draws, key=lambda draw: int(draw.contest))
+                numbers = sorted(int(number) for number in latest_draw.numbers)
+                if len(numbers) == 15:
+                    contest_number = int(latest_draw.contest)
+                    return CaixaContestResult(
+                        contest_number=contest_number,
+                        draw_date=str(latest_draw.date),
+                        numbers=numbers,
+                        source_url="file://data/raw/historico_lotofacil.csv",
+                        raw_payload={
+                            "numero": contest_number,
+                            "dataApuracao": str(latest_draw.date),
+                            "listaDezenas": [f"{number:02d}" for number in numbers],
+                            "source": "historico_lotofacil.csv",
+                        },
+                    )
+        except Exception:
+            pass
         payload = dict(self.CONTROLLED_FALLBACK_LATEST_PAYLOAD)
         contest_number = int(payload.get("numero", 0) or 0)
         if contest_number != self.CONTROLLED_FALLBACK_LATEST_CONTEST:
