@@ -120,10 +120,14 @@ class _FakeEvolutionClient:
             self.last_error_message = "simulated failure"
             return False
         self.sent_menu_bundles.append((phone, menu_bundle))
+        text_fallback = str(menu_bundle.get("text_fallback") or "")
+        delivered = bool(text_fallback and self.send_text(phone, text_fallback))
         buttons_payload = dict(menu_bundle.get("buttons_payload") or {})
-        if buttons_payload:
-            return self.send_buttons(phone, buttons_payload)
-        return self.send_list(phone, dict(menu_bundle.get("list_payload") or {}))
+        if buttons_payload and self.send_buttons(phone, buttons_payload):
+            return True
+        if self.send_list(phone, dict(menu_bundle.get("list_payload") or {})):
+            return True
+        return delivered
 
 
 _FAKE_EVOLUTION: _FakeEvolutionClient | None = None
@@ -234,6 +238,25 @@ def test_whatsapp_webhook_matches_client_without_country_code(isolated_db: Path)
     assert status_code == 200
     assert body["status"] == "ok"
     assert body["quantidade"] == 5
+
+
+def test_whatsapp_webhook_replies_to_ola_with_menu_text(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-ola"},
+                "message": {"conversation": "olá"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "menu"
+    assert body.get("delivered") is True
+    assert _FAKE_EVOLUTION is not None
+    assert any("Bem-vindo à LotoIA" in text for _, text in _FAKE_EVOLUTION.sent_texts)
 
 
 def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:

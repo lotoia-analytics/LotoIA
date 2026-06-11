@@ -3,7 +3,9 @@ from __future__ import annotations
 from lotoia.clients.interactive_menu import (
     build_confirm_menu_bundle,
     build_quantity_menu_bundle,
+    is_greeting,
     parse_menu_selection,
+    register_quick_options,
     remember_pending_quantity,
 )
 
@@ -28,6 +30,22 @@ def test_build_confirm_menu_bundle_has_gerar_jogos() -> None:
     buttons = bundle["buttons_payload"]["buttons"]
     assert buttons[0]["displayText"] == "Gerar Jogos"
     assert buttons[0]["id"] == "gen:10:15"
+
+
+def test_is_greeting() -> None:
+    assert is_greeting("olá")
+    assert is_greeting("ola")
+    assert is_greeting("Oi!")
+    assert not is_greeting("5 jogos de 15D")
+
+
+def test_numeric_quick_option_selection() -> None:
+    register_quick_options("5511999999999", [("5 jogos", "qty:5"), ("10 jogos", "qty:10")])
+    assert parse_menu_selection("", text="2", phone="5511999999999") == {
+        "quantidade": 10,
+        "formato": None,
+        "next_menu": "confirm",
+    }
 
 
 def test_parse_menu_selection() -> None:
