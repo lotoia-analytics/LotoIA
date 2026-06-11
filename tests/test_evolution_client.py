@@ -100,14 +100,8 @@ def test_evolution_client_send_poll_success() -> None:
     assert session.calls[0]["json"]["values"] == ["5 jogos", "10 jogos"]
 
 
-def test_evolution_client_send_menu_bundle_falls_back_to_buttons() -> None:
-    session = FakeSession(
-        [
-            FakeResponse(400, "poll failed"),
-            FakeResponse(400, "poll failed retry"),
-            FakeResponse(200, '{"status":"ok"}'),
-        ]
-    )
+def test_evolution_client_send_menu_bundle_uses_buttons_first() -> None:
+    session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
     client = EvolutionApiClient(
         base_url="https://evolution.example.app",
         api_key="secret-key",
@@ -115,19 +109,17 @@ def test_evolution_client_send_menu_bundle_falls_back_to_buttons() -> None:
         session=session,
     )
     bundle = {
-        "poll_payload": {"name": "Q", "selectableCount": 1, "values": ["5 jogos"]},
         "buttons_payload": {
             "title": "LotoIA",
             "description": "Escolha",
             "footer": "LotoIA",
-            "buttons": [{"type": "reply", "displayText": "5 jogos", "id": "qty:5"}],
+            "buttons": [{"type": "reply", "displayText": "Gerar Jogos", "id": "gen:10:15"}],
         },
     }
 
     assert client.send_menu_bundle("5511999999999", bundle) is True
-    assert len(session.calls) == 3
-    assert "/sendPoll/" in session.calls[0]["url"]
-    assert "/sendButtons/" in session.calls[2]["url"]
+    assert len(session.calls) == 1
+    assert "/sendButtons/" in session.calls[0]["url"]
 
 
 def test_evolution_client_send_list_success() -> None:

@@ -4,8 +4,7 @@ import re
 from typing import Any
 
 HELP_MESSAGE = (
-    "Olá! Para gerar jogos, use o menu abaixo.\n"
-    "Toque em *Escolher* e selecione quantidade e formato."
+    "Olá! Toque em uma opção abaixo para escolher quantos jogos gerar."
 )
 
 _QUANTITY_FORMAT_PATTERNS = (

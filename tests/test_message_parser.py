@@ -15,6 +15,5 @@ def test_parse_whatsapp_message_unrecognized() -> None:
     assert parse_whatsapp_message("") is None
 
 
-def test_help_message_mentions_menu() -> None:
-    assert "menu" in HELP_MESSAGE.lower()
-    assert "escolher" in HELP_MESSAGE.lower()
+def test_help_message_mentions_touch() -> None:
+    assert "toque" in HELP_MESSAGE.lower()
