@@ -42,17 +42,33 @@ def _remember_message_id(message_id: str) -> bool:
     return False
 
 
+def _resolve_evolution_sender_jid(
+    key: dict[str, Any],
+    data: dict[str, Any],
+    payload: dict[str, Any],
+) -> str:
+    """Prefer real @s.whatsapp.net JID over WhatsApp @lid identifiers."""
+    remote_jid = str(key.get("remoteJid") or "")
+    remote_jid_alt = str(key.get("remoteJidAlt") or "")
+    if "@lid" in remote_jid and remote_jid_alt:
+        return remote_jid_alt
+    if "@s.whatsapp.net" in remote_jid:
+        return remote_jid
+    if remote_jid_alt:
+        return remote_jid_alt
+    for candidate in (data.get("remoteJid"), payload.get("sender"), data.get("sender")):
+        if candidate:
+            candidate_jid = str(candidate)
+            if "@lid" not in candidate_jid or remote_jid_alt:
+                return remote_jid_alt or candidate_jid
+    return remote_jid
+
+
 def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload.get("data") or payload)
     key = dict(data.get("key") or {})
     from_me = bool(key.get("fromMe") or data.get("fromMe"))
-    remote_jid = str(
-        key.get("remoteJid")
-        or key.get("remoteJidAlt")
-        or data.get("remoteJid")
-        or payload.get("sender")
-        or ""
-    )
+    remote_jid = _resolve_evolution_sender_jid(key, data, payload)
     phone = re.sub(r"\D", "", remote_jid.split("@", maxsplit=1)[0])
     if not phone:
         phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or ""))
@@ -171,6 +187,8 @@ def process_whatsapp_webhook(
     formato = parsed.get("formato")
     validation = validate_request(phone, formato, quantidade, db_path=db_path)
     if not validation.ok:
+        if validation.error_code == "CLIENT_NOT_FOUND":
+            logger.warning("CLIENT_NOT_FOUND extracted_phone=%s message=%r", phone, text)
         return {
             "status": "error",
             "error_code": validation.error_code,

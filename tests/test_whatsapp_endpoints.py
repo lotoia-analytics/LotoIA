@@ -161,6 +161,28 @@ def test_whatsapp_webhook_generates_games(isolated_db: Path) -> None:
     assert int(usage or 0) == 2
 
 
+def test_whatsapp_webhook_resolves_lid_jid_to_registered_phone(isolated_db: Path) -> None:
+    _request(
+        "POST",
+        "/client/activate",
+        {"phone": "5566992358330", "plan": "pro", "valor_pago": 49.99, "name": "Kleyson"},
+    )
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "69385314111689@lid",
+                "remoteJidAlt": "66992358330@s.whatsapp.net",
+                "id": "msg-lid",
+            },
+            "message": {"conversation": "5 jogos de 15D"},
+        }
+    }
+    status_code, body = _request("POST", "/whatsapp/webhook", payload)
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body["quantidade"] == 5
+
+
 def test_whatsapp_webhook_matches_client_without_country_code(isolated_db: Path) -> None:
     _request(
         "POST",
