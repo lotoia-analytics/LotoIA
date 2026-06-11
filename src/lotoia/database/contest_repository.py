@@ -413,6 +413,88 @@ class ContestRepository:
                 self.connection.commit()
         return inserted
 
+    def get_official_history_max_contest(self) -> int | None:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                row = (
+                    session.query(LotofacilOfficialHistory.contest_number)
+                    .order_by(LotofacilOfficialHistory.contest_number.desc())
+                    .first()
+                )
+                return int(row[0]) if row else None
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+        SELECT MAX(contest_number)
+        FROM lotofacil_official_history
+        """
+        )
+        result = cursor.fetchone()
+        return int(result[0]) if result and result[0] is not None else None
+
+    def get_csv_latest_contest(self) -> int | None:
+        try:
+            draws = load_draws_csv()
+        except Exception:
+            return None
+        if not draws:
+            return None
+        return max(int(draw.contest) for draw in draws)
+
+    def import_new_contests_from_csv(self) -> list[int]:
+        """Import contests present in CSV but newer than the persisted official baseline."""
+        self.create_table()
+        try:
+            draws = load_draws_csv()
+        except Exception:
+            return []
+        if not draws:
+            return []
+        current_max = max(
+            int(self.get_official_history_max_contest() or 0),
+            int(self.get_last_contest() or 0),
+        )
+        new_draws = sorted(
+            (draw for draw in draws if int(draw.contest) > current_max),
+            key=lambda draw: int(draw.contest),
+        )
+        if not new_draws:
+            return []
+        synced: list[int] = []
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                for draw in new_draws:
+                    contest = {
+                        "concurso": int(draw.contest),
+                        "data": str(draw.date),
+                        "dezenas": [f"{int(number):02d}" for number in draw.numbers],
+                        "metadata_json": json.dumps(
+                            {"source": "historico_lotofacil.csv"},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    }
+                    self.save_contest(contest, commit=False, session=session)
+                    synced.append(int(draw.contest))
+                session.commit()
+        else:
+            for draw in new_draws:
+                contest = {
+                    "concurso": int(draw.contest),
+                    "data": str(draw.date),
+                    "dezenas": [f"{int(number):02d}" for number in draw.numbers],
+                    "metadata_json": json.dumps(
+                        {"source": "historico_lotofacil.csv"},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                }
+                self.save_contest(contest, commit=False)
+                synced.append(int(draw.contest))
+            if self.connection is not None:
+                self.connection.commit()
+        return synced
+
     def sync_official_history_from_imported_contests(self) -> int:
         contests = self.get_all_contests()
         inserted = 0

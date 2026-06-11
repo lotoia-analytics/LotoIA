@@ -2631,7 +2631,21 @@ def _load_official_history_diagnostics() -> dict[str, Any]:
 
 def _ensure_official_history_seeded() -> dict[str, Any]:
     diagnostics = _load_official_history_diagnostics()
-    if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) > 0 and int(diagnostics.get("total_concursos_faltantes", 0) or 0) == 0:
+    csv_latest_contest = None
+    try:
+        csv_latest_contest = ContestRepository(DB_PATH).get_csv_latest_contest()
+    except Exception:
+        csv_latest_contest = None
+    official_max_contest = int(diagnostics.get("contest_number_max", 0) or 0)
+    csv_has_newer_contests = bool(
+        csv_latest_contest
+        and int(csv_latest_contest) > official_max_contest
+    )
+    if (
+        int(diagnostics.get("total_lotofacil_official_history", 0) or 0) > 0
+        and int(diagnostics.get("total_concursos_faltantes", 0) or 0) == 0
+        and not csv_has_newer_contests
+    ):
         return {"status": "ok", "seeded": 0, **diagnostics}
     try:
         repository = ContestRepository(DB_PATH)
@@ -2639,10 +2653,13 @@ def _ensure_official_history_seeded() -> dict[str, Any]:
         if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) <= 0 or int(diagnostics.get("total_concursos_faltantes", 0) or 0) > 0:
             inserted += int(repository.bootstrap_official_history_from_csv())
         inserted += int(repository.sync_official_history_from_imported_contests())
+        csv_imported = repository.import_new_contests_from_csv()
+        inserted += len(csv_imported)
         diagnostics = _load_official_history_diagnostics()
         return {
             "status": "ok" if int(diagnostics.get("total_lotofacil_official_history", 0) or 0) > 0 and int(diagnostics.get("total_concursos_faltantes", 0) or 0) == 0 else "partial",
             "seeded": inserted,
+            "csv_imported_contests": csv_imported,
             **diagnostics,
         }
     except Exception as exc:
@@ -8717,11 +8734,28 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
             payload["status"] = "ok"
             payload["sync_error"] = ""
         else:
-            payload["status"] = "error"
-            payload["sync_error"] = str(
-                payload.get("error_message")
-                or f"commit_state={commit_state or 'unknown'}"
-            )
+            csv_imported = repository.import_new_contests_from_csv()
+            if csv_imported:
+                latest_record = repository.get_latest_contest_record()
+                payload["status"] = "ok"
+                payload["sync_error"] = ""
+                payload["commit_state"] = "ok"
+                payload["source"] = "file://data/raw/historico_lotofacil.csv"
+                payload["latest_contest"] = int(max(csv_imported))
+                payload["synced_contests"] = list(csv_imported)
+                payload["synced_contests_count"] = len(csv_imported)
+                payload["persisted_contests"] = len(csv_imported)
+                payload["provider_payload_count"] = len(csv_imported)
+                payload["contest_ids"] = list(csv_imported)
+                payload["fallback_used"] = True
+                payload["error_message"] = str(payload.get("error_message") or "")
+                payload["csv_imported_contests"] = list(csv_imported)
+            else:
+                payload["status"] = "error"
+                payload["sync_error"] = str(
+                    payload.get("error_message")
+                    or f"commit_state={commit_state or 'unknown'}"
+                )
         payload["http_status"] = getattr(service.client, "last_http_status", None)
         payload["request_url"] = getattr(service.client, "last_request_url", "")
         payload["request_headers"] = getattr(service.client, "last_request_headers", {})
@@ -11884,9 +11918,16 @@ def _load_generation_select_options() -> tuple[list[int], dict[int, dict[str, An
 
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    seed_summary = _ensure_official_history_seeded()
+    csv_imported_contests = list(seed_summary.get("csv_imported_contests") or [])
     live_counts = _database_snapshot()["counts"]
     st.subheader("Conferir Resultados")
     st.write("Compare os jogos gerados com o concurso selecionado no banco.")
+    if csv_imported_contests:
+        st.caption(
+            "Base oficial atualizada a partir do histórico local: "
+            f"concursos {', '.join(str(contest) for contest in csv_imported_contests)}."
+        )
     status_cols = st.columns([1, 1, 1, 1])
     status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))

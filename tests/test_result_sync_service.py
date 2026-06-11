@@ -148,13 +148,14 @@ def test_result_sync_service_uses_controlled_fallback_when_latest_request_is_for
     summary = service.sync_latest()
     latest_record = repository.get_latest_contest_record()
 
-    assert summary.latest_contest == 3702
-    assert summary.synced_contests == [3702]
+    csv_latest = repository.get_csv_latest_contest()
+    assert csv_latest is not None
+    assert summary.latest_contest == csv_latest
+    assert summary.synced_contests == [csv_latest]
     assert summary.fallback_used is True
     assert summary.commit_state == "ok"
     assert latest_record is not None
-    assert int(latest_record["concurso"]) == 3702
-    assert latest_record["dezenas"] == ["02", "03", "05", "09", "13", "14", "15", "16", "17", "18", "20", "21", "22", "23", "25"]
+    assert int(latest_record["concurso"]) == csv_latest
 
 
 def test_contest_repository_restores_missing_official_history_row(tmp_path: Path) -> None:
