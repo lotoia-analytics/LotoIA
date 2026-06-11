@@ -21,6 +21,7 @@ from lotoia.public.service import (  # noqa: E402
 )
 from lotoia.statistics.basic import summarize_draws  # noqa: E402
 
+from backend.lotoia_chat import router as lotoia_chat_router  # noqa: E402
 from backend.whatsapp import router as whatsapp_router  # noqa: E402
 
 app = FastAPI(
@@ -29,6 +30,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.include_router(lotoia_chat_router)
 app.include_router(whatsapp_router)
 
 

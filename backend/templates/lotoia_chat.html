@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LotoIA — Assinatura WhatsApp</title>
+  <meta name="description" content="Assine a LotoIA e receba jogos estruturados da Lotofácil direto no WhatsApp." />
+  <style>
+    :root {
+      --bg: #07140f;
+      --surface: #0f241c;
+      --surface-2: #143028;
+      --text: #edf7f1;
+      --muted: #9bb8ad;
+      --accent: #3ecf8e;
+      --accent-2: #1f9d62;
+      --border: rgba(255, 255, 255, 0.08);
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(62, 207, 142, 0.18), transparent 30%),
+        linear-gradient(180deg, #081610 0%, var(--bg) 100%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { width: min(1100px, 92vw); margin: 0 auto; }
+    header { padding: 28px 0 12px; }
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 800; letter-spacing: 0.04em; font-size: 1.1rem;
+    }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 12px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #042014; font-weight: 900;
+    }
+    .hero {
+      display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px;
+      padding: 28px 0 40px;
+    }
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+    }
+    h1 {
+      margin: 0 0 14px; font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.05;
+    }
+    .lead { color: var(--muted); font-size: 1.05rem; max-width: 52ch; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0; }
+    .pill {
+      border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+      padding: 8px 12px; border-radius: 999px; color: var(--muted); font-size: 0.92rem;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid var(--border); border-radius: 24px;
+      padding: 24px; box-shadow: var(--shadow);
+    }
+    .steps { display: grid; gap: 12px; margin-top: 18px; }
+    .step {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.03);
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 8px; flex: 0 0 28px;
+      display: grid; place-items: center; background: rgba(62,207,142,0.15);
+      color: var(--accent); font-weight: 700; font-size: 0.9rem;
+    }
+    h2 { margin: 0 0 8px; font-size: 1.35rem; }
+    .section { padding: 10px 0 36px; }
+    .plans {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .plans { grid-template-columns: 1fr; }
+    }
+    .plan-card {
+      position: relative; display: block; cursor: pointer;
+      border: 1px solid var(--border); border-radius: 18px; padding: 16px;
+      background: var(--surface); transition: 0.2s ease;
+    }
+    .plan-card:hover { border-color: rgba(62, 207, 142, 0.45); transform: translateY(-2px); }
+    .plan-card.featured {
+      border-color: rgba(62, 207, 142, 0.7);
+      box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.25);
+    }
+    .plan-card input { position: absolute; opacity: 0; pointer-events: none; }
+    .plan-card:has(input:checked) {
+      border-color: var(--accent);
+      background: linear-gradient(180deg, rgba(62,207,142,0.12), rgba(62,207,142,0.04));
+    }
+    .plan-badge { display: inline-block; font-weight: 700; margin-bottom: 8px; }
+    .plan-price { display: block; font-size: 1.45rem; margin-bottom: 6px; }
+    .plan-meta { display: block; color: var(--muted); font-size: 0.9rem; }
+    .form-grid { display: grid; gap: 14px; margin-top: 18px; }
+    label.field { display: grid; gap: 6px; font-size: 0.92rem; color: var(--muted); }
+    input[type="text"], input[type="tel"] {
+      width: 100%; border: 1px solid var(--border); background: #0b1a14;
+      color: var(--text); border-radius: 12px; padding: 14px 16px; font-size: 1rem;
+    }
+    input:focus { outline: 2px solid rgba(62, 207, 142, 0.35); border-color: var(--accent); }
+    .cta {
+      width: 100%; border: 0; border-radius: 14px; padding: 16px 18px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #042014;
+    }
+    .cta:disabled { opacity: 0.6; cursor: not-allowed; }
+    .note { color: var(--muted); font-size: 0.88rem; margin-top: 10px; }
+    footer {
+      padding: 28px 0 40px; color: var(--muted); font-size: 0.88rem;
+      border-top: 1px solid var(--border);
+    }
+    .notice {
+      display: none; margin-top: 14px; padding: 12px 14px; border-radius: 12px;
+      background: rgba(62, 207, 142, 0.12); border: 1px solid rgba(62, 207, 142, 0.25);
+      color: var(--text);
+    }
+    .notice.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <span>LotoIA</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <h1>Jogos estruturados da Lotofácil no seu WhatsApp</h1>
+        <p class="lead">
+          Plataforma estatística com assistência incremental. Escolha seu plano,
+          ative com PIX e peça jogos pelo bot oficial da LotoIA.
+        </p>
+        <div class="pill-row">
+          <span class="pill">Estatística estrutural</span>
+          <span class="pill">Sem promessa de prêmio</span>
+          <span class="pill">Ativação automática</span>
+        </div>
+        <div class="steps">
+          <div class="step"><span class="step-num">1</span><div>Escolha o plano e informe seu WhatsApp</div></div>
+          <div class="step"><span class="step-num">2</span><div>Pague com PIX (confirmação automática)</div></div>
+          <div class="step"><span class="step-num">3</span><div>Mande <strong>olá</strong> para o bot e receba seus jogos</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Começar assinatura</h2>
+        <p class="note">Use o mesmo número que vai conversar com o bot no WhatsApp.</p>
+        <form id="signup-form" class="form-grid" novalidate>
+          <label class="field">
+            Nome
+            <input type="text" name="name" placeholder="Seu nome" autocomplete="name" required />
+          </label>
+          <label class="field">
+            WhatsApp (com DDD)
+            <input type="tel" name="phone" placeholder="66992358330" inputmode="numeric" autocomplete="tel" required />
+          </label>
+          <div>
+            <div class="note" style="margin-bottom:10px;">Selecione o plano</div>
+            <div class="plans">{{PLAN_CARDS}}</div>
+          </div>
+          <button class="cta" type="submit">Continuar com PIX</button>
+          <div id="pix-notice" class="notice">
+            Pagamento PIX será habilitado na próxima etapa. Seus dados foram validados.
+          </div>
+          <p class="note">Ao continuar, você concorda com o uso institucional da LotoIA para geração assistida de jogos.</p>
+        </form>
+      </div>
+    </section>
+
+    <footer>
+      LotoIA — plataforma estatística estrutural. Jogue com responsabilidade.
+    </footer>
+  </div>
+
+  <script>
+    const form = document.getElementById("signup-form");
+    const notice = document.getElementById("pix-notice");
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const name = String(data.get("name") || "").trim();
+      const phone = String(data.get("phone") || "").replace(/\D/g, "");
+      const plan = String(data.get("plan") || "").trim();
+
+      if (!name || phone.length < 10 || !plan) {
+        alert("Preencha nome, WhatsApp e plano.");
+        return;
+      }
+
+      notice.classList.add("show");
+      notice.textContent = `Plano ${plan.toUpperCase()} selecionado para ${name}. PIX automático na próxima etapa.`;
+    });
+  </script>
+</body>
+</html>
