@@ -25,7 +25,7 @@ from lotoia.clients.interactive_menu import (
     is_greeting,
     parse_custom_quantity,
     parse_menu_selection,
-    resolve_generation_formato,
+    plan_generation_targets,
     set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
@@ -121,12 +121,32 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def format_games_whatsapp_message(*, quantidade: int, formato: int, games: list[dict[str, Any]]) -> str:
-    lines = [f"✅ {quantidade} jogos de {formato}D gerados pela LotoIA:", ""]
+def format_games_whatsapp_message(
+    *,
+    quantidade: int,
+    games: list[dict[str, Any]],
+    targets: list[tuple[int, int]],
+) -> str:
+    if len(targets) > 1:
+        formats_label = " e ".join(f"{formato}D" for formato, _ in targets)
+        lines = [f"✅ {quantidade} jogos gerados pela LotoIA ({formats_label}):", ""]
+    else:
+        formato = int(targets[0][0])
+        lines = [f"✅ {quantidade} jogos de {formato}D gerados pela LotoIA:", ""]
+
     for index, game in enumerate(games, start=1):
-        numbers = sorted(int(number) for number in game.get("numbers", []) or game.get("final_card_numbers", []))
+        numbers = sorted(
+            int(number)
+            for number in game.get("cartao_validado_lei15a", [])
+            or game.get("numbers", [])
+            or game.get("final_card_numbers", [])
+        )
         formatted_numbers = " - ".join(f"{number:02d}" for number in numbers)
-        lines.append(f"Jogo {index:02d}: {formatted_numbers}")
+        formato_label = int(game.get("formato_cartao") or targets[0][0])
+        if len(targets) > 1:
+            lines.append(f"Jogo {index:02d} ({formato_label}D): {formatted_numbers}")
+        else:
+            lines.append(f"Jogo {index:02d}: {formatted_numbers}")
     lines.append("")
     lines.append("Boa sorte! 🍀")
     return "\n".join(lines)
@@ -134,16 +154,25 @@ def format_games_whatsapp_message(*, quantidade: int, formato: int, games: list[
 
 def generate_whatsapp_games(
     *,
-    quantidade: int,
-    formato: int,
+    targets: list[tuple[int, int]],
     phone: str,
     client_name: str = "Cliente",
     db_path: Path = DEFAULT_DATABASE_PATH,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    quantidade = sum(qty for _, qty in targets)
     seed = random.randint(1, 999999)
     started_at = time.time()
     base_games = generate_ranked_games(total_games=int(quantidade), seed=seed, ml_enabled=False)
-    games = expand_generation_games_for_format(base_games, int(formato))
+    games: list[dict[str, Any]] = []
+    offset = 0
+    for formato, qty in targets:
+        chunk = list(base_games[offset : offset + int(qty)])
+        offset += int(qty)
+        expanded = expand_generation_games_for_format(chunk, int(formato))
+        for game in expanded:
+            tagged = dict(game)
+            tagged["formato_cartao"] = int(formato)
+            games.append(tagged)
     execution_time_ms = (time.time() - started_at) * 1000
     ranking_score = float(
         sum(float(game.get("final_score", {}).get("final_score", 0) or 0) for game in games) / max(len(games), 1)
@@ -172,7 +201,11 @@ def generate_whatsapp_games(
         execution_time_ms=execution_time_ms,
         origin="whatsapp_bot",
         generation_mode="whatsapp_hybrid_statistical_v1",
-        context={"formato": int(formato), "quantidade": int(quantidade), "source": "whatsapp_bot"},
+        context={
+            "targets": [{"formato": int(formato), "quantidade": int(qty)} for formato, qty in targets],
+            "quantidade": int(quantidade),
+            "source": "whatsapp_bot",
+        },
         first_name=client_name,
         whatsapp=normalized_phone,
     )
@@ -303,8 +336,9 @@ def process_whatsapp_webhook(
         }
 
     quantidade = int(parsed["quantidade"])
-    formato = resolve_generation_formato(parsed, client_status=client_status)
-    validation = validate_request(phone, formato, quantidade, db_path=db_path)
+    targets = plan_generation_targets(parsed, client_status=client_status)
+    validation_formato = int(targets[0][0]) if len(targets) == 1 else int(parsed.get("formato") or 15)
+    validation = validate_request(phone, validation_formato, quantidade, db_path=db_path)
     if not validation.ok:
         if validation.error_code == "CLIENT_NOT_FOUND":
             logger.warning("CLIENT_NOT_FOUND extracted_phone=%s message=%r", phone, text)
@@ -316,7 +350,12 @@ def process_whatsapp_webhook(
         }
 
     try:
-        return _execute_valid_generation(phone=phone, validation=validation, db_path=db_path)
+        return _execute_valid_generation(
+            phone=phone,
+            validation=validation,
+            targets=targets,
+            db_path=db_path,
+        )
     except Exception as exc:  # noqa: BLE001 - surfaced to WhatsApp delivery layer
         logger.exception("GENERATION_ERROR for phone=%s: %s", phone, exc)
         return {
@@ -331,36 +370,42 @@ def _execute_valid_generation(
     *,
     phone: str,
     validation: ValidationResult,
+    targets: list[tuple[int, int]],
     db_path: Path,
 ) -> dict[str, Any]:
     client = dict(validation.client or {})
     quantidade = int(validation.quantidade or 0)
-    formato = int(validation.formato or 15)
     games, generation_event = generate_whatsapp_games(
-        quantidade=quantidade,
-        formato=formato,
+        targets=targets,
         phone=phone,
         client_name=str(client.get("name") or "Cliente"),
         db_path=db_path,
     )
+    log_formato = max(formato for formato, _ in targets)
     repository = ClientRepository(db_path)
     client_generation = repository.log_client_generation(
         client_id=int(client["id"]),
         phone=phone,
-        formato=formato,
+        formato=log_formato,
         quantidade=quantidade,
         jogos=games,
         generation_event_id=int(generation_event.get("id") or 0) or None,
     )
     repository.increment_daily_usage(int(client["id"]), quantidade=quantidade)
-    response_message = format_games_whatsapp_message(quantidade=quantidade, formato=formato, games=games)
+    response_message = format_games_whatsapp_message(
+        quantidade=quantidade,
+        games=games,
+        targets=targets,
+    )
     return {
         "status": "ok",
         "phone": normalize_whatsapp(phone),
         "message": response_message,
         "games": games,
         "quantidade": quantidade,
-        "formato": formato,
+        "formato": log_formato if len(targets) == 1 else None,
+        "formatos": [formato for formato, _ in targets],
+        "targets": [{"formato": formato, "quantidade": qty} for formato, qty in targets],
         "generation_event_id": generation_event.get("id"),
         "client_generation_id": client_generation.get("id"),
         "trace_id": f"wa-{uuid4().hex[:12]}",
@@ -419,11 +464,15 @@ def deliver_whatsapp_webhook(
 
     try:
         if status == "ok" and phone and result.get("games"):
-            delivered = client.send_games(
-                phone,
-                list(result.get("games") or []),
-                int(result.get("formato") or 15),
-            )
+            response_message = str(result.get("message") or "").strip()
+            if response_message:
+                delivered = client.send_text(phone, response_message)
+            else:
+                delivered = client.send_games(
+                    phone,
+                    list(result.get("games") or []),
+                    int(result.get("formato") or 15),
+                )
         elif status in {"menu", "menu_confirm", "menu_format"} and phone and result.get("menu_bundle"):
             delivered = client.send_menu_bundle(phone, dict(result.get("menu_bundle") or {}))
             if not delivered and str(result.get("message") or "").strip():

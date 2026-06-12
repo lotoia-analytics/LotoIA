@@ -57,6 +57,15 @@ def test_validate_request_format_not_allowed(db_path: Path) -> None:
     assert "15D" in str(result.message)
 
 
+def test_validate_request_plus_allows_15_and_16_only(db_path: Path) -> None:
+    _activate(db_path, plan="plus")
+    assert validate_request("5511999999999", 15, 5, db_path=db_path).ok is True
+    assert validate_request("5511999999999", 16, 5, db_path=db_path).ok is True
+    blocked = validate_request("5511999999999", 17, 5, db_path=db_path)
+    assert blocked.ok is False
+    assert blocked.error_code == "FORMAT_NOT_ALLOWED"
+
+
 def test_validate_request_invalid_quantity(db_path: Path) -> None:
     _activate(db_path, plan="elite")
     result = validate_request("5511999999999", 20, 15, db_path=db_path)

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from lotoia.clients.interactive_menu import (
+    allowed_formats_for_client,
     build_confirm_menu_bundle,
     build_quantity_menu_bundle,
     build_welcome_text,
     clear_awaiting_custom_quantity,
+    distribute_quantidade_across_formats,
     is_awaiting_custom_quantity,
     is_greeting,
     parse_custom_quantity,
     parse_menu_selection,
-    resolve_generation_formato,
+    plan_generation_targets,
     set_awaiting_custom_quantity,
 )
 
@@ -41,24 +43,34 @@ def test_build_welcome_text_for_pro_plan() -> None:
         client_status={"plan": "pro", "formato_maximo": 18, "saldo_hoje": 30}
     )
     assert "Formatos: 15D + 18D" in text
-    assert "Jogos gerados em 18D." in text
+    assert "Jogos gerados em 15D e 18D (metade de cada)." in text
 
 
-def test_resolve_generation_formato_uses_plan_max() -> None:
-    assert (
-        resolve_generation_formato(
-            {"quantidade": 5, "formato": None},
-            client_status={"formato_maximo": 18},
-        )
-        == 18
-    )
-    assert (
-        resolve_generation_formato(
-            {"quantidade": 5, "formato": 15},
-            client_status={"formato_maximo": 18},
-        )
-        == 15
-    )
+def test_allowed_formats_for_client() -> None:
+    assert allowed_formats_for_client({"formato_maximo": 15}) == [15]
+    assert allowed_formats_for_client({"formato_maximo": 18}) == [15, 18]
+    assert allowed_formats_for_client(None) == [15]
+
+
+def test_distribute_quantidade_across_formats() -> None:
+    assert distribute_quantidade_across_formats(5, [15]) == [(15, 5)]
+    assert distribute_quantidade_across_formats(5, [15, 18]) == [(15, 3), (18, 2)]
+    assert distribute_quantidade_across_formats(10, [15, 16]) == [(15, 5), (16, 5)]
+
+
+def test_plan_generation_targets_splits_by_plan() -> None:
+    assert plan_generation_targets(
+        {"quantidade": 5, "formato": None},
+        client_status={"formato_maximo": 18},
+    ) == [(15, 3), (18, 2)]
+    assert plan_generation_targets(
+        {"quantidade": 5, "formato": 15},
+        client_status={"formato_maximo": 18},
+    ) == [(15, 5)]
+    assert plan_generation_targets(
+        {"quantidade": 4, "formato": None},
+        client_status={"formato_maximo": 16},
+    ) == [(15, 2), (16, 2)]
 
 
 def test_build_confirm_menu_bundle_has_gerar_jogos() -> None:

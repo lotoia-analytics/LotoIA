@@ -355,7 +355,9 @@ def test_whatsapp_webhook_generates_pro_games_at_plan_format(isolated_db: Path) 
     assert status_code == 200
     assert body["status"] == "ok"
     assert body["quantidade"] == 5
-    assert body["formato"] == 18
+    assert body["formato"] is None
+    assert body["formatos"] == [15, 18]
+    assert body["targets"] == [{"formato": 15, "quantidade": 3}, {"formato": 18, "quantidade": 2}]
 
 
 def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Path) -> None:
@@ -380,7 +382,8 @@ def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Pat
     assert body["quantidade"] == 10
     assert body["formato"] == 15
     assert _FAKE_EVOLUTION is not None
-    assert len(_FAKE_EVOLUTION.sent_games) == 1
+    assert len(_FAKE_EVOLUTION.sent_texts) == 1
+    assert "10 jogos" in _FAKE_EVOLUTION.sent_texts[0][1]
 
 
 def test_whatsapp_webhook_ignores_poll_update(isolated_db: Path) -> None:
@@ -451,7 +454,11 @@ def test_whatsapp_webhook_delivers_games_via_evolution(isolated_db: Path) -> Non
     assert body["status"] == "ok"
     assert body.get("delivered") is True
     assert _FAKE_EVOLUTION is not None
-    assert len(_FAKE_EVOLUTION.sent_games) == 1
+    assert len(_FAKE_EVOLUTION.sent_texts) == 1
+    assert "2 jogos" in _FAKE_EVOLUTION.sent_texts[0][1]
+    games = list(body.get("games") or [])
+    assert len(games) == 2
+    assert all(game.get("cartao_validado_lei15a") for game in games)
 
 
 def test_whatsapp_webhook_returns_200_when_evolution_fails(isolated_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -80,17 +80,49 @@ def plan_formats_label(plan_key: str) -> str:
     return str(plan_config.get("formats") or f"até {plan_config.get('formato_max', 15)}D")
 
 
-def resolve_generation_formato(
+def allowed_formats_for_client(client_status: dict[str, Any] | None) -> list[int]:
+    if not client_status:
+        return [15]
+    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    if formato_maximo <= 15:
+        return [15]
+    return [15, formato_maximo]
+
+
+def is_format_allowed_for_client(formato: int, *, formato_maximo: int) -> bool:
+    if int(formato_maximo) <= 15:
+        return int(formato) == 15
+    return int(formato) in {15, int(formato_maximo)}
+
+
+def distribute_quantidade_across_formats(quantidade: int, formats: list[int]) -> list[tuple[int, int]]:
+    if not formats:
+        return [(15, quantidade)]
+    if len(formats) == 1:
+        return [(int(formats[0]), quantidade)]
+    first_format, second_format = int(formats[0]), int(formats[1])
+    first_count = (quantidade + 1) // 2
+    second_count = quantidade // 2
+    targets: list[tuple[int, int]] = []
+    if first_count > 0:
+        targets.append((first_format, first_count))
+    if second_count > 0:
+        targets.append((second_format, second_count))
+    return targets
+
+
+def plan_generation_targets(
     parsed: dict[str, Any],
     *,
     client_status: dict[str, Any] | None,
-) -> int:
-    formato = parsed.get("formato")
-    if formato is not None:
-        return int(formato)
-    if client_status:
-        return int(client_status.get("formato_maximo", 15) or 15)
-    return 15
+) -> list[tuple[int, int]]:
+    quantidade = int(parsed["quantidade"])
+    if parsed.get("formato") is not None:
+        return [(int(parsed["formato"]), quantidade)]
+    return distribute_quantidade_across_formats(
+        quantidade,
+        allowed_formats_for_client(client_status),
+    )
 
 
 def build_welcome_text(*, client_status: dict[str, Any]) -> str:
@@ -99,11 +131,13 @@ def build_welcome_text(*, client_status: dict[str, Any]) -> str:
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
     formats = plan_formats_label(plan_key)
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    format_hint = (
-        f"Jogos gerados em {formato_maximo}D."
-        if formato_maximo == 15
-        else f"Jogos gerados em {formato_maximo}D. Para 15D, digite ex.: 5 jogos de 15D."
-    )
+    if formato_maximo == 15:
+        format_hint = "Jogos gerados em 15D."
+    else:
+        format_hint = (
+            f"Jogos gerados em 15D e {formato_maximo}D (metade de cada).\n"
+            f"Para só 15D ou só {formato_maximo}D, digite ex.: 5 jogos de 15D."
+        )
     return (
         f"👋 Olá! Plano {plan}\n"
         f"Formatos: {formats}\n"
