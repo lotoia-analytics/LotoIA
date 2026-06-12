@@ -100,13 +100,8 @@ def test_evolution_client_send_poll_success() -> None:
     assert session.calls[0]["json"]["values"] == ["5 jogos", "10 jogos"]
 
 
-def test_evolution_client_send_menu_bundle_sends_text_before_buttons() -> None:
-    session = FakeSession(
-        [
-            FakeResponse(200, '{"status":"ok"}'),
-            FakeResponse(200, '{"status":"ok"}'),
-        ]
-    )
+def test_evolution_client_send_menu_bundle_prefers_list_when_configured() -> None:
+    session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
     client = EvolutionApiClient(
         base_url="https://evolution.example.app",
         api_key="secret-key",
@@ -114,19 +109,26 @@ def test_evolution_client_send_menu_bundle_sends_text_before_buttons() -> None:
         session=session,
     )
     bundle = {
-        "button_options": [("Gerar Jogos", "gen:10:15")],
+        "prefer_list": True,
+        "list_payload": {
+            "title": "LotoIA",
+            "description": "Escolha",
+            "buttonText": "Escolher quantidade",
+            "footerText": "LotoIA",
+            "sections": [{"title": "Qtd", "rows": [{"title": "05 Jogos", "rowId": "qty:5"}]}],
+        },
         "buttons_payload": {
             "title": "LotoIA",
             "description": "Escolha",
             "footer": "LotoIA",
-            "buttons": [{"type": "reply", "displayText": "Gerar Jogos", "id": "gen:10:15"}],
+            "buttons": [{"type": "reply", "displayText": "05 Jogos", "id": "qty:5"}],
         },
+        "text_fallback": "fallback",
     }
 
     assert client.send_menu_bundle("5511999999999", bundle) is True
-    assert len(session.calls) == 2
-    assert "/sendText/" in session.calls[0]["url"]
-    assert "/sendButtons/" in session.calls[1]["url"]
+    assert len(session.calls) == 1
+    assert "/sendList/" in session.calls[0]["url"]
 
 
 def test_evolution_client_send_list_success() -> None:

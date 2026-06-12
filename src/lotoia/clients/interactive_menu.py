@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from lotoia.clients.constants import VALID_QUANTITIES
 
 MENU_QUANTITIES = (5, 10, 20, 30)
+FIXED_MENU_QUANTITIES = (5, 10, 20)
 
 DEFAULT_GAME_FORMAT = 15
 
@@ -17,6 +19,7 @@ UNREGISTERED_MESSAGE = (
 
 _PENDING_QUANTITY: dict[str, int] = {}
 _PENDING_QUICK_OPTIONS: dict[str, list[tuple[str, str]]] = {}
+_AWAITING_CUSTOM_QUANTITY: dict[str, int] = {}
 
 _GREETINGS = {
     "oi",
@@ -33,6 +36,15 @@ _GREETINGS = {
     "hi",
 }
 
+_PLAN_LABELS = {
+    "basico": "Básico",
+    "plus": "Plus",
+    "avancado": "Avançado",
+    "pro": "Pro",
+    "master": "Master",
+    "elite": "Elite",
+}
+
 
 def _available_quantities(*, saldo_hoje: int) -> list[int]:
     return [
@@ -40,6 +52,11 @@ def _available_quantities(*, saldo_hoje: int) -> list[int]:
         for quantidade in MENU_QUANTITIES
         if quantidade in VALID_QUANTITIES and quantidade <= saldo_hoje
     ]
+
+
+def _plan_label(plan: str) -> str:
+    key = str(plan or "basico").strip().lower()
+    return _PLAN_LABELS.get(key, key.capitalize())
 
 
 def _reply_buttons(options: list[tuple[str, str]]) -> list[dict[str, str]]:
@@ -57,16 +74,31 @@ def is_greeting(text: str) -> bool:
 
 def register_quick_options(phone: str, button_options: list[tuple[str, str]]) -> str:
     _PENDING_QUICK_OPTIONS[str(phone)] = list(button_options[:3])
-    lines = ["👋 *Olá! Bem-vindo à LotoIA*", "", "*Quantos jogos quer gerar?*", ""]
-    for index, (label, _) in enumerate(button_options[:3], start=1):
-        lines.append(f"*{index}* — {label}")
-    lines.extend(
-        [
-            "",
-            "Toque nos botões abaixo ou responda só o número (1, 2 ou 3).",
-        ]
+    return build_welcome_text_from_options(button_options=button_options)
+
+
+def build_welcome_text(*, client_status: dict[str, Any]) -> str:
+    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
+    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
+    return (
+        "👋 *Olá! Bem-vindo à LotoIA*\n\n"
+        f"Plano *{plan}* — até *{formato_maximo}D*\n"
+        f"Saldo hoje: *{saldo_hoje} jogos*\n\n"
+        "*Quantos jogos quer gerar?*\n\n"
+        "Toque em *Escolher quantidade* abaixo\n"
+        "ou digite a quantidade (ex.: *5* ou *3 jogos*)."
     )
-    return "\n".join(lines)
+
+
+def build_welcome_text_from_options(*, button_options: list[tuple[str, str]]) -> str:
+    labels = " · ".join(label for label, _ in button_options[:3])
+    return (
+        "👋 *Olá! Bem-vindo à LotoIA*\n\n"
+        "*Quantos jogos quer gerar?*\n\n"
+        f"Opções: {labels}\n\n"
+        "Toque nos botões abaixo ou digite a quantidade."
+    )
 
 
 def _menu_bundle(
@@ -77,8 +109,10 @@ def _menu_bundle(
     list_button_text: str,
     footer: str = "LotoIA",
     text_fallback: str = "",
+    prefer_list: bool = False,
 ) -> dict[str, Any]:
     return {
+        "prefer_list": prefer_list,
         "button_options": button_options,
         "buttons_payload": {
             "title": "LotoIA",
@@ -91,7 +125,7 @@ def _menu_bundle(
             "description": description,
             "buttonText": list_button_text,
             "footerText": footer,
-            "sections": [{"title": "Opções", "rows": list_rows}],
+            "sections": [{"title": "Quantidade de jogos", "rows": list_rows}],
         },
         "text_fallback": text_fallback or description,
     }
@@ -99,30 +133,50 @@ def _menu_bundle(
 
 def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, Any]:
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    plan = str(client_status.get("plan", "basico") or "basico")
+    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
-    quantities = _available_quantities(saldo_hoje=saldo_hoje)
+
+    if saldo_hoje <= 0:
+        description = (
+            f"Plano {plan} — até {formato_maximo}D\n\n"
+            "Você já usou o limite diário de jogos.\n"
+            "Volte amanhã para gerar novos cartões."
+        )
+        return _menu_bundle(
+            description=description,
+            button_options=[],
+            list_rows=[{"title": "Limite diário atingido", "description": "Volte amanhã", "rowId": "noop:limit"}],
+            list_button_text="Indisponível",
+            text_fallback=description,
+        )
+
     description = (
         f"Plano {plan} — até {formato_maximo}D\n"
         f"Saldo hoje: {saldo_hoje} jogos\n\n"
         "Quantos jogos quer gerar?"
     )
-    button_options: list[tuple[str, str]] = [(f"{quantidade} jogos", f"qty:{quantidade}") for quantidade in quantities]
-    if len(button_options) > 3:
-        button_options = button_options[:2] + [("Outras quantidades", "qty:more")]
-    rows = [
-        {"title": label, "description": "Selecionar", "rowId": selection_id}
-        for label, selection_id in button_options
-    ] or [{"title": "Limite diário atingido", "description": "Volte amanhã", "rowId": "noop:limit"}]
+    button_options: list[tuple[str, str]] = [
+        ("05 Jogos", "qty:5"),
+        ("10 Jogos", "qty:10"),
+        ("20 Jogos", "qty:20"),
+    ]
+    list_rows = [
+        {"title": "05 Jogos", "description": "Gerar 5 cartões em 15D", "rowId": "qty:5"},
+        {"title": "10 Jogos", "description": "Gerar 10 cartões em 15D", "rowId": "qty:10"},
+        {"title": "20 Jogos", "description": "Gerar 20 cartões em 15D", "rowId": "qty:20"},
+        {
+            "title": "Outra quantidade",
+            "description": "Digite de 1 a 30 jogos",
+            "rowId": "qty:custom",
+        },
+    ]
     bundle = _menu_bundle(
         description=description,
         button_options=button_options,
-        list_rows=rows,
+        list_rows=list_rows,
         list_button_text="Escolher quantidade",
-    )
-    bundle["text_fallback"] = _build_quantity_text_intro(
-        button_options=button_options,
-        client_status=client_status,
+        prefer_list=True,
+        text_fallback=build_welcome_text(client_status=client_status),
     )
     return bundle
 
@@ -131,19 +185,20 @@ def build_quantity_more_menu_bundle(*, client_status: dict[str, Any]) -> dict[st
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
     quantities = _available_quantities(saldo_hoje=saldo_hoje)[2:]
     description = "Escolha outra quantidade de jogos:"
-    button_options = [(f"{quantidade} jogos", f"qty:{quantidade}") for quantidade in quantities]
+    button_options = [(f"{quantidade:02d} Jogos", f"qty:{quantidade}") for quantidade in quantities]
     rows = [{"title": label, "description": "Selecionar", "rowId": selection_id} for label, selection_id in button_options]
     return _menu_bundle(
         description=description,
         button_options=button_options,
         list_rows=rows,
         list_button_text="Escolher",
+        prefer_list=True,
     )
 
 
 def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any]) -> dict[str, Any]:
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
-    plan = str(client_status.get("plan", "basico") or "basico")
+    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
     description = (
         f"✅ *{quantidade} jogos* selecionados.\n"
         f"Plano {plan} — até {formato_maximo}D\n\n"
@@ -156,11 +211,17 @@ def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any])
         button_options.append((f"Gerar {quantidade} jogos 18D", f"gen:{quantidade}:18"))
     if formato_maximo > 18 or (formato_maximo == 16 and len(button_options) < 3):
         if formato_maximo == 16:
-            button_options = [("Gerar Jogos", f"gen:{quantidade}:15"), (f"Gerar {quantidade} jogos 16D", f"gen:{quantidade}:16")]
+            button_options = [
+                ("Gerar Jogos", f"gen:{quantidade}:15"),
+                (f"Gerar {quantidade} jogos 16D", f"gen:{quantidade}:16"),
+            ]
         elif formato_maximo > 18:
             button_options = button_options[:2] + [("Mais formatos", f"fmtmore:{quantidade}")]
     button_options = button_options[:3]
-    rows = [{"title": label, "description": "Confirmar geração", "rowId": selection_id} for label, selection_id in button_options]
+    rows = [
+        {"title": label, "description": "Confirmar geração", "rowId": selection_id}
+        for label, selection_id in button_options
+    ]
     return _menu_bundle(
         description=description,
         button_options=button_options,
@@ -186,32 +247,38 @@ def build_format_more_menu_bundle(*, quantidade: int, client_status: dict[str, A
     )
 
 
-def _build_quantity_text_intro(
-    *,
-    button_options: list[tuple[str, str]],
-    client_status: dict[str, Any],
-) -> str:
-    plan = str(client_status.get("plan", "basico") or "basico")
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
-    saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    lines = [
-        "👋 *Olá! Bem-vindo à LotoIA*",
-        "",
-        f"Plano *{plan}* — até *{formato_maximo}D*",
-        f"Saldo hoje: *{saldo_hoje} jogos*",
-        "",
-        "*Quantos jogos quer gerar?*",
-        "",
-    ]
-    for index, (label, _) in enumerate(button_options[:3], start=1):
-        lines.append(f"*{index}* — {label}")
-    lines.extend(
-        [
-            "",
-            "Toque nos botões abaixo ou responda só o número (1, 2 ou 3).",
-        ]
+def build_custom_quantity_prompt(*, saldo_hoje: int) -> str:
+    return (
+        "✏️ *Outra quantidade*\n\n"
+        f"Digite quantos jogos quer gerar (1 a {saldo_hoje}):\n"
+        "Ex.: *3* ou *3 jogos*"
     )
-    return "\n".join(lines)
+
+
+def set_awaiting_custom_quantity(phone: str, saldo_hoje: int) -> None:
+    _AWAITING_CUSTOM_QUANTITY[str(phone)] = int(saldo_hoje)
+
+
+def is_awaiting_custom_quantity(phone: str) -> bool:
+    return str(phone) in _AWAITING_CUSTOM_QUANTITY
+
+
+def get_awaiting_custom_quantity_limit(phone: str) -> int | None:
+    return _AWAITING_CUSTOM_QUANTITY.get(str(phone))
+
+
+def clear_awaiting_custom_quantity(phone: str) -> None:
+    _AWAITING_CUSTOM_QUANTITY.pop(str(phone), None)
+
+
+def parse_custom_quantity(text: str) -> int | None:
+    normalized = " ".join(str(text or "").strip().split()).lower()
+    if not normalized:
+        return None
+    match = re.search(r"\d{1,2}", normalized)
+    if not match:
+        return None
+    return int(match.group())
 
 
 def remember_pending_quantity(phone: str, quantidade: int) -> None:
@@ -238,6 +305,8 @@ def parse_menu_selection(selection_id: str, *, text: str = "", phone: str = "") 
         value = normalized.split(":", maxsplit=1)[1]
         if value == "more":
             return {"next_menu": "quantity_more"}
+        if value == "custom":
+            return {"next_menu": "await_custom_quantity"}
         return {"quantidade": int(value), "formato": DEFAULT_GAME_FORMAT}
     return None
 
@@ -247,17 +316,23 @@ def _selection_id_from_text(text: str, *, phone: str) -> str:
     normalized = normalized.strip("!?.")
     if not normalized:
         return ""
+    if normalized in {"outra quantidade", "outra"}:
+        return "qty:custom"
     if normalized.isdigit():
-        options = _PENDING_QUICK_OPTIONS.get(str(phone), [])
-        index = int(normalized) - 1
-        if 0 <= index < len(options):
-            return str(options[index][1])
+        quantidade = int(normalized)
+        if quantidade in FIXED_MENU_QUANTITIES:
+            return f"qty:{quantidade}"
+        custom_limit = get_awaiting_custom_quantity_limit(phone)
+        if custom_limit is not None:
+            parsed = parse_custom_quantity(normalized)
+            if parsed is not None:
+                return f"qty:{parsed}"
     if normalized in {"gerar jogos", "gerar"}:
         pending = _PENDING_QUANTITY.get(str(phone))
         if pending:
             return f"gen:{pending}:15"
     for quantidade in MENU_QUANTITIES:
-        if normalized in {f"{quantidade} jogos", f"{quantidade} jogo"}:
+        if normalized in {f"{quantidade} jogos", f"{quantidade} jogo", f"{quantidade:02d} jogos"}:
             return f"qty:{quantidade}"
     pending = _PENDING_QUANTITY.get(str(phone))
     if pending and normalized.endswith("d") and normalized[:-1].isdigit():

@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from lotoia.clients.constants import VALID_QUANTITIES
+
 HELP_MESSAGE = (
     "Olá! Toque em uma opção abaixo para escolher quantos jogos gerar."
 )
@@ -36,5 +38,10 @@ def parse_whatsapp_message(text: str) -> dict[str, Any] | None:
     quantity_match = _QUANTITY_ONLY_PATTERN.search(normalized)
     if quantity_match:
         return {"quantidade": int(quantity_match.group(1)), "formato": None}
+
+    if normalized.isdigit():
+        quantidade = int(normalized)
+        if quantidade in VALID_QUANTITIES:
+            return {"quantidade": quantidade, "formato": None}
 
     return None

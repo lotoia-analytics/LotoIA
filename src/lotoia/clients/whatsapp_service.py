@@ -15,11 +15,17 @@ from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.interactive_menu import (
     HELP_MESSAGE,
     UNREGISTERED_MESSAGE,
+    build_custom_quantity_prompt,
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
+    clear_awaiting_custom_quantity,
+    get_awaiting_custom_quantity_limit,
+    is_awaiting_custom_quantity,
     is_greeting,
+    parse_custom_quantity,
     parse_menu_selection,
+    set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
 from lotoia.clients.repository import ClientRepository
@@ -212,6 +218,35 @@ def process_whatsapp_webhook(
     selection_id = str(extracted.get("selection_id") or "")
     menu_parsed = parse_menu_selection(selection_id, text=text, phone=phone)
     parsed = parse_whatsapp_message(text)
+
+    if is_awaiting_custom_quantity(phone):
+        saldo_hoje = int(get_awaiting_custom_quantity_limit(phone) or 0)
+        quantidade = parse_custom_quantity(text)
+        if quantidade is None:
+            return {
+                "status": "error",
+                "error_code": "INVALID_CUSTOM_QUANTITY",
+                "phone": phone,
+                "message": build_custom_quantity_prompt(saldo_hoje=saldo_hoje),
+            }
+        clear_awaiting_custom_quantity(phone)
+        parsed = {"quantidade": quantidade, "formato": 15}
+
+    if menu_parsed and menu_parsed.get("next_menu") == "await_custom_quantity":
+        if not client_status:
+            return {
+                "status": "error",
+                "error_code": "CLIENT_NOT_FOUND",
+                "phone": phone,
+                "message": UNREGISTERED_MESSAGE,
+            }
+        saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
+        set_awaiting_custom_quantity(phone, saldo_hoje)
+        return {
+            "status": "prompt",
+            "phone": phone,
+            "message": build_custom_quantity_prompt(saldo_hoje=saldo_hoje),
+        }
 
     if menu_parsed and menu_parsed.get("next_menu") == "quantity_more":
         if not client_status:

@@ -280,6 +280,62 @@ def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db:
     assert buttons_payload["buttons"][0]["id"] == "qty:5"
 
 
+def test_whatsapp_webhook_prompts_custom_quantity(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-custom"},
+                "message": {
+                    "listResponseMessage": {
+                        "title": "Outra quantidade",
+                        "singleSelectReply": {"selectedRowId": "qty:custom"},
+                    }
+                },
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "prompt"
+    assert _FAKE_EVOLUTION is not None
+    assert any("Outra quantidade" in text for _, text in _FAKE_EVOLUTION.sent_texts)
+
+
+def test_whatsapp_webhook_generates_games_from_typed_quantity(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+    _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-custom"},
+                "message": {
+                    "listResponseMessage": {
+                        "title": "Outra quantidade",
+                        "singleSelectReply": {"selectedRowId": "qty:custom"},
+                    }
+                },
+            }
+        },
+    )
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-three"},
+                "message": {"conversation": "3"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body["quantidade"] == 3
+    assert body["formato"] == 15
+
+
 def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Path) -> None:
     _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
     status_code, body = _request(

@@ -65,15 +65,12 @@ class EvolutionApiClient:
         return False
 
     def send_menu_bundle(self, phone: str, menu_bundle: dict[str, Any]) -> bool:
-        """Always send text first, then try buttons/list (Baileys may hide interactive UI)."""
-        from lotoia.clients.interactive_menu import register_quick_options
-
-        button_options = list(menu_bundle.get("button_options") or [])
+        """Deliver interactive menu via list/buttons, with clean text fallback."""
+        prefer_list = bool(menu_bundle.get("prefer_list"))
         text_fallback = str(menu_bundle.get("text_fallback") or "").strip()
-        if button_options:
-            text_fallback = register_quick_options(phone, button_options)
-        delivered_text = bool(text_fallback and self.send_text(phone, text_fallback))
-        for method_name in ("send_buttons", "send_list"):
+        delivery_order = ("send_list", "send_buttons") if prefer_list else ("send_buttons", "send_list")
+
+        for method_name in delivery_order:
             payload_key = {
                 "send_buttons": "buttons_payload",
                 "send_list": "list_payload",
@@ -92,7 +89,10 @@ class EvolutionApiClient:
                 self.last_http_status,
                 self.last_error_message,
             )
-        return delivered_text
+
+        if text_fallback:
+            return self.send_text(phone, text_fallback)
+        return False
 
     def send_buttons(self, phone: str, buttons_payload: dict[str, Any]) -> bool:
         if not self.is_configured:
