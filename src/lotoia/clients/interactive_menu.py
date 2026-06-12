@@ -6,9 +6,9 @@ from lotoia.clients.constants import VALID_QUANTITIES
 
 MENU_QUANTITIES = (5, 10, 20, 30)
 
-HELP_MESSAGE = (
-    "Olá! Toque em uma opção abaixo para escolher quantos jogos gerar."
-)
+DEFAULT_GAME_FORMAT = 15
+
+HELP_MESSAGE = "Quantos jogos você quer gerar hoje?"
 
 UNREGISTERED_MESSAGE = (
     "Número não cadastrado.\n"
@@ -57,7 +57,7 @@ def is_greeting(text: str) -> bool:
 
 def register_quick_options(phone: str, button_options: list[tuple[str, str]]) -> str:
     _PENDING_QUICK_OPTIONS[str(phone)] = list(button_options[:3])
-    lines = ["👋 *Olá! Bem-vindo à LotoIA*", "", "*Escolha uma opção:*", ""]
+    lines = ["👋 *Olá! Bem-vindo à LotoIA*", "", "*Quantos jogos quer gerar?*", ""]
     for index, (label, _) in enumerate(button_options[:3], start=1):
         lines.append(f"*{index}* — {label}")
     lines.extend(
@@ -105,7 +105,7 @@ def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, An
     description = (
         f"Plano {plan} — até {formato_maximo}D\n"
         f"Saldo hoje: {saldo_hoje} jogos\n\n"
-        "Quantos jogos você quer gerar?"
+        "Quantos jogos quer gerar?"
     )
     button_options: list[tuple[str, str]] = [(f"{quantidade} jogos", f"qty:{quantidade}") for quantidade in quantities]
     if len(button_options) > 3:
@@ -200,7 +200,7 @@ def _build_quantity_text_intro(
         f"Plano *{plan}* — até *{formato_maximo}D*",
         f"Saldo hoje: *{saldo_hoje} jogos*",
         "",
-        "*Escolha quantos jogos gerar:*",
+        "*Quantos jogos quer gerar?*",
         "",
     ]
     for index, (label, _) in enumerate(button_options[:3], start=1):
@@ -208,8 +208,7 @@ def _build_quantity_text_intro(
     lines.extend(
         [
             "",
-            "Toque nos botões abaixo ou responda só o número.",
-            "Exemplo: *5 jogos de 15D*",
+            "Toque nos botões abaixo ou responda só o número (1, 2 ou 3).",
         ]
     )
     return "\n".join(lines)
@@ -239,8 +238,7 @@ def parse_menu_selection(selection_id: str, *, text: str = "", phone: str = "") 
         value = normalized.split(":", maxsplit=1)[1]
         if value == "more":
             return {"next_menu": "quantity_more"}
-        remember_pending_quantity(phone, int(value))
-        return {"quantidade": int(value), "formato": None, "next_menu": "confirm"}
+        return {"quantidade": int(value), "formato": DEFAULT_GAME_FORMAT}
     return None
 
 

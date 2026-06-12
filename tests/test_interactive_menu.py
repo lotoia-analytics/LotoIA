@@ -43,16 +43,14 @@ def test_numeric_quick_option_selection() -> None:
     register_quick_options("5511999999999", [("5 jogos", "qty:5"), ("10 jogos", "qty:10")])
     assert parse_menu_selection("", text="2", phone="5511999999999") == {
         "quantidade": 10,
-        "formato": None,
-        "next_menu": "confirm",
+        "formato": 15,
     }
 
 
 def test_parse_menu_selection() -> None:
     assert parse_menu_selection("qty:10", phone="5511999999999") == {
         "quantidade": 10,
-        "formato": None,
-        "next_menu": "confirm",
+        "formato": 15,
     }
     assert parse_menu_selection("gen:5:15", phone="5511999999999") == {"quantidade": 5, "formato": 15}
     remember_pending_quantity("5511999999999", 10)

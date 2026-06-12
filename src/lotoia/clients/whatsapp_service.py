@@ -15,7 +15,6 @@ from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.interactive_menu import (
     HELP_MESSAGE,
     UNREGISTERED_MESSAGE,
-    build_confirm_menu_bundle,
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
@@ -243,23 +242,6 @@ def process_whatsapp_webhook(
             "phone": phone,
             "quantidade": quantidade,
             "menu_bundle": build_format_more_menu_bundle(quantidade=quantidade, client_status=client_status),
-            "message": HELP_MESSAGE,
-        }
-
-    if menu_parsed and menu_parsed.get("next_menu") == "confirm":
-        if not client_status:
-            return {
-                "status": "error",
-                "error_code": "CLIENT_NOT_FOUND",
-                "phone": phone,
-                "message": UNREGISTERED_MESSAGE,
-            }
-        quantidade = int(menu_parsed["quantidade"])
-        return {
-            "status": "menu_confirm",
-            "phone": phone,
-            "quantidade": quantidade,
-            "menu_bundle": build_confirm_menu_bundle(quantidade=quantidade, client_status=client_status),
             "message": HELP_MESSAGE,
         }
 

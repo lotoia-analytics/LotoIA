@@ -280,8 +280,8 @@ def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db:
     assert buttons_payload["buttons"][0]["id"] == "qty:5"
 
 
-def test_whatsapp_webhook_shows_gerar_jogos_after_quantity_button(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -298,11 +298,11 @@ def test_whatsapp_webhook_shows_gerar_jogos_after_quantity_button(isolated_db: P
         },
     )
     assert status_code == 200
-    assert body["status"] == "menu_confirm"
+    assert body["status"] == "ok"
     assert body["quantidade"] == 10
+    assert body["formato"] == 15
     assert _FAKE_EVOLUTION is not None
-    confirm_buttons = _FAKE_EVOLUTION.sent_buttons[-1][1]["buttons"]
-    assert confirm_buttons[0]["displayText"] == "Gerar Jogos"
+    assert len(_FAKE_EVOLUTION.sent_games) == 1
 
 
 def test_whatsapp_webhook_ignores_poll_update(isolated_db: Path) -> None:
