@@ -383,7 +383,8 @@ def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Pat
     assert body["formato"] == 15
     assert _FAKE_EVOLUTION is not None
     assert len(_FAKE_EVOLUTION.sent_texts) == 1
-    assert "10 jogos" in _FAKE_EVOLUTION.sent_texts[0][1]
+    assert "🎯 *Seus jogos LotoIA — 15D*" in _FAKE_EVOLUTION.sent_texts[0][1]
+    assert "✅ Gerado com estatística estrutural" in _FAKE_EVOLUTION.sent_texts[0][1]
 
 
 def test_whatsapp_webhook_ignores_poll_update(isolated_db: Path) -> None:
@@ -477,7 +478,8 @@ def test_whatsapp_webhook_delivers_games_via_evolution(isolated_db: Path) -> Non
     assert body.get("delivered") is True
     assert _FAKE_EVOLUTION is not None
     assert len(_FAKE_EVOLUTION.sent_texts) == 1
-    assert "2 jogos" in _FAKE_EVOLUTION.sent_texts[0][1]
+    assert "🎯 *Seus jogos LotoIA — 15D*" in _FAKE_EVOLUTION.sent_texts[0][1]
+    assert "⚠️ Jogue com responsabilidade" in _FAKE_EVOLUTION.sent_texts[0][1]
     games = list(body.get("games") or [])
     assert len(games) == 2
     assert all(game.get("cartao_validado_lei15a") for game in games)

@@ -15,6 +15,11 @@ GENERATION_ERROR_MESSAGE = (
     "Tente novamente em alguns minutos."
 )
 
+WHATSAPP_GAMES_FOOTER_LINES = (
+    "✅ Gerado com estatística estrutural",
+    "⚠️ Jogue com responsabilidade",
+)
+
 
 class EvolutionApiClient:
     """Evolution API client for outbound WhatsApp messages."""
@@ -168,13 +173,7 @@ class EvolutionApiClient:
             )
             formatted_numbers = " ".join(f"{number:02d}" for number in numbers)
             lines.append(f"Jogo {index:02d}: {formatted_numbers}")
-        lines.extend(
-            [
-                "",
-                "✅ Gerado com estatística estrutural",
-                "⚠️ Jogue com responsabilidade",
-            ]
-        )
+        lines.extend(["", *WHATSAPP_GAMES_FOOTER_LINES])
         return "\n".join(lines)
 
     def _send_buttons_once(self, phone: str, buttons_payload: dict[str, Any]) -> bool:
