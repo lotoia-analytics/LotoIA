@@ -10,6 +10,8 @@ HELP_MESSAGE = (
 )
 
 _QUANTITY_FORMAT_PATTERNS = (
+    re.compile(r"(?i)(\d{1,2})\s*[x×]\s*(\d{2})\s*d"),
+    re.compile(r"(?i)(\d{1,2})\s+(\d{2})\s*d"),
     re.compile(
         r"(?i)(?:quero\s+|me\s+manda\s+|manda\s+)?(\d{1,2})\s+jogos?\s+(?:de\s+)?(\d{2})d",
     ),

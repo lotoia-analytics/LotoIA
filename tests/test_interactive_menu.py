@@ -44,6 +44,7 @@ def test_build_welcome_text_for_pro_plan() -> None:
     )
     assert "Formatos: 15D + 18D" in text
     assert "Jogos gerados em 15D e 18D (metade de cada)." in text
+    assert "2x15D" in text
 
 
 def test_allowed_formats_for_client() -> None:

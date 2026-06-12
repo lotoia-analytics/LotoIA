@@ -11,6 +11,13 @@ def test_parse_whatsapp_message_examples() -> None:
     assert parse_whatsapp_message("3") == {"quantidade": 3, "formato": None}
 
 
+def test_parse_whatsapp_message_shorthand_format() -> None:
+    assert parse_whatsapp_message("2x15D") == {"quantidade": 2, "formato": 15}
+    assert parse_whatsapp_message("2 x 15d") == {"quantidade": 2, "formato": 15}
+    assert parse_whatsapp_message("01 18D") == {"quantidade": 1, "formato": 18}
+    assert parse_whatsapp_message("1 18d") == {"quantidade": 1, "formato": 18}
+
+
 def test_parse_whatsapp_message_unrecognized() -> None:
     assert parse_whatsapp_message("bom dia") is None
     assert parse_whatsapp_message("") is None

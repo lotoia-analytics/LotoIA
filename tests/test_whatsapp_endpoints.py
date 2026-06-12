@@ -423,6 +423,28 @@ def test_whatsapp_webhook_generates_games_from_list_selection(isolated_db: Path)
     assert body["formato"] == 15
 
 
+def test_whatsapp_webhook_generates_games_from_shorthand_format(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    for message, quantidade, formato in (
+        ("2x15D", 2, 15),
+        ("01 18D", 1, 18),
+    ):
+        status_code, body = _request(
+            "POST",
+            "/whatsapp/webhook",
+            {
+                "data": {
+                    "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": f"msg-{message}"},
+                    "message": {"conversation": message},
+                }
+            },
+        )
+        assert status_code == 200
+        assert body["status"] == "ok"
+        assert body["quantidade"] == quantidade
+        assert body["formato"] == formato
+
+
 def test_whatsapp_webhook_idempotency(isolated_db: Path) -> None:
     _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99})
     payload = {

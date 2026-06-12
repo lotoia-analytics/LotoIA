@@ -136,7 +136,7 @@ def build_welcome_text(*, client_status: dict[str, Any]) -> str:
     else:
         format_hint = (
             f"Jogos gerados em 15D e {formato_maximo}D (metade de cada).\n"
-            f"Para só 15D ou só {formato_maximo}D, digite ex.: 5 jogos de 15D."
+            f"Para um formato só, digite ex.: 5, 2x15D ou 1 {formato_maximo}D."
         )
     return (
         f"👋 Olá! Plano {plan}\n"
