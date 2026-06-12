@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from lotoia.clients.constants import PLANS, VALID_QUANTITIES
+from lotoia.clients.constants import OFFICIAL_LANDING_HOST, PLANS, VALID_QUANTITIES
 from lotoia.clients.message_parser import parse_whatsapp_message
 
 MENU_QUANTITIES = (5, 10, 20, 30)
@@ -13,7 +13,7 @@ HELP_MESSAGE = "Quantos jogos você quer gerar hoje?"
 
 UNREGISTERED_MESSAGE = (
     "Número não cadastrado.\n"
-    "Acesse lotoia.chat para assinar."
+    f"Acesse {OFFICIAL_LANDING_HOST} para assinar."
 )
 
 _PENDING_QUANTITY: dict[str, int] = {}

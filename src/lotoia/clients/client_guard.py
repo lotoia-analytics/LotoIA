@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from lotoia.clients.constants import DAILY_LIMIT, PLANS, VALID_QUANTITIES
+from lotoia.clients.constants import DAILY_LIMIT, OFFICIAL_LANDING_HOST, PLANS, VALID_QUANTITIES
 from lotoia.clients.interactive_menu import is_format_allowed_for_client
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -47,7 +47,7 @@ def validate_request(
             error_code="CLIENT_NOT_FOUND",
             message=(
                 "Número não cadastrado.\n"
-                "Acesse lotoia.chat para assinar."
+                f"Acesse {OFFICIAL_LANDING_HOST} para assinar."
             ),
         )
 
@@ -65,7 +65,7 @@ def validate_request(
             error_code="PLAN_EXPIRED",
             message=(
                 f"Seu plano expirou em {_format_expiration(client.get('data_expiracao'))}.\n"
-                "Acesse lotoia.chat para renovar."
+                f"Acesse {OFFICIAL_LANDING_HOST} para renovar."
             ),
             client=client,
         )
@@ -79,7 +79,7 @@ def validate_request(
                 error_code="PLAN_EXPIRED",
                 message=(
                     f"Seu plano expirou em {_format_expiration(expiration)}.\n"
-                    "Acesse lotoia.chat para renovar."
+                    f"Acesse {OFFICIAL_LANDING_HOST} para renovar."
                 ),
                 client=client,
             )
