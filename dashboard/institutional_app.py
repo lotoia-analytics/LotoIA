@@ -6280,6 +6280,7 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
             .all()
         )
         for event in events:
+            event_context_json = dict(getattr(event, "context_json", {}) or {})
             rows = (
                 session.query(GeneratedGame)
                 .filter(GeneratedGame.generation_event_id == event.id)
@@ -6294,11 +6295,16 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                 ]
                 if not rows:
                     continue
+            if not rows:
+                continue
             reconciliation_summary = _load_latest_reconciliation_for_generation(session, int(event.id or 0))
             games: list[dict[str, Any]] = []
+            group_context_json = event_context_json
             for row in rows:
                 numbers = [int(number) for number in (row.numbers or [])]
                 context_json = dict(row.context_json or {})
+                if context_json:
+                    group_context_json = context_json
                 structural_metrics = dict(context_json.get("structural_metrics") or {})
                 core_numbers = list(context_json.get("core_numbers") or numbers or [])
                 audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
@@ -6347,7 +6353,7 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
-                    "batch_id": str(context_json.get("batch_id", "") or ""),
+                    "batch_id": str(group_context_json.get("batch_id", "") or ""),
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
                     "reconciliation": reconciliation_summary or {},
