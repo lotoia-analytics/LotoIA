@@ -264,6 +264,7 @@ class LotoiaClientGeneration(Base):
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
     jogos: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
+    concurso_alvo: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -274,6 +275,33 @@ class LotoiaClientGeneration(Base):
         Index("ix_lotoia_client_generations_phone", "phone"),
         Index("ix_lotoia_client_generations_created_at", "created_at"),
         Index("ix_lotoia_client_generations_generation_event_id", "generation_event_id"),
+        Index("ix_lotoia_client_generations_concurso_alvo", "concurso_alvo"),
+    )
+
+
+class LotoiaClientConferenceResult(Base):
+    __tablename__ = "lotoia_client_conference_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("lotoia_clients.id"), nullable=False)
+    phone: Mapped[str] = mapped_column(String, nullable=False)
+    contest_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    game_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    numbers: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False)
+    premio_status: Mapped[str] = mapped_column(String, default="nao_premiado", nullable=False)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    __table_args__ = (
+        UniqueConstraint("client_id", "contest_number", "game_index", name="uq_lotoia_client_conference_client_contest_game"),
+        Index("ix_lotoia_client_conference_results_client_id", "client_id"),
+        Index("ix_lotoia_client_conference_results_contest_number", "contest_number"),
+        Index("ix_lotoia_client_conference_results_notified", "notified"),
+        Index("ix_lotoia_client_conference_results_hits", "hits"),
     )
 
 
@@ -1101,6 +1129,15 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 if column_name not in ml_diag_columns:
                     connection.exec_driver_sql(column_sql)
                     applied_migrations.append(f"ml_diagnostic_decisions.{column_name}")
+            client_generation_columns = {
+                column["name"]
+                for column in inspector.get_columns("lotoia_client_generations")
+            }
+            if "concurso_alvo" not in client_generation_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
+                )
+                applied_migrations.append("lotoia_client_generations.concurso_alvo")
         if applied_migrations:
             logger.info(
                 "Institutional schema migration applied on %s: %s",
@@ -1762,6 +1799,15 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             if column_name not in ml_diag_columns:
                 connection.exec_driver_sql(column_sql)
                 applied_migrations.append(f"ml_diagnostic_decisions.{column_name}")
+        client_generation_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(lotoia_client_generations)").fetchall()
+        }
+        if "concurso_alvo" not in client_generation_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
+            )
+            applied_migrations.append("lotoia_client_generations.concurso_alvo")
     if applied_migrations:
         logger.info(
             "Institutional schema migration applied on %s: %s",

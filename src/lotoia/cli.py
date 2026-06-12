@@ -242,6 +242,23 @@ def run_operational_cleanup_scheduler_cli(argv: list[str] | None = None) -> None
     scheduler.run_forever(poll_seconds=args.poll_seconds)
 
 
+def run_client_conference_scheduler_cli(argv: list[str] | None = None) -> None:
+    from lotoia.clients.client_conference_scheduler import ClientConferenceScheduler
+
+    parser = argparse.ArgumentParser(description="Executa sync, conferencia automatica e notificacao de premiacao WhatsApp.")
+    parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--run-once", action="store_true")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
+    args = parser.parse_args(argv)
+
+    scheduler = ClientConferenceScheduler(db_path=args.db_path)
+    if args.run_once:
+        payload = scheduler.run_due_jobs()
+        print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        return
+    scheduler.run_forever(poll_seconds=args.poll_seconds)
+
+
 def run_workflow_scheduler_cli(argv: list[str] | None = None) -> None:
     from lotoia.workflows.workflow_scheduler import WorkflowScheduler
 

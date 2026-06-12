@@ -4,12 +4,14 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from lotoia.clients.constants import DAILY_LIMIT, PLANS
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
     LotoiaClient,
+    LotoiaClientConferenceResult,
     LotoiaClientDailyUsage,
     LotoiaClientGeneration,
     create_database,
@@ -144,6 +146,7 @@ class ClientRepository:
         quantidade: int,
         jogos: list[dict[str, Any]],
         generation_event_id: int | None = None,
+        concurso_alvo: int | None = None,
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
             row = LotoiaClientGeneration(
@@ -153,11 +156,115 @@ class ClientRepository:
                 quantidade=int(quantidade),
                 jogos=list(jogos),
                 generation_event_id=generation_event_id,
+                concurso_alvo=int(concurso_alvo) if concurso_alvo is not None else None,
             )
             session.add(row)
             session.commit()
             session.refresh(row)
             return _model_to_dict(row)
+
+    def list_clients_with_stats(
+        self,
+        *,
+        status_filter: str = "todos",
+        plan_filter: str = "todos",
+    ) -> list[dict[str, Any]]:
+        today = datetime.now(UTC).date()
+        with get_session(self.db_path) as session:
+            generation_stats = (
+                session.query(
+                    LotoiaClientGeneration.client_id.label("client_id"),
+                    func.count(LotoiaClientGeneration.id).label("total_geracoes"),
+                    func.coalesce(func.sum(LotoiaClientGeneration.quantidade), 0).label("total_jogos"),
+                    func.max(LotoiaClientGeneration.created_at).label("ultima_geracao"),
+                )
+                .group_by(LotoiaClientGeneration.client_id)
+                .subquery()
+            )
+            query = (
+                session.query(LotoiaClient, generation_stats)
+                .outerjoin(generation_stats, LotoiaClient.id == generation_stats.c.client_id)
+                .order_by(LotoiaClient.created_at.desc())
+            )
+            if plan_filter != "todos":
+                query = query.filter(LotoiaClient.plan == plan_filter)
+            rows: list[dict[str, Any]] = []
+            for client, stats in query.all():
+                expiration = client.data_expiracao
+                expiration_utc = expiration if expiration.tzinfo else expiration.replace(tzinfo=UTC)
+                dias_restantes = max((expiration_utc.date() - today).days, 0)
+                effective_status = "ativo" if client.status == "ativo" and expiration_utc.date() >= today else "expirado"
+                if status_filter != "todos" and effective_status != status_filter:
+                    continue
+                rows.append(
+                    {
+                        "id": int(client.id),
+                        "nome": str(client.name or ""),
+                        "phone": str(client.phone or ""),
+                        "plano": str(client.plan or ""),
+                        "formato_maximo": int(client.formato_maximo or 15),
+                        "status": effective_status,
+                        "data_inicio": client.data_inicio,
+                        "data_expiracao": client.data_expiracao,
+                        "dias_restantes": dias_restantes,
+                        "total_geracoes": int(getattr(stats, "total_geracoes", 0) or 0) if stats else 0,
+                        "total_jogos": int(getattr(stats, "total_jogos", 0) or 0) if stats else 0,
+                        "ultima_geracao": getattr(stats, "ultima_geracao", None) if stats else None,
+                    }
+                )
+            return rows
+
+    def get_client_generations(self, client_id: int) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(LotoiaClientGeneration)
+                .filter(LotoiaClientGeneration.client_id == int(client_id))
+                .order_by(LotoiaClientGeneration.created_at.desc())
+                .all()
+            )
+            return [_model_to_dict(row) for row in rows]
+
+    def list_whatsapp_generations(self, *, limit: int = 200) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(LotoiaClientGeneration, LotoiaClient)
+                .join(LotoiaClient, LotoiaClient.id == LotoiaClientGeneration.client_id)
+                .order_by(LotoiaClientGeneration.created_at.desc())
+                .limit(max(1, int(limit)))
+                .all()
+            )
+            payload: list[dict[str, Any]] = []
+            for generation, client in rows:
+                item = _model_to_dict(generation)
+                item["cliente_nome"] = str(client.name or "")
+                item["cliente_plano"] = str(client.plan or "")
+                payload.append(item)
+            return payload
+
+    def get_client_conference_results(self, client_id: int) -> list[dict[str, Any]]:
+        with get_session(self.db_path) as session:
+            rows = (
+                session.query(LotoiaClientConferenceResult)
+                .filter(LotoiaClientConferenceResult.client_id == int(client_id))
+                .order_by(
+                    LotoiaClientConferenceResult.contest_number.desc(),
+                    LotoiaClientConferenceResult.game_index.asc(),
+                )
+                .all()
+            )
+            return [_model_to_dict(row) for row in rows]
+
+    def client_contest_already_conferenced(self, *, client_id: int, contest_number: int) -> bool:
+        with get_session(self.db_path) as session:
+            exists = (
+                session.query(LotoiaClientConferenceResult.id)
+                .filter(
+                    LotoiaClientConferenceResult.client_id == int(client_id),
+                    LotoiaClientConferenceResult.contest_number == int(contest_number),
+                )
+                .first()
+            )
+            return exists is not None
 
     def get_client_status(self, phone: str) -> dict[str, Any] | None:
         client = self.get_by_phone(phone)

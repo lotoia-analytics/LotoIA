@@ -18,6 +18,7 @@ def main() -> None:
     subparsers.add_parser("result-sync-scheduler", help="Monitora automatico da sincronizacao oficial da Caixa.")
     subparsers.add_parser("operational-cleanup-scheduler", help="Executa a limpeza operacional diaria.")
     subparsers.add_parser("workflow-scheduler", help="Executa o agendamento institucional de workflows.")
+    subparsers.add_parser("client-conference-scheduler", help="Executa sync, conferencia e notificacao de clientes WhatsApp.")
     subparsers.add_parser("operational-lifecycle", help="Executa o fechamento operacional completo.")
     subparsers.add_parser("backtest", help="Executa backtesting historico.")
     subparsers.add_parser("benchmark", help="Executa benchmark cientifico.")
@@ -43,6 +44,8 @@ def main() -> None:
         cli.run_operational_cleanup_scheduler_cli(remaining)
     elif args.command == "workflow-scheduler":
         cli.run_workflow_scheduler_cli(remaining)
+    elif args.command == "client-conference-scheduler":
+        cli.run_client_conference_scheduler_cli(remaining)
     elif args.command == "operational-lifecycle":
         cli.run_operational_lifecycle_cli(remaining)
     elif args.command == "backtest":
