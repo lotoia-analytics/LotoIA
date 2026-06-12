@@ -613,26 +613,30 @@ def _render_db_export_download(
 
 
 def _load_official_sync_contest_summary() -> dict[str, Any] | None:
+    """Diagnostics only — never return contest data unless PostgreSQL confirms it."""
     sync_summary = _load_official_sync_diagnostics()
     if not isinstance(sync_summary, dict) or not sync_summary:
         return None
     payload = sync_summary.get("payload")
     payload = payload if isinstance(payload, dict) else {}
-    latest_record = _normalize_contest_record(payload.get("latest_contest_record") or sync_summary.get("latest_contest_record"))
-    if latest_record:
-        latest_record = dict(latest_record)
-        latest_record["source"] = "api_caixa_sincronizada"
-        return latest_record
-    latest_contest = _safe_int(payload.get("latest_contest") or sync_summary.get("imported_contest"), default=None)
+    latest_contest = _safe_int(
+        (payload.get("latest_contest_record") or {}).get("concurso")
+        or (payload.get("latest_contest_record") or {}).get("contest_number")
+        or payload.get("latest_contest")
+        or sync_summary.get("imported_contest"),
+        default=None,
+    )
     if latest_contest is None:
         return None
-    imported_numbers = _extract_int_numbers(payload.get("imported_numbers", []) or sync_summary.get("imported_numbers", []) or [])
-    return {
-        "contest_number": int(latest_contest),
-        "data": str(payload.get("sync_timestamp") or sync_summary.get("sync_timestamp") or ""),
-        "dezenas": imported_numbers,
-        "source": "api_caixa_sincronizada",
-    }
+    persisted = get_official_contest(int(latest_contest))
+    if not persisted:
+        return None
+    normalized = _normalize_contest_record(persisted)
+    if not normalized:
+        return None
+    normalized = dict(normalized)
+    normalized["source"] = "lotofacil_official_history"
+    return normalized
 
 
 def _mask_database_url(database_url: str) -> str:
@@ -1599,14 +1603,16 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
 
 
 def _load_latest_contest_summary() -> dict[str, Any] | None:
-    official_sync = _load_official_sync_contest_summary()
-    if official_sync:
-        return {
-            "contest_number": int(official_sync.get("contest_number", 0) or 0),
-            "data": str(official_sync.get("data") or ""),
-            "dezenas": [int(number) for number in official_sync.get("dezenas", [])],
-            "source": str(official_sync.get("source") or "api_caixa_sincronizada"),
-        }
+    latest_official = get_latest_official_contest()
+    if latest_official:
+        normalized = _normalize_contest_record(latest_official)
+        if normalized:
+            return {
+                "contest_number": int(normalized.get("contest_number", 0) or 0),
+                "data": str(normalized.get("data") or ""),
+                "dezenas": [int(number) for number in normalized.get("dezenas", [])],
+                "source": "lotofacil_official_history",
+            }
     latest_contest = _load_imported_contest()
     if latest_contest:
         return {
@@ -8724,38 +8730,38 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         repository = ContestRepository(DB_PATH)
         service = ResultSyncService(repository=repository)
         summary = service.sync_latest()
-        try:
-            repository.sync_official_history_from_imported_contests()
-        except Exception:
-            pass
         payload = summary.to_dict()
         commit_state = str(payload.get("commit_state", "") or "").strip().lower()
         if commit_state == "ok":
-            payload["status"] = "ok"
-            payload["sync_error"] = ""
-        else:
-            csv_imported = repository.import_new_contests_from_csv()
-            if csv_imported:
-                latest_record = repository.get_latest_contest_record()
-                payload["status"] = "ok"
-                payload["sync_error"] = ""
-                payload["commit_state"] = "ok"
-                payload["source"] = "file://data/raw/historico_lotofacil.csv"
-                payload["latest_contest"] = int(max(csv_imported))
-                payload["synced_contests"] = list(csv_imported)
-                payload["synced_contests_count"] = len(csv_imported)
-                payload["persisted_contests"] = len(csv_imported)
-                payload["provider_payload_count"] = len(csv_imported)
-                payload["contest_ids"] = list(csv_imported)
-                payload["fallback_used"] = True
-                payload["error_message"] = str(payload.get("error_message") or "")
-                payload["csv_imported_contests"] = list(csv_imported)
-            else:
+            latest_contest = _safe_int(payload.get("latest_contest"), default=None)
+            if latest_contest is None:
                 payload["status"] = "error"
-                payload["sync_error"] = str(
-                    payload.get("error_message")
-                    or f"commit_state={commit_state or 'unknown'}"
-                )
+                payload["sync_error"] = "sync_latest returned commit_state=ok without latest_contest"
+                payload["commit_state"] = "failed"
+            else:
+                try:
+                    repository.sync_official_history_from_imported_contests()
+                except Exception as history_exc:
+                    payload["official_history_sync_warning"] = str(history_exc)
+                confirmation = repository.confirm_sync_persistence(int(latest_contest))
+                payload["postgresql_confirmation"] = confirmation
+                if confirmation.get("ok"):
+                    payload["status"] = "ok"
+                    payload["sync_error"] = ""
+                else:
+                    payload["status"] = "error"
+                    payload["commit_state"] = "failed"
+                    payload["sync_error"] = (
+                        "PostgreSQL post-commit confirmation failed: "
+                        f"imported_max={confirmation.get('imported_contests_max')} "
+                        f"official_max={confirmation.get('lotofacil_official_history_max')}"
+                    )
+        else:
+            payload["status"] = "error"
+            payload["sync_error"] = str(
+                payload.get("error_message")
+                or f"commit_state={commit_state or 'unknown'}"
+            )
         payload["http_status"] = getattr(service.client, "last_http_status", None)
         payload["request_url"] = getattr(service.client, "last_request_url", "")
         payload["request_headers"] = getattr(service.client, "last_request_headers", {})
@@ -8768,6 +8774,11 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         payload["official_history_record"] = _load_official_history_summary().get("latest_contest", {})
         payload["official_history_diagnostics"] = _load_official_history_diagnostics()
         if payload.get("status") != "ok":
+            payload["postgresql_confirmation"] = payload.get("postgresql_confirmation") or (
+                repository.confirm_sync_persistence(int(payload["latest_contest"]))
+                if _safe_int(payload.get("latest_contest"), default=None) is not None
+                else {"ok": False}
+            )
             return payload
         _persist_official_sync_diagnostics(
             {

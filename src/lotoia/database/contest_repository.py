@@ -715,6 +715,61 @@ class ContestRepository:
             "metadata_json": row[3],
         }
 
+    def get_official_history_contest(self, contest_number: int) -> dict[str, Any] | None:
+        if self.backend != "sqlite":
+            with get_session(self.db_path) as session:
+                row = session.get(LotofacilOfficialHistory, int(contest_number))
+                if row is None:
+                    return None
+                return {
+                    "concurso": int(row.contest_number),
+                    "data": str(row.draw_date or ""),
+                    "dezenas": str(row.numbers or "").split(","),
+                    "metadata_json": str(row.metadata_json or "{}"),
+                    "source": str(row.source or "imported_contests"),
+                }
+        cursor = self.connection.cursor()
+        cursor.execute(
+            """
+        SELECT contest_number, draw_date, numbers, metadata_json, source
+        FROM lotofacil_official_history
+        WHERE contest_number = ?
+        """,
+            (int(contest_number),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "concurso": int(row[0]),
+            "data": str(row[1] or ""),
+            "dezenas": str(row[2] or "").split(","),
+            "metadata_json": str(row[3] or "{}"),
+            "source": str(row[4] or "imported_contests"),
+        }
+
+    def confirm_sync_persistence(self, contest_number: int) -> dict[str, Any]:
+        """Post-commit verification required by Lei No 001."""
+        target = int(contest_number)
+        imported_max = int(self.get_last_contest() or 0)
+        official_max = int(self.get_official_history_max_contest() or 0)
+        imported_row = self.get_contest(target)
+        official_row = self.get_official_history_contest(target)
+        ok = (
+            imported_max >= target
+            and official_max >= target
+            and imported_row is not None
+            and official_row is not None
+        )
+        return {
+            "ok": ok,
+            "contest_number": target,
+            "imported_contests_max": imported_max or None,
+            "lotofacil_official_history_max": official_max or None,
+            "imported_contest_found": imported_row is not None,
+            "official_history_found": official_row is not None,
+        }
+
     def save_frequency_snapshot(
         self,
         concurso: int,
