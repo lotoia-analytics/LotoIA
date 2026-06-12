@@ -7905,10 +7905,24 @@ def _render_leads_page(snapshot: dict[str, Any]) -> None:
         return
 
     st.subheader("Leads")
-    st.caption("Consulta somente leitura de clientes WhatsApp e histórico operacional persistido no PostgreSQL.")
+    st.caption(
+        "Consulta somente leitura de clientes WhatsApp/Messenger e histórico operacional no PostgreSQL."
+    )
 
     repository = ClientRepository(DB_PATH)
-    filter_cols = st.columns(2)
+    all_leads = repository.list_clients_with_stats()
+    total_leads = len(all_leads)
+    whatsapp_count = sum(1 for row in all_leads if str(row.get("channel") or "whatsapp") == "whatsapp")
+    messenger_count = sum(1 for row in all_leads if str(row.get("channel") or "") == "messenger")
+    convertidos_count = sum(1 for row in all_leads if str(row.get("status") or "") == "ativo")
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Total Leads", total_leads)
+    metric_cols[1].metric("WhatsApp", f"📱 {whatsapp_count}")
+    metric_cols[2].metric("Messenger", f"💬 {messenger_count}")
+    metric_cols[3].metric("Convertidos", convertidos_count)
+
+    filter_cols = st.columns(3)
     status_filter = filter_cols[0].selectbox(
         "Status",
         ["todos", "ativo", "expirado"],
@@ -7921,16 +7935,28 @@ def _render_leads_page(snapshot: dict[str, Any]) -> None:
         index=0,
         key="leads_plan_filter",
     )
+    channel_filter = filter_cols[2].selectbox(
+        "Canal",
+        ["todos", "whatsapp", "messenger"],
+        index=0,
+        key="leads_channel_filter",
+    )
 
-    leads = repository.list_clients_with_stats(status_filter=status_filter, plan_filter=plan_filter)
+    leads = repository.list_clients_with_stats(
+        status_filter=status_filter,
+        plan_filter=plan_filter,
+        channel_filter=channel_filter,
+    )
     if not leads:
         st.info("Nenhum lead encontrado com os filtros atuais.")
         return
 
     table_rows = [
         {
+            "canal": "💬" if str(row.get("channel") or "") == "messenger" else "📱",
             "nome": row["nome"] or "—",
             "phone": row["phone"],
+            "messenger_psid": row.get("messenger_psid") or "—",
             "plano": row["plano"],
             "formato_maximo": f"{int(row['formato_maximo'])}D",
             "status": row["status"],

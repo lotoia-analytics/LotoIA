@@ -23,6 +23,7 @@ from lotoia.statistics.basic import summarize_draws  # noqa: E402
 
 from backend.asaas_webhook import router as asaas_webhook_router  # noqa: E402
 from backend.lotoia_chat import router as lotoia_chat_router  # noqa: E402
+from backend.messenger_webhook import router as messenger_router  # noqa: E402
 from backend.whatsapp import router as whatsapp_router  # noqa: E402
 
 app = FastAPI(
@@ -33,6 +34,7 @@ app = FastAPI(
 
 app.include_router(lotoia_chat_router)
 app.include_router(whatsapp_router)
+app.include_router(messenger_router, prefix="/messenger")
 app.include_router(asaas_webhook_router)
 
 

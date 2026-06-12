@@ -38,6 +38,45 @@ class ClientRepository:
                     return _model_to_dict(row)
         return None
 
+    def get_by_messenger_psid(self, psid: str) -> dict[str, Any] | None:
+        normalized_psid = str(psid or "").strip()
+        if not normalized_psid:
+            return None
+        with get_session(self.db_path) as session:
+            row = (
+                session.query(LotoiaClient)
+                .filter(LotoiaClient.messenger_psid == normalized_psid)
+                .one_or_none()
+            )
+            return _model_to_dict(row) if row is not None else None
+
+    @staticmethod
+    def messenger_phone(psid: str) -> str:
+        return f"m:{str(psid).strip()}"
+
+    def activate_messenger_client(
+        self,
+        *,
+        psid: str,
+        plan: str,
+        valor_pago: float,
+        name: str = "",
+        duration_days: int = 30,
+    ) -> dict[str, Any]:
+        normalized_psid = str(psid or "").strip()
+        if not normalized_psid:
+            raise ValueError("PSID Messenger inválido.")
+        client = self.activate_client(
+            phone=self.messenger_phone(normalized_psid),
+            plan=plan,
+            valor_pago=valor_pago,
+            name=name,
+            duration_days=duration_days,
+            messenger_psid=normalized_psid,
+            channel="messenger",
+        )
+        return client
+
     def activate_client(
         self,
         *,
@@ -46,8 +85,12 @@ class ClientRepository:
         valor_pago: float,
         name: str = "",
         duration_days: int = 30,
+        messenger_psid: str | None = None,
+        channel: str = "whatsapp",
     ) -> dict[str, Any]:
-        normalized_phone = canonical_brazil_phone(phone)
+        normalized_phone = str(phone or "").strip()
+        if not normalized_phone.startswith("m:"):
+            normalized_phone = canonical_brazil_phone(phone)
         plan_key = str(plan or "basico").strip().lower()
         if plan_key not in PLANS:
             raise ValueError(f"Plano inválido: {plan}")
@@ -64,6 +107,8 @@ class ClientRepository:
             "data_expiracao": expiration,
             "status": "ativo",
             "created_at": now,
+            "messenger_psid": str(messenger_psid).strip() if messenger_psid else None,
+            "channel": str(channel or "whatsapp").strip().lower(),
         }
         with get_session(self.db_path) as session:
             backend = session.bind.dialect.name if session.bind is not None else "sqlite"
@@ -79,6 +124,8 @@ class ClientRepository:
                         "data_inicio": stmt.excluded.data_inicio,
                         "data_expiracao": stmt.excluded.data_expiracao,
                         "status": stmt.excluded.status,
+                        "messenger_psid": stmt.excluded.messenger_psid,
+                        "channel": stmt.excluded.channel,
                     },
                 )
                 session.execute(stmt)
@@ -94,6 +141,8 @@ class ClientRepository:
                     existing.data_inicio = values["data_inicio"]
                     existing.data_expiracao = values["data_expiracao"]
                     existing.status = values["status"]
+                    existing.messenger_psid = values["messenger_psid"]
+                    existing.channel = values["channel"]
             session.commit()
             row = session.query(LotoiaClient).filter(LotoiaClient.phone == normalized_phone).one()
             return _model_to_dict(row)
@@ -147,16 +196,23 @@ class ClientRepository:
         jogos: list[dict[str, Any]],
         generation_event_id: int | None = None,
         concurso_alvo: int | None = None,
+        channel: str = "whatsapp",
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
+            stored_phone = str(phone or "").strip()
+            if stored_phone.startswith("m:"):
+                normalized_phone = stored_phone
+            else:
+                normalized_phone = normalize_whatsapp(phone)
             row = LotoiaClientGeneration(
                 client_id=int(client_id),
-                phone=normalize_whatsapp(phone),
+                phone=normalized_phone,
                 formato=int(formato),
                 quantidade=int(quantidade),
                 jogos=list(jogos),
                 generation_event_id=generation_event_id,
                 concurso_alvo=int(concurso_alvo) if concurso_alvo is not None else None,
+                channel=str(channel or "whatsapp").strip().lower(),
             )
             session.add(row)
             session.commit()
@@ -168,6 +224,7 @@ class ClientRepository:
         *,
         status_filter: str = "todos",
         plan_filter: str = "todos",
+        channel_filter: str = "todos",
     ) -> list[dict[str, Any]]:
         today = datetime.now(UTC).date()
         with get_session(self.db_path) as session:
@@ -187,6 +244,8 @@ class ClientRepository:
             client_query = session.query(LotoiaClient).order_by(LotoiaClient.created_at.desc())
             if plan_filter != "todos":
                 client_query = client_query.filter(LotoiaClient.plan == plan_filter)
+            if channel_filter != "todos":
+                client_query = client_query.filter(LotoiaClient.channel == channel_filter)
 
             rows: list[dict[str, Any]] = []
             for client in client_query.all():
@@ -202,6 +261,8 @@ class ClientRepository:
                         "id": int(client.id),
                         "nome": str(client.name or ""),
                         "phone": str(client.phone or ""),
+                        "messenger_psid": str(client.messenger_psid or ""),
+                        "channel": str(client.channel or "whatsapp"),
                         "plano": str(client.plan or ""),
                         "formato_maximo": int(client.formato_maximo or 15),
                         "status": effective_status,
@@ -266,6 +327,24 @@ class ClientRepository:
                 .first()
             )
             return exists is not None
+
+    def get_client_status_by_psid(self, psid: str) -> dict[str, Any] | None:
+        client = self.get_by_messenger_psid(psid)
+        if not client:
+            return None
+        jogos_hoje = self.get_daily_jogos_count(int(client["id"]))
+        expiration = client.get("data_expiracao")
+        dias_restantes = 0
+        if isinstance(expiration, datetime):
+            expiration_utc = expiration if expiration.tzinfo else expiration.replace(tzinfo=UTC)
+            dias_restantes = max((expiration_utc.date() - datetime.now(UTC).date()).days, 0)
+        saldo_hoje = max(DAILY_LIMIT - jogos_hoje, 0)
+        return {
+            **client,
+            "jogos_hoje": jogos_hoje,
+            "saldo_hoje": saldo_hoje,
+            "dias_restantes": dias_restantes,
+        }
 
     def get_client_status(self, phone: str) -> dict[str, Any] | None:
         client = self.get_by_phone(phone)

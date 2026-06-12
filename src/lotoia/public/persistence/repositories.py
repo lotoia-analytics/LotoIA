@@ -36,6 +36,7 @@ class LeadRepository:
         source: str,
         ip_hash: str,
         user_agent: str,
+        messenger_psid: str | None = None,
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
             lead = Lead(
@@ -44,6 +45,7 @@ class LeadRepository:
                 source=source,
                 ip_hash=ip_hash,
                 user_agent=user_agent,
+                messenger_psid=str(messenger_psid).strip() if messenger_psid else None,
             )
             session.add(lead)
             session.commit()
@@ -85,6 +87,7 @@ class GenerationEventRepository:
         context: dict[str, Any] | None = None,
         first_name: str = "",
         whatsapp: str = "",
+        channel: str = "whatsapp",
     ) -> dict[str, Any]:
         with get_session(self.db_path) as session:
             resolved_lead_id = int(lead_id) if lead_id is not None else 0
@@ -93,11 +96,13 @@ class GenerationEventRepository:
                 first_name=first_name,
                 whatsapp=whatsapp,
                 generated_games=generated_games,
+                context_json=dict(context or {}),
                 ml_enabled=int(ml_enabled),
                 seed=seed,
                 strategy=strategy,
                 ranking_score=ranking_score,
                 execution_time_ms=execution_time_ms,
+                channel=str(channel or "whatsapp").strip().lower(),
             )
             session.add(event)
             session.commit()

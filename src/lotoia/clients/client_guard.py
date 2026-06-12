@@ -152,3 +152,29 @@ def validate_request(
         formato=resolved_formato,
         quantidade=quantidade,
     )
+
+
+def validate_messenger_request(
+    psid: str,
+    formato: int | None,
+    quantidade: int,
+    *,
+    db_path: Path = DEFAULT_DATABASE_PATH,
+) -> ValidationResult:
+    repository = ClientRepository(db_path)
+    client = repository.get_by_messenger_psid(psid)
+    if not client:
+        return ValidationResult(
+            ok=False,
+            error_code="CLIENT_NOT_FOUND",
+            message=(
+                "Conta Messenger não cadastrada.\n"
+                f"Acesse {OFFICIAL_LANDING_HOST} para assinar."
+            ),
+        )
+    return validate_request(
+        str(client.get("phone") or repository.messenger_phone(psid)),
+        formato,
+        quantidade,
+        db_path=db_path,
+    )

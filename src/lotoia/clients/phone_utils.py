@@ -15,6 +15,9 @@ def canonical_brazil_phone(phone: str) -> str:
 
 def phone_lookup_candidates(phone: str) -> list[str]:
     """Return normalized phone variants for Brazil (with and without country code)."""
+    raw = str(phone or "").strip()
+    if raw.startswith("m:"):
+        return [raw]
     normalized = normalize_whatsapp(phone)
     candidates = [normalized, canonical_brazil_phone(normalized)]
     if normalized.startswith("55") and len(normalized) > 11:

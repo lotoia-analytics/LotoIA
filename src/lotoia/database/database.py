@@ -195,10 +195,12 @@ class Lead(Base):
     source: Mapped[str] = mapped_column(String, default="public", nullable=False)
     ip_hash: Mapped[str] = mapped_column(String, default="", nullable=False)
     user_agent: Mapped[str] = mapped_column(String, default="", nullable=False)
+    messenger_psid: Mapped[str | None] = mapped_column(String(64), nullable=True)
     __table_args__ = (
         Index("ix_leads_created_at", "created_at"),
         Index("ix_leads_whatsapp", "whatsapp"),
         Index("ix_leads_source", "source"),
+        Index("ix_leads_messenger_psid", "messenger_psid"),
     )
 
 
@@ -222,6 +224,8 @@ class LotoiaClient(Base):
         nullable=False,
     )
     status: Mapped[str] = mapped_column(String, default="ativo", nullable=False)
+    messenger_psid: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -231,6 +235,8 @@ class LotoiaClient(Base):
         Index("ix_lotoia_clients_phone", "phone"),
         Index("ix_lotoia_clients_status", "status"),
         Index("ix_lotoia_clients_data_expiracao", "data_expiracao"),
+        Index("ix_lotoia_clients_messenger_psid", "messenger_psid"),
+        Index("ix_lotoia_clients_channel", "channel"),
     )
 
 
@@ -265,6 +271,7 @@ class LotoiaClientGeneration(Base):
     jogos: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     generation_event_id: Mapped[int | None] = mapped_column(ForeignKey("generation_events.id"), nullable=True)
     concurso_alvo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -466,6 +473,7 @@ class GenerationEvent(Base):
     strategy: Mapped[str] = mapped_column(String, nullable=False)
     ranking_score: Mapped[float] = mapped_column(Float, nullable=False)
     execution_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
     __table_args__ = (
         Index("ix_generation_events_created_at", "created_at"),
         Index("ix_generation_events_lead_id", "lead_id"),
@@ -1138,6 +1146,37 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                     "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
                 )
                 applied_migrations.append("lotoia_client_generations.concurso_alvo")
+            lotoia_client_columns = {
+                column["name"] for column in inspector.get_columns("lotoia_clients")
+            }
+            for column_sql, column_name in (
+                ("ALTER TABLE lotoia_clients ADD COLUMN messenger_psid VARCHAR(64) UNIQUE", "messenger_psid"),
+                ("ALTER TABLE lotoia_clients ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp'", "channel"),
+            ):
+                if column_name not in lotoia_client_columns:
+                    connection.exec_driver_sql(column_sql)
+                    applied_migrations.append(f"lotoia_clients.{column_name}")
+            if "channel" not in client_generation_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE lotoia_client_generations ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp'"
+                )
+                applied_migrations.append("lotoia_client_generations.channel")
+            if "channel" not in generation_event_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE generation_events ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp'"
+                )
+                applied_migrations.append("generation_events.channel")
+            if "messenger_psid" not in lead_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE leads ADD COLUMN messenger_psid VARCHAR(64)"
+                )
+                connection.exec_driver_sql(
+                    "CREATE INDEX IF NOT EXISTS idx_leads_messenger_psid ON leads(messenger_psid)"
+                )
+                applied_migrations.append("leads.messenger_psid")
+            connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS idx_clients_messenger_psid ON lotoia_clients(messenger_psid)"
+            )
         if applied_migrations:
             logger.info(
                 "Institutional schema migration applied on %s: %s",
@@ -1808,6 +1847,34 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
             )
             applied_migrations.append("lotoia_client_generations.concurso_alvo")
+        if "channel" not in client_generation_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE lotoia_client_generations ADD COLUMN channel TEXT NOT NULL DEFAULT 'whatsapp'"
+            )
+            applied_migrations.append("lotoia_client_generations.channel")
+        lotoia_client_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(lotoia_clients)").fetchall()
+        }
+        for column_sql, column_name in (
+            ("ALTER TABLE lotoia_clients ADD COLUMN messenger_psid TEXT", "messenger_psid"),
+            ("ALTER TABLE lotoia_clients ADD COLUMN channel TEXT NOT NULL DEFAULT 'whatsapp'", "channel"),
+        ):
+            if column_name not in lotoia_client_columns:
+                connection.exec_driver_sql(column_sql)
+                applied_migrations.append(f"lotoia_clients.{column_name}")
+        generation_event_columns = {
+            row[1]
+            for row in connection.exec_driver_sql("PRAGMA table_info(generation_events)").fetchall()
+        }
+        if "channel" not in generation_event_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE generation_events ADD COLUMN channel TEXT NOT NULL DEFAULT 'whatsapp'"
+            )
+            applied_migrations.append("generation_events.channel")
+        if "messenger_psid" not in lead_columns:
+            connection.exec_driver_sql("ALTER TABLE leads ADD COLUMN messenger_psid TEXT")
+            applied_migrations.append("leads.messenger_psid")
     if applied_migrations:
         logger.info(
             "Institutional schema migration applied on %s: %s",
