@@ -6270,6 +6270,80 @@ def _store_active_batch_state(*, batch_id: str | None = None, generation_event_i
         st.session_state["institutional_active_total_games"] = int(total_games)
 
 
+def _extract_persisted_game_numbers(context_json: dict[str, Any]) -> list[int]:
+    raw = (
+        context_json.get("final_card_numbers")
+        or context_json.get("cartao_validado_lei15a")
+        or context_json.get("numbers")
+        or []
+    )
+    return sorted({int(number) for number in raw})
+
+
+def _append_persisted_generation_game(
+    games: list[dict[str, Any]],
+    *,
+    game_index: int,
+    context_json: dict[str, Any],
+    final_score: dict[str, Any] | None = None,
+    quadra_score: dict[str, Any] | None = None,
+    profile_type: str = "",
+) -> None:
+    numbers = _extract_persisted_game_numbers(context_json)
+    if not numbers:
+        return
+    structural_metrics = dict(context_json.get("structural_metrics") or {})
+    core_numbers = list(context_json.get("core_numbers") or numbers or [])
+    audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+    final_card_numbers = list(context_json.get("final_card_numbers") or numbers or [])
+    card_format = _safe_int(
+        context_json.get("selected_card_format")
+        or context_json.get("card_format")
+        or context_json.get("format_cartao")
+        or context_json.get("formato_cartao"),
+        default=None,
+    )
+    expected_card_size = int(card_format or len(final_card_numbers) or len(numbers) or 15)
+    resolved_final_score = dict(final_score or context_json.get("final_score") or {})
+    resolved_quadra_score = dict(quadra_score or context_json.get("quadra_score") or {})
+    games.append(
+        {
+            "game_index": int(game_index),
+            "numbers": numbers,
+            "formato_cartao": int(card_format or len(final_card_numbers) or len(numbers) or 15),
+            "nucleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers) if core_numbers else "",
+            "reservas_auditadas": " ".join(f"{number:02d}" for number in audited_reserve_numbers) if audited_reserve_numbers else "",
+            "cartao_final": final_card_numbers,
+            "expected_card_size": expected_card_size,
+            "actual_card_size": len(final_card_numbers) if final_card_numbers else len(numbers),
+            "profile_type": str(profile_type or context_json.get("profile_type", "") or ""),
+            "perfil": str(profile_type or context_json.get("profile_type", "") or ""),
+            "game_signature": str(context_json.get("game_signature", "") or ""),
+            "context_json": context_json,
+            "score": round(float(resolved_final_score.get("final_score", 0.0) or 0.0), 4),
+            "final_score": resolved_final_score,
+            "quadra_score": resolved_quadra_score,
+            "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
+            "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
+            "odd": sum(1 for number in numbers if number % 2 != 0),
+            "even": sum(1 for number in numbers if number % 2 == 0),
+            "frame": len({((number - 1) // 5) for number in numbers}),
+            "center": sum(1 for number in numbers if 8 <= number <= 18),
+        }
+    )
+
+
+def _is_adm_conference_generation_group(group: dict[str, Any]) -> bool:
+    if int(group.get("total_games", 0) or 0) <= 0:
+        return False
+    strategy = str(group.get("strategy", "") or "").lower()
+    if "whatsapp" in strategy:
+        return False
+    if str(group.get("whatsapp", "") or "").strip():
+        return False
+    return True
+
+
 def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     resolved_batch_id = str(batch_id or "").strip()
@@ -6294,65 +6368,58 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                     if str(dict(getattr(row, "context_json", {}) or {}).get("batch_id", "") or "").strip() == resolved_batch_id
                 ]
                 if not rows:
-                    continue
-            if not rows:
-                continue
+                    event_batch_id = str(event_context_json.get("batch_id", "") or "").strip()
+                    if event_batch_id != resolved_batch_id:
+                        continue
             reconciliation_summary = _load_latest_reconciliation_for_generation(session, int(event.id or 0))
             games: list[dict[str, Any]] = []
             group_context_json = event_context_json
             for row in rows:
-                numbers = [int(number) for number in (row.numbers or [])]
                 context_json = dict(row.context_json or {})
+                if row.numbers and not _extract_persisted_game_numbers(context_json):
+                    context_json = {**context_json, "numbers": [int(number) for number in (row.numbers or [])]}
                 if context_json:
                     group_context_json = context_json
-                structural_metrics = dict(context_json.get("structural_metrics") or {})
-                core_numbers = list(context_json.get("core_numbers") or numbers or [])
-                audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
-                final_card_numbers = list(context_json.get("final_card_numbers") or numbers or [])
-                card_format = _safe_int(
-                    context_json.get("selected_card_format")
-                    or context_json.get("card_format")
-                    or context_json.get("format_cartao")
-                    or context_json.get("formato_cartao"),
-                    default=None,
+                _append_persisted_generation_game(
+                    games,
+                    game_index=int(row.game_index or 0),
+                    context_json=context_json,
+                    final_score=dict(row.final_score or {}),
+                    quadra_score=dict(row.quadra_score or {}),
+                    profile_type=str(row.profile_type or ""),
                 )
-                expected_card_size = int(card_format or len(final_card_numbers) or len(numbers) or 15)
-                games.append(
-                    {
-                        "game_index": int(row.game_index or 0),
-                        "numbers": numbers,
-                        "formato_cartao": int(card_format or len(final_card_numbers) or len(numbers) or 15),
-                        "nucleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers) if core_numbers else "",
-                        "reservas_auditadas": " ".join(f"{number:02d}" for number in audited_reserve_numbers) if audited_reserve_numbers else "",
-                        "cartao_final": final_card_numbers,
-                        "expected_card_size": expected_card_size,
-                        "actual_card_size": len(final_card_numbers) if final_card_numbers else len(numbers),
-                        "profile_type": str(row.profile_type or ""),
-                        "perfil": str(row.profile_type or ""),
-                        "game_signature": str(context_json.get("game_signature", "") or ""),
-                        "context_json": context_json,
-                        "score": round(float((row.final_score or {}).get("final_score", 0.0) or 0.0), 4),
-                        "final_score": dict(row.final_score or {}),
-                        "quadra_score": dict(row.quadra_score or {}),
-                        "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
-                        "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
-                        "odd": sum(1 for number in numbers if number % 2 != 0),
-                        "even": sum(1 for number in numbers if number % 2 == 0),
-                        "frame": len({((number - 1) // 5) for number in numbers}),
-                        "center": sum(1 for number in numbers if 8 <= number <= 18),
-                    }
-                )
+            if not games:
+                embedded_games = list(getattr(event, "generated_games", None) or [])
+                for index, raw_game in enumerate(embedded_games, start=1):
+                    if not isinstance(raw_game, dict):
+                        continue
+                    context_json = dict(raw_game)
+                    if context_json:
+                        group_context_json = context_json
+                    _append_persisted_generation_game(
+                        games,
+                        game_index=int(raw_game.get("game_index", index) or index),
+                        context_json=context_json,
+                        profile_type=str(raw_game.get("profile_type", "") or ""),
+                    )
+            if not games:
+                continue
             target_contests: list[int] = []
             for row in rows:
                 value = _safe_int(_safe_get(row, "target_contest"), default=None)
                 if value is not None and value > 0:
                     target_contests.append(value)
+            event_target_contest = _safe_int(event_context_json.get("target_contest"), default=None)
+            if event_target_contest is not None and event_target_contest > 0:
+                target_contests.append(event_target_contest)
             groups.append(
                 {
                     "generation_event_id": int(event.id or 0),
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
+                    "first_name": str(getattr(event, "first_name", "") or ""),
+                    "whatsapp": str(getattr(event, "whatsapp", "") or ""),
                     "batch_id": str(group_context_json.get("batch_id", "") or ""),
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
@@ -12069,7 +12136,11 @@ def _format_generation_option_label(group: dict[str, Any]) -> str:
 
 
 def _load_generation_select_options() -> tuple[list[int], dict[int, dict[str, Any]], dict[int, str]]:
-    groups = _load_persisted_generation_event_groups(batch_id=None)
+    groups = [
+        group
+        for group in _load_persisted_generation_event_groups(batch_id=None)
+        if _is_adm_conference_generation_group(group)
+    ]
     generation_by_id = {
         int(group.get("generation_event_id", 0) or 0): group
         for group in groups
