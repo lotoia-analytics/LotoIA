@@ -178,11 +178,12 @@ class ResultSyncService:
                         raise
                     continue
 
-            latest_record = self.repository.get_latest_contest_record()
-            persisted_contest = int(latest_record["concurso"]) if latest_record else None
-            if persisted_contest != latest_contest:
+            confirmation = self.repository.confirm_sync_persistence(latest_contest)
+            if not confirmation.get("ok"):
                 raise RuntimeError(
-                    f"PostgreSQL persistence mismatch: latest={latest_contest} persisted={persisted_contest}"
+                    "PostgreSQL post-commit confirmation failed: "
+                    f"latest={latest_contest} imported_max={confirmation.get('imported_contests_max')} "
+                    f"official_max={confirmation.get('lotofacil_official_history_max')}"
                 )
 
             return self._build_summary(
@@ -263,6 +264,13 @@ class ResultSyncService:
                     )
                     synced_contests.append(contest.contest_number)
                     latest_contest = contest.contest_number
+            if latest_contest is not None:
+                confirmation = self.repository.confirm_sync_persistence(int(latest_contest))
+                if not confirmation.get("ok"):
+                    raise RuntimeError(
+                        "PostgreSQL post-commit confirmation failed for "
+                        f"contest={latest_contest}"
+                    )
             return self._build_summary(
                 latest_contest=latest_contest,
                 synced_contests=synced_contests,

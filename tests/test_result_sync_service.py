@@ -158,6 +158,60 @@ def test_result_sync_service_uses_controlled_fallback_when_latest_request_is_for
     assert int(latest_record["concurso"]) == csv_latest
 
 
+def test_confirm_sync_persistence_requires_both_tables(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    repository = ContestRepository(db_path)
+    repository.create_table()
+    repository.save_contest(
+        {
+            "concurso": 3708,
+            "data": "10/06/2026",
+            "dezenas": [f"{n:02d}" for n in range(1, 16)],
+            "metadata_json": {"numero": 3708},
+        }
+    )
+
+    assert repository.confirm_sync_persistence(3708)["ok"] is True
+    assert repository.get_official_history_max_contest() == 3708
+    assert repository.get_last_contest() == 3708
+
+    with get_session(db_path) as session:
+        session.query(LotofacilOfficialHistory).filter(LotofacilOfficialHistory.contest_number == 3708).delete()
+        session.commit()
+
+    confirmation = repository.confirm_sync_persistence(3708)
+    assert confirmation["ok"] is False
+    assert confirmation["official_history_found"] is False
+
+
+def test_result_sync_service_confirms_postgresql_after_sync(tmp_path: Path) -> None:
+    db_path = tmp_path / "lotoia.db"
+    repository = ContestRepository(db_path)
+
+    class FakeClient:
+        base_url = "https://example.test/api/lotofacil"
+
+        def fetch_latest(self) -> CaixaContestResult:
+            return CaixaContestResult(
+                contest_number=3708,
+                draw_date="10/06/2026",
+                numbers=list(range(1, 16)),
+                source_url=self.base_url,
+                raw_payload={"numero": 3708, "dataApuracao": "10/06/2026", "listaDezenas": [f"{n:02d}" for n in range(1, 16)]},
+            )
+
+        def fetch_contest(self, contest_number: int) -> CaixaContestResult:
+            raise AssertionError(contest_number)
+
+    service = ResultSyncService(client=FakeClient(), repository=repository)
+    summary = service.sync_latest()
+
+    assert summary.commit_state == "ok"
+    assert summary.latest_contest == 3708
+    assert repository.confirm_sync_persistence(3708)["ok"] is True
+    assert repository.get_official_history_max_contest() == 3708
+
+
 def test_contest_repository_restores_missing_official_history_row(tmp_path: Path) -> None:
     db_path = tmp_path / "lotoia.db"
     repository = ContestRepository(db_path)

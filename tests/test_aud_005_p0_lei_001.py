@@ -108,6 +108,16 @@ def test_sync_latest_official_result_now_ok_on_commit_ok(monkeypatch: pytest.Mon
         def get_latest_contest_record(self) -> dict[str, object]:
             return {"contest_number": 3700, "dezenas": list(range(1, 16))}
 
+        def confirm_sync_persistence(self, contest_number: int) -> dict[str, object]:
+            return {
+                "ok": True,
+                "contest_number": int(contest_number),
+                "imported_contests_max": int(contest_number),
+                "lotofacil_official_history_max": int(contest_number),
+                "imported_contest_found": True,
+                "official_history_found": True,
+            }
+
         def get_all_contests(self) -> list[dict[str, object]]:
             return []
 
@@ -133,6 +143,23 @@ def test_get_latest_contest_is_db_first(monkeypatch: pytest.MonkeyPatch) -> None
     result = admin_app._get_latest_contest()
     assert result is not None
     assert int(result.get("contest_number", 0) or 0) == 3701
+
+
+def test_load_official_sync_contest_summary_requires_postgresql_persistence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        admin_app,
+        "_load_official_sync_diagnostics",
+        lambda: {
+            "imported_contest": 3708,
+            "imported_numbers": list(range(1, 16)),
+            "payload": {"latest_contest": 3708, "latest_contest_record": {"concurso": 3708}},
+        },
+    )
+    monkeypatch.setattr(admin_app, "get_official_contest", lambda _contest: None)
+
+    assert admin_app._load_official_sync_contest_summary() is None
 
 
 def test_resolve_institutional_check_result_prefers_db(monkeypatch: pytest.MonkeyPatch) -> None:
