@@ -65,7 +65,11 @@ class EvolutionApiClient:
         return False
 
     def send_menu_bundle(self, phone: str, menu_bundle: dict[str, Any]) -> bool:
-        """Send welcome text first, then try list/buttons (Baileys may hide interactive UI)."""
+        """Deliver menu as text-only or text + interactive fallback."""
+        if menu_bundle.get("text_only"):
+            text_fallback = str(menu_bundle.get("text_fallback") or "").strip()
+            return bool(text_fallback and self.send_text(phone, text_fallback))
+
         prefer_list = bool(menu_bundle.get("prefer_list"))
         text_fallback = str(menu_bundle.get("text_fallback") or "").strip()
         delivered_text = bool(text_fallback and self.send_text(phone, text_fallback))

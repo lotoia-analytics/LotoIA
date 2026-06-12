@@ -82,12 +82,11 @@ def build_welcome_text(*, client_status: dict[str, Any]) -> str:
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
     return (
-        "👋 *Olá! Bem-vindo à LotoIA*\n\n"
-        f"Plano *{plan}* — até *{formato_maximo}D*\n"
-        f"Saldo hoje: *{saldo_hoje} jogos*\n\n"
-        "*Quantos jogos quer gerar?*\n\n"
-        "Toque em *Escolher quantidade* abaixo\n"
-        "ou digite a quantidade (ex.: *5* ou *3 jogos*)."
+        f"👋 Olá! Plano {plan} — até {formato_maximo}D\n"
+        f"Saldo hoje: {saldo_hoje} jogos\n\n"
+        "Quantos jogos quer gerar?\n"
+        "Digite: 5, 10, 20\n"
+        f"ou outro número (1 a {saldo_hoje})."
     )
 
 
@@ -137,48 +136,19 @@ def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, An
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
 
     if saldo_hoje <= 0:
-        description = (
-            f"Plano {plan} — até {formato_maximo}D\n\n"
-            "Você já usou o limite diário de jogos.\n"
-            "Volte amanhã para gerar novos cartões."
-        )
-        return _menu_bundle(
-            description=description,
-            button_options=[],
-            list_rows=[{"title": "Limite diário atingido", "description": "Volte amanhã", "rowId": "noop:limit"}],
-            list_button_text="Indisponível",
-            text_fallback=description,
-        )
+        return {
+            "text_only": True,
+            "text_fallback": (
+                f"👋 Olá! Plano {plan} — até {formato_maximo}D\n\n"
+                "Você já usou o limite diário de jogos.\n"
+                "Volte amanhã para gerar novos cartões."
+            ),
+        }
 
-    description = (
-        f"Plano {plan} — até {formato_maximo}D\n"
-        f"Saldo hoje: {saldo_hoje} jogos\n\n"
-        "Quantos jogos quer gerar?"
-    )
-    button_options: list[tuple[str, str]] = [
-        ("05 Jogos", "qty:5"),
-        ("10 Jogos", "qty:10"),
-        ("20 Jogos", "qty:20"),
-    ]
-    list_rows = [
-        {"title": "05 Jogos", "description": "Gerar 5 cartões em 15D", "rowId": "qty:5"},
-        {"title": "10 Jogos", "description": "Gerar 10 cartões em 15D", "rowId": "qty:10"},
-        {"title": "20 Jogos", "description": "Gerar 20 cartões em 15D", "rowId": "qty:20"},
-        {
-            "title": "Outra quantidade",
-            "description": "Digite de 1 a 30 jogos",
-            "rowId": "qty:custom",
-        },
-    ]
-    bundle = _menu_bundle(
-        description=description,
-        button_options=button_options,
-        list_rows=list_rows,
-        list_button_text="Escolher quantidade",
-        prefer_list=True,
-        text_fallback=build_welcome_text(client_status=client_status),
-    )
-    return bundle
+    return {
+        "text_only": True,
+        "text_fallback": build_welcome_text(client_status=client_status),
+    }
 
 
 def build_quantity_more_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, Any]:

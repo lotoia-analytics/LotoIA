@@ -13,7 +13,7 @@ from lotoia.clients.interactive_menu import (
 )
 
 
-def test_build_quantity_menu_bundle_uses_professional_list() -> None:
+def test_build_quantity_menu_bundle_is_text_only() -> None:
     bundle = build_quantity_menu_bundle(
         client_status={
             "plan": "basico",
@@ -21,19 +21,22 @@ def test_build_quantity_menu_bundle_uses_professional_list() -> None:
             "saldo_hoje": 30,
         }
     )
-    assert bundle["prefer_list"] is True
-    rows = bundle["list_payload"]["sections"][0]["rows"]
-    assert [row["title"] for row in rows] == ["05 Jogos", "10 Jogos", "20 Jogos", "Outra quantidade"]
-    assert bundle["buttons_payload"]["buttons"][0]["displayText"] == "05 Jogos"
-    assert "1 —" not in bundle["text_fallback"]
+    assert bundle["text_only"] is True
+    assert "Digite: 5, 10, 20" in bundle["text_fallback"]
+    assert "Toque" not in bundle["text_fallback"]
 
 
 def test_build_welcome_text_is_clean() -> None:
     text = build_welcome_text(
         client_status={"plan": "basico", "formato_maximo": 15, "saldo_hoje": 30}
     )
-    assert "Escolher quantidade" in text
-    assert "1 —" not in text
+    assert text == (
+        "👋 Olá! Plano Básico — até 15D\n"
+        "Saldo hoje: 30 jogos\n\n"
+        "Quantos jogos quer gerar?\n"
+        "Digite: 5, 10, 20\n"
+        "ou outro número (1 a 30)."
+    )
 
 
 def test_build_confirm_menu_bundle_has_gerar_jogos() -> None:

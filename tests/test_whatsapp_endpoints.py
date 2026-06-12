@@ -256,7 +256,7 @@ def test_whatsapp_webhook_replies_to_ola_with_menu_text(isolated_db: Path) -> No
     assert body["status"] == "menu"
     assert body.get("delivered") is True
     assert _FAKE_EVOLUTION is not None
-    assert any("Bem-vindo à LotoIA" in text for _, text in _FAKE_EVOLUTION.sent_texts)
+    assert any("Plano" in text and "Quantos jogos quer gerar?" in text for _, text in _FAKE_EVOLUTION.sent_texts)
 
 
 def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:
@@ -276,8 +276,7 @@ def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db:
     assert body.get("delivered") is True
     assert _FAKE_EVOLUTION is not None
     assert len(_FAKE_EVOLUTION.sent_menu_bundles) == 1
-    buttons_payload = _FAKE_EVOLUTION.sent_buttons[0][1]
-    assert buttons_payload["buttons"][0]["id"] == "qty:5"
+    assert any("Digite: 5, 10, 20" in text for _, text in _FAKE_EVOLUTION.sent_texts)
 
 
 def test_whatsapp_webhook_prompts_custom_quantity(isolated_db: Path) -> None:
