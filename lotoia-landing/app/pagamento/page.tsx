@@ -40,7 +40,7 @@ export default function PagamentoPage() {
         <h1 className="text-3xl font-bold text-white">Pagamento não encontrado</h1>
         <p className="mt-3 text-muted">Volte para a landing e inicie uma nova assinatura.</p>
         <Link href="/" className="mt-6 inline-flex text-accent hover:underline">
-          Voltar para lotoia.chat
+          Voltar para www.lotoia.chat
         </Link>
       </main>
     );
