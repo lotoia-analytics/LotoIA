@@ -9,6 +9,7 @@ from lotoia.clients.interactive_menu import (
     is_greeting,
     parse_custom_quantity,
     parse_menu_selection,
+    resolve_generation_formato,
     set_awaiting_custom_quantity,
 )
 
@@ -30,12 +31,33 @@ def test_build_welcome_text_is_clean() -> None:
     text = build_welcome_text(
         client_status={"plan": "basico", "formato_maximo": 15, "saldo_hoje": 30}
     )
-    assert text == (
-        "👋 Olá! Plano Básico — até 15D\n"
-        "Saldo hoje: 30 jogos\n\n"
-        "Quantos jogos quer gerar?\n"
-        "Digite: 5, 10, 20\n"
-        "ou outro número (1 a 30)."
+    assert "Plano Básico" in text
+    assert "Formatos: 15D" in text
+    assert "Jogos gerados em 15D." in text
+
+
+def test_build_welcome_text_for_pro_plan() -> None:
+    text = build_welcome_text(
+        client_status={"plan": "pro", "formato_maximo": 18, "saldo_hoje": 30}
+    )
+    assert "Formatos: 15D + 18D" in text
+    assert "Jogos gerados em 18D." in text
+
+
+def test_resolve_generation_formato_uses_plan_max() -> None:
+    assert (
+        resolve_generation_formato(
+            {"quantidade": 5, "formato": None},
+            client_status={"formato_maximo": 18},
+        )
+        == 18
+    )
+    assert (
+        resolve_generation_formato(
+            {"quantidade": 5, "formato": 15},
+            client_status={"formato_maximo": 18},
+        )
+        == 15
     )
 
 
@@ -59,7 +81,7 @@ def test_is_greeting() -> None:
 def test_parse_menu_selection_fixed_and_custom() -> None:
     assert parse_menu_selection("qty:10", phone="5511999999999") == {
         "quantidade": 10,
-        "formato": 15,
+        "formato": None,
     }
     assert parse_menu_selection("qty:custom", phone="5511999999999") == {
         "next_menu": "await_custom_quantity",

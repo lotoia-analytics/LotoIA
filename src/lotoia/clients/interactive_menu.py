@@ -3,12 +3,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from lotoia.clients.constants import VALID_QUANTITIES
+from lotoia.clients.constants import PLANS, VALID_QUANTITIES
 
 MENU_QUANTITIES = (5, 10, 20, 30)
 FIXED_MENU_QUANTITIES = (5, 10, 20)
-
-DEFAULT_GAME_FORMAT = 15
 
 HELP_MESSAGE = "Quantos jogos você quer gerar hoje?"
 
@@ -77,16 +75,43 @@ def register_quick_options(phone: str, button_options: list[tuple[str, str]]) ->
     return build_welcome_text_from_options(button_options=button_options)
 
 
+def plan_formats_label(plan_key: str) -> str:
+    plan_config = PLANS.get(str(plan_key or "basico").strip().lower(), {})
+    return str(plan_config.get("formats") or f"até {plan_config.get('formato_max', 15)}D")
+
+
+def resolve_generation_formato(
+    parsed: dict[str, Any],
+    *,
+    client_status: dict[str, Any] | None,
+) -> int:
+    formato = parsed.get("formato")
+    if formato is not None:
+        return int(formato)
+    if client_status:
+        return int(client_status.get("formato_maximo", 15) or 15)
+    return 15
+
+
 def build_welcome_text(*, client_status: dict[str, Any]) -> str:
-    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
+    plan_key = str(client_status.get("plan", "basico") or "basico").strip().lower()
+    plan = _plan_label(plan_key)
     formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    formats = plan_formats_label(plan_key)
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
+    format_hint = (
+        f"Jogos gerados em {formato_maximo}D."
+        if formato_maximo == 15
+        else f"Jogos gerados em {formato_maximo}D. Para 15D, digite ex.: 5 jogos de 15D."
+    )
     return (
-        f"👋 Olá! Plano {plan} — até {formato_maximo}D\n"
+        f"👋 Olá! Plano {plan}\n"
+        f"Formatos: {formats}\n"
         f"Saldo hoje: {saldo_hoje} jogos\n\n"
         "Quantos jogos quer gerar?\n"
         "Digite: 5, 10, 20\n"
-        f"ou outro número (1 a {saldo_hoje})."
+        f"ou outro número (1 a {saldo_hoje}).\n\n"
+        f"{format_hint}"
     )
 
 
@@ -277,7 +302,7 @@ def parse_menu_selection(selection_id: str, *, text: str = "", phone: str = "") 
             return {"next_menu": "quantity_more"}
         if value == "custom":
             return {"next_menu": "await_custom_quantity"}
-        return {"quantidade": int(value), "formato": DEFAULT_GAME_FORMAT}
+        return {"quantidade": int(value), "formato": None}
     return None
 
 

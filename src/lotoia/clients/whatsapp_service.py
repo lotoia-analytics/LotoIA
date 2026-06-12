@@ -25,6 +25,7 @@ from lotoia.clients.interactive_menu import (
     is_greeting,
     parse_custom_quantity,
     parse_menu_selection,
+    resolve_generation_formato,
     set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
@@ -230,7 +231,7 @@ def process_whatsapp_webhook(
                 "message": build_custom_quantity_prompt(saldo_hoje=saldo_hoje),
             }
         clear_awaiting_custom_quantity(phone)
-        parsed = {"quantidade": quantidade, "formato": 15}
+        parsed = {"quantidade": quantidade, "formato": None}
 
     if menu_parsed and menu_parsed.get("next_menu") == "await_custom_quantity":
         if not client_status:
@@ -280,7 +281,9 @@ def process_whatsapp_webhook(
             "message": HELP_MESSAGE,
         }
 
-    if menu_parsed and menu_parsed.get("formato") is not None:
+    if menu_parsed and menu_parsed.get("quantidade") is not None:
+        parsed = menu_parsed
+    elif menu_parsed and menu_parsed.get("formato") is not None:
         parsed = menu_parsed
 
     if not parsed:
@@ -300,7 +303,7 @@ def process_whatsapp_webhook(
         }
 
     quantidade = int(parsed["quantidade"])
-    formato = parsed.get("formato")
+    formato = resolve_generation_formato(parsed, client_status=client_status)
     validation = validate_request(phone, formato, quantidade, db_path=db_path)
     if not validation.ok:
         if validation.error_code == "CLIENT_NOT_FOUND":

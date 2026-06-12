@@ -335,6 +335,29 @@ def test_whatsapp_webhook_generates_games_from_typed_quantity(isolated_db: Path)
     assert body["formato"] == 15
 
 
+def test_whatsapp_webhook_generates_pro_games_at_plan_format(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-pro-qty"},
+                "message": {
+                    "buttonsResponseMessage": {
+                        "selectedButtonId": "qty:5",
+                        "selectedDisplayText": "5 jogos",
+                    }
+                },
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body["quantidade"] == 5
+    assert body["formato"] == 18
+
+
 def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Path) -> None:
     _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
     status_code, body = _request(
