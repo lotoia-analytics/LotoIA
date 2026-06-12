@@ -163,9 +163,14 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
           </label>
 
           {activePlan ? (
-            <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-muted">
-              {activePlan.formats} · 30 dias · até 30 jogos/dia
-            </p>
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+              <p className="text-2xl font-bold text-white">
+                R$ {activePlan.price.toFixed(2).replace(".", ",")}
+              </p>
+              <p className="mt-1 text-muted">
+                {activePlan.formats} · 30 dias · até 30 jogos/dia
+              </p>
+            </div>
           ) : null}
 
           {error ? <p className="text-sm text-red-300">{error}</p> : null}
@@ -175,7 +180,11 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
             disabled={loading}
             className="w-full rounded-xl bg-accent px-4 py-4 text-base font-semibold text-white transition hover:bg-[#3f7be0] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Gerando PIX..." : "Continuar para pagamento"}
+            {loading
+              ? "Gerando PIX..."
+              : activePlan
+                ? `Pagar R$ ${activePlan.price.toFixed(2).replace(".", ",")} via PIX`
+                : "Continuar para pagamento"}
           </button>
         </form>
       </div>

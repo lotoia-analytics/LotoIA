@@ -4,7 +4,7 @@ export const OFFICIAL_LANDING_URL = `https://${OFFICIAL_LANDING_HOST}`;
 export const COMPANY = {
   tradeName: "LotoIA",
   legalName: process.env.NEXT_PUBLIC_COMPANY_LEGAL_NAME?.trim() || "LotoIA",
-  cnpj: process.env.NEXT_PUBLIC_COMPANY_CNPJ?.trim() || "",
+  cnpj: process.env.NEXT_PUBLIC_COMPANY_CNPJ?.trim() || "04.949.548/0001-33",
   address: {
     street: "Rua G3, Tropical 3",
     city: "Água Boa",
