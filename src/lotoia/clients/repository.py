@@ -171,31 +171,32 @@ class ClientRepository:
     ) -> list[dict[str, Any]]:
         today = datetime.now(UTC).date()
         with get_session(self.db_path) as session:
-            generation_stats = (
-                session.query(
-                    LotoiaClientGeneration.client_id.label("client_id"),
-                    func.count(LotoiaClientGeneration.id).label("total_geracoes"),
-                    func.coalesce(func.sum(LotoiaClientGeneration.quantidade), 0).label("total_jogos"),
-                    func.max(LotoiaClientGeneration.created_at).label("ultima_geracao"),
-                )
-                .group_by(LotoiaClientGeneration.client_id)
-                .subquery()
-            )
-            query = (
-                session.query(LotoiaClient, generation_stats)
-                .outerjoin(generation_stats, LotoiaClient.id == generation_stats.c.client_id)
-                .order_by(LotoiaClient.created_at.desc())
-            )
+            stats_by_client: dict[int, dict[str, Any]] = {}
+            for client_id, total_geracoes, total_jogos, ultima_geracao in session.query(
+                LotoiaClientGeneration.client_id,
+                func.count(LotoiaClientGeneration.id),
+                func.coalesce(func.sum(LotoiaClientGeneration.quantidade), 0),
+                func.max(LotoiaClientGeneration.created_at),
+            ).group_by(LotoiaClientGeneration.client_id):
+                stats_by_client[int(client_id)] = {
+                    "total_geracoes": int(total_geracoes or 0),
+                    "total_jogos": int(total_jogos or 0),
+                    "ultima_geracao": ultima_geracao,
+                }
+
+            client_query = session.query(LotoiaClient).order_by(LotoiaClient.created_at.desc())
             if plan_filter != "todos":
-                query = query.filter(LotoiaClient.plan == plan_filter)
+                client_query = client_query.filter(LotoiaClient.plan == plan_filter)
+
             rows: list[dict[str, Any]] = []
-            for client, stats in query.all():
+            for client in client_query.all():
                 expiration = client.data_expiracao
                 expiration_utc = expiration if expiration.tzinfo else expiration.replace(tzinfo=UTC)
                 dias_restantes = max((expiration_utc.date() - today).days, 0)
                 effective_status = "ativo" if client.status == "ativo" and expiration_utc.date() >= today else "expirado"
                 if status_filter != "todos" and effective_status != status_filter:
                     continue
+                stats = stats_by_client.get(int(client.id), {})
                 rows.append(
                     {
                         "id": int(client.id),
@@ -207,9 +208,9 @@ class ClientRepository:
                         "data_inicio": client.data_inicio,
                         "data_expiracao": client.data_expiracao,
                         "dias_restantes": dias_restantes,
-                        "total_geracoes": int(getattr(stats, "total_geracoes", 0) or 0) if stats else 0,
-                        "total_jogos": int(getattr(stats, "total_jogos", 0) or 0) if stats else 0,
-                        "ultima_geracao": getattr(stats, "ultima_geracao", None) if stats else None,
+                        "total_geracoes": int(stats.get("total_geracoes", 0) or 0),
+                        "total_jogos": int(stats.get("total_jogos", 0) or 0),
+                        "ultima_geracao": stats.get("ultima_geracao"),
                     }
                 )
             return rows

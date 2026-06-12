@@ -7940,8 +7940,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         st.info("Ainda não há gerações persistidas para reconstrução institucional.")
     else:
         total_generation_events = len(generation_df)
-        total_contests_reconciled = int(generation_df["concurso conferido"].fillna(0).astype(int).ne(0).sum())
-        highest_hits = int(generation_df["maior acerto"].fillna(0).astype(int).max())
+        total_contests_reconciled = int(
+            pd.to_numeric(generation_df["concurso conferido"], errors="coerce").fillna(0).astype(int).ne(0).sum()
+        )
+        highest_hits = int(pd.to_numeric(generation_df["maior acerto"], errors="coerce").fillna(0).astype(int).max())
         best_score = float(generation_df["melhor score"].fillna(0.0).astype(float).max())
         latest_generation_label = generation_df.iloc[0]["geração"]
         summary_cols = st.columns(5)
@@ -8114,7 +8116,7 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
     latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
     latest_reconciliation_id = (
-        int(generation_df["reconciliation_id"].fillna(0).astype(int).max())
+        int(pd.to_numeric(generation_df["reconciliation_id"], errors="coerce").fillna(0).astype(int).max())
         if not generation_df.empty and "reconciliation_id" in generation_df.columns
         else 0
     )

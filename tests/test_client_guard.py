@@ -98,3 +98,23 @@ def test_validate_request_ok(db_path: Path) -> None:
     assert result.ok is True
     assert result.formato == 18
     assert result.quantidade == 10
+
+
+def test_list_clients_with_stats_aggregates_generations(db_path: Path) -> None:
+    client = _activate(db_path, plan="pro")
+    repository = ClientRepository(db_path)
+    repository.log_client_generation(
+        client_id=int(client["id"]),
+        phone=str(client["phone"]),
+        formato=15,
+        quantidade=2,
+        jogos=[{"numbers": list(range(1, 16))}, {"numbers": list(range(1, 16))}],
+        concurso_alvo=3709,
+    )
+
+    rows = repository.list_clients_with_stats()
+    assert len(rows) == 1
+    assert rows[0]["nome"] == "Ana"
+    assert rows[0]["total_geracoes"] == 1
+    assert rows[0]["total_jogos"] == 2
+    assert rows[0]["status"] == "ativo"
