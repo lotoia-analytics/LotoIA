@@ -14,11 +14,11 @@ export const metadata: Metadata = {
     "Análise de 3.700+ concursos oficiais. Assine e receba jogos estruturados no WhatsApp.",
   icons: {
     icon: [
+      { url: "/favicon.png", type: "image/png", sizes: "48x48" },
       { url: "/favicon.ico", sizes: "any" },
       { url: "/icon.png", type: "image/png", sizes: "32x32" },
-      { url: "/lotoia-icon.png", type: "image/png", sizes: "512x512" },
     ],
-    shortcut: "/favicon.ico",
+    shortcut: "/favicon.png",
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
