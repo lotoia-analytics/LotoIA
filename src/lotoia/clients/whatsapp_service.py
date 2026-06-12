@@ -33,6 +33,7 @@ from lotoia.clients.interactive_menu import (
     set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
+from lotoia.clients.conference_utils import resolve_next_target_contest
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.engine import generate_ranked_games
@@ -386,6 +387,7 @@ def _execute_valid_generation(
     )
     log_formato = max(formato for formato, _ in targets)
     repository = ClientRepository(db_path)
+    concurso_alvo = resolve_next_target_contest(db_path)
     client_generation = repository.log_client_generation(
         client_id=int(client["id"]),
         phone=phone,
@@ -393,6 +395,7 @@ def _execute_valid_generation(
         quantidade=quantidade,
         jogos=games,
         generation_event_id=int(generation_event.get("id") or 0) or None,
+        concurso_alvo=concurso_alvo,
     )
     repository.increment_daily_usage(int(client["id"]), quantidade=quantidade)
     response_message = format_games_whatsapp_message(

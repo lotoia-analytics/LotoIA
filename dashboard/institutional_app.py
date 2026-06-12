@@ -30,6 +30,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.clients.repository import ClientRepository
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
 from lotoia.database.institutional_read_repository import InstitutionalReadRepository, count_generated_games_for_event
@@ -439,6 +440,7 @@ PAGE_TARGETS = {
     "Cobertura estrutural": "structural_coverage",
     "Benchmark resumido": "summary_benchmark",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
+    "Leads": "leads",
 }
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
@@ -1006,6 +1008,9 @@ def _database_snapshot() -> dict[str, Any]:
         "scientific_institutional_memory",
         "expansion_events",
         "operational_logs",
+        "lotoia_clients",
+        "lotoia_client_generations",
+        "lotoia_client_conference_results",
     ]
     latest_fields = {
         "generation_events": "created_at",
@@ -1020,6 +1025,9 @@ def _database_snapshot() -> dict[str, Any]:
         "scientific_institutional_memory": "created_at",
         "expansion_events": "created_at",
         "operational_logs": "created_at",
+        "lotoia_clients": "created_at",
+        "lotoia_client_generations": "created_at",
+        "lotoia_client_conference_results": "created_at",
     }
     counts: dict[str, int] = {}
     latest: dict[str, Any] = {}
@@ -7784,6 +7792,132 @@ INST_HISTORY_DISPLAY_COLUMNS = [
 ]
 
 
+def _format_leads_datetime(value: Any) -> str:
+    if value in (None, "", "-"):
+        return "—"
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).strftime("%d/%m/%Y %H:%M")
+    try:
+        parsed = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(parsed):
+            return str(value)
+        return parsed.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return str(value)
+
+
+def _load_whatsapp_generations_rows(*, limit: int = 200) -> list[dict[str, Any]]:
+    repository = ClientRepository(DB_PATH)
+    rows: list[dict[str, Any]] = []
+    for item in repository.list_whatsapp_generations(limit=limit):
+        rows.append(
+            {
+                "data": _format_leads_datetime(item.get("created_at")),
+                "cliente": str(item.get("cliente_nome") or item.get("phone") or "—"),
+                "plano": str(item.get("cliente_plano") or "—"),
+                "formato": f"{int(item.get('formato') or 15)}D",
+                "quantidade": int(item.get("quantidade") or 0),
+                "concurso_alvo": int(item.get("concurso_alvo") or 0) or "—",
+                "generation_event_id": int(item.get("generation_event_id") or 0) or "—",
+            }
+        )
+    return rows
+
+
+def _render_leads_page(snapshot: dict[str, Any]) -> None:
+    backend = str(snapshot.get("backend", "") or "").lower()
+    if backend != "postgresql":
+        st.error("Página Leads disponível apenas com PostgreSQL (Lei No 001).")
+        st.caption(f"backend_atual={backend or '-'}")
+        return
+
+    st.subheader("Leads")
+    st.caption("Consulta somente leitura de clientes WhatsApp e histórico operacional persistido no PostgreSQL.")
+
+    repository = ClientRepository(DB_PATH)
+    filter_cols = st.columns(2)
+    status_filter = filter_cols[0].selectbox(
+        "Status",
+        ["todos", "ativo", "expirado"],
+        index=0,
+        key="leads_status_filter",
+    )
+    plan_filter = filter_cols[1].selectbox(
+        "Plano",
+        ["todos", "basico", "plus", "avancado", "pro", "master", "elite"],
+        index=0,
+        key="leads_plan_filter",
+    )
+
+    leads = repository.list_clients_with_stats(status_filter=status_filter, plan_filter=plan_filter)
+    if not leads:
+        st.info("Nenhum lead encontrado com os filtros atuais.")
+        return
+
+    table_rows = [
+        {
+            "nome": row["nome"] or "—",
+            "phone": row["phone"],
+            "plano": row["plano"],
+            "formato_maximo": f"{int(row['formato_maximo'])}D",
+            "status": row["status"],
+            "data_inicio": _format_leads_datetime(row.get("data_inicio")),
+            "data_expiracao": _format_leads_datetime(row.get("data_expiracao")),
+            "dias_restantes": int(row.get("dias_restantes") or 0),
+            "total_geracoes": int(row.get("total_geracoes") or 0),
+            "total_jogos": int(row.get("total_jogos") or 0),
+            "ultima_geracao": _format_leads_datetime(row.get("ultima_geracao")),
+        }
+        for row in leads
+    ]
+    leads_df = _make_arrow_safe(pd.DataFrame(table_rows))
+    st.dataframe(leads_df, hide_index=True, use_container_width=True, height=360)
+
+    lead_labels = [
+        f"{row['nome'] or row['phone']} ({row['phone']})"
+        for row in leads
+    ]
+    selected_label = st.selectbox("Detalhe do lead", lead_labels, index=0, key="leads_detail_select")
+    selected_index = lead_labels.index(selected_label)
+    selected_lead = leads[selected_index]
+    client_id = int(selected_lead["id"])
+
+    with st.expander("Histórico de gerações", expanded=True):
+        generations = repository.get_client_generations(client_id)
+        if not generations:
+            st.info("Sem gerações registradas para este lead.")
+        else:
+            generation_rows = [
+                {
+                    "data": _format_leads_datetime(item.get("created_at")),
+                    "quantidade": int(item.get("quantidade") or 0),
+                    "formato": f"{int(item.get('formato') or 15)}D",
+                    "concurso_alvo": int(item.get("concurso_alvo") or 0) or "—",
+                    "generation_event_id": int(item.get("generation_event_id") or 0) or "—",
+                    "jogos": json.dumps(item.get("jogos") or [], ensure_ascii=False),
+                }
+                for item in generations
+            ]
+            st.dataframe(_make_arrow_safe(pd.DataFrame(generation_rows)), hide_index=True, use_container_width=True)
+
+    with st.expander("Histórico de premiações", expanded=False):
+        conference_rows = repository.get_client_conference_results(client_id)
+        if not conference_rows:
+            st.info("Sem conferências registradas para este lead.")
+        else:
+            premio_rows = [
+                {
+                    "concurso": int(item.get("contest_number") or 0),
+                    "jogo": f"{int(item.get('game_index') or 0):02d}",
+                    "acertos": int(item.get("hits") or 0),
+                    "status": str(item.get("premio_status") or "—"),
+                    "notificado": bool(item.get("notified")),
+                }
+                for item in conference_rows
+            ]
+            st.dataframe(_make_arrow_safe(pd.DataFrame(premio_rows)), hide_index=True, use_container_width=True)
+
+
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     institutional_guard = _evaluate_db_first_institutional_guard()
@@ -7965,6 +8099,18 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 hide_index=True,
                 use_container_width=True,
             )
+
+    whatsapp_rows = _load_whatsapp_generations_rows(limit=200)
+    st.markdown("##### Gerações WhatsApp")
+    if not whatsapp_rows:
+        st.info("Ainda não há gerações WhatsApp persistidas em lotoia_client_generations.")
+    else:
+        st.dataframe(
+            _make_arrow_safe(pd.DataFrame(whatsapp_rows)),
+            hide_index=True,
+            use_container_width=True,
+            height=280,
+        )
 
     latest_generation_event_id = int(generation_df["generation_event_id"].max()) if not generation_df.empty else 0
     latest_reconciliation_id = (
@@ -9847,6 +9993,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         ("Histórico Analítico", "history_analytical"),
         ("Histórico Institucional", "history_institutional"),
         ("Comparativos histórico", "comparative_history"),
+        ("Leads", "leads"),
     ]:
         _nav_entry(label, page_id)
 
@@ -9895,6 +10042,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "simulation",
         "history_analytical",
         "history_institutional",
+        "leads",
         "comparative_history",
         "audit",
         "audit_monitoring_conference",
@@ -13825,6 +13973,8 @@ def main() -> None:
         _render_analytical_page(snapshot)
     elif page == "history_institutional":
         _render_history_institutional_page(snapshot)
+    elif page == "leads":
+        _render_leads_page(snapshot)
     elif page == "clear_histories":
         _render_clear_histories_page(snapshot)
     elif page == "delete_history":
