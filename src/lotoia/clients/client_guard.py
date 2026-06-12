@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.clients.constants import DAILY_LIMIT, PLANS, VALID_QUANTITIES
+from lotoia.clients.interactive_menu import is_format_allowed_for_client
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 
@@ -85,14 +86,15 @@ def validate_request(
 
     resolved_formato = int(formato or 15)
     formato_maximo = int(client.get("formato_maximo", 15) or 15)
-    if resolved_formato > formato_maximo:
-        plan_name = str(client.get("plan", "basico") or "basico")
+    plan_name = str(client.get("plan", "basico") or "basico")
+    plan_formats = str(PLANS.get(plan_name, {}).get("formats") or f"{formato_maximo}D")
+    if not is_format_allowed_for_client(resolved_formato, formato_maximo=formato_maximo):
         return ValidationResult(
             ok=False,
             error_code="FORMAT_NOT_ALLOWED",
             message=(
-                f"Seu plano {plan_name} permite até {formato_maximo}D.\n"
-                f"Para jogar {resolved_formato}D acesse lotoia.chat."
+                f"Seu plano {plan_name} permite: {plan_formats}.\n"
+                f"O formato {resolved_formato}D não está incluído."
             ),
             client=client,
             formato=resolved_formato,

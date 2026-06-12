@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from lotoia.governance.lei15a_operational import apply_lei15a_validated_card
+
 AUDITED_RESERVE_PRIORITY = (7, 22, 4, 11, 12, 15, 16, 19, 21, 2, 17, 23, 13, 1, 9, 5, 6, 8, 14, 18, 20, 24, 25)
 
 
@@ -51,13 +53,15 @@ def expand_generation_games_for_format(
         core_numbers = list(game.get("numbers", []) or [])
         core, reserves, final_card = expand_official_card(core_numbers, card_format, game_index=index)
         expanded_games.append(
-            {
-                **dict(game),
-                "card_format": int(card_format or 15),
-                "core_numbers": core,
-                "audited_reserve_numbers": reserves,
-                "final_card_numbers": final_card,
-                "numbers": final_card,
-            }
+            apply_lei15a_validated_card(
+                {
+                    **dict(game),
+                    "card_format": int(card_format or 15),
+                    "core_numbers": core,
+                    "audited_reserve_numbers": reserves,
+                    "final_card_numbers": final_card,
+                },
+                formato_d=int(card_format or 15),
+            )
         )
     return expanded_games
