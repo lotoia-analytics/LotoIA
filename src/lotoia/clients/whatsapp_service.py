@@ -10,7 +10,11 @@ from typing import Any
 from uuid import uuid4
 
 from lotoia.clients.client_guard import ValidationResult, validate_request
-from lotoia.clients.evolution_client import EvolutionApiClient, GENERATION_ERROR_MESSAGE
+from lotoia.clients.evolution_client import (
+    WHATSAPP_GAMES_FOOTER_LINES,
+    EvolutionApiClient,
+    GENERATION_ERROR_MESSAGE,
+)
 from lotoia.clients.game_expansion import expand_generation_games_for_format
 from lotoia.clients.interactive_menu import (
     HELP_MESSAGE,
@@ -129,10 +133,10 @@ def format_games_whatsapp_message(
 ) -> str:
     if len(targets) > 1:
         formats_label = " e ".join(f"{formato}D" for formato, _ in targets)
-        lines = [f"✅ {quantidade} jogos gerados pela LotoIA ({formats_label}):", ""]
+        lines = [f"🎯 *Seus jogos LotoIA — {formats_label}*", ""]
     else:
         formato = int(targets[0][0])
-        lines = [f"✅ {quantidade} jogos de {formato}D gerados pela LotoIA:", ""]
+        lines = [f"🎯 *Seus jogos LotoIA — {formato}D*", ""]
 
     for index, game in enumerate(games, start=1):
         numbers = sorted(
@@ -141,14 +145,13 @@ def format_games_whatsapp_message(
             or game.get("numbers", [])
             or game.get("final_card_numbers", [])
         )
-        formatted_numbers = " - ".join(f"{number:02d}" for number in numbers)
+        formatted_numbers = " ".join(f"{number:02d}" for number in numbers)
         formato_label = int(game.get("formato_cartao") or targets[0][0])
         if len(targets) > 1:
             lines.append(f"Jogo {index:02d} ({formato_label}D): {formatted_numbers}")
         else:
             lines.append(f"Jogo {index:02d}: {formatted_numbers}")
-    lines.append("")
-    lines.append("Boa sorte! 🍀")
+    lines.extend(["", *WHATSAPP_GAMES_FOOTER_LINES])
     return "\n".join(lines)
 
 
