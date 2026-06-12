@@ -11,12 +11,16 @@ from lotoia.clients.evolution_client import WHATSAPP_GAMES_FOOTER_LINES
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FACEBOOK_GRAPH_API_VERSION = "v21.0"
+
 
 class MessengerEvolutionService:
     """
-    Canal: Messenger via Evolution API
-    Endpoint base: EVOLUTION_API_URL (mesma instância)
-    Instance name: EVOLUTION_MESSENGER_INSTANCE
+    Canal Messenger (outbound).
+
+    Preferência: Meta Graph API (PAGE_ACCESS_TOKEN), pois Evolution 2.3.x
+    não suporta integração Messenger/Facebook. Evolution permanece como
+    fallback opcional para ambientes com instância dedicada.
     """
 
     def __init__(
@@ -25,6 +29,9 @@ class MessengerEvolutionService:
         base_url: str | None = None,
         api_key: str | None = None,
         instance: str | None = None,
+        page_id: str | None = None,
+        page_access_token: str | None = None,
+        graph_api_version: str | None = None,
         timeout_seconds: float = 10.0,
         session: requests.Session | None = None,
     ) -> None:
@@ -33,6 +40,15 @@ class MessengerEvolutionService:
         self.instance = str(
             instance or os.getenv("EVOLUTION_MESSENGER_INSTANCE", "") or ""
         ).strip()
+        self.page_id = str(page_id or os.getenv("FACEBOOK_PAGE_ID", "") or "").strip()
+        self.page_access_token = str(
+            page_access_token or os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "") or ""
+        ).strip()
+        self.graph_api_version = str(
+            graph_api_version
+            or os.getenv("FACEBOOK_GRAPH_API_VERSION", DEFAULT_FACEBOOK_GRAPH_API_VERSION)
+            or DEFAULT_FACEBOOK_GRAPH_API_VERSION
+        ).strip()
         self.timeout_seconds = timeout_seconds
         self.session = session or requests.Session()
         self.last_request_url: str = ""
@@ -40,11 +56,18 @@ class MessengerEvolutionService:
         self.last_error_message: str = ""
 
     @property
-    def is_configured(self) -> bool:
+    def uses_graph_api(self) -> bool:
+        return bool(self.page_access_token)
+
+    @property
+    def uses_evolution(self) -> bool:
         return bool(self.base_url and self.api_key and self.instance)
 
+    @property
+    def is_configured(self) -> bool:
+        return self.uses_graph_api or self.uses_evolution
+
     async def send_message(self, psid: str, text: str) -> dict[str, Any]:
-        """POST /message/sendText/{instance} with PSID as number."""
         delivered = self._send_text(str(psid), str(text))
         return {
             "ok": delivered,
@@ -84,15 +107,15 @@ class MessengerEvolutionService:
     def _send_text(self, psid: str, message: str) -> bool:
         if not self.is_configured:
             self.last_error_message = (
-                "Evolution API Messenger não configurada "
-                "(EVOLUTION_API_URL/API_KEY/MESSENGER_INSTANCE)."
+                "Messenger outbound não configurado "
+                "(FACEBOOK_PAGE_ACCESS_TOKEN ou EVOLUTION_API_URL/API_KEY/MESSENGER_INSTANCE)."
             )
-            logger.error("MESSENGER_EVOLUTION_ERROR: %s", self.last_error_message)
+            logger.error("MESSENGER_DELIVERY_ERROR: %s", self.last_error_message)
             return False
         normalized_psid = str(psid or "").strip()
         if not normalized_psid or not str(message or "").strip():
             self.last_error_message = "PSID ou mensagem inválidos para envio Messenger."
-            logger.error("MESSENGER_EVOLUTION_ERROR: %s", self.last_error_message)
+            logger.error("MESSENGER_DELIVERY_ERROR: %s", self.last_error_message)
             return False
         for attempt in range(2):
             if self._send_text_once(normalized_psid, str(message)):
@@ -100,7 +123,7 @@ class MessengerEvolutionService:
             if attempt == 0:
                 time.sleep(0.5)
         logger.error(
-            "MESSENGER_EVOLUTION_ERROR: falha ao enviar para %s (status=%s, error=%s)",
+            "MESSENGER_DELIVERY_ERROR: falha ao enviar para %s (status=%s, error=%s)",
             normalized_psid,
             self.last_http_status,
             self.last_error_message,
@@ -108,6 +131,38 @@ class MessengerEvolutionService:
         return False
 
     def _send_text_once(self, psid: str, message: str) -> bool:
+        if self.uses_graph_api:
+            return self._send_text_via_graph_api(psid, message)
+        return self._send_text_via_evolution(psid, message)
+
+    def _send_text_via_graph_api(self, psid: str, message: str) -> bool:
+        url = f"https://graph.facebook.com/{self.graph_api_version}/me/messages"
+        params = {"access_token": self.page_access_token}
+        body = {
+            "recipient": {"id": psid},
+            "messaging_type": "RESPONSE",
+            "message": {"text": message},
+        }
+        self.last_request_url = url
+        self.last_http_status = None
+        self.last_error_message = ""
+        try:
+            response = self.session.post(
+                url,
+                params=params,
+                json=body,
+                timeout=self.timeout_seconds,
+            )
+            self.last_http_status = int(response.status_code)
+            if 200 <= self.last_http_status < 300:
+                return True
+            self.last_error_message = (response.text or "")[:500]
+            return False
+        except Exception as exc:  # noqa: BLE001 - outbound integration boundary
+            self.last_error_message = str(exc)
+            return False
+
+    def _send_text_via_evolution(self, psid: str, message: str) -> bool:
         url = f"{self.base_url}/message/sendText/{self.instance}"
         headers = {
             "apikey": self.api_key,
