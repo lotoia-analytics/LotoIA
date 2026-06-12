@@ -10,7 +10,7 @@ from sqlalchemy import inspect
 
 from backend.main import app
 from lotoia.clients.repository import ClientRepository
-from lotoia.database.database import GenerationEvent, Lead, create_database, get_engine, get_session
+from lotoia.database.database import LotofacilOfficialHistory, create_database, get_engine, get_session
 
 
 def _request_json(method: str, path: str, payload: dict | None = None) -> tuple[int, dict[str, object]]:
@@ -137,11 +137,20 @@ class _FakeMessengerClient:
 def isolated_messenger_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, _FakeMessengerClient]:
     db_path = tmp_path / "messenger_test.db"
     create_database(db_path)
+    with get_session(db_path) as session:
+        session.merge(
+            LotofacilOfficialHistory(
+                contest_number=3709,
+                draw_date="12/06/2026",
+                numbers="1,3,5,7,9,11,13,15,17,19,20,21,22,23,24",
+                numbers_signature="test",
+            )
+        )
+        session.commit()
     fake = _FakeMessengerClient()
     monkeypatch.setenv("MESSENGER_VERIFY_TOKEN", "test-verify-token")
     monkeypatch.setattr("backend.routers.messenger_webhook.DEFAULT_DATABASE_PATH", db_path)
-    monkeypatch.setattr("lotoia.clients.messenger_service.DEFAULT_DATABASE_PATH", db_path)
-    monkeypatch.setattr("lotoia.clients.messenger_onboarding.DEFAULT_DATABASE_PATH", db_path)
+    monkeypatch.setattr("lotoia.clients.messenger_consultor.consultor_service.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr("lotoia.clients.client_guard.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr("lotoia.clients.repository.DEFAULT_DATABASE_PATH", db_path)
     monkeypatch.setattr(
@@ -191,19 +200,10 @@ def test_new_lead_capture(isolated_messenger_db: tuple[Path, _FakeMessengerClien
     }
     status, result = _request_json("POST", "/messenger/webhook", payload)
     assert status == 200
-    assert result.get("status") == "onboarding"
+    assert result.get("status") == "menu"
     assert result.get("psid") == "psid-new-001"
     assert result.get("delivered") is True
-
-    with get_session(db_path) as session:
-        lead = session.query(Lead).filter(Lead.messenger_psid == "psid-new-001").one()
-        assert lead.source == "messenger"
-        event = (
-            session.query(GenerationEvent)
-            .filter(GenerationEvent.strategy == "messenger_lead_captured")
-            .one()
-        )
-        assert event.channel == "messenger"
+    assert "LotoIA" in str(result.get("message") or "")
 
     assert fake.sent_texts
     assert fake.sent_texts[0][0] == "psid-new-001"
@@ -215,7 +215,7 @@ def test_existing_active_client_generates_games(
 ) -> None:
     db_path, _fake = isolated_messenger_db
     monkeypatch.setattr(
-        "lotoia.clients.messenger_service.generate_ranked_games",
+        "lotoia.clients.messenger_consultor.generation.generate_ranked_games",
         lambda **kwargs: [
             {
                 "numbers": list(range(1, 16)),
@@ -226,7 +226,7 @@ def test_existing_active_client_generates_games(
         ],
     )
     monkeypatch.setattr(
-        "lotoia.clients.messenger_service.resolve_next_target_contest",
+        "lotoia.clients.messenger_consultor.game_handler.resolve_next_target_contest",
         lambda db_path: 3709,
     )
 

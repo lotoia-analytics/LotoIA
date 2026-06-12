@@ -196,11 +196,30 @@ class Lead(Base):
     ip_hash: Mapped[str] = mapped_column(String, default="", nullable=False)
     user_agent: Mapped[str] = mapped_column(String, default="", nullable=False)
     messenger_psid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    facebook_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     __table_args__ = (
         Index("ix_leads_created_at", "created_at"),
         Index("ix_leads_whatsapp", "whatsapp"),
         Index("ix_leads_source", "source"),
         Index("ix_leads_messenger_psid", "messenger_psid"),
+    )
+
+
+class MessengerConversationState(Base):
+    __tablename__ = "messenger_conversation_state"
+
+    psid: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state: Mapped[str] = mapped_column(String(40), default="initial", nullable=False)
+    free_checks_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_interaction: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
 
@@ -1174,6 +1193,23 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                     "CREATE INDEX IF NOT EXISTS idx_leads_messenger_psid ON leads(messenger_psid)"
                 )
                 applied_migrations.append("leads.messenger_psid")
+            if "facebook_name" not in lead_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE leads ADD COLUMN facebook_name VARCHAR(120)"
+                )
+                applied_migrations.append("leads.facebook_name")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE IF NOT EXISTS messenger_conversation_state (
+                    psid VARCHAR(64) PRIMARY KEY,
+                    state VARCHAR(40) NOT NULL DEFAULT 'initial',
+                    free_checks_used INTEGER NOT NULL DEFAULT 0,
+                    last_interaction TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            applied_migrations.append("messenger_conversation_state")
             connection.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS idx_clients_messenger_psid ON lotoia_clients(messenger_psid)"
             )
@@ -1875,6 +1911,21 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
         if "messenger_psid" not in lead_columns:
             connection.exec_driver_sql("ALTER TABLE leads ADD COLUMN messenger_psid TEXT")
             applied_migrations.append("leads.messenger_psid")
+        if "facebook_name" not in lead_columns:
+            connection.exec_driver_sql("ALTER TABLE leads ADD COLUMN facebook_name TEXT")
+            applied_migrations.append("leads.facebook_name")
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS messenger_conversation_state (
+                psid TEXT PRIMARY KEY,
+                state TEXT NOT NULL DEFAULT 'initial',
+                free_checks_used INTEGER NOT NULL DEFAULT 0,
+                last_interaction TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        applied_migrations.append("messenger_conversation_state")
     if applied_migrations:
         logger.info(
             "Institutional schema migration applied on %s: %s",
