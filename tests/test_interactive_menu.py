@@ -44,7 +44,8 @@ def test_build_welcome_text_for_pro_plan() -> None:
     )
     assert "Formatos: 15D + 18D" in text
     assert "Jogos gerados em 15D e 18D (metade de cada)." in text
-    assert "2x15D" in text
+    assert "2x18D" in text
+    assert "3 Jogo 18D" in text
 
 
 def test_allowed_formats_for_client() -> None:
@@ -89,6 +90,21 @@ def test_is_greeting() -> None:
     assert is_greeting("ola")
     assert is_greeting("Oi!")
     assert not is_greeting("5 jogos de 15D")
+
+
+def test_selection_id_from_text_accepts_flexible_format_messages() -> None:
+    assert parse_menu_selection("", text="2x18D", phone="5511999999999") == {
+        "quantidade": 2,
+        "formato": 18,
+    }
+    assert parse_menu_selection("", text="03", phone="5511999999999") == {
+        "quantidade": 3,
+        "formato": None,
+    }
+    assert parse_menu_selection("", text="3 Jogo 18D", phone="5511999999999") == {
+        "quantidade": 3,
+        "formato": 18,
+    }
 
 
 def test_parse_menu_selection_fixed_and_custom() -> None:

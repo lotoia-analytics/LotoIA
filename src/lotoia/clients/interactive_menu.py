@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from lotoia.clients.constants import PLANS, VALID_QUANTITIES
+from lotoia.clients.message_parser import parse_whatsapp_message
 
 MENU_QUANTITIES = (5, 10, 20, 30)
 FIXED_MENU_QUANTITIES = (5, 10, 20)
@@ -136,7 +137,10 @@ def build_welcome_text(*, client_status: dict[str, Any]) -> str:
     else:
         format_hint = (
             f"Jogos gerados em 15D e {formato_maximo}D (metade de cada).\n"
-            f"Para um formato só, digite ex.: 5, 2x15D ou 1 {formato_maximo}D."
+            "Digite como preferir, ex.:\n"
+            f"• 5 ou 03 (só quantidade)\n"
+            f"• 2x{formato_maximo}D ou 1 {formato_maximo}D\n"
+            f"• 3 Jogo {formato_maximo}D ou 5 jogos de 15D"
         )
     return (
         f"👋 Olá! Plano {plan}\n"
@@ -341,6 +345,12 @@ def parse_menu_selection(selection_id: str, *, text: str = "", phone: str = "") 
 
 
 def _selection_id_from_text(text: str, *, phone: str) -> str:
+    parsed_message = parse_whatsapp_message(text)
+    if parsed_message and parsed_message.get("formato") is not None:
+        return f"gen:{int(parsed_message['quantidade'])}:{int(parsed_message['formato'])}"
+    if parsed_message and parsed_message.get("quantidade") is not None:
+        return f"qty:{int(parsed_message['quantidade'])}"
+
     normalized = " ".join(str(text or "").strip().split()).lower()
     normalized = normalized.strip("!?.")
     if not normalized:
