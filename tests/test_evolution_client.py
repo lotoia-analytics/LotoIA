@@ -100,8 +100,13 @@ def test_evolution_client_send_poll_success() -> None:
     assert session.calls[0]["json"]["values"] == ["5 jogos", "10 jogos"]
 
 
-def test_evolution_client_send_menu_bundle_prefers_list_when_configured() -> None:
-    session = FakeSession([FakeResponse(200, '{"status":"ok"}')])
+def test_evolution_client_send_menu_bundle_sends_text_before_list() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(200, '{"status":"ok"}'),
+            FakeResponse(200, '{"status":"ok"}'),
+        ]
+    )
     client = EvolutionApiClient(
         base_url="https://evolution.example.app",
         api_key="secret-key",
@@ -127,8 +132,9 @@ def test_evolution_client_send_menu_bundle_prefers_list_when_configured() -> Non
     }
 
     assert client.send_menu_bundle("5511999999999", bundle) is True
-    assert len(session.calls) == 1
-    assert "/sendList/" in session.calls[0]["url"]
+    assert len(session.calls) == 2
+    assert "/sendText/" in session.calls[0]["url"]
+    assert "/sendList/" in session.calls[1]["url"]
 
 
 def test_evolution_client_send_list_success() -> None:

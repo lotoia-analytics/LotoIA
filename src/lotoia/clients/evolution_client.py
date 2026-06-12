@@ -65,9 +65,10 @@ class EvolutionApiClient:
         return False
 
     def send_menu_bundle(self, phone: str, menu_bundle: dict[str, Any]) -> bool:
-        """Deliver interactive menu via list/buttons, with clean text fallback."""
+        """Send welcome text first, then try list/buttons (Baileys may hide interactive UI)."""
         prefer_list = bool(menu_bundle.get("prefer_list"))
         text_fallback = str(menu_bundle.get("text_fallback") or "").strip()
+        delivered_text = bool(text_fallback and self.send_text(phone, text_fallback))
         delivery_order = ("send_list", "send_buttons") if prefer_list else ("send_buttons", "send_list")
 
         for method_name in delivery_order:
@@ -90,9 +91,7 @@ class EvolutionApiClient:
                 self.last_error_message,
             )
 
-        if text_fallback:
-            return self.send_text(phone, text_fallback)
-        return False
+        return delivered_text
 
     def send_buttons(self, phone: str, buttons_payload: dict[str, Any]) -> bool:
         if not self.is_configured:
