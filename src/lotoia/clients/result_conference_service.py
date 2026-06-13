@@ -23,6 +23,40 @@ RESULTADO_PROMPT = (
 )
 
 
+def build_resultado_prompt(last_contest: int | None = None) -> str:
+    lines = [
+        "📊 Conferência de resultado LotoIA!",
+        "",
+    ]
+    if last_contest is not None:
+        lines.extend(
+            [
+                f"🎯 Seu último concurso com jogos gerados: {int(last_contest)}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "Qual o número do concurso?",
+            "Ex: 3709",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _last_contest_hint(last_contest: int | None, *, requested_contest: int) -> list[str]:
+    if last_contest is None:
+        return []
+    last = int(last_contest)
+    if last == int(requested_contest):
+        return []
+    return [
+        "",
+        f"🎯 Seu último concurso com jogos gerados: {last}",
+        f"Digite {last} para conferir seus jogos.",
+    ]
+
+
 @dataclass(frozen=True)
 class _OfficialResult:
     contest: int
@@ -112,14 +146,18 @@ def build_result_conference_message(
     contest_number: int,
     client_id: int | None,
     db_path: Path = DEFAULT_DATABASE_PATH,
+    last_generation_contest: int | None = None,
 ) -> str:
     official = _load_official_result(db_path, contest_number)
     if official is None:
-        return (
-            f"⚠️ Concurso {contest_number} não encontrado.\n\n"
-            "Verifique o número e tente novamente.\n"
-            "Ou digite RESULTADO para consultar outro concurso."
-        )
+        lines = [
+            f"⚠️ Concurso {contest_number} não encontrado.",
+            "",
+            "Verifique o número e tente novamente.",
+            "Ou digite RESULTADO para consultar outro concurso.",
+        ]
+        lines.extend(_last_contest_hint(last_generation_contest, requested_contest=contest_number))
+        return "\n".join(lines)
 
     header = f"📊 Concurso {official.contest}"
     if official.date:
@@ -165,6 +203,7 @@ def build_result_conference_message(
         return "\n".join(lines)
 
     lines.append("Você não gerou jogos para esse concurso.")
+    lines.extend(_last_contest_hint(last_generation_contest, requested_contest=contest_number))
     lines.append("")
     lines.extend(
         [
@@ -181,7 +220,23 @@ class ResultConferenceService:
         self.repository = ClientRepository(db_path)
 
     def get_prompt(self) -> str:
-        return RESULTADO_PROMPT
+        return build_resultado_prompt()
+
+    def get_prompt_for_client_id(self, client_id: int | None) -> str:
+        last_contest = None
+        if client_id is not None:
+            last_contest = self.repository.get_last_generation_contest(int(client_id))
+        return build_resultado_prompt(last_contest)
+
+    def get_prompt_for_phone(self, phone: str) -> str:
+        client = self.repository.get_by_phone(phone)
+        client_id = int(client["id"]) if client else None
+        return self.get_prompt_for_client_id(client_id)
+
+    def get_prompt_for_messenger_psid(self, psid: str) -> str:
+        client = self.repository.get_by_messenger_psid(psid)
+        client_id = int(client["id"]) if client else None
+        return self.get_prompt_for_client_id(client_id)
 
     def build_message_for_client(
         self,
@@ -189,10 +244,14 @@ class ResultConferenceService:
         contest_number: int,
         client_id: int | None,
     ) -> str:
+        last_generation_contest = None
+        if client_id is not None:
+            last_generation_contest = self.repository.get_last_generation_contest(int(client_id))
         return build_result_conference_message(
             contest_number=int(contest_number),
             client_id=client_id,
             db_path=self.db_path,
+            last_generation_contest=last_generation_contest,
         )
 
     def build_message_for_messenger_psid(self, *, contest_number: int, psid: str) -> str:

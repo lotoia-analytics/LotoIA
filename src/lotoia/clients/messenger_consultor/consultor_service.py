@@ -165,7 +165,11 @@ class MessengerConsultorService:
 
     def _start_resultado_conference(self, *, psid: str) -> dict[str, Any]:
         self.state_repo.set_state(psid, "awaiting_concurso")
-        return {"status": "prompt", "psid": psid, "message": self.result_conference.get_prompt()}
+        return {
+            "status": "prompt",
+            "psid": psid,
+            "message": self.result_conference.get_prompt_for_messenger_psid(psid),
+        }
 
     def _handle_resultado_concurso(self, *, psid: str, text: str) -> dict[str, Any]:
         contest_number = parse_contest_number(text)
@@ -175,7 +179,7 @@ class MessengerConsultorService:
                 "psid": psid,
                 "message": (
                     "Não entendi o número do concurso.\n\n"
-                    + self.result_conference.get_prompt()
+                    + self.result_conference.get_prompt_for_messenger_psid(psid)
                 ),
             }
         message = self.result_conference.build_message_for_messenger_psid(

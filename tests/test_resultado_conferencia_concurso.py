@@ -216,6 +216,46 @@ def test_lei_001_query_sempre_no_postgres(isolated_resultado_db: tuple[Path, _Fa
         assert len(rows) == 1
 
 
+def test_resultado_prompt_inclui_ultimo_concurso_gerado(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    db_path, _ = isolated_resultado_db
+    repository = ClientRepository(db_path)
+    client = repository.activate_client(phone="5566992358330", plan="pro", valor_pago=49.99, name="Kleyson")
+    repository.log_client_generation(
+        client_id=int(client["id"]),
+        phone=str(client["phone"]),
+        formato=15,
+        quantidade=2,
+        concurso_alvo=3710,
+        jogos=[{"cartao_validado_lei15a": list(range(1, 16))}],
+    )
+    prompt = ResultConferenceService(db_path).get_prompt_for_phone(str(client["phone"]))
+    assert "3710" in prompt
+    assert "último concurso com jogos gerados" in prompt
+
+
+def test_conferencia_sem_jogos_indica_ultimo_concurso_gerado(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    db_path, _ = isolated_resultado_db
+    repository = ClientRepository(db_path)
+    client = repository.activate_client(phone="5566992358331", plan="pro", valor_pago=49.99, name="Cliente")
+    repository.log_client_generation(
+        client_id=int(client["id"]),
+        phone=str(client["phone"]),
+        formato=15,
+        quantidade=1,
+        concurso_alvo=3710,
+        jogos=[{"cartao_validado_lei15a": list(range(1, 16))}],
+    )
+    message = build_result_conference_message(
+        contest_number=3709,
+        client_id=int(client["id"]),
+        db_path=db_path,
+        last_generation_contest=3710,
+    )
+    assert "Você não gerou jogos para esse concurso." in message
+    assert "3710" in message
+    assert "Digite 3710" in message
+
+
 def test_resultado_prompt_constant() -> None:
     assert "Conferência de resultado LotoIA" in RESULTADO_PROMPT
     assert "3709" in RESULTADO_PROMPT

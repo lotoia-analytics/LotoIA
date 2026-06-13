@@ -328,6 +328,24 @@ class ClientRepository:
             )
             return exists is not None
 
+    def get_last_generation_contest(self, client_id: int) -> int | None:
+        with get_session(self.db_path) as session:
+            row = (
+                session.query(LotoiaClientGeneration.concurso_alvo)
+                .filter(
+                    LotoiaClientGeneration.client_id == int(client_id),
+                    LotoiaClientGeneration.concurso_alvo.isnot(None),
+                )
+                .order_by(
+                    LotoiaClientGeneration.created_at.desc(),
+                    LotoiaClientGeneration.id.desc(),
+                )
+                .first()
+            )
+            if row is None or row[0] is None:
+                return None
+            return int(row[0])
+
     def get_client_status_by_psid(self, psid: str) -> dict[str, Any] | None:
         client = self.get_by_messenger_psid(psid)
         if not client:

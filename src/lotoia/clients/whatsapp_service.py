@@ -329,14 +329,14 @@ def process_whatsapp_webhook(
                 return {
                     "status": "prompt",
                     "phone": reply_phone,
-                    "message": result_conference.get_prompt(),
+                    "message": result_conference.get_prompt_for_phone(phone),
                 }
             return {
                 "status": "prompt",
                 "phone": reply_phone,
                 "message": (
                     "Não entendi o número do concurso.\n\n"
-                    + result_conference.get_prompt()
+                    + result_conference.get_prompt_for_phone(phone)
                 ),
             }
         try:
@@ -373,7 +373,7 @@ def process_whatsapp_webhook(
         return {
             "status": "prompt",
             "phone": reply_phone,
-            "message": result_conference.get_prompt(),
+            "message": result_conference.get_prompt_for_phone(phone),
         }
 
     menu_parsed = parse_menu_selection(selection_id, text=text, phone=phone)
