@@ -323,6 +323,43 @@ def test_whatsapp_resultado_numero_concurso_sem_estado_em_memoria(isolated_resul
     assert "Concurso 3709" in str(result.get("message") or "")
 
 
+def test_whatsapp_resultado_repetido_mantem_prompt_sem_erro(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    from lotoia.clients.whatsapp_service import process_whatsapp_webhook
+
+    db_path, _ = isolated_resultado_db
+    phone = "5566992358332"
+    process_whatsapp_webhook(
+        {"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net", "id": "wa-r1"}, "message": {"conversation": "resultado"}}},
+        db_path=db_path,
+    )
+    result = process_whatsapp_webhook(
+        {"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net", "id": "wa-r2"}, "message": {"conversation": "Resultado"}}},
+        db_path=db_path,
+    )
+    assert result.get("status") == "prompt"
+    assert "Não entendi" not in str(result.get("message") or "")
+    assert "Qual o número do concurso?" in str(result.get("message") or "")
+
+
+def test_whatsapp_extract_nested_ephemeral_message_text() -> None:
+    from lotoia.clients.whatsapp_service import extract_evolution_payload
+
+    payload = {
+        "data": {
+            "key": {"remoteJid": "5566992358330@s.whatsapp.net", "id": "wa-ephemeral"},
+            "message": {
+                "ephemeralMessage": {
+                    "message": {
+                        "extendedTextMessage": {"text": "3704"},
+                    }
+                }
+            },
+        }
+    }
+    extracted = extract_evolution_payload(payload)
+    assert extracted["text"] == "3704"
+
+
 def test_concurso_alvo_index_exists(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
     db_path, _ = isolated_resultado_db
     indexes = inspect(get_engine(db_path)).get_indexes("lotoia_client_generations")

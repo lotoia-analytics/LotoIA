@@ -88,6 +88,44 @@ def _resolve_evolution_sender_jid(
     return remote_jid
 
 
+def _unwrap_message_dict(message: dict[str, Any]) -> dict[str, Any]:
+    current = dict(message or {})
+    for _ in range(4):
+        nested = current.get("message")
+        if isinstance(nested, dict):
+            current = dict(nested)
+            continue
+        for wrapper in ("ephemeralMessage", "viewOnceMessage", "editedMessage", "documentWithCaptionMessage"):
+            wrapped = current.get(wrapper)
+            if isinstance(wrapped, dict) and isinstance(wrapped.get("message"), dict):
+                current = dict(wrapped["message"])
+                break
+        else:
+            break
+    return current
+
+
+def _extract_message_text(message: dict[str, Any], data: dict[str, Any], payload: dict[str, Any]) -> str:
+    unwrapped = _unwrap_message_dict(message)
+    candidates = [
+        unwrapped.get("conversation"),
+        dict(unwrapped.get("extendedTextMessage") or {}).get("text"),
+        dict(unwrapped.get("imageMessage") or {}).get("caption"),
+        dict(unwrapped.get("videoMessage") or {}).get("caption"),
+        dict(unwrapped.get("listResponseMessage") or {}).get("title"),
+        dict(unwrapped.get("buttonsResponseMessage") or {}).get("selectedDisplayText"),
+        dict(unwrapped.get("templateButtonReplyMessage") or {}).get("selectedDisplayText"),
+        data.get("text"),
+        data.get("messageText"),
+        payload.get("text"),
+    ]
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if text:
+            return text
+    return ""
+
+
 def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload.get("data") or payload)
     key = dict(data.get("key") or {})
@@ -108,16 +146,7 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
         or template_reply.get("selectedId")
         or ""
     )
-    text = (
-        message.get("conversation")
-        or message.get("extendedTextMessage", {}).get("text")
-        or list_reply.get("title")
-        or button_reply.get("selectedDisplayText")
-        or template_reply.get("selectedDisplayText")
-        or data.get("text")
-        or payload.get("text")
-        or ""
-    )
+    text = _extract_message_text(message, data, payload)
     message_id = str(key.get("id") or data.get("id") or payload.get("message_id") or "")
     return {
         "phone": phone,
@@ -275,6 +304,12 @@ def process_whatsapp_webhook(
 
     if awaiting_concurso or (contest_number is not None and contest_number >= 1000):
         if contest_number is None:
+            if is_resultado_request(text):
+                return {
+                    "status": "prompt",
+                    "phone": reply_phone,
+                    "message": result_conference.get_prompt(),
+                }
             return {
                 "status": "prompt",
                 "phone": reply_phone,
@@ -283,7 +318,19 @@ def process_whatsapp_webhook(
                     + result_conference.get_prompt()
                 ),
             }
-        message = result_conference.build_message_for_phone(contest_number=contest_number, phone=phone)
+        try:
+            message = result_conference.build_message_for_phone(contest_number=contest_number, phone=phone)
+        except Exception as exc:  # noqa: BLE001 - user-facing WhatsApp boundary
+            logger.exception(
+                "WHATSAPP_RESULTADO_ERROR phone=%s contest=%s error=%s",
+                reply_phone,
+                contest_number,
+                exc,
+            )
+            message = (
+                f"⚠️ Não foi possível consultar o concurso {contest_number} agora.\n\n"
+                "Tente novamente em instantes ou digite RESULTADO."
+            )
         state_repo.clear_awaiting_concurso(reply_phone)
         logger.info(
             "WHATSAPP_RESULTADO_CONFERENCIA phone=%s contest=%s chars=%s",

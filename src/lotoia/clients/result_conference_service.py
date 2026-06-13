@@ -41,6 +41,11 @@ def parse_contest_number(text: str) -> int | None:
     normalized = str(text or "").strip()
     if not normalized:
         return None
+    normalized = re.sub(r"[*_~`]", "", normalized)
+    normalized = normalized.replace("\u200b", "").replace("\ufeff", "")
+    normalized = " ".join(normalized.split())
+    if re.fullmatch(r"\d{3,5}", normalized):
+        return int(normalized)
     match = re.search(r"\b(\d{3,5})\b", normalized)
     if not match:
         return None

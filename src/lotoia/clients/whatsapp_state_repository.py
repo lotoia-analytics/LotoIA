@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, WhatsAppConversationState, get_session
-from lotoia.clients.phone_utils import canonical_brazil_phone
+from lotoia.clients.phone_utils import canonical_brazil_phone, phone_lookup_candidates
 from lotoia.public.services import normalize_whatsapp
 
 
@@ -55,10 +55,19 @@ class WhatsAppStateRepository:
         return self.set_state(phone, "initial")
 
     def is_awaiting_concurso(self, phone: str) -> bool:
-        return str(self.get_state(phone).get("state") or "") == "awaiting_concurso"
+        for candidate in phone_lookup_candidates(phone):
+            if str(self.get_state(candidate).get("state") or "") == "awaiting_concurso":
+                return True
+        return False
 
     def set_awaiting_concurso(self, phone: str) -> dict[str, Any]:
-        return self.set_state(phone, "awaiting_concurso")
+        normalized = self._normalize_phone(phone)
+        for candidate in phone_lookup_candidates(phone):
+            if candidate != normalized:
+                self.reset_state(candidate)
+        return self.set_state(normalized, "awaiting_concurso")
 
     def clear_awaiting_concurso(self, phone: str) -> dict[str, Any]:
-        return self.reset_state(phone)
+        for candidate in phone_lookup_candidates(phone):
+            self.reset_state(candidate)
+        return self.get_state(self._normalize_phone(phone))
