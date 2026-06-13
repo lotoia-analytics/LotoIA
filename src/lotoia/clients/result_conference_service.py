@@ -199,12 +199,17 @@ def build_result_conference_message(
         )
 
     if client_games:
-        lines.append("Seus jogos LotoIA:")
-        for game in client_games:
-            marker = "✅ " if game.premiado else ""
-            lines.append(f"Jogo {game.index:02d} → {marker}{game.hits:02d} pontos")
-        lines.append("")
-        if any(game.premiado for game in client_games):
+        premiados = [game for game in client_games if game.premiado]
+        if premiados:
+            total = len(client_games)
+            premiados_count = len(premiados)
+            if premiados_count < total:
+                lines.append(f"🏆 Jogos premiados LotoIA ({premiados_count} de {total}):")
+            else:
+                lines.append("🏆 Jogos premiados LotoIA:")
+            for game in premiados:
+                lines.append(f"Jogo {game.index:02d} → ✅ {game.hits:02d} pontos")
+            lines.append("")
             lines.extend(
                 [
                     "🏆 Parabéns! Você foi premiado!",
@@ -212,13 +217,16 @@ def build_result_conference_message(
                     "pelo app Loterias Caixa.",
                 ]
             )
-        else:
-            lines.extend(
-                [
-                    "Não foi dessa vez — mas continue com a LotoIA.",
-                    "A estrutura estatística trabalha no longo prazo. 🎯",
-                ]
-            )
+            return "\n".join(lines)
+
+        lines.extend(
+            [
+                f"Você gerou {len(client_games)} jogos, mas nenhum atingiu 11 pontos.",
+                "",
+                "Não foi dessa vez — mas continue com a LotoIA.",
+                "A estrutura estatística trabalha no longo prazo. 🎯",
+            ]
+        )
         return "\n".join(lines)
 
     lines.append("Você não gerou jogos para esse concurso.")

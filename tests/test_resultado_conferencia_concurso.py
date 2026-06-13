@@ -111,6 +111,8 @@ def test_cliente_com_jogos_e_premiado_celebra(isolated_resultado_db: tuple[Path,
     message = build_result_conference_message(contest_number=3709, client_id=int(client["id"]), db_path=db_path)
     assert "✅ 13 pontos" in message or "✅ 15 pontos" in message
     assert "✅ 11 pontos" in message
+    assert "Jogos premiados LotoIA" in message
+    assert "07 pontos" not in message
     assert "🏆 Parabéns! Você foi premiado!" in message
     assert "lotéricas" in message.lower()
 
@@ -138,10 +140,42 @@ def test_cliente_com_jogos_sem_premio_encoraja(isolated_resultado_db: tuple[Path
         ],
     )
     message = build_result_conference_message(contest_number=3709, client_id=int(client["id"]), db_path=db_path)
-    assert "10 pontos" in message
-    assert "09 pontos" in message
+    assert "3 jogos, mas nenhum atingiu 11 pontos" in message
+    assert "10 pontos" not in message
+    assert "09 pontos" not in message
     assert "Não foi dessa vez" in message
     assert "Parabéns" not in message
+
+
+def test_cliente_com_jogos_lista_apenas_premiados(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    db_path, _ = isolated_resultado_db
+    repository = ClientRepository(db_path)
+    client = repository.activate_messenger_client(
+        psid="psid-misto",
+        plan="basico",
+        valor_pago=15.99,
+        name="Misto",
+    )
+    repository.log_client_generation(
+        client_id=int(client["id"]),
+        phone=str(client["phone"]),
+        formato=15,
+        quantidade=4,
+        concurso_alvo=3709,
+        channel="messenger",
+        jogos=[
+            {"cartao_validado_lei15a": OFFICIAL_NUMBERS[:10] + [2, 4, 6, 8, 10]},
+            {"cartao_validado_lei15a": OFFICIAL_NUMBERS[:11] + [2, 4, 6, 8]},
+            {"cartao_validado_lei15a": OFFICIAL_NUMBERS[:12] + [2, 4, 6]},
+            {"cartao_validado_lei15a": OFFICIAL_NUMBERS[:9] + [2, 4, 6, 8, 10, 12]},
+        ],
+    )
+    message = build_result_conference_message(contest_number=3709, client_id=int(client["id"]), db_path=db_path)
+    assert "Jogos premiados LotoIA (2 de 4)" in message
+    assert "✅ 11 pontos" in message
+    assert "✅ 12 pontos" in message
+    assert "10 pontos" not in message
+    assert "09 pontos" not in message
 
 
 def test_cliente_sem_jogos_no_concurso_encoraja(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
@@ -209,7 +243,7 @@ def test_lei_001_query_sempre_no_postgres(isolated_resultado_db: tuple[Path, _Fa
 
     assert tracked_calls == [3709]
     assert "Concurso 3709" in message
-    assert "15 pontos" in message
+    assert "✅ 15 pontos" in message
     with get_session(db_path) as session:
         rows = session.execute(
             text(
