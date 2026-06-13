@@ -16,6 +16,7 @@ from lotoia.clients.messenger_consultor.menus import (
 )
 from lotoia.clients.messenger_consultor.state_repository import MessengerStateRepository
 from lotoia.clients.messenger_consultor.stats_service import MessengerStatsService
+from lotoia.clients.result_conference_service import ResultConferenceService, parse_contest_number
 from lotoia.clients.messenger_onboarding import handle_new_messenger_lead
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -80,6 +81,7 @@ class MessengerConsultorService:
         self.intent_parser = MessengerIntentParser()
         self.state_repo = MessengerStateRepository(db_path)
         self.game_handler = MessengerGameHandler(db_path)
+        self.result_conference = ResultConferenceService(db_path)
 
     def _is_active_client(self, client: dict[str, Any] | None) -> bool:
         return self.freemium.is_active_client("", client)
@@ -110,6 +112,8 @@ class MessengerConsultorService:
 
         if state.get("state") == "awaiting_check_input":
             return self._handle_check_input(psid=psid, text=text, client=client, active=active)
+        if state.get("state") == "awaiting_concurso":
+            return self._handle_resultado_concurso(psid=psid, text=text)
 
         if not client:
             self._ensure_curioso(psid)
@@ -122,7 +126,7 @@ class MessengerConsultorService:
             return self._menu_response(psid=psid, client=client, active=active)
 
         if intent == "resultado":
-            return {"status": "ok", "psid": psid, "message": self.stats.get_resultado()}
+            return self._start_resultado_conference(psid=psid)
         if intent == "atrasadas":
             return {"status": "ok", "psid": psid, "message": self.stats.get_atrasadas()}
         if intent == "frequentes":
@@ -158,6 +162,28 @@ class MessengerConsultorService:
         else:
             message = MENU_CURIOSO
         return {"status": "menu", "psid": psid, "message": message}
+
+    def _start_resultado_conference(self, *, psid: str) -> dict[str, Any]:
+        self.state_repo.set_state(psid, "awaiting_concurso")
+        return {"status": "prompt", "psid": psid, "message": self.result_conference.get_prompt()}
+
+    def _handle_resultado_concurso(self, *, psid: str, text: str) -> dict[str, Any]:
+        contest_number = parse_contest_number(text)
+        if contest_number is None:
+            return {
+                "status": "prompt",
+                "psid": psid,
+                "message": (
+                    "Não entendi o número do concurso.\n\n"
+                    + self.result_conference.get_prompt()
+                ),
+            }
+        message = self.result_conference.build_message_for_messenger_psid(
+            contest_number=contest_number,
+            psid=psid,
+        )
+        self.state_repo.reset_state(psid)
+        return {"status": "ok", "psid": psid, "message": message}
 
     def _start_conference(self, *, psid: str, active: bool) -> dict[str, Any]:
         if not active:

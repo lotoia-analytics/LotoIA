@@ -302,6 +302,7 @@ class LotoiaClientGeneration(Base):
         Index("ix_lotoia_client_generations_created_at", "created_at"),
         Index("ix_lotoia_client_generations_generation_event_id", "generation_event_id"),
         Index("ix_lotoia_client_generations_concurso_alvo", "concurso_alvo"),
+        Index("idx_generations_concurso", "client_id", "concurso_alvo"),
     )
 
 
@@ -1165,6 +1166,10 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                     "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
                 )
                 applied_migrations.append("lotoia_client_generations.concurso_alvo")
+            connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS idx_generations_concurso "
+                "ON lotoia_client_generations(client_id, concurso_alvo)"
+            )
             lotoia_client_columns = {
                 column["name"] for column in inspector.get_columns("lotoia_clients")
             }
@@ -1883,6 +1888,10 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 "ALTER TABLE lotoia_client_generations ADD COLUMN concurso_alvo INTEGER"
             )
             applied_migrations.append("lotoia_client_generations.concurso_alvo")
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_generations_concurso "
+            "ON lotoia_client_generations(client_id, concurso_alvo)"
+        )
         if "channel" not in client_generation_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE lotoia_client_generations ADD COLUMN channel TEXT NOT NULL DEFAULT 'whatsapp'"

@@ -140,7 +140,9 @@ def _payload(psid: str, text: str, mid: str) -> dict[str, object]:
 
 def test_resultado_retorna_dados_reais_postgres(isolated_consultor_db: tuple[Path, _FakeMessengerClient]) -> None:
     db_path, _ = isolated_consultor_db
-    message = MessengerStatsService(db_path).get_resultado()
+    from lotoia.clients.result_conference_service import build_result_conference_message
+
+    message = build_result_conference_message(contest_number=3709, client_id=None, db_path=db_path)
     assert "3709" in message
     assert "01" in message and "24" in message
 

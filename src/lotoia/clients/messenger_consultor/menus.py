@@ -4,7 +4,7 @@ MENU_CURIOSO = (
     "👋 Olá! Sou a LotoIA.\n"
     "Análise estatística real da Lotofácil.\n\n"
     "O que você quer ver?\n\n"
-    "📊 RESULTADO   → último concurso oficial\n"
+    "📊 RESULTADO   → conferência por concurso\n"
     "⏳ ATRASADAS   → dezenas que mais faltam\n"
     "📈 FREQUENTES  → dezenas que mais saem\n"
     "🏆 SCORE       → desempenho do núcleo LotoIA\n"
@@ -37,7 +37,7 @@ def menu_cliente_ativo(*, nome: str, plano: str, jogos_hoje: int, saldo_hoje: in
     display_name = str(nome or "Cliente").strip() or "Cliente"
     return (
         f"🤖 LotoIA — Bem-vindo de volta, {display_name}!\n\n"
-        "📊 RESULTADO   → último concurso oficial\n"
+        "📊 RESULTADO   → conferência por concurso\n"
         "⏳ ATRASADAS   → dezenas que mais faltam\n"
         "📈 FREQUENTES  → dezenas que mais saem\n"
         "🏆 SCORE       → desempenho do núcleo LotoIA\n"

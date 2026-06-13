@@ -19,6 +19,7 @@ UNREGISTERED_MESSAGE = (
 _PENDING_QUANTITY: dict[str, int] = {}
 _PENDING_QUICK_OPTIONS: dict[str, list[tuple[str, str]]] = {}
 _AWAITING_CUSTOM_QUANTITY: dict[str, int] = {}
+_AWAITING_CONCURSO: set[str] = set()
 
 _GREETINGS = {
     "oi",
@@ -302,6 +303,24 @@ def get_awaiting_custom_quantity_limit(phone: str) -> int | None:
 
 def clear_awaiting_custom_quantity(phone: str) -> None:
     _AWAITING_CUSTOM_QUANTITY.pop(str(phone), None)
+
+
+def set_awaiting_concurso(phone: str) -> None:
+    _AWAITING_CONCURSO.add(str(phone))
+
+
+def is_awaiting_concurso(phone: str) -> bool:
+    return str(phone) in _AWAITING_CONCURSO
+
+
+def clear_awaiting_concurso(phone: str) -> None:
+    _AWAITING_CONCURSO.discard(str(phone))
+
+
+def is_resultado_request(text: str) -> bool:
+    normalized = " ".join(str(text or "").strip().lower().split())
+    normalized = normalized.strip("!?.")
+    return normalized == "resultado" or normalized.startswith("resultado ")
 
 
 def parse_custom_quantity(text: str) -> int | None:

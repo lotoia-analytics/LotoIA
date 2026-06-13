@@ -23,17 +23,22 @@ from lotoia.clients.interactive_menu import (
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
+    clear_awaiting_concurso,
     clear_awaiting_custom_quantity,
     get_awaiting_custom_quantity_limit,
+    is_awaiting_concurso,
     is_awaiting_custom_quantity,
     is_greeting,
+    is_resultado_request,
     parse_custom_quantity,
     parse_menu_selection,
     plan_generation_targets,
+    set_awaiting_concurso,
     set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
 from lotoia.clients.conference_utils import resolve_next_target_contest
+from lotoia.clients.result_conference_service import ResultConferenceService, parse_contest_number
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.engine import generate_ranked_games
@@ -254,6 +259,31 @@ def process_whatsapp_webhook(
     repository = ClientRepository(db_path)
     client_status = repository.get_client_status(phone)
     selection_id = str(extracted.get("selection_id") or "")
+    result_conference = ResultConferenceService(db_path)
+
+    if is_awaiting_concurso(phone):
+        contest_number = parse_contest_number(text)
+        if contest_number is None:
+            return {
+                "status": "prompt",
+                "phone": phone,
+                "message": (
+                    "Não entendi o número do concurso.\n\n"
+                    + result_conference.get_prompt()
+                ),
+            }
+        message = result_conference.build_message_for_phone(contest_number=contest_number, phone=phone)
+        clear_awaiting_concurso(phone)
+        return {"status": "ok", "phone": phone, "message": message}
+
+    if is_resultado_request(text):
+        set_awaiting_concurso(phone)
+        return {
+            "status": "prompt",
+            "phone": phone,
+            "message": result_conference.get_prompt(),
+        }
+
     menu_parsed = parse_menu_selection(selection_id, text=text, phone=phone)
     parsed = parse_whatsapp_message(text)
 
@@ -485,7 +515,7 @@ def deliver_whatsapp_webhook(
                 delivered = client.send_text(phone, str(result.get("message") or ""))
         elif phone and str(result.get("message") or "").strip():
             delivered = client.send_text(phone, str(result.get("message") or ""))
-        if not delivered and phone and status in {"ok", "menu", "menu_confirm", "menu_format", "error"}:
+        if not delivered and phone and status in {"ok", "menu", "menu_confirm", "menu_format", "error", "prompt"}:
             delivery_error = client.last_error_message or "EVOLUTION_DELIVERY_FAILED"
             if status == "ok":
                 logger.error(
