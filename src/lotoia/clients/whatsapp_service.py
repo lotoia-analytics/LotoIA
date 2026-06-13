@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from lotoia.clients.phone_utils import canonical_brazil_phone
+from lotoia.clients.client_guard import ValidationResult, validate_request
+from lotoia.clients.phone_utils import canonical_brazil_phone, phone_lookup_candidates
 from lotoia.clients.evolution_client import (
     WHATSAPP_GAMES_FOOTER_LINES,
     EvolutionApiClient,
@@ -56,13 +57,14 @@ def _cleanup_processed_message_ids() -> None:
         _PROCESSED_MESSAGE_IDS.pop(message_id, None)
 
 
-def _remember_message_id(message_id: str) -> bool:
+def _remember_message_id(message_id: str, *, phone: str = "", text: str = "") -> bool:
     if not message_id:
         return False
     _cleanup_processed_message_ids()
-    if message_id in _PROCESSED_MESSAGE_IDS:
+    dedupe_key = f"{phone}:{message_id}" if phone else message_id
+    if dedupe_key in _PROCESSED_MESSAGE_IDS:
         return True
-    _PROCESSED_MESSAGE_IDS[message_id] = datetime.now(UTC)
+    _PROCESSED_MESSAGE_IDS[dedupe_key] = datetime.now(UTC)
     return False
 
 
@@ -86,6 +88,16 @@ def _resolve_evolution_sender_jid(
             if "@lid" not in candidate_jid or remote_jid_alt:
                 return remote_jid_alt or candidate_jid
     return remote_jid
+
+
+def _normalize_evolution_data(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_data = payload.get("data")
+    if isinstance(raw_data, list) and raw_data:
+        first = raw_data[0]
+        return dict(first) if isinstance(first, dict) else {}
+    if isinstance(raw_data, dict):
+        return dict(raw_data)
+    return dict(payload)
 
 
 def _unwrap_message_dict(message: dict[str, Any]) -> dict[str, Any]:
@@ -117,7 +129,10 @@ def _extract_message_text(message: dict[str, Any], data: dict[str, Any], payload
         dict(unwrapped.get("templateButtonReplyMessage") or {}).get("selectedDisplayText"),
         data.get("text"),
         data.get("messageText"),
+        data.get("content"),
+        data.get("body"),
         payload.get("text"),
+        payload.get("content"),
     ]
     for candidate in candidates:
         text = str(candidate or "").strip()
@@ -127,13 +142,13 @@ def _extract_message_text(message: dict[str, Any], data: dict[str, Any], payload
 
 
 def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    data = dict(payload.get("data") or payload)
+    data = _normalize_evolution_data(payload)
     key = dict(data.get("key") or {})
-    from_me = bool(key.get("fromMe") or data.get("fromMe"))
+    from_me = bool(key.get("fromMe") or data.get("fromMe") or payload.get("fromMe"))
     remote_jid = _resolve_evolution_sender_jid(key, data, payload)
     phone = re.sub(r"\D", "", remote_jid.split("@", maxsplit=1)[0])
     if not phone:
-        phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or ""))
+        phone = re.sub(r"\D", "", str(payload.get("sender") or data.get("sender") or data.get("number") or ""))
     message = dict(data.get("message") or {})
     is_poll_update = bool(message.get("pollUpdateMessage"))
     list_reply = dict(message.get("listResponseMessage") or {})
@@ -147,7 +162,13 @@ def extract_evolution_payload(payload: dict[str, Any]) -> dict[str, Any]:
         or ""
     )
     text = _extract_message_text(message, data, payload)
-    message_id = str(key.get("id") or data.get("id") or payload.get("message_id") or "")
+    message_id = str(
+        key.get("id")
+        or data.get("id")
+        or data.get("messageId")
+        or payload.get("message_id")
+        or ""
+    )
     return {
         "phone": phone,
         "text": str(text).strip(),
@@ -282,7 +303,7 @@ def process_whatsapp_webhook(
             "phone": phone,
         }
 
-    if message_id and _remember_message_id(message_id):
+    if message_id and _remember_message_id(message_id, phone=phone, text=text):
         return {
             "status": "ignored",
             "reason": "duplicate_message",
@@ -341,8 +362,11 @@ def process_whatsapp_webhook(
         return {"status": "ok", "phone": reply_phone, "message": message}
 
     if is_resultado_request(text):
-        state_repo.set_awaiting_concurso(reply_phone)
-        logger.info("WHATSAPP_RESULTADO_PROMPT phone=%s", reply_phone)
+        try:
+            state_repo.set_awaiting_concurso(reply_phone)
+        except Exception as exc:  # noqa: BLE001 - prompt must not fail on state persistence
+            logger.exception("WHATSAPP_STATE_SAVE_ERROR phone=%s error=%s", reply_phone, exc)
+        logger.info("WHATSAPP_RESULTADO_PROMPT phone=%s text=%r", reply_phone, text)
         return {
             "status": "prompt",
             "phone": reply_phone,
@@ -544,6 +568,15 @@ def get_client_status(phone: str, *, db_path: Path = DEFAULT_DATABASE_PATH) -> d
     return repository.get_client_status(phone)
 
 
+def _send_text_with_phone_fallback(client: EvolutionApiClient, phone: str, message: str) -> bool:
+    candidates = phone_lookup_candidates(phone) if phone else []
+    ordered = list(dict.fromkeys([*candidates, phone]))
+    for candidate in ordered:
+        if candidate and client.send_text(str(candidate), message):
+            return True
+    return False
+
+
 def deliver_whatsapp_webhook(
     payload: dict[str, Any],
     *,
@@ -567,7 +600,7 @@ def deliver_whatsapp_webhook(
         response_message = str(result.get("message") or "").strip()
         if status == "ok" and phone and result.get("games"):
             if response_message:
-                delivered = client.send_text(phone, response_message)
+                delivered = _send_text_with_phone_fallback(client, phone, response_message)
             else:
                 delivered = client.send_games(
                     phone,
@@ -575,16 +608,23 @@ def deliver_whatsapp_webhook(
                     int(result.get("formato") or 15),
                 )
         elif status == "ok" and phone and response_message:
-            delivered = client.send_text(phone, response_message)
+            delivered = _send_text_with_phone_fallback(client, phone, response_message)
         elif status in {"menu", "menu_confirm", "menu_format"} and phone and result.get("menu_bundle"):
             delivered = client.send_menu_bundle(phone, dict(result.get("menu_bundle") or {}))
             if not delivered and str(result.get("message") or "").strip():
-                delivered = client.send_text(phone, str(result.get("message") or ""))
+                delivered = _send_text_with_phone_fallback(client, phone, str(result.get("message") or ""))
         elif phone and str(result.get("message") or "").strip():
-            delivered = client.send_text(phone, str(result.get("message") or ""))
+            delivered = _send_text_with_phone_fallback(client, phone, str(result.get("message") or ""))
         if not delivered and phone and status in {"ok", "menu", "menu_confirm", "menu_format", "error", "prompt"}:
             delivery_error = client.last_error_message or "EVOLUTION_DELIVERY_FAILED"
-            if status == "ok":
+            logger.error(
+                "EVOLUTION_DELIVERY_FAILED phone=%s status=%s text=%r error=%s",
+                phone,
+                status,
+                response_message[:120],
+                delivery_error,
+            )
+            if status == "ok" and result.get("games"):
                 logger.error(
                     "EVOLUTION_ERROR: jogos gerados mas não entregues para %s (%s)",
                     phone,

@@ -304,6 +304,8 @@ def clear_awaiting_custom_quantity(phone: str) -> None:
     _AWAITING_CUSTOM_QUANTITY.pop(str(phone), None)
 
 
+import unicodedata
+
 _RESULTADO_KEYWORDS = {
     "resultado",
     "esultado",
@@ -314,8 +316,9 @@ _RESULTADO_KEYWORDS = {
 
 
 def is_resultado_request(text: str) -> bool:
-    normalized = " ".join(str(text or "").strip().lower().split())
-    normalized = normalized.strip("!?.")
+    normalized = unicodedata.normalize("NFKC", str(text or "").strip().lower())
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Cf")
+    normalized = " ".join(normalized.split()).strip("!?.")
     if not normalized:
         return False
     if normalized in _RESULTADO_KEYWORDS:
