@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, WhatsAppConversationState, get_session
+from lotoia.clients.phone_utils import canonical_brazil_phone
 from lotoia.public.services import normalize_whatsapp
 
 
@@ -16,7 +17,10 @@ class WhatsAppStateRepository:
         stored = str(phone or "").strip()
         if stored.startswith("m:"):
             return stored
-        return normalize_whatsapp(phone)
+        try:
+            return canonical_brazil_phone(stored)
+        except ValueError:
+            return normalize_whatsapp(stored)
 
     def get_state(self, phone: str) -> dict[str, Any]:
         normalized = self._normalize_phone(phone)

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from lotoia.clients.client_guard import ValidationResult, validate_request
+from lotoia.clients.phone_utils import canonical_brazil_phone
 from lotoia.clients.evolution_client import (
     WHATSAPP_GAMES_FOOTER_LINES,
     EvolutionApiClient,
@@ -219,6 +219,16 @@ def generate_whatsapp_games(
     return games, generation_event
 
 
+def _resolve_reply_phone(repository: ClientRepository, phone: str) -> str:
+    client = repository.get_by_phone(phone)
+    if client:
+        return str(client.get("phone") or phone)
+    try:
+        return canonical_brazil_phone(phone)
+    except ValueError:
+        return re.sub(r"\D", "", str(phone or ""))
+
+
 def process_whatsapp_webhook(
     payload: dict[str, Any],
     *,
@@ -255,32 +265,40 @@ def process_whatsapp_webhook(
         return {"status": "error", "error_code": "INVALID_PAYLOAD", "message": "Telefone não identificado no payload."}
 
     repository = ClientRepository(db_path)
+    reply_phone = _resolve_reply_phone(repository, phone)
     client_status = repository.get_client_status(phone)
     selection_id = str(extracted.get("selection_id") or "")
     result_conference = ResultConferenceService(db_path)
     state_repo = WhatsAppStateRepository(db_path)
     contest_number = parse_contest_number(text)
-    awaiting_concurso = state_repo.is_awaiting_concurso(phone)
+    awaiting_concurso = state_repo.is_awaiting_concurso(reply_phone)
 
     if awaiting_concurso or (contest_number is not None and contest_number >= 1000):
         if contest_number is None:
             return {
                 "status": "prompt",
-                "phone": phone,
+                "phone": reply_phone,
                 "message": (
                     "Não entendi o número do concurso.\n\n"
                     + result_conference.get_prompt()
                 ),
             }
         message = result_conference.build_message_for_phone(contest_number=contest_number, phone=phone)
-        state_repo.clear_awaiting_concurso(phone)
-        return {"status": "ok", "phone": phone, "message": message}
+        state_repo.clear_awaiting_concurso(reply_phone)
+        logger.info(
+            "WHATSAPP_RESULTADO_CONFERENCIA phone=%s contest=%s chars=%s",
+            reply_phone,
+            contest_number,
+            len(message),
+        )
+        return {"status": "ok", "phone": reply_phone, "message": message}
 
     if is_resultado_request(text):
-        state_repo.set_awaiting_concurso(phone)
+        state_repo.set_awaiting_concurso(reply_phone)
+        logger.info("WHATSAPP_RESULTADO_PROMPT phone=%s", reply_phone)
         return {
             "status": "prompt",
-            "phone": phone,
+            "phone": reply_phone,
             "message": result_conference.get_prompt(),
         }
 

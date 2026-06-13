@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 
 from lotoia.clients.constants import PLANS
+from lotoia.clients.evolution_client import EvolutionApiClient
 from lotoia.clients.whatsapp_service import (
     activate_client,
     deliver_whatsapp_webhook,
@@ -24,6 +25,20 @@ class ActivateClientRequest(BaseModel):
     plan: str = Field(description="basico|plus|avancado|pro|master|elite")
     valor_pago: float
     name: str = ""
+
+
+@router.get("/whatsapp/status")
+def whatsapp_status() -> dict[str, object]:
+    client = EvolutionApiClient()
+    return {
+        "channel": "whatsapp",
+        "evolution": {
+            "configured": client.is_configured,
+            "base_url": client.base_url or None,
+            "instance": client.instance or None,
+            "api_key_present": bool(client.api_key),
+        },
+    }
 
 
 @router.post("/whatsapp/webhook")

@@ -285,6 +285,31 @@ def test_whatsapp_resultado_fluxo(isolated_resultado_db: tuple[Path, _FakeMessen
         assert row.state == "initial"
 
 
+def test_whatsapp_resultado_lid_usa_telefone_cadastrado(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    from lotoia.clients.whatsapp_service import process_whatsapp_webhook
+
+    db_path, _ = isolated_resultado_db
+    phone = "5566992358330"
+    repository = ClientRepository(db_path)
+    repository.activate_client(phone=phone, plan="pro", valor_pago=49.99, name="Kleyson")
+    result = process_whatsapp_webhook(
+        {
+            "data": {
+                "key": {
+                    "remoteJid": "69385314111689@lid",
+                    "remoteJidAlt": "66992358330@s.whatsapp.net",
+                    "id": "wa-lid-resultado",
+                },
+                "message": {"conversation": "3709"},
+            }
+        },
+        db_path=db_path,
+    )
+    assert result.get("status") == "ok"
+    assert result.get("phone") == phone
+    assert "Concurso 3709" in str(result.get("message") or "")
+
+
 def test_whatsapp_resultado_numero_concurso_sem_estado_em_memoria(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
     from lotoia.clients.whatsapp_service import process_whatsapp_webhook
 
