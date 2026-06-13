@@ -184,6 +184,15 @@ def test_messenger_webhook_verification(isolated_messenger_db: tuple[Path, _Fake
     assert bad_status == 403
 
 
+def test_messenger_status_endpoint(isolated_messenger_db: tuple[Path, _FakeMessengerClient]) -> None:
+    _ = isolated_messenger_db
+    status, body = _request_json("GET", "/messenger/status")
+    assert status == 200
+    assert body.get("ok") is True
+    assert body.get("outbound_mode") == "graph_api_v1"
+    assert body.get("verify_token_configured") is True
+
+
 def test_new_lead_capture(isolated_messenger_db: tuple[Path, _FakeMessengerClient]) -> None:
     db_path, fake = isolated_messenger_db
     payload = {
