@@ -259,6 +259,25 @@ def test_whatsapp_webhook_replies_to_ola_with_menu_text(isolated_db: Path) -> No
     assert any("Plano" in text and "Quantos jogos quer gerar?" in text for _, text in _FAKE_EVOLUTION.sent_texts)
 
 
+def test_whatsapp_webhook_resultado_pede_numero_concurso(isolated_db: Path) -> None:
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-resultado"},
+                "message": {"conversation": "Resultado"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "prompt"
+    assert body.get("delivered") is True
+    assert _FAKE_EVOLUTION is not None
+    assert any("Qual o número do concurso?" in text for _, text in _FAKE_EVOLUTION.sent_texts)
+
+
 def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:
     _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
     status_code, body = _request(
