@@ -93,3 +93,30 @@ def test_ensure_official_contest_available_after_sync_contests(tmp_path: Path) -
         found = ensure_official_contest_available(db_path, 3709)
     assert found is True
     assert repository.get_official_history_contest(3709) is not None
+
+
+def test_ensure_official_contest_available_falls_back_to_csv(tmp_path: Path) -> None:
+    db_path = tmp_path / "ensure_csv.db"
+    create_database(db_path)
+    repository = ContestRepository(db_path)
+    repository.create_table()
+    repository.save_contest(
+        {
+            "concurso": 3706,
+            "data": "09/06/2026",
+            "dezenas": [f"{n:02d}" for n in [1, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 21, 22, 24, 25]],
+            "metadata_json": {},
+        }
+    )
+
+    failed_summary = _summary(contests=[], ok=False)
+
+    with patch("lotoia.clients.official_result_sync.ResultSyncService") as service_cls:
+        service_cls.return_value.sync_latest.return_value = failed_summary
+        service_cls.return_value.sync_contests.return_value = failed_summary
+        found = ensure_official_contest_available(db_path, 3709)
+
+    assert found is True
+    assert repository.get_contest(3709) is not None
+    numbers = [int(value) for value in repository.get_contest(3709)["dezenas"]]
+    assert numbers == [1, 4, 6, 7, 9, 10, 11, 14, 15, 18, 19, 20, 23, 24, 25]
