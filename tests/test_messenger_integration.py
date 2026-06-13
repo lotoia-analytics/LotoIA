@@ -191,6 +191,8 @@ def test_messenger_status_endpoint(isolated_messenger_db: tuple[Path, _FakeMesse
     assert body.get("ok") is True
     assert body.get("outbound_mode") == "graph_api_v1"
     assert body.get("verify_token_configured") is True
+    assert "page_token" in body
+    assert "webhook_subscription" in body
 
 
 def test_new_lead_capture(isolated_messenger_db: tuple[Path, _FakeMessengerClient]) -> None:
