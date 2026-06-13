@@ -249,6 +249,7 @@ def test_messenger_fluxo_completo_premiado(isolated_resultado_db: tuple[Path, _F
 
 def test_whatsapp_resultado_fluxo(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
     from lotoia.clients.whatsapp_service import process_whatsapp_webhook
+    from lotoia.database.database import WhatsAppConversationState
 
     db_path, _ = isolated_resultado_db
     phone = "5566992358330"
@@ -262,12 +263,39 @@ def test_whatsapp_resultado_fluxo(isolated_resultado_db: tuple[Path, _FakeMessen
         concurso_alvo=3709,
         jogos=[{"cartao_validado_lei15a": OFFICIAL_NUMBERS[:11] + [2, 4, 6, 8]}],
     )
-    prompt = process_whatsapp_webhook({"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net"}, "message": {"conversation": "resultado"}}}, db_path=db_path)
+    prompt = process_whatsapp_webhook(
+        {"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net", "id": "wa-1"}, "message": {"conversation": "resultado"}}},
+        db_path=db_path,
+    )
     assert prompt.get("status") == "prompt"
     assert RESULTADO_PROMPT.splitlines()[0] in str(prompt.get("message") or "")
-    result = process_whatsapp_webhook({"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net"}, "message": {"conversation": "3709"}}}, db_path=db_path)
+    with get_session(db_path) as session:
+        row = session.get(WhatsAppConversationState, phone)
+        assert row is not None
+        assert row.state == "awaiting_concurso"
+    result = process_whatsapp_webhook(
+        {"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net", "id": "wa-2"}, "message": {"conversation": "3709"}}},
+        db_path=db_path,
+    )
     assert result.get("status") == "ok"
     assert "✅ 11 pontos" in str(result.get("message") or "")
+    with get_session(db_path) as session:
+        row = session.get(WhatsAppConversationState, phone)
+        assert row is not None
+        assert row.state == "initial"
+
+
+def test_whatsapp_resultado_numero_concurso_sem_estado_em_memoria(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:
+    from lotoia.clients.whatsapp_service import process_whatsapp_webhook
+
+    db_path, _ = isolated_resultado_db
+    phone = "5566992358331"
+    result = process_whatsapp_webhook(
+        {"data": {"key": {"remoteJid": f"{phone}@s.whatsapp.net", "id": "wa-direct"}, "message": {"conversation": "3709"}}},
+        db_path=db_path,
+    )
+    assert result.get("status") == "ok"
+    assert "Concurso 3709" in str(result.get("message") or "")
 
 
 def test_concurso_alvo_index_exists(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:

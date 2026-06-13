@@ -223,6 +223,23 @@ class MessengerConversationState(Base):
     )
 
 
+class WhatsAppConversationState(Base):
+    __tablename__ = "whatsapp_conversation_state"
+
+    phone: Mapped[str] = mapped_column(String(32), primary_key=True)
+    state: Mapped[str] = mapped_column(String(40), default="initial", nullable=False)
+    last_interaction: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 class LotoiaClient(Base):
     __tablename__ = "lotoia_clients"
 
@@ -1216,6 +1233,17 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             )
             applied_migrations.append("messenger_conversation_state")
             connection.exec_driver_sql(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_conversation_state (
+                    phone VARCHAR(32) PRIMARY KEY,
+                    state VARCHAR(40) NOT NULL DEFAULT 'initial',
+                    last_interaction TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            applied_migrations.append("whatsapp_conversation_state")
+            connection.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS idx_clients_messenger_psid ON lotoia_clients(messenger_psid)"
             )
         if applied_migrations:
@@ -1935,6 +1963,17 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
             """
         )
         applied_migrations.append("messenger_conversation_state")
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS whatsapp_conversation_state (
+                phone TEXT PRIMARY KEY,
+                state TEXT NOT NULL DEFAULT 'initial',
+                last_interaction TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        applied_migrations.append("whatsapp_conversation_state")
     if applied_migrations:
         logger.info(
             "Institutional schema migration applied on %s: %s",

@@ -23,22 +23,20 @@ from lotoia.clients.interactive_menu import (
     build_format_more_menu_bundle,
     build_quantity_menu_bundle,
     build_quantity_more_menu_bundle,
-    clear_awaiting_concurso,
     clear_awaiting_custom_quantity,
     get_awaiting_custom_quantity_limit,
-    is_awaiting_concurso,
     is_awaiting_custom_quantity,
     is_greeting,
     is_resultado_request,
     parse_custom_quantity,
     parse_menu_selection,
     plan_generation_targets,
-    set_awaiting_concurso,
     set_awaiting_custom_quantity,
 )
 from lotoia.clients.message_parser import parse_whatsapp_message
 from lotoia.clients.conference_utils import resolve_next_target_contest
 from lotoia.clients.result_conference_service import ResultConferenceService, parse_contest_number
+from lotoia.clients.whatsapp_state_repository import WhatsAppStateRepository
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.generator.engine import generate_ranked_games
@@ -260,9 +258,11 @@ def process_whatsapp_webhook(
     client_status = repository.get_client_status(phone)
     selection_id = str(extracted.get("selection_id") or "")
     result_conference = ResultConferenceService(db_path)
+    state_repo = WhatsAppStateRepository(db_path)
+    contest_number = parse_contest_number(text)
+    awaiting_concurso = state_repo.is_awaiting_concurso(phone)
 
-    if is_awaiting_concurso(phone):
-        contest_number = parse_contest_number(text)
+    if awaiting_concurso or (contest_number is not None and contest_number >= 1000):
         if contest_number is None:
             return {
                 "status": "prompt",
@@ -273,11 +273,11 @@ def process_whatsapp_webhook(
                 ),
             }
         message = result_conference.build_message_for_phone(contest_number=contest_number, phone=phone)
-        clear_awaiting_concurso(phone)
+        state_repo.clear_awaiting_concurso(phone)
         return {"status": "ok", "phone": phone, "message": message}
 
     if is_resultado_request(text):
-        set_awaiting_concurso(phone)
+        state_repo.set_awaiting_concurso(phone)
         return {
             "status": "prompt",
             "phone": phone,
@@ -499,8 +499,8 @@ def deliver_whatsapp_webhook(
         return result
 
     try:
+        response_message = str(result.get("message") or "").strip()
         if status == "ok" and phone and result.get("games"):
-            response_message = str(result.get("message") or "").strip()
             if response_message:
                 delivered = client.send_text(phone, response_message)
             else:
@@ -509,6 +509,8 @@ def deliver_whatsapp_webhook(
                     list(result.get("games") or []),
                     int(result.get("formato") or 15),
                 )
+        elif status == "ok" and phone and response_message:
+            delivered = client.send_text(phone, response_message)
         elif status in {"menu", "menu_confirm", "menu_format"} and phone and result.get("menu_bundle"):
             delivered = client.send_menu_bundle(phone, dict(result.get("menu_bundle") or {}))
             if not delivered and str(result.get("message") or "").strip():

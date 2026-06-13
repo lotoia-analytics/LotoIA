@@ -278,6 +278,48 @@ def test_whatsapp_webhook_resultado_pede_numero_concurso(isolated_db: Path) -> N
     assert any("Qual o número do concurso?" in text for _, text in _FAKE_EVOLUTION.sent_texts)
 
 
+def test_whatsapp_webhook_resultado_responde_concurso(isolated_db: Path) -> None:
+    from lotoia.database.database import LotofacilOfficialHistory, get_session
+
+    with get_session(isolated_db) as session:
+        session.merge(
+            LotofacilOfficialHistory(
+                contest_number=3708,
+                draw_date="11/06/2026",
+                numbers="1,3,5,7,9,11,13,15,17,19,20,21,22,23,24",
+                numbers_signature="test",
+            )
+        )
+        session.commit()
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-resultado-1"},
+                "message": {"conversation": "Resultado"},
+            }
+        },
+    )
+    status_code, body = _request(
+        "POST",
+        "/whatsapp/webhook",
+        {
+            "data": {
+                "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-resultado-2"},
+                "message": {"conversation": "3708"},
+            }
+        },
+    )
+    assert status_code == 200
+    assert body["status"] == "ok"
+    assert body.get("delivered") is True
+    assert "Concurso 3708" in str(body.get("message") or "")
+    assert _FAKE_EVOLUTION is not None
+    assert any("Concurso 3708" in text for _, text in _FAKE_EVOLUTION.sent_texts)
+
+
 def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:
     _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
     status_code, body = _request(
