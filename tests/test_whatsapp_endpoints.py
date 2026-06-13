@@ -148,6 +148,14 @@ def isolated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "lotoia.clients.whatsapp_service.EvolutionApiClient",
         lambda *args, **kwargs: fake_evolution,
     )
+    monkeypatch.setattr(
+        "lotoia.clients.result_conference_service.sync_latest_official_results",
+        lambda db_path: [],
+    )
+    monkeypatch.setattr(
+        "lotoia.clients.result_conference_service.ensure_official_contest_available",
+        lambda db_path, contest_number, sync_latest_first=True: False,
+    )
     return db_path
 
 

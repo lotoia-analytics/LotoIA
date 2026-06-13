@@ -54,6 +54,14 @@ def isolated_resultado_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tu
         "lotoia.clients.messenger_service.MessengerEvolutionService",
         lambda *args, **kwargs: fake,
     )
+    monkeypatch.setattr(
+        "lotoia.clients.result_conference_service.sync_latest_official_results",
+        lambda db_path: [],
+    )
+    monkeypatch.setattr(
+        "lotoia.clients.result_conference_service.ensure_official_contest_available",
+        lambda db_path, contest_number, sync_latest_first=True: False,
+    )
     return db_path, fake
 
 
@@ -154,7 +162,7 @@ def test_concurso_inexistente_retorna_erro_amigavel(isolated_resultado_db: tuple
     db_path, _ = isolated_resultado_db
     message = build_result_conference_message(contest_number=9999, client_id=None, db_path=db_path)
     assert "⚠️ Concurso 9999 não encontrado." in message
-    assert "Verifique o número" in message
+    assert "Sincronizamos com a Caixa" in message
 
 
 def test_state_reset_apos_conferencia(isolated_resultado_db: tuple[Path, _FakeMessengerClient]) -> None:

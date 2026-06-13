@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lotoia.clients.official_result_sync import (
+    ensure_official_contest_available,
+    get_latest_official_contest,
+    sync_latest_official_results,
+)
 from lotoia.clients.conference_utils import (
     calculate_hits,
     extract_game_numbers,
@@ -23,11 +28,22 @@ RESULTADO_PROMPT = (
 )
 
 
-def build_resultado_prompt(last_contest: int | None = None) -> str:
+def build_resultado_prompt(
+    last_contest: int | None = None,
+    *,
+    latest_official_contest: int | None = None,
+) -> str:
     lines = [
         "📊 Conferência de resultado LotoIA!",
         "",
     ]
+    if latest_official_contest is not None:
+        lines.extend(
+            [
+                f"📡 Último resultado oficial disponível: {int(latest_official_contest)}",
+                "",
+            ]
+        )
     if last_contest is not None:
         lines.extend(
             [
@@ -95,6 +111,9 @@ def _load_official_result(db_path: Path, contest_number: int) -> _OfficialResult
     repository = ContestRepository(db_path)
     row = repository.get_official_history_contest(contest_number) or repository.get_contest(contest_number)
     if not row:
+        ensure_official_contest_available(db_path, int(contest_number))
+        row = repository.get_official_history_contest(contest_number) or repository.get_contest(contest_number)
+    if not row:
         return None
     numbers = parse_official_numbers(row)
     if len(numbers) != 15:
@@ -153,8 +172,8 @@ def build_result_conference_message(
         lines = [
             f"⚠️ Concurso {contest_number} não encontrado.",
             "",
-            "Verifique o número e tente novamente.",
-            "Ou digite RESULTADO para consultar outro concurso.",
+            "Sincronizamos com a Caixa, mas esse resultado ainda não está disponível.",
+            "Tente novamente em alguns minutos ou digite RESULTADO.",
         ]
         lines.extend(_last_contest_hint(last_generation_contest, requested_contest=contest_number))
         return "\n".join(lines)
@@ -223,10 +242,12 @@ class ResultConferenceService:
         return build_resultado_prompt()
 
     def get_prompt_for_client_id(self, client_id: int | None) -> str:
+        sync_latest_official_results(self.db_path)
         last_contest = None
         if client_id is not None:
             last_contest = self.repository.get_last_generation_contest(int(client_id))
-        return build_resultado_prompt(last_contest)
+        latest_official = get_latest_official_contest(self.db_path)
+        return build_resultado_prompt(last_contest, latest_official_contest=latest_official)
 
     def get_prompt_for_phone(self, phone: str) -> str:
         client = self.repository.get_by_phone(phone)
