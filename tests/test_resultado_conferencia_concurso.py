@@ -199,7 +199,7 @@ def test_lei_001_query_sempre_no_postgres(isolated_resultado_db: tuple[Path, _Fa
     with patch.object(ContestRepository, "get_official_history_contest", _tracked):
         message = build_result_conference_message(contest_number=3709, client_id=int(client["id"]), db_path=db_path)
 
-    assert tracked_calls == [3709, 3709]
+    assert tracked_calls == [3709]
     assert "Concurso 3709" in message
     assert "15 pontos" in message
     with get_session(db_path) as session:

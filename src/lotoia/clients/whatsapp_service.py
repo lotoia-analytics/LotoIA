@@ -352,7 +352,10 @@ def process_whatsapp_webhook(
                 f"⚠️ Não foi possível consultar o concurso {contest_number} agora.\n\n"
                 "Tente novamente em instantes ou digite RESULTADO."
             )
-        state_repo.clear_awaiting_concurso(reply_phone)
+        try:
+            state_repo.clear_awaiting_concurso(reply_phone)
+        except Exception as exc:  # noqa: BLE001 - response must not fail on state reset
+            logger.exception("WHATSAPP_STATE_CLEAR_ERROR phone=%s error=%s", reply_phone, exc)
         logger.info(
             "WHATSAPP_RESULTADO_CONFERENCIA phone=%s contest=%s chars=%s",
             reply_phone,
@@ -572,8 +575,13 @@ def _send_text_with_phone_fallback(client: EvolutionApiClient, phone: str, messa
     candidates = phone_lookup_candidates(phone) if phone else []
     ordered = list(dict.fromkeys([*candidates, phone]))
     for candidate in ordered:
-        if candidate and client.send_text(str(candidate), message):
-            return True
+        if not candidate:
+            continue
+        for attempt in range(2):
+            if client.send_text(str(candidate), message):
+                return True
+            if attempt == 0:
+                time.sleep(0.6)
     return False
 
 

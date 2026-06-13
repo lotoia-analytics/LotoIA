@@ -77,6 +77,7 @@ def _load_client_games(
     *,
     client_id: int,
     concurso_referencia: int,
+    official_numbers: list[int],
 ) -> list[_ClientGameResult]:
     """Lei No 001: consulta jogos do cliente no PostgreSQL (concurso_alvo = concurso vigente)."""
     results: list[_ClientGameResult] = []
@@ -91,14 +92,11 @@ def _load_client_games(
             .order_by(LotoiaClientGeneration.created_at.asc(), LotoiaClientGeneration.id.asc())
             .all()
         )
-        official = _load_official_result(db_path, concurso_referencia)
-        if official is None:
-            return []
         for generation in generations:
             for game in list(generation.jogos or []):
                 game_index += 1
                 numbers = extract_game_numbers(dict(game))
-                hits = calculate_hits(numbers, official.numbers)
+                hits = calculate_hits(numbers, official_numbers)
                 results.append(
                     _ClientGameResult(
                         index=game_index,
@@ -140,6 +138,7 @@ def build_result_conference_message(
             db_path,
             client_id=int(client_id),
             concurso_referencia=int(contest_number),
+            official_numbers=official.numbers,
         )
 
     if client_games:
