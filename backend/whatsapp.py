@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 
 from lotoia.clients.constants import PLANS
+from lotoia.clients.deploy_info import build_deploy_info
 from lotoia.clients.evolution_client import EvolutionApiClient
 from lotoia.clients.whatsapp_service import (
     activate_client,
@@ -32,6 +33,7 @@ def whatsapp_status() -> dict[str, object]:
     client = EvolutionApiClient()
     return {
         "channel": "whatsapp",
+        "deploy": build_deploy_info(),
         "evolution": {
             "configured": client.is_configured,
             "base_url": client.base_url or None,

@@ -4,6 +4,7 @@ from lotoia_runtime import ensure_src_layout
 
 ensure_src_layout()
 
+from lotoia.clients.deploy_info import build_deploy_info
 from lotoia.config import settings  # noqa: E402
 from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv  # noqa: E402
 from lotoia.database.database import DEFAULT_DATABASE_PATH  # noqa: E402
@@ -40,7 +41,13 @@ app.include_router(asaas_webhook_router)
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok", "environment": settings.app_env}
+    info = build_deploy_info()
+    return {
+        "status": "ok",
+        "environment": settings.app_env,
+        "git_sha": info["git_sha"],
+        "resultado_conference": info["resultado_conference"],
+    }
 
 
 @app.get("/analyses/summary")

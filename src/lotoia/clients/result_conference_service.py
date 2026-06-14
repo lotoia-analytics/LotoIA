@@ -27,6 +27,8 @@ RESULTADO_PROMPT = (
     "Ex: 3709"
 )
 
+RESULTADO_CONFERENCE_FORMAT = "premiados_only_v1"
+
 
 def build_resultado_prompt(
     last_contest: int | None = None,
