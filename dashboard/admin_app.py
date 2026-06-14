@@ -13,9 +13,18 @@ try:
 except ImportError:
     from src.lotoia.database.database import bootstrap_institutional_database  # type: ignore[no-redef]
 
-LABELS = getattr(_labels_module, "LABELS", {})
+LABELS = {**getattr(_labels_module, "LABELS", {}), "canais": "Canais"}
 PAGES = getattr(_labels_module, "PAGES", [])
-PAGE_GROUPS = getattr(_labels_module, "PAGE_GROUPS", {})
+PAGE_GROUPS = dict(getattr(_labels_module, "PAGE_GROUPS", {}))
+_operacional_groups = list(PAGE_GROUPS.get("operacional", []))
+_operacional_groups.append(
+    {
+        "title": "Comunicação",
+        "description": "Captação e canais externos",
+        "pages": ["canais"],
+    }
+)
+PAGE_GROUPS["operacional"] = _operacional_groups
 
 MODE_PAGES = {
     "operacional": [
@@ -24,6 +33,7 @@ MODE_PAGES = {
         "conferir_jogos",
         "reconciliacao_operacional",
         "historical_intelligence",
+        "canais",
     ],
     "analitico": [
         "analytics_intelligence",
@@ -40,7 +50,7 @@ MODE_PAGES = {
     ],
 }
 
-import io
+    from .pages.canais import render_canais_page
 import importlib
 import html
 import hashlib
@@ -6564,6 +6574,7 @@ def _render_sidebar_dispatch(page: str, draws) -> None:
         "observability": render_observability_page,
         "workflows": render_workflows_page,
         "reports_engine": render_reports_engine_page,
+        "canais": render_canais_page,
     }
     handler = routes.get(page)
     if handler is not None:
