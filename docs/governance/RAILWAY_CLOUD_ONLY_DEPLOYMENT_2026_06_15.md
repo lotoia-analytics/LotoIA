@@ -173,15 +173,19 @@ LOTOIA_BACKUP_RETENTION_DAYS=14
 
 ### 9.2 Agendar backup (Railway Cron)
 
-1. Railway → **Cron** (ou novo serviço cron)
-2. Schedule: `0 3 * * *` (03:00 UTC diário)
-3. Comando:
+**Guia completo:** `docs/governance/RAILWAY_BACKUP_CRON_SETUP.md`
+
+Resumo:
+
+1. Criar serviço **separado** `lotoia-postgresql-backup` (não no painel Streamlit)
+2. Config file: `railway.backup.toml`
+3. Cron: `0 3 * * *` (03:00 UTC)
+4. Volume: `/backups/postgresql`
+5. Variáveis: `DATABASE_URL`, `LOTOIA_BACKUP_OUTPUT_DIR=/backups/postgresql`
 
 ```bash
-python scripts/ops/postgresql_cloud_backup.py --json
+python scripts/ops/postgresql_cloud_backup.py --json --output-dir /backups/postgresql
 ```
-
-4. Montar volume em `/backups/postgresql` se persistência local de dumps for necessária
 
 ### 9.3 Validar no shell Railway
 

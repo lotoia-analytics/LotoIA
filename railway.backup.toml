@@ -1,0 +1,11 @@
+# Serviço Railway CRON — backup PostgreSQL (Lei No 001)
+# Criar serviço separado no Railway apontando para este arquivo:
+#   Settings → Config-as-code → railway.backup.toml
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python scripts/ops/postgresql_cloud_backup.py --json --output-dir /backups/postgresql"
+cronSchedule = "0 3 * * *"
+restartPolicyType = "NEVER"

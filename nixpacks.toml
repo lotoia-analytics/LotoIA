@@ -1,0 +1,3 @@
+# Nixpacks — inclui pg_dump para backup cron e scripts ops
+[phases.setup]
+aptPkgs = ["postgresql-client", "gzip"]
