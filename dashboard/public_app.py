@@ -14,7 +14,7 @@ from pathlib import Path
 import streamlit as st
 
 
-PUBLIC_APP_BUILD = "9d35eb2"
+PUBLIC_APP_BUILD = "railway-cloud-only-v1"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -33,7 +33,7 @@ def _render_public_boot_marker() -> None:
     st.sidebar.caption(f"public_build={PUBLIC_APP_BUILD}")
 
 
-def _render_admin_import_failure(exc: BaseException) -> None:
+def _render_institutional_import_failure(exc: BaseException) -> None:
     _configure_public_page()
     _render_public_boot_marker()
     st.sidebar.warning("Entrypoint publico ativo")
@@ -51,12 +51,12 @@ def main() -> None:
     _configure_public_page()
     _render_public_boot_marker()
     try:
-        from dashboard.admin_app import main as admin_main
+        from dashboard.institutional_app import main as institutional_main
     except Exception as exc:
-        _render_admin_import_failure(exc)
+        _render_institutional_import_failure(exc)
         return
 
-    admin_main()
+    institutional_main()
 
 
 if __name__ == "__main__":

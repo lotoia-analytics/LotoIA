@@ -29,7 +29,9 @@ import streamlit as st
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
+from dashboard.institutional_auth import require_institutional_login
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.governance.cloud_runtime_policy import cloud_runtime_policy_snapshot, enforce_cloud_runtime_policy
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
@@ -14038,8 +14040,16 @@ def _render_fallback_page(snapshot: dict[str, Any]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA Institucional", page_icon="🧭", layout="wide")
+    try:
+        enforce_cloud_runtime_policy(DB_PATH)
+    except RuntimeError as exc:
+        st.error("Runtime cloud bloqueado — política Lei No 001 violada.")
+        st.code(str(exc), language="text")
+        st.stop()
+    require_institutional_login(DB_PATH)
     _ensure_institutional_schema()
     snapshot = _database_snapshot()
+    snapshot["cloud_runtime_policy"] = cloud_runtime_policy_snapshot(DB_PATH)
     _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(
         st.session_state.get("institutional_page_id", "home"),
