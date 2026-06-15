@@ -46,6 +46,43 @@ def _mask_database_url(database_url: str) -> str:
     return f"{scheme}://{username}:***@{host_part}"
 
 
+def _resolve_pg_dump_binary() -> str:
+    override = os.getenv("LOTOIA_PG_DUMP_BIN", "").strip()
+    if override:
+        return override
+    major = os.getenv("LOTOIA_POSTGRESQL_CLIENT_MAJOR", "").strip()
+    if major.isdigit():
+        candidate = f"/usr/lib/postgresql/{major}/bin/pg_dump"
+        if Path(candidate).is_file():
+            return candidate
+    default = shutil.which("pg_dump")
+    if default:
+        return default
+    raise RuntimeError("pg_dump não encontrado no PATH — instale postgresql-client compatível")
+
+
+def _server_major_version(database_url: str) -> int | None:
+    try:
+        import psycopg
+    except ImportError:
+        try:
+            import psycopg2 as psycopg  # type: ignore[no-redef]
+        except ImportError:
+            return None
+    try:
+        with psycopg.connect(database_url, connect_timeout=10) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW server_version")
+                row = cursor.fetchone()
+        if not row or not row[0]:
+            return None
+        version_text = str(row[0])
+        major_text = version_text.split(".", maxsplit=1)[0]
+        return int(major_text) if major_text.isdigit() else None
+    except Exception:
+        return None
+
+
 def run_backup(*, output_dir: Path, compress: bool = True) -> dict:
     database_url = _resolve_database_url()
     if not database_url:
@@ -55,8 +92,25 @@ def run_backup(*, output_dir: Path, compress: bool = True) -> dict:
     if not (parsed.scheme or "").lower().startswith("postgres"):
         raise RuntimeError("DATABASE_URL deve ser PostgreSQL para backup cloud")
 
-    if shutil.which("pg_dump") is None:
-        raise RuntimeError("pg_dump não encontrado no PATH — instale postgresql-client")
+    pg_dump_bin = _resolve_pg_dump_binary()
+    server_major = _server_major_version(database_url)
+    client_major = None
+    match = None
+    for token in Path(pg_dump_bin).parts:
+        if token.isdigit():
+            client_major = int(token)
+            break
+    if client_major is None:
+        import re
+
+        version_match = re.search(r"postgresql-client-(\d+)", pg_dump_bin)
+        if version_match:
+            client_major = int(version_match.group(1))
+    if server_major is not None and client_major is not None and server_major != client_major:
+        raise RuntimeError(
+            f"pg_dump incompatível: client={client_major}, server={server_major}. "
+            f"Defina LOTOIA_POSTGRESQL_CLIENT_MAJOR={server_major} ou atualize o Postgres."
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -65,7 +119,7 @@ def run_backup(*, output_dir: Path, compress: bool = True) -> dict:
     if compress:
         dump_path = dump_path.with_suffix(".sql.gz")
 
-    command = ["pg_dump", database_url, "--no-owner", "--no-privileges"]
+    command = [pg_dump_bin, database_url, "--no-owner", "--no-privileges"]
     if compress:
         import gzip
 
@@ -96,6 +150,8 @@ def run_backup(*, output_dir: Path, compress: bool = True) -> dict:
         "status": "PASS",
         "backup_file": str(dump_path),
         "database_url_masked": _mask_database_url(database_url),
+        "pg_dump_bin": pg_dump_bin,
+        "server_major_version": server_major,
         "retention_days": retention_days,
         "removed_old_backups": removed,
         "created_at": datetime.now(UTC).isoformat(),
