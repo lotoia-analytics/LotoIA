@@ -1,3 +1,14 @@
-# Nixpacks — inclui pg_dump para backup cron e scripts ops
+# Nixpacks — pg_dump compatível com PostgreSQL 10.x (Railway legado)
+# O pacote genérico postgresql-client no Ubuntu 24 instala pg_dump 16,
+# que falha contra servidores PostgreSQL 10 (server version mismatch).
+
 [phases.setup]
-aptPkgs = ["postgresql-client", "gzip"]
+aptPkgs = ["curl", "ca-certificates", "gnupg", "lsb-release", "gzip"]
+
+[phases.install]
+cmds = [
+  "install -d /usr/share/postgresql-common/pgdg",
+  "curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg",
+  "sh -c 'echo \"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main\" > /etc/apt/sources.list.d/pgdg.list'",
+  "apt-get update && apt-get install -y postgresql-client-10",
+]

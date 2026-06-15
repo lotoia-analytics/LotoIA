@@ -39,6 +39,7 @@ O painel Streamlit (`lotoia-production`) roda 24/7. Cron no Railway exige um **s
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (referência ao Postgres do projeto) |
 | `LOTOIA_BACKUP_OUTPUT_DIR` | `/backups/postgresql` |
 | `LOTOIA_BACKUP_RETENTION_DAYS` | `14` |
+| `LOTOIA_POSTGRESQL_CLIENT_MAJOR` | `10` (se Postgres Railway for 10.x; omitir após upgrade) |
 | `APP_ENV` | `production` |
 
 ### 4. Volume persistente
@@ -104,6 +105,7 @@ Para backup às 03:00 Brasília, use cron `0 6 * * *`.
   - `pg_dump não encontrado` → `nixpacks.toml` não aplicado (rebuild)
   - `DATABASE_URL ausente` → variável não configurada
   - `pg_dump falhou` → credenciais ou rede Postgres
+  - `server version mismatch` → instalar `postgresql-client` da mesma major do servidor (ex.: PG 10 → `postgresql-client-10` via `nixpacks.toml`)
 
 ---
 
