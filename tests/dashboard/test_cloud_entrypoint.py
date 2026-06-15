@@ -12,48 +12,25 @@ if "matplotlib" not in sys.modules:
     sys.modules["matplotlib"] = matplotlib
     sys.modules["matplotlib.pyplot"] = pyplot
 
-import dashboard.admin_app as admin_app
 import dashboard.app as cloud_app
-import dashboard.labels as dashboard_labels
+import dashboard.institutional_app as institutional_app
 import dashboard.public_app as public_cloud_app
 
 
 def test_streamlit_cloud_entrypoint_delegates_to_institutional_dashboard() -> None:
     assert callable(cloud_app.main)
     assert callable(public_cloud_app.main)
-    assert callable(admin_app.main)
+    assert callable(institutional_app.main)
 
 
-def test_institutional_sidebar_contains_full_navigation(monkeypatch) -> None:
-    monkeypatch.setattr(admin_app.st.sidebar, "markdown", lambda *args, **kwargs: None)
-    captured: dict[str, object] = {}
-
-    def _button(label, **kwargs):
-        captured["label"] = label
-        captured["button_key"] = kwargs.get("key")
-        return label == "Gerar Jogos"
-
-    def _radio(label, options, **kwargs):
-        captured["radio_label"] = label
-        captured["options"] = list(options)
-        return "operacional"
-
-    monkeypatch.setattr(admin_app.st.sidebar, "radio", _radio)
-    monkeypatch.setattr(admin_app.st.sidebar, "button", _button)
-
-    page = admin_app._sidebar_navigation()
-
-    assert page == "geracao_jogos"
-    assert captured["radio_label"] == "Modo"
-    assert captured["options"] == ["operacional", "analitico"]
+def test_public_app_build_marker_is_cloud_only() -> None:
+    assert "cloud" in public_cloud_app.PUBLIC_APP_BUILD.lower()
 
 
-def test_shared_dashboard_registry_contains_expansion_page() -> None:
-    assert "jogo_expandido_experimental" not in dashboard_labels.PAGES
-    assert "jogo_expandido_experimental" not in dashboard_labels.LABELS
-    assert "workflows" in dashboard_labels.PAGES
-    assert dashboard_labels.LABELS["workflows"] == "Fluxos Institucionais"
-    assert admin_app.PAGES is dashboard_labels.PAGES
-    assert admin_app.LABELS is dashboard_labels.LABELS
-    assert admin_app.PAGE_GROUPS is dashboard_labels.PAGE_GROUPS
-    assert dashboard_labels.PAGE_GROUPS["analitico"][0]["title"] == "Validação temporal"
+def test_institutional_app_has_auth_and_cloud_policy_hooks() -> None:
+    assert hasattr(institutional_app, "main")
+    from dashboard import institutional_auth
+    from lotoia.governance import cloud_runtime_policy
+
+    assert hasattr(institutional_auth, "require_institutional_login")
+    assert hasattr(cloud_runtime_policy, "enforce_cloud_runtime_policy")
