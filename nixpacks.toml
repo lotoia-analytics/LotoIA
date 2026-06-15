@@ -5,7 +5,8 @@
 [phases.setup]
 aptPkgs = ["curl", "ca-certificates", "gnupg", "lsb-release", "gzip"]
 
-[phases.install]
+[phases.pgclient]
+dependsOn = ["install"]
 cmds = [
   "install -d /usr/share/postgresql-common/pgdg",
   "curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg",
