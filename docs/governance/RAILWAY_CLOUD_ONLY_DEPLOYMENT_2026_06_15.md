@@ -208,7 +208,20 @@ python scripts/ops/apply_cloud_migrations.py
 4. Login com `LOTOIA_ADMIN_EMAIL` / `LOTOIA_ADMIN_PASSWORD`
 5. Auditoria Runtime → `backend: postgresql`, `database_source: DATABASE_URL`
 
-### 9.5 Modo deploy-only (sem shell Railway)
+**Verificação de deploy:** na tela de login deve aparecer `build=institutional-auth-gate-v1`. Se o painel abrir direto sem login, o serviço ainda está em código antigo — redeploy necessário.
+
+### 9.5 Serviço `lotoia-production` (diagnóstico 2026-06-15)
+
+| Sinal | Valor observado | Interpretação |
+|-------|-----------------|---------------|
+| URL | `https://lotoia-production.up.railway.app/` | Serviço Streamlit ativo |
+| `last-modified` HTTP | `2026-06-15T15:20:24Z` | Deploy **anterior** ao PR #98 (merge 16:18Z) |
+| Login ADM | Ausente | Código antigo (`admin_app` ou `institutional_app` pré-auth) |
+| Deploy GitHub recente | `considerate-curiosity` / `meticulous-creativity` SHA `0ffbbee` | Pode ser **outro** serviço Railway |
+
+**Ação:** Railway → serviço vinculado ao domínio `lotoia-production` → **Redeploy** branch `main` → configurar variáveis seção 9.1.
+
+### 9.6 Modo deploy-only (sem shell Railway)
 
 Para validar merge + CI a partir de qualquer ambiente com `gh`:
 

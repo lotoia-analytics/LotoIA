@@ -9,11 +9,12 @@ from typing import Any
 import streamlit as st
 
 from lotoia.authentication import AuthenticationService, LoginRequest
-from lotoia.governance.cloud_runtime_policy import is_auth_required
+from lotoia.governance.cloud_runtime_policy import is_auth_required, is_cloud_production_runtime
 
 SESSION_USER_KEY = "institutional_auth_user"
 SESSION_SESSION_ID_KEY = "institutional_auth_session_id"
 RUNTIME_ORIGIN = "railway_cloud"
+AUTH_GATE_BUILD = "institutional-auth-gate-v1"
 
 
 def _bootstrap_admin_if_configured(service: AuthenticationService) -> None:
@@ -59,6 +60,10 @@ def _clear_authenticated_user() -> None:
 def _render_login_page(db_path: Path) -> None:
     st.title("LotoIA — Acesso Institucional")
     st.caption("Painel ADM protegido. Autenticação obrigatória em runtime cloud.")
+    st.caption(
+        f"build={AUTH_GATE_BUILD} | auth=on | cloud_runtime={is_cloud_production_runtime()} | "
+        f"domain={os.getenv('RAILWAY_PUBLIC_DOMAIN', '-')}"
+    )
     service = AuthenticationService(db_path)
     _bootstrap_admin_if_configured(service)
 
