@@ -1,10 +1,54 @@
-# Railway — DATABASE_URL pública para consultas do agente/dev
+# Railway — DATABASE_URL para consultas do agente Cloud / dev local
 
-**Atenção:** use só para desenvolvimento/consulta. Não commitar `.env`.
+**Atenção:** use só para desenvolvimento/consulta. Não commitar `.env`. Não colar senha no chat.
 
 ---
 
-## Passo 1 — Ativar rede pública no Postgres (Railway)
+## Cursor Cloud Agent (recomendado — o agente consulta sozinho)
+
+Para o **Cloud Agent** rodar SQL e scripts (`generations_today_query.py`, health-check) sem você colar queries no Railway shell:
+
+### 1. Postgres com TCP público (Railway)
+
+1. Railway → projeto LotoIA → serviço **Postgres**
+2. **Settings** → **Networking** → ative **TCP Proxy** / **Public Networking**
+3. Anote **host** e **porta** (ex.: `shortline.proxy.rlwy.net:32647`)
+
+### 2. Montar `DATABASE_URL`
+
+```text
+postgresql://postgres:SENHA@HOST_PUBLICO:PORTA/railway
+```
+
+- **SENHA:** Postgres → **Variables** → `POSTGRES_PASSWORD`
+- **HOST/PORTA:** do TCP proxy (não use `postgres.railway.internal`)
+
+### 3. Secret no Cursor (não no GitHub)
+
+1. Abra [cursor.com/dashboard](https://cursor.com/dashboard) → **Cloud Agents** → **Secrets**
+2. Adicione:
+   - **Nome:** `DATABASE_URL`
+   - **Valor:** URL completa do passo 2
+   - **Tipo:** **Runtime Secret** (senha não aparece no chat nem em commits)
+3. Salve e **inicie um novo Cloud Agent** (secrets novos não entram em sessões já abertas)
+
+### 4. Validar (o agente roda isto)
+
+```bash
+source .venv/bin/activate
+python scripts/checks/postgresql_cloud_health_check.py
+python scripts/checks/generations_today_query.py --json
+```
+
+Se `PASS`, o agente passa a consultar o PostgreSQL de produção diretamente.
+
+**Estado atual deste workspace:** `.env` local usa placeholder `SUA_SENHA` — conexão falha até o secret `DATABASE_URL` existir no dashboard Cursor.
+
+---
+
+## Dev local (opcional — seu PC)
+
+### Passo 1 — Ativar rede pública no Postgres (Railway)
 
 1. Railway → projeto LotoIA → serviço **Postgres**
 2. Aba **Settings**

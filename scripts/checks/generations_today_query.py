@@ -22,7 +22,10 @@ def _load_dotenv() -> None:
         if not text or text.startswith("#") or "=" not in text:
             continue
         key, value = text.split("=", maxsplit=1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        if key in os.environ:
+            continue
+        os.environ[key] = value.strip().strip('"').strip("'")
 
 
 def run_query(*, target_date: date | None = None) -> dict:
