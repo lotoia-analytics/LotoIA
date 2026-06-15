@@ -14,7 +14,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BACKUP_DIR = ROOT / "backups" / "postgresql"
+
+
+def default_backup_dir() -> Path:
+    return Path(
+        os.getenv("LOTOIA_BACKUP_OUTPUT_DIR", "").strip()
+        or str(ROOT / "backups" / "postgresql")
+    )
 
 
 def _resolve_database_url() -> str:
@@ -61,20 +67,21 @@ def run_backup(*, output_dir: Path, compress: bool = True) -> dict:
 
     command = ["pg_dump", database_url, "--no-owner", "--no-privileges"]
     if compress:
-        command.extend(["|", "gzip", ">", str(dump_path)])
-        completed = subprocess.run(
-            " ".join(command),
-            shell=True,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        import gzip
+
+        with gzip.open(dump_path, "wb") as handle:
+            completed = subprocess.run(
+                command,
+                check=False,
+                stdout=handle,
+                stderr=subprocess.PIPE,
+            )
     else:
         with dump_path.open("w", encoding="utf-8") as handle:
             completed = subprocess.run(command, check=False, stdout=handle, stderr=subprocess.PIPE, text=True)
 
     if completed.returncode != 0:
-        stderr = getattr(completed, "stderr", "") or ""
+        stderr = (completed.stderr or b"").decode("utf-8", errors="replace") if isinstance(completed.stderr, bytes) else str(completed.stderr or "")
         raise RuntimeError(f"pg_dump falhou: {stderr.strip()}")
 
     retention_days = int(os.getenv("LOTOIA_BACKUP_RETENTION_DAYS", "14") or "14")
@@ -99,7 +106,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="PostgreSQL cloud backup")
     parser.add_argument(
         "--output-dir",
-        default=str(DEFAULT_BACKUP_DIR),
+        default=str(default_backup_dir()),
         help="Diretório de saída dos dumps",
     )
     parser.add_argument("--no-compress", action="store_true", help="Não comprimir com gzip")
