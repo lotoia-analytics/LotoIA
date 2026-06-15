@@ -134,3 +134,85 @@ Com Railway ativo e `DATABASE_URL` configurado:
 | Backup | `scripts/ops/postgresql_cloud_backup.py` |
 | Health-check | `scripts/checks/postgresql_cloud_health_check.py` |
 | Lei 001 | `scripts/checks/lei_001_zero_local_read_validation.py` |
+
+---
+
+## 9. Checklist pós-merge (PR #98)
+
+### Status em 2026-06-15
+
+| Etapa | Status | Evidência |
+|-------|--------|-----------|
+| PR #98 mergeado em `main` | **PASS** | merge commit `e2dce4c` |
+| CI `governance-gate` | **PASS** | headSha `e2dce4c` |
+| Deploy Railway produção | **PENDENTE** | SHA ativo `fb18ef7` — aguardar auto-deploy de `e2dce4c` |
+| Variáveis Railway | **PENDENTE** | Configurar no painel (passo 9.1) |
+| `RAILWAY_FULL_VALIDATION` | **PENDENTE** | Executar no shell Railway (passo 9.3) |
+
+### 9.1 Configurar variáveis no Railway Dashboard
+
+**Serviço:** dashboard institucional (`considerate-curiosity` ou equivalente)
+
+1. Railway → projeto LotoIA → serviço Streamlit → **Variables**
+2. Adicionar/atualizar:
+
+```env
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+LOTOIA_CLOUD_ONLY=1
+LOTOIA_AUTH_REQUIRED=1
+LOTOIA_ADMIN_EMAIL=admin@lotoia.chat
+LOTOIA_ADMIN_PASSWORD=<gerar secret forte>
+APP_ENV=production
+LOTOIA_BACKUP_RETENTION_DAYS=14
+```
+
+3. **Não** usar `localhost` em `DATABASE_URL`
+4. Salvar → Railway redeploya automaticamente
+
+**Referência Postgres Railway:** se o serviço PostgreSQL estiver no mesmo projeto, use a variável referenciada `${{Postgres.DATABASE_URL}}` em vez de copiar URL manualmente.
+
+### 9.2 Agendar backup (Railway Cron)
+
+1. Railway → **Cron** (ou novo serviço cron)
+2. Schedule: `0 3 * * *` (03:00 UTC diário)
+3. Comando:
+
+```bash
+python scripts/ops/postgresql_cloud_backup.py --json
+```
+
+4. Montar volume em `/backups/postgresql` se persistência local de dumps for necessária
+
+### 9.3 Validar no shell Railway
+
+Após redeploy com SHA `e2dce4c` e variáveis configuradas:
+
+```bash
+# Checklist completo (recomendado)
+python scripts/checks/railway_post_merge_checklist.py --expected-sha e2dce4c
+
+# Ou passo a passo:
+python scripts/checks/railway_production_validation.py --expected-sha e2dce4c
+python scripts/checks/postgresql_cloud_health_check.py
+python scripts/checks/lei_001_zero_local_read_validation.py --strict
+python scripts/ops/apply_cloud_migrations.py
+```
+
+**Critério de sucesso:** todos retornam `PASS`.
+
+### 9.4 Confirmar CPU local desligado
+
+1. Parar Streamlit/FastAPI locais
+2. Abrir URL Railway do painel ADM no navegador
+3. Verificar tela de login institucional
+4. Login com `LOTOIA_ADMIN_EMAIL` / `LOTOIA_ADMIN_PASSWORD`
+5. Auditoria Runtime → `backend: postgresql`, `database_source: DATABASE_URL`
+
+### 9.5 Modo deploy-only (sem shell Railway)
+
+Para validar merge + CI a partir de qualquer ambiente com `gh`:
+
+```bash
+python scripts/checks/railway_post_merge_checklist.py --deploy-only --expected-sha e2dce4c
+```
+
