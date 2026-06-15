@@ -60,6 +60,13 @@ def test_cloud_policy_rejects_localhost_database_url(monkeypatch, tmp_path: Path
         enforce_cloud_runtime_policy(tmp_path / "lotoia.db")
 
 
+def test_cloud_runtime_detected_from_railway_public_domain(monkeypatch) -> None:
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("LOTOIA_CLOUD_ONLY", raising=False)
+    monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", "lotoia-production.up.railway.app")
+    assert is_cloud_production_runtime() is True
+
+
 def test_cloud_policy_snapshot_reports_status(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_CLOUD_ONLY", raising=False)

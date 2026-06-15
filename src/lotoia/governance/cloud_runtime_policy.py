@@ -50,6 +50,10 @@ def is_cloud_production_runtime() -> bool:
         return True
     if os.getenv("RAILWAY_SERVICE_ID", "").strip():
         return True
+    if os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip():
+        return True
+    if os.getenv("RAILWAY_SERVICE_NAME", "").strip():
+        return True
     return False
 
 
