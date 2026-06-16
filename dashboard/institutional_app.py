@@ -107,6 +107,7 @@ from lotoia.observability.ml_diagnostic_panels import (
     list_ml_diagnostic_decisions,
     load_displayed_conference_diagnostic_context,
     register_ml_diagnostic_verdict,
+    _evidence_base_identifiable,
 )
 from lotoia.observability.observational_leftover import (
     ML_ROLE_DIAGNOSTIC_ONLY,
@@ -8477,6 +8478,26 @@ def _render_perfect_hits_notice(evolution: dict[str, Any]) -> None:
         st.success(f"Acerto perfeito: {perfect_hits} jogo(s) com 15 acertos nesta conferência.")
 
 
+def _render_diagnostic_evidence_base(
+    evidence_base: dict[str, Any] | None,
+    *,
+    title: str = "Base do diagnóstico",
+) -> None:
+    base = dict(evidence_base or {})
+    if not _evidence_base_identifiable(base):
+        st.warning("Base do diagnóstico não identificável — IDs ausentes.")
+        return
+    st.markdown(f"**{title}**")
+    metric_cols = st.columns(3)
+    metric_cols[0].metric("Gerações", int(base.get("total_geracoes", 0) or 0))
+    metric_cols[1].metric("Concursos", int(base.get("total_concursos", 0) or 0))
+    metric_cols[2].metric("Runs", int(base.get("total_runs", 0) or 0))
+    st.write(f"Nível de evidência: `{base.get('evidence_level', '—')}`")
+    st.write(f"Concursos analisados: `{base.get('concursos_analisados', [])}`")
+    st.write(f"generation_event_ids: `{base.get('generation_event_ids', [])}`")
+    st.write(f"reconciliation_run_ids: `{base.get('reconciliation_run_ids', [])}`")
+
+
 def _render_local_ml_diagnostics(locals_for_panel: list[dict[str, Any]]) -> None:
     if not locals_for_panel:
         return
@@ -8496,6 +8517,10 @@ def _render_local_ml_diagnostics(locals_for_panel: list[dict[str, Any]]) -> None
                 f"Fórmula: `{local_alert.get('formula') or local_alert.get('regra_base')}` | "
                 f"Fonte: `{local_alert.get('fonte')}` | "
                 f"Motivo: {local_alert.get('routing_reason') or '—'}"
+            )
+            _render_diagnostic_evidence_base(
+                dict(local_alert.get("evidence_base") or {}),
+                title="Base do diagnóstico",
             )
             if local_alert.get("tipo_alerta") == ALERT_001:
                 leakage_evidence = dict(local_alert.get("leakage_evidence") or {})
@@ -8556,6 +8581,10 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             info_cols[2].write(f"Veredito: **{alert.get('verdict_type') or '—'}**")
             st.markdown("**Evidência**")
             st.write(alert.get("evidencia") or "—")
+            _render_diagnostic_evidence_base(
+                dict(alert.get("evidence_base") or {}),
+                title="Base do diagnóstico",
+            )
             detail_cols = st.columns(2)
             detail_cols[0].write(f"Regra base: `{alert.get('regra_base')}`")
             detail_cols[1].write(f"Threshold: `{alert.get('threshold_usado')}`")
@@ -11458,6 +11487,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
             local_alerts=routing_bundle["local_alerts_by_panel"]["side_leak"],
         )
         _render_evolution_panel_context_caption(side_leak)
+        _render_diagnostic_evidence_base(
+            dict(side_leak.get("evidence_base") or {}),
+            title="Base analisada",
+        )
         if not side_leak.get("available"):
             st.warning("Nenhuma reconciliation_run com resultado oficial disponível no PostgreSQL.")
         elif side_leak.get("alert") == ALERT_SIDE_LEAK:

@@ -100,12 +100,24 @@ def _seed_reconciliation_run(
     return int(run.id)
 
 
-def _context_from_games(games: list[dict], run_id: int = 42) -> dict:
+def _context_from_games(games: list[dict], run_id: int = 42, contest_id: int = 3704, generation_event_id: int = 492) -> dict:
+    enriched_games = []
+    for index, game in enumerate(games, start=1):
+        enriched_games.append(
+            {
+                **game,
+                "game_index": index,
+                "generation_event_id": generation_event_id,
+                "contest_id": contest_id,
+            }
+        )
     return {
         "available": True,
         "reconciliation_run_id": run_id,
+        "contest_id": contest_id,
+        "generation_event_id": generation_event_id,
         "resultado_oficial": OFFICIAL_15,
-        "games": games,
+        "games": enriched_games,
     }
 
 
