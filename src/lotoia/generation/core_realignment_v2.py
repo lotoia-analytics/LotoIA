@@ -78,7 +78,7 @@ def filter_pool_for_prefix_diversity(
     # Check whether any group exceeds the cap
     needs_filter = any(len(g) > cap_per_prefix3 for g in groups.values())
     if not needs_filter:
-        return pool, False, False
+        return pool, True, False
 
     # Apply cap: keep top-N by base_score within each group
     def _base_score(g: dict) -> float:
@@ -252,6 +252,48 @@ def compose_gp_v2(
         suffix4_counts[s4] += 1
 
         remaining = [g for g in remaining if tuple(g["numbers"]) not in selected_keys]
+
+    if len(selected) < count:
+        logger.warning(
+            "[CoreRealignV2] greedy pass %d/%d — completion pass (sem penalidade estrutural)",
+            len(selected), count,
+        )
+        for game in effective_pool:
+            if len(selected) >= count:
+                break
+            numbers = game["numbers"]
+            key = tuple(numbers)
+            if key in selected_keys:
+                continue
+            p3 = _prefix(numbers, 3)
+            p4 = _prefix(numbers, 4)
+            s3 = _suffix(numbers, 3)
+            s4 = _suffix(numbers, 4)
+            tagged = dict(game)
+            existing_meta = dict(tagged.get("realignment_metadata") or {})
+            existing_meta.update({
+                "realignment_tag": config.realignment_tag,
+                "evidence_epoch": config.evidence_epoch,
+                "mode": config.mode,
+                "v1_applied": True,
+                "v2_applied": True,
+                "pool_pre_filter_applied": pre_filter_applied,
+                "v2_fallback_to_v1": False,
+                "v2_completion_pass": True,
+                "prefix_3": _format_prefix(p3),
+                "prefix_4": _format_prefix(p4),
+                "suffix_3": _format_prefix(s3),
+                "suffix_4": _format_prefix(s4),
+            })
+            tagged["realignment_metadata"] = existing_meta
+            tagged["realignment_applied"] = True
+            tagged["core_realignment_v2_applied"] = True
+            selected.append(tagged)
+            selected_keys.add(key)
+            prefix3_counts[p3] += 1
+            prefix4_counts[p4] += 1
+            suffix3_counts[s3] += 1
+            suffix4_counts[s4] += 1
 
     logger.info(
         "[CoreRealignV2] composed %d / %d games (pool=%d, pre_filter=%s)",

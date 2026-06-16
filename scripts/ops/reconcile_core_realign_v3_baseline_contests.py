@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Reconcilia STRUCT_CORE_REALIGN_V2_15D_001 contra os 7 concursos baseline (3705-3711).
+"""Reconcilia STRUCT_CORE_REALIGN_V3_BALANCED_15D_001 contra os 7 concursos baseline (3705-3711).
 
 Garante que todos os 20 generation_events tenham reconciliation_runs para cada concurso.
 Meta: 20 GEs × 7 concursos = 140 reconciliation_runs.
 
-ADR: ADR-044-REAVALIACAO-NUCLEOS-LEI15-15A
+ADR: ADR-045-CORE-REALIGNMENT-V3-BALANCED
 Missao: MISSAO_DA_VITORIA_REAVALIAR_NUCLEOS_LEI15_15A
 """
 
@@ -26,10 +26,10 @@ if str(_OPS) not in sys.path:
 
 from cloud_env_bootstrap import ensure_database_url, resolve_database_url
 
-os.environ.setdefault("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V2", "shadow_test")
+os.environ.setdefault("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3", "shadow_test")
 os.environ.setdefault("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "shadow_test")
 
-BATCH_LABEL = "STRUCT_CORE_REALIGN_V2_15D_001"
+BATCH_LABEL = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
 TARGET_CONTESTS = [3705, 3706, 3707, 3708, 3709, 3710, 3711]
 CARD_FORMAT = 15
 EXPECTED_GES = 20
@@ -122,13 +122,13 @@ def main() -> int:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE context_json::text ILIKE '%%core_realignment_v2_applied%%true%%') AS v2_true
+                       COUNT(*) FILTER (WHERE context_json::text ILIKE '%%core_realignment_v3_applied%%true%%') AS v3_true
                 FROM generation_events
                 WHERE analysis_batch_label = %s
             """, (BATCH_LABEL,))
             row = cur.fetchone()
-        total_ges, v2_true = row
-        _log(f"Pre-validacao: total_ges={total_ges} v2_applied_true={v2_true}")
+        total_ges, v3_true = row
+        _log(f"Pre-validacao: total_ges={total_ges} v3_applied_true={v3_true}")
 
         if total_ges < EXPECTED_GES:
             _log(f"AVISO: apenas {total_ges}/{EXPECTED_GES} GEs. Complete a geracao primeiro.")

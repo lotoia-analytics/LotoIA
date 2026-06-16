@@ -61,6 +61,7 @@ from lotoia.governance.output_commander import (
     load_batch_output_signatures,
     output_commander_validate_games,
 )
+from lotoia.governance.lei15_15a_core_realignment_v3 import get_v3_mode
 from lotoia.governance.structural_rfe import (
     RFEPreviousContestReference,
     RFEValidationResult,
@@ -72,8 +73,10 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
-BUILD_MARKER = "institutional-adm-runtime-v2"
+BUILD_MARKER = "institutional-adm-runtime-v3"
 APP_BUILD = BUILD_MARKER
+CORE_REALIGN_V3_BATCH_LABEL = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
+CORE_REALIGN_V3_ENV_VAR = "LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
@@ -7711,6 +7714,21 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         }
 
 
+def _coerce_analysis_batch_created_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text)
+    return None
+
+
 def _persist_generation_snapshot(
     *,
     games: list[dict[str, Any]],
@@ -7718,6 +7736,10 @@ def _persist_generation_snapshot(
     target_contest: int | None,
     batch_id: str | None = None,
     generation_context: dict[str, Any] | None = None,
+    analysis_batch_label: str | None = None,
+    analysis_batch_type: str | None = None,
+    analysis_batch_created_by: str | None = None,
+    analysis_batch_created_at: datetime | None = None,
 ) -> dict[str, Any]:
     started_at = time.monotonic()
     context_payload = {
@@ -7728,6 +7750,15 @@ def _persist_generation_snapshot(
     }
     if generation_context:
         context_payload.update({str(key): value for key, value in generation_context.items()})
+    ctx = generation_context or {}
+    batch_label = analysis_batch_label or ctx.get("analysis_batch_label")
+    batch_type = analysis_batch_type or ctx.get("analysis_batch_type")
+    batch_created_by = analysis_batch_created_by or ctx.get("analysis_batch_created_by")
+    batch_created_at = analysis_batch_created_at
+    if batch_created_at is None:
+        batch_created_at = _coerce_analysis_batch_created_at(ctx.get("analysis_batch_created_at"))
+    elif not isinstance(batch_created_at, datetime):
+        batch_created_at = _coerce_analysis_batch_created_at(batch_created_at)
     with get_session(DB_PATH) as session:
         policy_origin = str((generation_context or {}).get("policy_origin", "") or "")
         policy_adjustment_reason = str((generation_context or {}).get("policy_adjustment_reason", "") or "")
@@ -7801,6 +7832,10 @@ def _persist_generation_snapshot(
             strategy="institutional_clean_hb",
             ranking_score=0.0,
             execution_time_ms=0.0,
+            analysis_batch_label=str(batch_label) if batch_label else None,
+            analysis_batch_type=str(batch_type) if batch_type else None,
+            analysis_batch_created_by=str(batch_created_by) if batch_created_by else None,
+            analysis_batch_created_at=batch_created_at,
         )
         session.add(event)
         session.flush()
@@ -7835,6 +7870,8 @@ def _persist_generation_snapshot(
                 per_game_context["realignment_metadata"] = game.get("realignment_metadata")
             if "core_realignment_v2_applied" in game:
                 per_game_context["core_realignment_v2_applied"] = bool(game.get("core_realignment_v2_applied"))
+            if "core_realignment_v3_applied" in game:
+                per_game_context["core_realignment_v3_applied"] = bool(game.get("core_realignment_v3_applied"))
             if "realignment_applied" in game:
                 per_game_context["realignment_applied"] = bool(game.get("realignment_applied"))
             session.add(
@@ -8686,6 +8723,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
+    st.sidebar.caption(f"commit={_resolve_active_commit()}")
     st.sidebar.caption("Painel institucional ADM")
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
@@ -12360,13 +12398,22 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
 
 def _render_home_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Painel Institucional LotoIA")
-    st.write("Home institucional leve, sem geração, sem recalibração e sem carga histórica pesada.")
+    active_commit = _resolve_active_commit()
+    v3_mode = get_v3_mode()
+    st.write(
+        "Home institucional — navegação e status do runtime cloud. "
+        "Geração, recalibração e histórico pesado ficam nas páginas dedicadas."
+    )
     cols = st.columns(4)
     cols[0].metric("status runtime", "ativo")
     cols[1].metric("build", BUILD_MARKER)
-    cols[2].metric("backend conectado", snapshot.get("backend", "-"))
+    cols[2].metric("commit deploy", active_commit)
+    cols[3].metric("backend conectado", snapshot.get("backend", "-"))
     latest_contest = _load_latest_contest_summary()
-    cols[3].metric("último concurso", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
+    st.metric("último concurso", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
+    governance_cols = st.columns(2)
+    governance_cols[0].metric(CORE_REALIGN_V3_ENV_VAR, v3_mode)
+    governance_cols[1].metric("lote V3 shadow_test", CORE_REALIGN_V3_BATCH_LABEL)
     st.caption(
         "Lei 15 é comando soberano | Lei 17/18 são validação/referência | áreas de quarentena e ações destrutivas permanecem bloqueadas."
     )
@@ -12382,7 +12429,10 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     state_cols[2].metric("Quarentena", "restrita")
     state_cols[3].metric("Destrutivas", "bloqueadas")
     with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.caption("Home institucional leve, sem histórico pesado e sem execução operacional.")
+        st.caption(
+            f"build={BUILD_MARKER} | commit={active_commit} | "
+            f"{CORE_REALIGN_V3_ENV_VAR}={v3_mode} | label={CORE_REALIGN_V3_BATCH_LABEL}"
+        )
 
 
 def _render_fallback_page(snapshot: dict[str, Any]) -> None:
@@ -12406,8 +12456,12 @@ def main() -> None:
         snapshot,
     )
     st.session_state["institutional_page_id"] = page
-    st.success(BUILD_MARKER)
-    st.caption("Painel mínimo, isolado e pronto para o runtime novo.")
+    active_commit = _resolve_active_commit()
+    st.success(f"{BUILD_MARKER} | commit={active_commit}")
+    st.caption(
+        f"Runtime cloud PostgreSQL | {CORE_REALIGN_V3_ENV_VAR}={get_v3_mode()} | "
+        f"lote={CORE_REALIGN_V3_BATCH_LABEL}"
+    )
     if page == "audit":
         _render_runtime_audit_page(snapshot)
     elif page == "home":

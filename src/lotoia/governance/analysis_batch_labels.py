@@ -9,6 +9,7 @@ from typing import Any
 STRUCTURAL_COVERAGE_TEST = "STRUCTURAL_COVERAGE_TEST"
 STRUCTURAL_REALIGNMENT_TEST = "STRUCTURAL_REALIGNMENT_TEST"
 STRUCTURAL_CORE_REALIGNMENT_TEST = "STRUCTURAL_CORE_REALIGNMENT_TEST"
+STRUCTURAL_CORE_REALIGNMENT_V3_BALANCED_TEST = "STRUCTURAL_CORE_REALIGNMENT_V3_BALANCED_TEST"
 ADM_DIAGNOSTIC_TEST = "ADM_DIAGNOSTIC_TEST"
 GENERAL_ANALYSIS = "GENERAL_ANALYSIS"
 
@@ -16,6 +17,7 @@ BATCH_TYPE_VALUES: tuple[str, ...] = (
     STRUCTURAL_COVERAGE_TEST,
     STRUCTURAL_REALIGNMENT_TEST,
     STRUCTURAL_CORE_REALIGNMENT_TEST,
+    STRUCTURAL_CORE_REALIGNMENT_V3_BALANCED_TEST,
     ADM_DIAGNOSTIC_TEST,
     GENERAL_ANALYSIS,
 )
@@ -62,10 +64,17 @@ _CORE_REALIGN_V2_LABELS: tuple[str, ...] = (
     "STRUCT_CORE_REALIGN_V2_18D_001",
 )
 
+# Labels CORE_REALIGN_V3 BALANCED — hits-first shadow_test
+# ADR: ADR-045-CORE-REALIGNMENT-V3-BALANCED
+_CORE_REALIGN_V3_BALANCED_LABELS: tuple[str, ...] = (
+    "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001",
+)
+
 ALLOWED_BATCH_LABELS: tuple[str, ...] = (
     *_EPOCH_001_BASELINE,
     *_REALIGN_V1_LABELS,
     *_CORE_REALIGN_V2_LABELS,
+    *_CORE_REALIGN_V3_BALANCED_LABELS,
 )
 
 RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
@@ -90,6 +99,7 @@ OPERATIONAL_EFFECT = False
 _REALIGN_PATTERN = re.compile(r"^STRUCT_REALIGN_V\d+_(\d+)D_\d+$")
 # Pattern: STRUCT_CORE_REALIGN_V2_<size>D_<epoch>
 _CORE_V2_PATTERN = re.compile(r"^STRUCT_CORE_REALIGN_V2_(\d+)D_\d+$")
+_CORE_V3_PATTERN = re.compile(r"^STRUCT_CORE_REALIGN_V3_BALANCED_(\d+)D_\d+$")
 # Pattern: STRUCT_TEST_<size>D[_<epoch>]
 _TEST_PATTERN = re.compile(r"^STRUCT_TEST_(\d+)D(?:_\d+)?$")
 
@@ -100,6 +110,9 @@ def batch_label_game_size(label: str | None) -> int | None:
     if m:
         return int(m.group(1))
     m = _CORE_V2_PATTERN.match(normalized)
+    if m:
+        return int(m.group(1))
+    m = _CORE_V3_PATTERN.match(normalized)
     if m:
         return int(m.group(1))
     m = _TEST_PATTERN.match(normalized)
@@ -114,6 +127,8 @@ def is_reserved_batch_label(label: str | None) -> bool:
 
 def infer_batch_type(label: str | None) -> str:
     normalized = str(label or "").strip().upper()
+    if normalized.startswith("STRUCT_CORE_REALIGN_V3_BALANCED_"):
+        return STRUCTURAL_CORE_REALIGNMENT_V3_BALANCED_TEST
     if normalized.startswith("STRUCT_CORE_REALIGN_V2_"):
         return STRUCTURAL_CORE_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_REALIGN_"):

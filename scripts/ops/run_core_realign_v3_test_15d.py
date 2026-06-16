@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Gera rodadas de STRUCT_CORE_REALIGN_V2_15D_001 (GP:50) e valida core_realignment_v2_applied.
+"""Gera rodadas de STRUCT_CORE_REALIGN_V3_BALANCED_15D_001 (GP:50) e valida core_realignment_v3_applied.
 
 Modo de uso:
   # Teste inicial (1ª geração do lote)
-  python scripts/ops/run_core_realign_v2_test_15d.py --generations 1
-  python scripts/ops/run_core_realign_v2_test_15d.py --validate-only
+  python scripts/ops/run_core_realign_v3_test_15d.py --generations 1
+  python scripts/ops/run_core_realign_v3_test_15d.py --validate-only
 
   # Completar lote até 20 events totais (recomendado após validar 1x)
-  python scripts/ops/run_core_realign_v2_test_15d.py --target-total 20
+  python scripts/ops/run_core_realign_v3_test_15d.py --target-total 20
 
   # Ou manualmente, se já existir 1 event: --generations 19 (NÃO --generations 20)
 
-ADR: ADR-044-REAVALIACAO-NUCLEOS-LEI15-15A
+ADR: ADR-045-CORE-REALIGNMENT-V3-BALANCED
 Missao: MISSAO_DA_VITORIA_REAVALIAR_NUCLEOS_LEI15_15A
 """
 
@@ -38,15 +38,15 @@ if str(_OPS) not in sys.path:
 
 from cloud_env_bootstrap import ensure_database_url, normalize_database_url, resolve_database_url
 
-# Feature flags V2 (shadow_test) + V1 (shadow_test — needed for observable metadata)
-os.environ.setdefault("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V2", "shadow_test")
+# Feature flags V3 (shadow_test) + V1 (shadow_test — needed for observable metadata)
+os.environ.setdefault("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3", "shadow_test")
 os.environ.setdefault("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "shadow_test")
 
-BATCH_LABEL = "STRUCT_CORE_REALIGN_V2_15D_001"
+BATCH_LABEL = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
 GAMES_COUNT = 50
 CARD_FORMAT = 15
 OFFICIAL_GROUP = "G50"
-STEP_TIMEOUT_S = 90  # V2 may need slightly more time due to pool pre-filter
+STEP_TIMEOUT_S = 90  # V3 balanced compose
 DEFAULT_LOT_TARGET = 20
 
 
@@ -87,7 +87,7 @@ def _run_with_timeout(fn, *, timeout_s: float, label: str):
 
 
 # ---------------------------------------------------------------------------
-# Generation — direto em generate_best_games com V2 ativo
+# Generation — direto em generate_best_games com V3 BALANCED ativo
 # ---------------------------------------------------------------------------
 
 def _generate_games_progressive(*, seed: int, pool_steps: list[int]) -> tuple[list[dict], int]:
@@ -122,16 +122,16 @@ def _generate_games_progressive(*, seed: int, pool_steps: list[int]) -> tuple[li
             games = []
 
         elapsed = time.monotonic() - t0
-        v2_applied = sum(
+        v3_applied = sum(
             1 for g in games
-            if g.get("core_realignment_v2_applied") is True
-            or (g.get("realignment_metadata") or {}).get("core_realignment_v2_applied") is True
+            if g.get("core_realignment_v3_applied") is True
+            or (g.get("realignment_metadata") or {}).get("core_realignment_v3_applied") is True
         )
         v1_applied = sum(
             1 for g in games
             if (g.get("realignment_metadata") or {}).get("realignment_applied") is True
         )
-        _log(f"  resultado: {len(games)} jogos em {elapsed:.2f}s | v2_applied={v2_applied} v1_applied={v1_applied}")
+        _log(f"  resultado: {len(games)} jogos em {elapsed:.2f}s | v3_applied={v3_applied} v1_applied={v1_applied}")
 
         if len(games) >= GAMES_COUNT:
             break
@@ -155,29 +155,29 @@ def _persist(*, games: list[dict], seed: int, contest_number: int, created_by: s
         datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
         if isinstance(created_at_raw, str) else created_at_raw
     )
-    batch_id = f"core-v2-15d-c{contest_number}-{uuid.uuid4().hex[:8]}"
+    batch_id = f"core-v3-15d-c{contest_number}-{uuid.uuid4().hex[:8]}"
     ctx = {
         **dict(_official_15_generation_context(OFFICIAL_GROUP) or {}),
         **meta,
         "structural_test_mission": "MISSAO_DA_VITORIA_REAVALIAR_NUCLEOS_LEI15_15A",
         "structural_test_contest": contest_number,
-        "generation_mode": "CORE_REALIGN_V2_SHADOW_TEST_HEADLESS",
-        "core_realignment_v2_applied_count": sum(
+        "generation_mode": "CORE_REALIGN_V3_BALANCED_SHADOW_TEST_HEADLESS",
+        "core_realignment_v3_applied_count": sum(
             1 for g in games
-            if g.get("core_realignment_v2_applied") is True
-            or (g.get("realignment_metadata") or {}).get("v2_applied") is True
+            if g.get("core_realignment_v3_applied") is True
+            or (g.get("realignment_metadata") or {}).get("v3_applied") is True
         ),
         "pool_pre_filter_applied_count": sum(
             1 for g in games
             if (g.get("realignment_metadata") or {}).get("pool_pre_filter_applied") is True
         ),
-        "v2_fallback_to_v1_count": sum(
+        "v3_fallback_to_v1_count": sum(
             1 for g in games
-            if (g.get("realignment_metadata") or {}).get("v2_fallback_to_v1") is True
+            if (g.get("realignment_metadata") or {}).get("v3_fallback_to_v1") is True
         ),
-        "core_realignment_v2_applied": any(
-            g.get("core_realignment_v2_applied") is True
-            or (g.get("realignment_metadata") or {}).get("v2_applied") is True
+        "core_realignment_v3_applied": any(
+            g.get("core_realignment_v3_applied") is True
+            or (g.get("realignment_metadata") or {}).get("v3_applied") is True
             for g in games
         ),
     }
@@ -286,21 +286,21 @@ def _validate_db() -> dict:
                   COUNT(DISTINCT ge.id) AS total_events,
                   COUNT(gg.id) AS total_games,
                   COUNT(DISTINCT ge.id) FILTER (
-                    WHERE ge.context_json::text ILIKE '%%core_realignment_v2_applied%%true%%'
-                  ) AS ge_v2_flagged,
+                    WHERE ge.context_json::text ILIKE '%%core_realignment_v3_applied%%true%%'
+                  ) AS ge_v3_flagged,
                   COUNT(gg.id) FILTER (
-                    WHERE gg.context_json::text ILIKE '%%"v2_applied": true%%'
-                       OR gg.context_json::text ILIKE '%%"core_realignment_v2_applied": true%%'
-                  ) AS games_v2_applied,
+                    WHERE gg.context_json::text ILIKE '%%"v3_applied": true%%'
+                       OR gg.context_json::text ILIKE '%%"core_realignment_v3_applied": true%%'
+                  ) AS games_v3_applied,
                   COUNT(gg.id) FILTER (
                     WHERE gg.context_json::text ILIKE '%%"pool_pre_filter_applied": true%%'
                   ) AS games_pool_pre_filter,
                   COUNT(gg.id) FILTER (
-                    WHERE gg.context_json::text ILIKE '%%"v2_fallback_to_v1": true%%'
-                  ) AS games_v2_fallback
+                    WHERE gg.context_json::text ILIKE '%%"v3_fallback_to_v1": true%%'
+                  ) AS games_v3_fallback
                 FROM generation_events ge
                 LEFT JOIN generated_games gg ON gg.generation_event_id = ge.id
-                WHERE ge.analysis_batch_label LIKE 'STRUCT_CORE_REALIGN_V2_%%'
+                WHERE ge.analysis_batch_label LIKE 'STRUCT_CORE_REALIGN_V3_BALANCED_%%'
                 GROUP BY ge.analysis_batch_label
                 ORDER BY ge.analysis_batch_label
             """)
@@ -310,10 +310,10 @@ def _validate_db() -> dict:
             "label": r[0],
             "total": r[1],
             "games": r[2],
-            "ge_v2_flagged": r[3],
-            "games_v2_applied": r[4],
+            "ge_v3_flagged": r[3],
+            "games_v3_applied": r[4],
             "games_pool_pre_filter": r[5],
-            "games_v2_fallback": r[6],
+            "games_v3_fallback": r[6],
         }
         for r in rows
     ]
@@ -322,9 +322,9 @@ def _validate_db() -> dict:
         batch
         and batch["total"] >= 1
         and batch["games"] >= GAMES_COUNT
-        and batch["games_v2_applied"] == batch["games"]
+        and batch["games_v3_applied"] == batch["games"]
         and batch["games_pool_pre_filter"] == batch["games"]
-        and batch["games_v2_fallback"] == 0
+        and batch["games_v3_fallback"] == 0
     )
     _log(f"  validate_db: {time.monotonic()-t0:.2f}s")
     return {"rows": results, "validation_ok": ok, "batch": batch}
@@ -332,23 +332,23 @@ def _validate_db() -> dict:
 
 def _print_validation(val: dict) -> None:
     if not val["rows"]:
-        _log("  Nenhum dado para STRUCT_CORE_REALIGN_V2_*")
+        _log("  Nenhum dado para STRUCT_CORE_REALIGN_V3_BALANCED_*")
         return
     for r in val["rows"]:
         status = "OK" if r["label"] == BATCH_LABEL and val.get("validation_ok") else "CHECK"
         _log(
             f"  {r['label']:<40}  events={r['total']:>3}  games={r['games']:>4}  "
-            f"v2_games={r['games_v2_applied']:>3}  pre_filter={r['games_pool_pre_filter']:>3}  "
-            f"fallback={r['games_v2_fallback']:>3}  [{status}]"
+            f"v3_games={r['games_v3_applied']:>3}  pre_filter={r['games_pool_pre_filter']:>3}  "
+            f"fallback={r['games_v3_fallback']:>3}  [{status}]"
         )
     batch = val.get("batch")
     if val["validation_ok"] and batch:
         _log(
             f"[RESULTADO] {BATCH_LABEL} validado: "
             f"events={batch['total']} games={batch['games']} "
-            f"v2_applied={batch['games_v2_applied']} "
+            f"v3_applied={batch['games_v3_applied']} "
             f"pool_pre_filter={batch['games_pool_pre_filter']} "
-            f"v2_fallback={batch['games_v2_fallback']}"
+            f"v3_fallback={batch['games_v3_fallback']}"
         )
     else:
         _log(f"[RESULTADO] FALHA na validacao de {BATCH_LABEL}")
@@ -374,8 +374,8 @@ def main() -> int:
         default=0,
         help=f"Fechar lote até N generation_events totais (ex.: 20). Calcula restante automaticamente.",
     )
-    parser.add_argument("--pool", type=int, default=0, help="pool_size inicial (0=progressivo [50,100,200])")
-    parser.add_argument("--created-by", default="ops/run_core_realign_v2_test_15d")
+    parser.add_argument("--pool", type=int, default=0, help="pool_size inicial (0=progressivo [100,200])")
+    parser.add_argument("--created-by", default="ops/run_core_realign_v3_test_15d")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--json-out", action="store_true")
     args = parser.parse_args()
@@ -390,18 +390,18 @@ def main() -> int:
         return 0 if val["validation_ok"] else 1
 
     # flag check
-    v2_mode = os.environ.get("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V2", "off")
+    v3_mode = os.environ.get("LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3", "off")
     v1_mode = os.environ.get("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "off")
-    _log(f"LOTOIA_LEI15_15A_CORE_REALIGNMENT_V2={v2_mode!r}")
+    _log(f"LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3={v3_mode!r}")
     _log(f"LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1={v1_mode!r}")
-    if v2_mode not in ("shadow_test", "active"):
-        raise RuntimeError(f"V2 flag inativa: {v2_mode!r}. Defina shadow_test ou active.")
+    if v3_mode not in ("shadow_test", "active"):
+        raise RuntimeError(f"V3 flag inativa: {v3_mode!r}. Defina shadow_test ou active.")
 
     ensure_database_url(root=ROOT)
     _log(f"DATABASE_URL source: {os.environ.get('LOTOIA_DOTENV_LOADED', 'environment')}")
 
     # pool steps
-    pool_steps = [args.pool] if args.pool > 0 else [50, 100, 200]
+    pool_steps = [args.pool] if args.pool > 0 else [100, 200]
 
     target_total = args.target_total if args.target_total > 0 else None
     existing, n_gens, final_total = _resolve_generation_plan(
@@ -453,7 +453,7 @@ def main() -> int:
         raise RuntimeError(f"Apenas {len(contests)} concursos válidos ({n_contests} necessários).")
 
     _log(
-        f"\n=== {BATCH_LABEL} | v2_mode={v2_mode} | existing={existing} | "
+        f"\n=== {BATCH_LABEL} | v3_mode={v3_mode} | existing={existing} | "
         f"run={n_gens} | final={final_total} | pool_steps={pool_steps} | GP={GAMES_COUNT} ===\n"
     )
 

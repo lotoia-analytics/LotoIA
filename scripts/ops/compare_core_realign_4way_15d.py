@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Relatório comparativo 3 lotes: BASELINE vs V1 vs V2 (15D).
-
-Fonte exclusiva: Railway PostgreSQL (DATABASE_URL).
+"""Relatório comparativo 4 vias: BASELINE / V1 / V2 evidência / V3 BALANCED (15D).
 
 Uso:
-  python scripts/ops/compare_core_realign_v2_batches.py
+  python scripts/ops/compare_core_realign_4way_15d.py
 """
 
 from __future__ import annotations
@@ -28,18 +26,18 @@ LABELS = (
     "STRUCT_TEST_15D_001",
     "STRUCT_REALIGN_V1_15D_001",
     "STRUCT_CORE_REALIGN_V2_15D_001",
+    "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001",
 )
 SHORT = {
     "STRUCT_TEST_15D_001": "BASELINE",
     "STRUCT_REALIGN_V1_15D_001": "V1",
-    "STRUCT_CORE_REALIGN_V2_15D_001": "V2",
+    "STRUCT_CORE_REALIGN_V2_15D_001": "V2-EVID",
+    "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001": "V3-BAL",
 }
 
-# Concursos baseline Missão Vitória 15D — comparativo oficial: 1 run por (GE, concurso).
 OFFICIAL_CONTEST_NUMBERS = (3705, 3706, 3707, 3708, 3709, 3710, 3711)
-OFFICIAL_RUNS_EXPECTED_V2 = 20 * len(OFFICIAL_CONTEST_NUMBERS)  # 140
+OFFICIAL_RUNS_PER_GE = len(OFFICIAL_CONTEST_NUMBERS)
 
-# Dedupe: geração headless também reconcilia 3711; baseline usa a run mais recente por par (GE, concurso).
 OFFICIAL_RUNS_SQL = """
 WITH deduped AS (
     SELECT DISTINCT ON (rr.generation_event_id, rr.contest_id)
@@ -73,12 +71,12 @@ def main() -> None:
 
     with psycopg.connect(url) as conn:
         print("\n" + "=" * 72)
-        print("RELATÓRIO COMPARATIVO MISSÃO VITÓRIA — 15D (BASELINE / V1 / V2)")
+        print("COMPARATIVO 4 VIAS — MISSÃO VITÓRIA 15D")
+        print("BASELINE | V1 | V2 (evidência) | V3 BALANCED")
         print("=" * 72)
         print(
-            f"Reconciliação oficial: concursos {OFFICIAL_CONTEST_NUMBERS[0]}–"
-            f"{OFFICIAL_CONTEST_NUMBERS[-1]} | 1 run/par (GE×concurso) | "
-            f"meta V2={OFFICIAL_RUNS_EXPECTED_V2} runs"
+            f"Reconciliação oficial: {OFFICIAL_CONTEST_NUMBERS[0]}–{OFFICIAL_CONTEST_NUMBERS[-1]} | "
+            f"1 run/(GE×concurso) | meta lote completo={20 * OFFICIAL_RUNS_PER_GE} runs"
         )
 
         rows = q(conn, f"""
@@ -99,8 +97,10 @@ def main() -> None:
         """, (list(LABELS), list(OFFICIAL_CONTEST_NUMBERS), list(LABELS)))
 
         print("\n--- RESUMO DOS LOTES ---")
-        for label, gen_ev, jogos, recon in rows:
-            print(f"  {SHORT[label]:<10} gen_events={gen_ev:>3}  jogos={jogos:>5}  recon_runs={recon:>4}")
+        label_rows = {label: (gen_ev, jogos, recon) for label, gen_ev, jogos, recon in rows}
+        for lb in LABELS:
+            gen_ev, jogos, recon = label_rows.get(lb, (0, 0, 0))
+            print(f"  {SHORT[lb]:<10} gen_events={gen_ev:>3}  jogos={jogos:>5}  recon_runs={recon:>4}")
 
         rows = q(conn, f"""
             {OFFICIAL_RUNS_SQL}
@@ -122,7 +122,7 @@ def main() -> None:
         hit_14_plus = {lb: sum(n for h, n in hit_dist[lb].items() if h >= 14) for lb in LABELS}
         hit_13_plus = {lb: sum(n for h, n in hit_dist[lb].items() if h >= 13) for lb in LABELS}
 
-        print("\n--- HITS ---")
+        print("\n--- HITS (140 runs oficiais quando lote=20 GEs) ---")
         for lb in LABELS:
             print(
                 f"  {SHORT[lb]:<10} melhor={best_hit[lb]}  media={avg_hit[lb]:.3f}  "
@@ -131,8 +131,6 @@ def main() -> None:
 
         prefix3: dict[str, Counter] = defaultdict(Counter)
         suffix3: dict[str, Counter] = defaultdict(Counter)
-        prefix4: dict[str, Counter] = defaultdict(Counter)
-        suffix4: dict[str, Counter] = defaultdict(Counter)
         total_games: dict[str, int] = defaultdict(int)
         ge_games: dict[str, dict] = defaultdict(lambda: defaultdict(list))
 
@@ -148,15 +146,12 @@ def main() -> None:
                 continue
             nums = sorted(int(x) for x in numbers)
             prefix3[label][tuple(nums[:3])] += 1
-            prefix4[label][tuple(nums[:4])] += 1
             suffix3[label][tuple(nums[-3:])] += 1
-            suffix4[label][tuple(nums[-4:])] += 1
             total_games[label] += 1
             ge_games[label][ge_id].append(set(nums))
 
-        near_dup: dict[str, dict] = {}
+        near_dup: dict[str, float] = {}
         for label in LABELS:
-            total_near_dup = 0
             total_mean_overlap = 0.0
             mean_cnt = 0
             for game_sets in ge_games[label].values():
@@ -166,17 +161,11 @@ def main() -> None:
                 overlaps = []
                 for i in range(n):
                     for j in range(i + 1, n):
-                        ov = len(game_sets[i] & game_sets[j])
-                        overlaps.append(ov)
-                        if ov >= 13:
-                            total_near_dup += 1
+                        overlaps.append(len(game_sets[i] & game_sets[j]))
                 if overlaps:
                     total_mean_overlap += sum(overlaps) / len(overlaps)
                     mean_cnt += 1
-            near_dup[label] = {
-                "total_near_dup_pairs": total_near_dup,
-                "mean_overlap": total_mean_overlap / max(mean_cnt, 1),
-            }
+            near_dup[label] = total_mean_overlap / max(mean_cnt, 1)
 
         def top_pct(counter: Counter, label: str) -> tuple[str, float]:
             total = total_games[label] or 1
@@ -185,65 +174,42 @@ def main() -> None:
             k, n = counter.most_common(1)[0]
             return fmt_key(k), n / total * 100
 
-        print("\n--- ESTRUTURA (TOP CONCENTRAÇÃO) ---")
-        metrics = {}
+        print("\n--- ESTRUTURA ---")
+        metrics: dict[str, dict[str, float]] = {}
         for lb in LABELS:
             p3k, p3p = top_pct(prefix3[lb], lb)
-            p4k, p4p = top_pct(prefix4[lb], lb)
             s3k, s3p = top_pct(suffix3[lb], lb)
-            s4k, s4p = top_pct(suffix4[lb], lb)
-            metrics[lb] = {
-                "p3": p3p, "p4": p4p, "s3": s3p, "s4": s4p,
-                "overlap": near_dup[lb]["mean_overlap"],
-            }
+            metrics[lb] = {"p3": p3p, "s3": s3p, "overlap": near_dup[lb]}
             print(
-                f"  {SHORT[lb]:<10} p3={p3k}({p3p:.1f}%)  p4={p4k}({p4p:.1f}%)  "
-                f"s3={s3k}({s3p:.1f}%)  s4={s4k}({s4p:.1f}%)  "
-                f"gp_overlap={near_dup[lb]['mean_overlap']:.3f}"
+                f"  {SHORT[lb]:<10} p3={p3k}({p3p:.1f}%)  s3={s3k}({s3p:.1f}%)  "
+                f"gp_overlap={near_dup[lb]:.3f}"
             )
 
         v1 = "STRUCT_REALIGN_V1_15D_001"
-        v2 = "STRUCT_CORE_REALIGN_V2_15D_001"
+        v3 = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
         m_v1 = metrics.get(v1, {})
-        m_v2 = metrics.get(v2, {})
+        m_v3 = metrics.get(v3, {})
 
-        print("\n--- CRITÉRIOS DE APROVAÇÃO V2 (vs V1) — shadow_test 15D ---")
-        checks = [
-            ("melhor hit >= 14", best_hit.get(v2, 0) >= 14),
-            ("media hits >= 12.143", avg_hit.get(v2, 0) >= 12.143),
-            ("runs 14+ >= 5", hit_14_plus.get(v2, 0) >= 5),
-            ("runs 13+ >= 47", hit_13_plus.get(v2, 0) >= 47),
-            ("top prefixo_3 < 35%", m_v2.get("p3", 100) < 35),
-            ("top prefixo_4 < V1", m_v2.get("p4", 100) < m_v1.get("p4", 100)),
-            ("top sufixo_3 <= 27%", m_v2.get("s3", 100) <= 27),
-            ("top sufixo_4 <= 17%", m_v2.get("s4", 100) <= 17),
-            ("similaridade GP <= 9.717", near_dup.get(v2, {}).get("mean_overlap", 99) <= 9.717),
-        ]
-        passed = sum(1 for _, ok in checks if ok)
-        for name, ok in checks:
-            print(f"  [{'OK' if ok else 'FALHA'}] {name}")
-        print(f"\n  Resultado V2: {passed}/{len(checks)} critérios atendidos")
-        print(
-            "\n  Decisão ADM (pós-lote): V2 rejeitada como candidata operacional — "
-            "estrutura OK, hits abaixo de V1. V1 permanece melhor shadow_test. "
-            "Próximo passo: V3 BALANCED (ADR-045)."
-        )
-
-        print("\n--- CRITÉRIOS PROPOSTOS V3 BALANCED (hits-first) ---")
+        print("\n--- CRITÉRIOS V3 BALANCED (hits-first vs V1) ---")
         v3_checks = [
-            ("melhor hit >= 14", best_hit.get(v2, 0) >= 14),
-            ("media hits >= 12.143", avg_hit.get(v2, 0) >= 12.143),
-            ("runs 14+ >= 5", hit_14_plus.get(v2, 0) >= 5),
-            ("runs 13+ >= 47", hit_13_plus.get(v2, 0) >= 47),
-            ("prefixo_3 < V1 e >= 30% (não artificial)", m_v2.get("p3", 100) < m_v1.get("p3", 100) and m_v2.get("p3", 100) >= 30),
-            ("sufixo controlado (<= V1)", m_v2.get("s3", 100) <= m_v1.get("s3", 100)),
-            ("GP overlap <= V1", near_dup.get(v2, {}).get("mean_overlap", 99) <= near_dup.get(v1, {}).get("mean_overlap", 99)),
+            ("melhor hit >= 14", best_hit.get(v3, 0) >= 14),
+            ("media hits >= 12.143", avg_hit.get(v3, 0) >= 12.143),
+            ("runs 14+ >= 5", hit_14_plus.get(v3, 0) >= 5),
+            ("runs 13+ >= 47", hit_13_plus.get(v3, 0) >= 47),
+            (
+                "prefixo_3 < V1 e >= 30%",
+                m_v3.get("p3", 100) < m_v1.get("p3", 100) and m_v3.get("p3", 0) >= 30,
+            ),
+            ("sufixo <= V1", m_v3.get("s3", 100) <= m_v1.get("s3", 100)),
+            ("GP overlap <= V1", near_dup.get(v3, 99) <= near_dup.get(v1, 99)),
         ]
+        passed = sum(1 for _, ok in v3_checks if ok)
         for name, ok in v3_checks:
             print(f"  [{'OK' if ok else 'PENDENTE'}] {name}")
+        print(f"\n  Resultado V3: {passed}/{len(v3_checks)} critérios")
 
         print("\n" + "=" * 72)
-        print("Fonte: Railway PostgreSQL | shadow_test only")
+        print("Fonte: Railway PostgreSQL | shadow_test only | ADR-045")
         print("=" * 72 + "\n")
 
 

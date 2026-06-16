@@ -31,6 +31,10 @@ from lotoia.governance.lei15_15a_core_realignment_v2 import (
     get_v2_config,
     should_apply_v2,
 )
+from lotoia.governance.lei15_15a_core_realignment_v3 import (
+    get_v3_config,
+    should_apply_v3,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -567,7 +571,11 @@ def generate_best_games(
 
     # --- Core Realignment V2 hook (ADR-044) ----------------------------------
     _v2_cfg = get_v2_config()
-    _apply_v2 = should_apply_v2(batch_label)
+    _apply_v2 = should_apply_v2(batch_label) and not should_apply_v3(batch_label)
+
+    # --- Core Realignment V3 BALANCED hook (ADR-045) ---------------------------
+    _v3_cfg = get_v3_config()
+    _apply_v3 = should_apply_v3(batch_label)
 
     if realignment_is_observable():
         from lotoia.generation.structural_realignment_v1 import apply_gp_realignment_scoring
@@ -578,7 +586,21 @@ def generate_best_games(
         )
 
     _v2_fallback_to_v1 = False
-    if _apply_v2:
+    _v3_fallback_to_v1 = False
+    if _apply_v3:
+        from lotoia.generation.core_realignment_v3 import compose_gp_v3
+
+        best_games, _ = compose_gp_v3(games, count, _v3_cfg, game_size=count)
+        if len(best_games) < count:
+            raise RuntimeError(
+                f"[CoreRealignV3] compose_gp_v3 retornou {len(best_games)}/{count} "
+                "após completion pass — lote inválido para shadow_test oficial."
+            )
+        logger.info(
+            "[CoreRealignV3] mode=%s batch_label=%r apply_v3=%s total=%d",
+            _v3_cfg.mode, batch_label, _apply_v3, len(best_games),
+        )
+    elif _apply_v2:
         # V2: two-layer (pool pre-filter + tighter composition)
         from lotoia.generation.core_realignment_v2 import compose_gp_v2
         from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
@@ -594,19 +616,14 @@ def generate_best_games(
                 meta["v2_fallback_to_v1"] = True
                 meta["v1_applied"] = True
                 meta["v2_applied"] = False
-                meta["core_realignment_v2_applied"] = False
                 meta["pool_pre_filter_applied"] = False
                 _g["realignment_metadata"] = meta
                 _g["core_realignment_v2_applied"] = False
         elif len(best_games) < count:
-            logger.warning(
-                "[CoreRealignV2] composed only %d/%d — completando remainder com V1",
-                len(best_games), count,
+            raise RuntimeError(
+                f"[CoreRealignV2] compose_gp_v2 retornou {len(best_games)}/{count} "
+                "após completion pass — lote inválido para shadow_test oficial."
             )
-            v2_keys = {tuple(g["numbers"]) for g in best_games}
-            remainder = [g for g in games if tuple(g["numbers"]) not in v2_keys]
-            v1_fill = compose_diverse_gp(remainder, count - len(best_games), _realign_cfg, game_size=count)
-            best_games = best_games + v1_fill
         logger.info(
             "[CoreRealignV2] mode=%s batch_label=%r apply_v2=%s fallback_v1=%s total=%d",
             _v2_cfg.mode, batch_label, _apply_v2, v2_fallback_to_v1, len(best_games),
@@ -620,11 +637,11 @@ def generate_best_games(
     if realignment_is_observable() and best_games:
         from lotoia.generation.structural_realignment_v1 import compute_gp_realignment_metrics
         _rm = compute_gp_realignment_metrics(best_games, game_size=count)
-        _rm["realignment_applied"] = _apply_realign or _apply_v2
+        _rm["realignment_applied"] = _apply_realign or _apply_v2 or _apply_v3
         _rm["batch_label"] = batch_label
         logger.info(
             "[RealignmentV1] realignment_applied=%s top_p3=%s(%.0f%%) top_s3=%s(%.0f%%) near_dups=%d",
-            _apply_realign,
+            _apply_realign or _apply_v2 or _apply_v3,
             _rm.get("top_prefix3"), _rm.get("top_prefix3_ratio", 0) * 100,
             _rm.get("top_suffix3"), _rm.get("top_suffix3_ratio", 0) * 100,
             _rm.get("near_duplicate_pairs", 0),
@@ -633,14 +650,33 @@ def generate_best_games(
         for _g in best_games:
             if "realignment_metadata" not in _g:
                 _g["realignment_metadata"] = {}
-            _g["realignment_metadata"]["realignment_applied"] = _apply_realign or (_apply_v2 and not _v2_fallback_to_v1)
-            _g["realignment_metadata"]["core_realignment_v2_applied"] = _apply_v2 and not _v2_fallback_to_v1
-            _g["realignment_metadata"]["v2_fallback_to_v1"] = _v2_fallback_to_v1
-            if _apply_v2 and not _v2_fallback_to_v1:
-                _g["realignment_metadata"].setdefault("v1_applied", True)
-                _g["realignment_metadata"].setdefault("v2_applied", True)
-                _g["realignment_metadata"].setdefault("v2_fallback_to_v1", False)
-            _g["realignment_metadata"]["gp_metrics"] = _rm
+            meta = _g["realignment_metadata"]
+            meta["realignment_applied"] = _apply_realign or (_apply_v2 and not _v2_fallback_to_v1) or (_apply_v3 and not _v3_fallback_to_v1)
+            meta["v2_fallback_to_v1"] = _v2_fallback_to_v1
+            meta["v3_fallback_to_v1"] = _v3_fallback_to_v1
+            if _apply_v3 and not _v3_fallback_to_v1:
+                if meta.get("v3_fallback_to_v1") is not True:
+                    meta.setdefault("v1_applied", True)
+                    meta.setdefault("v3_applied", True)
+                    meta.setdefault("v3_fallback_to_v1", False)
+                if "pool_pre_filter_applied" not in meta:
+                    meta["pool_pre_filter_applied"] = True
+            elif _apply_v2 and not _v2_fallback_to_v1:
+                if meta.get("v2_fallback_to_v1") is not True:
+                    meta.setdefault("v1_applied", True)
+                    meta.setdefault("v2_applied", True)
+                    meta.setdefault("v2_fallback_to_v1", False)
+                if "pool_pre_filter_applied" not in meta:
+                    meta["pool_pre_filter_applied"] = True
+            _g["core_realignment_v2_applied"] = bool(
+                _apply_v2 and not _v2_fallback_to_v1 and meta.get("v2_applied") is True
+            )
+            _g["core_realignment_v3_applied"] = bool(
+                _apply_v3 and not _v3_fallback_to_v1 and meta.get("v3_applied") is True
+            )
+            meta["core_realignment_v2_applied"] = _g["core_realignment_v2_applied"]
+            meta["core_realignment_v3_applied"] = _g["core_realignment_v3_applied"]
+            meta["gp_metrics"] = _rm
     # -------------------------------------------------------------------------
 
     final_profile_distribution = {
