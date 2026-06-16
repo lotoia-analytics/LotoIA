@@ -15,8 +15,8 @@ BATCH_TYPE_VALUES: tuple[str, ...] = (
     GENERAL_ANALYSIS,
 )
 
-ALLOWED_BATCH_LABELS: tuple[str, ...] = (
-    # EPOCH_000 (legado — não usar em novas gerações)
+# Labels legados EPOCH_000 — mantidos apenas para compatibilidade com registros antigos
+LEGACY_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_15D",
     "STRUCT_TEST_16D",
     "STRUCT_TEST_17D",
@@ -26,7 +26,10 @@ ALLOWED_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_21D",
     "STRUCT_TEST_22D",
     "STRUCT_TEST_23D",
-    # EPOCH_001 (fase auditável — usar a partir de agora)
+)
+
+# Labels ativos EPOCH_001 — fase auditável
+ALLOWED_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_15D_001",
     "STRUCT_TEST_16D_001",
     "STRUCT_TEST_17D_001",
@@ -37,17 +40,18 @@ ALLOWED_BATCH_LABELS: tuple[str, ...] = (
 
 RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
     {
-        # EPOCH_000 legados (reservados, não liberar para novos testes)
-        "STRUCT_TEST_21D",
-        "STRUCT_TEST_22D",
-        "STRUCT_TEST_23D",
-        # EPOCH_001 reservados sem ADR (não liberar sem ADR)
+        # EPOCH_001 reservados sem ADR
         "STRUCT_TEST_21D_001",
         "STRUCT_TEST_22D_001",
         "STRUCT_TEST_23D_001",
+        # EPOCH_000 legados reservados
+        "STRUCT_TEST_21D",
+        "STRUCT_TEST_22D",
+        "STRUCT_TEST_23D",
     }
 )
 
+# UI mostra apenas labels ativos EPOCH_001
 BATCH_LABEL_UI_OPTIONS: tuple[str, ...] = (*ALLOWED_BATCH_LABELS, "CUSTOM")
 
 OPERATIONAL_EFFECT = False
@@ -91,6 +95,8 @@ def normalize_batch_label(label: str | None, *, custom_label: str | None = None)
             raise ValueError("Informe um rótulo personalizado quando selecionar CUSTOM.")
         return custom
     if normalized in ALLOWED_BATCH_LABELS:
+        return normalized
+    if normalized in LEGACY_BATCH_LABELS:
         return normalized
     raise ValueError(
         f"Rótulo de lote inválido: {label!r}. Permitidos: {', '.join(BATCH_LABEL_UI_OPTIONS)}."
