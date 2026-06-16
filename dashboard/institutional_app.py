@@ -3808,6 +3808,7 @@ def _generate_direct_15_games(
     fill_diagnostics: dict[str, Any] | None = None,
     seen_signatures: set[str] | None = None,
     previous_contest_numbers: Sequence[int] | None = None,
+    analysis_batch_label: str | None = None,
 ) -> list[dict[str, Any]]:
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(seen_signatures or set())
@@ -3867,6 +3868,7 @@ def _generate_direct_15_games(
         seed=seed,
         ml_enabled=False,
         pool_size=max(candidate_count, 50),
+        batch_label=analysis_batch_label,
     )
     attempt_limit = max(total_games * 80, len(ranked_candidates) * 4, 400)
     attempt = 0
@@ -4680,7 +4682,11 @@ def _run_institutional_generation(
         if compact_candidate_multiplier > 0:
             candidate_count = max(candidate_count, total_games * compact_candidate_multiplier)
         compact_attempt_limit = int(policy.get("compactation_adjustment_attempt_limit", 0) or 0)
-        ranked_candidates = generate_ranked_games(total_games=candidate_count, seed=seed, ml_enabled=False, pool_size=max(candidate_count, 30))
+        ranked_candidates = generate_ranked_games(
+            total_games=candidate_count, seed=seed, ml_enabled=False,
+            pool_size=max(candidate_count, 30),
+            batch_label=st.session_state.get("clean_law15_analysis_batch_label"),
+        )
         for candidate in ranked_candidates:
             selected_numbers = _select_subset_from_candidate(
                 list(candidate.get("numbers", [])),
@@ -11120,6 +11126,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         allowed_parity_pairs=[],
         fill_diagnostics=fill_diagnostics,
         previous_contest_numbers=previous_contest_reference.numbers,
+        analysis_batch_label=analysis_batch_label,
     )
     commander_report = output_commander_validate_games(
         games,

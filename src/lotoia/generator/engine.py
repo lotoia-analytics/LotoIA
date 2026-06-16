@@ -11,6 +11,7 @@ def generate_ranked_games(
     seed: int | None = None,
     ml_enabled: bool = False,
     pool_size: int | None = None,
+    batch_label: str | None = None,
 ) -> list[dict[str, Any]]:
     """Compatibility adapter for public runtime callers."""
 
@@ -20,5 +21,6 @@ def generate_ranked_games(
         pool_size=resolved_pool_size,
         ml_enabled=ml_enabled,
         seed=seed,
+        batch_label=batch_label,
     )
     return result["games"]

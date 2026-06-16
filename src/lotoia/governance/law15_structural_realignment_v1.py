@@ -137,3 +137,35 @@ def realignment_is_active() -> bool:
 def realignment_is_observable() -> bool:
     """True when shadow_test or active mode (metrics are logged either way)."""
     return get_realignment_mode() in {"shadow_test", "active"}
+
+
+_REALIGN_LABEL_PREFIX: Final = "STRUCT_REALIGN_V"
+
+
+def is_realign_label(batch_label: str | None) -> bool:
+    """True when the batch label belongs to a Realignment test series.
+
+    Examples that return True:
+        STRUCT_REALIGN_V1_15D_001
+        STRUCT_REALIGN_V1_18D_001
+    Normal production labels (STRUCT_TEST_*, ADM_*, etc.) return False.
+    """
+    return str(batch_label or "").strip().upper().startswith(_REALIGN_LABEL_PREFIX)
+
+
+def should_apply_gp_realignment(batch_label: str | None = None) -> bool:
+    """Decide whether compose_diverse_gp should be used for this GP.
+
+    Rules:
+      mode=off            → False always
+      mode=shadow_test    → True only for STRUCT_REALIGN_V1_* labels
+                            (normal production labels stay unaffected)
+      mode=active         → True always (full production realignment)
+    """
+    mode = get_realignment_mode()
+    if mode == "off":
+        return False
+    if mode == "active":
+        return True
+    # shadow_test: apply only when this is a designated realignment batch
+    return is_realign_label(batch_label)
