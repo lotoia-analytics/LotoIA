@@ -16,6 +16,7 @@ BATCH_TYPE_VALUES: tuple[str, ...] = (
 )
 
 ALLOWED_BATCH_LABELS: tuple[str, ...] = (
+    # EPOCH_000 (legado — não usar em novas gerações)
     "STRUCT_TEST_15D",
     "STRUCT_TEST_16D",
     "STRUCT_TEST_17D",
@@ -25,13 +26,25 @@ ALLOWED_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_21D",
     "STRUCT_TEST_22D",
     "STRUCT_TEST_23D",
+    # EPOCH_001 (fase auditável — usar a partir de agora)
+    "STRUCT_TEST_15D_001",
+    "STRUCT_TEST_16D_001",
+    "STRUCT_TEST_17D_001",
+    "STRUCT_TEST_18D_001",
+    "STRUCT_TEST_19D_001",
+    "STRUCT_TEST_20D_001",
 )
 
 RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
     {
+        # EPOCH_000 legados (reservados, não liberar para novos testes)
         "STRUCT_TEST_21D",
         "STRUCT_TEST_22D",
         "STRUCT_TEST_23D",
+        # EPOCH_001 reservados sem ADR (não liberar sem ADR)
+        "STRUCT_TEST_21D_001",
+        "STRUCT_TEST_22D_001",
+        "STRUCT_TEST_23D_001",
     }
 )
 
@@ -42,9 +55,16 @@ OPERATIONAL_EFFECT = False
 
 def batch_label_game_size(label: str | None) -> int | None:
     normalized = str(label or "").strip().upper()
-    if not normalized.startswith("STRUCT_TEST_") or not normalized.endswith("D"):
+    if not normalized.startswith("STRUCT_TEST_"):
         return None
-    suffix = normalized.removeprefix("STRUCT_TEST_").removesuffix("D")
+    # Suporta STRUCT_TEST_15D e STRUCT_TEST_15D_001 (EPOCH_001)
+    core = normalized.removeprefix("STRUCT_TEST_")
+    # Remove sufixo de epoch (_001, _002, ...) se presente
+    if "_" in core:
+        core = core.split("_")[0]
+    if not core.endswith("D"):
+        return None
+    suffix = core.removesuffix("D")
     if suffix.isdigit():
         return int(suffix)
     return None

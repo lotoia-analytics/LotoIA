@@ -8946,6 +8946,23 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
             hide_index=True,
             use_container_width=True,
         )
+    if abertura.get("ranking_prefixo_4"):
+        st.dataframe(pd.DataFrame(abertura["ranking_prefixo_4"]), hide_index=True, use_container_width=True)
+    comparacao_prefixo_4 = dict((abertura.get("comparacao_com_concursos_oficiais_prefixo_4") or {}))
+    if comparacao_prefixo_4:
+        compare4_cols = st.columns(2)
+        compare4_cols[0].markdown("**LotoIA — prefixo 4**")
+        compare4_cols[0].dataframe(
+            pd.DataFrame(comparacao_prefixo_4.get("lotoia") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+        compare4_cols[1].markdown("**Concursos oficiais — prefixo 4**")
+        compare4_cols[1].dataframe(
+            pd.DataFrame(comparacao_prefixo_4.get("oficial") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     fechamento = dict(payload.get("fechamento") or {})
     st.markdown("### Fechamento do cartão")
@@ -8958,6 +8975,38 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         st.caption(f"Sufixos pouco cobertos: {', '.join(fechamento['sufixos_pouco_cobertos'])}")
     if fechamento.get("ranking_sufixo_3"):
         st.dataframe(pd.DataFrame(fechamento["ranking_sufixo_3"]), hide_index=True, use_container_width=True)
+    comparacao_sufixo_3 = dict((fechamento.get("comparacao_com_concursos_oficiais") or {}))
+    if comparacao_sufixo_3:
+        compare_suf3_cols = st.columns(2)
+        compare_suf3_cols[0].markdown("**LotoIA — sufixo 3**")
+        compare_suf3_cols[0].dataframe(
+            pd.DataFrame(comparacao_sufixo_3.get("lotoia") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+        compare_suf3_cols[1].markdown("**Concursos oficiais — sufixo 3**")
+        compare_suf3_cols[1].dataframe(
+            pd.DataFrame(comparacao_sufixo_3.get("oficial") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+    if fechamento.get("ranking_sufixo_4"):
+        st.dataframe(pd.DataFrame(fechamento["ranking_sufixo_4"]), hide_index=True, use_container_width=True)
+    comparacao_sufixo_4 = dict((fechamento.get("comparacao_com_concursos_oficiais_sufixo_4") or {}))
+    if comparacao_sufixo_4:
+        compare_suf4_cols = st.columns(2)
+        compare_suf4_cols[0].markdown("**LotoIA — sufixo 4**")
+        compare_suf4_cols[0].dataframe(
+            pd.DataFrame(comparacao_sufixo_4.get("lotoia") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+        compare_suf4_cols[1].markdown("**Concursos oficiais — sufixo 4**")
+        compare_suf4_cols[1].dataframe(
+            pd.DataFrame(comparacao_sufixo_4.get("oficial") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     faixas_gaps = dict(payload.get("faixas_gaps") or {})
     st.markdown("### Faixas e gaps")
