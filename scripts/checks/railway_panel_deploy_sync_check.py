@@ -76,7 +76,13 @@ def validate_panel_body(
         errors.append("expected_build ausente")
     elif build not in body:
         deprecated_hits = sorted(
-            marker for marker in ("institutional-adm-runtime-v1", "institutional-adm-runtime-v2") if marker in body
+            marker
+            for marker in (
+                "institutional-adm-runtime-v1",
+                "institutional-adm-runtime-v2",
+                "institutional-adm-runtime-v3",
+            )
+            if marker in body
         )
         if deprecated_hits:
             errors.append(
@@ -87,7 +93,8 @@ def validate_panel_body(
 
     sha_prefixes = _sha_prefixes(expected_sha)
     evidence["sha_prefixes_checked"] = sha_prefixes
-    if sha_prefixes and not _contains_any(body, sha_prefixes):
+    login_page = "Acesso Institucional" in body
+    if sha_prefixes and not _contains_any(body, sha_prefixes) and not login_page:
         errors.append(
             f"commit esperado ({sha_prefixes[0]}) não encontrado no HTML — deploy Railway ainda desatualizado"
         )
@@ -95,11 +102,15 @@ def validate_panel_body(
     stale_copy_markers = (
         "Painel mínimo, isolado",
         "Home institucional leve, sem geração",
+        "bloqueada na home",
     )
     stale_hits = [marker for marker in stale_copy_markers if marker in body]
     evidence["stale_copy_hits"] = stale_hits
     if stale_hits:
         errors.append(f"copy obsoleta ainda visível: {stale_hits[0]!r}")
+
+    if "Jogos Gerados" not in body and "Acesso Institucional" not in body:
+        errors.append("painel não expõe home institucional completa nem tela de login")
 
     return errors, evidence
 

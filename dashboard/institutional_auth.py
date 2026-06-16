@@ -23,6 +23,20 @@ def _panel_build_marker() -> str:
     return BUILD_MARKER
 
 
+def _panel_deploy_commit() -> str:
+    for env_name in (
+        "RAILWAY_GIT_COMMIT_SHA",
+        "RAILWAY_GIT_COMMIT",
+        "GIT_COMMIT",
+        "COMMIT_SHA",
+        "SOURCE_VERSION",
+    ):
+        value = str(os.getenv(env_name, "") or "").strip()
+        if value:
+            return value[:12]
+    return "-"
+
+
 def _bootstrap_admin_if_configured(service: AuthenticationService) -> None:
     email = os.getenv("LOTOIA_ADMIN_EMAIL", "").strip().lower()
     password = os.getenv("LOTOIA_ADMIN_PASSWORD", "").strip()
@@ -67,8 +81,8 @@ def _render_login_page(db_path: Path) -> None:
     st.title("LotoIA — Acesso Institucional")
     st.caption("Painel ADM protegido. Autenticação obrigatória em runtime cloud.")
     st.caption(
-        f"build={AUTH_GATE_BUILD} | panel={_panel_build_marker()} | auth=on | "
-        f"cloud_runtime={is_cloud_production_runtime()} | "
+        f"build={AUTH_GATE_BUILD} | panel={_panel_build_marker()} | commit={_panel_deploy_commit()} | "
+        f"auth=on | cloud_runtime={is_cloud_production_runtime()} | "
         f"domain={os.getenv('RAILWAY_PUBLIC_DOMAIN', '-')}"
     )
     service = AuthenticationService(db_path)

@@ -73,11 +73,16 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
+from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
     BUILD_MARKER,
     CORE_REALIGN_V3_BATCH_LABEL,
     CORE_REALIGN_V3_ENV_VAR,
+)
+from lotoia.governance.cloud_runtime_policy import (
+    cloud_runtime_policy_snapshot,
+    enforce_cloud_runtime_policy,
 )
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
@@ -376,6 +381,15 @@ PAGE_TARGETS = {
     "HB Geometry": "hb_geometry",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
+
+INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
+    {"icon": "🎯", "label": "Gerador ADM - Lei 15 Limpo", "page_id": "clean_law15_generation"},
+    {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
+    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
+    {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
+    {"icon": "🔎", "label": "Auditoria Runtime", "page_id": "audit"},
+    {"icon": "🧱", "label": "Cobertura estrutural", "page_id": "structural_coverage"},
+]
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
 
@@ -687,6 +701,100 @@ def _apply_institutional_styles() -> None:
             text-transform: uppercase;
             color: #8b97a8;
             margin: 0.55rem 0 0.25rem 0;
+        }
+        .lotoia-home-header {
+            background: #ffffff;
+            border: 1px solid rgba(18, 52, 86, 0.10);
+            border-radius: 16px;
+            box-shadow: 0 6px 22px rgba(18, 52, 86, 0.05);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .lotoia-home-brand-name {
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #123456;
+        }
+        .lotoia-home-brand-sub {
+            font-size: 0.82rem;
+            color: #5a6b7e;
+            margin-top: 0.15rem;
+        }
+        .lotoia-home-contest-label {
+            font-size: 0.72rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #5a6b7e;
+        }
+        .lotoia-home-contest-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #4f8ef7;
+            line-height: 1;
+        }
+        .lotoia-pill {
+            display: inline-block;
+            padding: 0.28rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .lotoia-pill-success { background: rgba(46, 204, 113, 0.15); color: #1f8f4d; border: 1px solid rgba(46, 204, 113, 0.35); }
+        .lotoia-pill-warning { background: rgba(243, 156, 18, 0.15); color: #a66a00; border: 1px solid rgba(243, 156, 18, 0.35); }
+        .lotoia-pill-danger { background: rgba(231, 76, 60, 0.15); color: #b83227; border: 1px solid rgba(231, 76, 60, 0.35); }
+        .lotoia-pill-info { background: rgba(79, 142, 247, 0.15); color: #2f6fd6; border: 1px solid rgba(79, 142, 247, 0.35); }
+        .lotoia-metric-card {
+            background: #ffffff;
+            border: 1px solid rgba(18, 52, 86, 0.10);
+            border-radius: 14px;
+            box-shadow: 0 4px 14px rgba(18, 52, 86, 0.04);
+            padding: 1rem 1.1rem;
+            min-height: 118px;
+        }
+        .lotoia-metric-label {
+            font-size: 0.72rem;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: #5a6b7e;
+            margin-bottom: 0.35rem;
+        }
+        .lotoia-metric-value {
+            font-size: 1.85rem;
+            font-weight: 800;
+            color: #123456;
+            line-height: 1.1;
+        }
+        .lotoia-metric-value-accent { color: #4f8ef7; }
+        .lotoia-metric-value-success { color: #1f8f4d; }
+        .lotoia-metric-value-danger { color: #b83227; }
+        .lotoia-metric-caption {
+            font-size: 0.78rem;
+            color: #718399;
+            margin-top: 0.35rem;
+        }
+        .lotoia-status-panel {
+            background: #ffffff;
+            border: 1px solid rgba(18, 52, 86, 0.10);
+            border-radius: 14px;
+            box-shadow: 0 4px 14px rgba(18, 52, 86, 0.04);
+            padding: 1rem 1.1rem;
+            margin: 0.75rem 0 1rem 0;
+        }
+        .lotoia-section-heading {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #123456;
+            margin: 0 0 0.65rem 0;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .lotoia-quick-access .stButton > button {
+            min-height: 96px;
+            font-size: 0.95rem;
+            line-height: 1.35;
+            white-space: normal;
         }
         </style>
         """,
@@ -1196,6 +1304,18 @@ def get_latest_official_contest() -> dict[str, Any] | None:
     if latest_contest_number is None or latest_contest_number <= 0:
         return None
     return get_official_contest(latest_contest_number)
+
+
+def _load_hai_latest_contest_summary() -> dict[str, Any] | None:
+    """Gateway DB-first para páginas HAI (Histórico/Analítico/Institucional)."""
+    latest_official = get_latest_official_contest()
+    if not latest_official:
+        return None
+    normalized = _normalize_contest_record(latest_official)
+    if not normalized:
+        return None
+    normalized["source"] = "lotofacil_official_history"
+    return normalized
 
 
 def get_previous_official_contest(target_contest: int | None) -> RFEPreviousContestReference:
@@ -12398,43 +12518,181 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
             st.dataframe(csv_frame.tail(20), hide_index=True, use_container_width=True)
 
 
+def _render_home_metric_card(label: str, value: str, *, caption: str = "", value_class: str = "") -> None:
+    value_html = f'<div class="lotoia-metric-value {value_class}">{value}</div>'
+    caption_html = f'<div class="lotoia-metric-caption">{caption}</div>' if caption else ""
+    st.markdown(
+        f"""
+        <div class="lotoia-metric-card">
+            <div class="lotoia-metric-label">{label}</div>
+            {value_html}
+            {caption_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_home_status_pill(label: str, status: str, tone: str) -> None:
+    st.markdown(
+        f'<span class="lotoia-pill lotoia-pill-{tone}">{label}: {status}</span>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_home_quick_access() -> None:
+    st.markdown('<div class="lotoia-section-heading">Acesso rápido</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lotoia-quick-access">', unsafe_allow_html=True)
+    for row_start in (0, 3):
+        cols = st.columns(3)
+        for col_index, item in enumerate(INSTITUTIONAL_QUICK_ACCESS[row_start : row_start + 3]):
+            with cols[col_index]:
+                if st.button(
+                    f"{item['icon']} {item['label']}",
+                    key=f"home_quick_{item['page_id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["institutional_page_id"] = item["page_id"]
+                    st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _render_home_page(snapshot: dict[str, Any]) -> None:
-    st.subheader("Painel Institucional LotoIA")
+    snapshot = _live_institutional_snapshot(snapshot)
+    live_counts = dict(snapshot.get("counts") or {})
+    latest_contest = _load_hai_latest_contest_summary() or _load_latest_contest_summary() or {}
+    latest_reconciliation = _load_latest_reconciliation_summary() or {}
+    latest_generation = (_load_generation_history_light(limit=1) or [{}])[0]
+    contest_number = int(latest_contest.get("contest_number", 0) or 0)
+    generated_games = int(live_counts.get("generated_games", 0) or 0)
+    generation_events = int(live_counts.get("generation_events", 0) or 0)
+    reconciliation_runs = int(live_counts.get("reconciliation_runs", 0) or 0)
+    best_hits = int(
+        latest_generation.get("maior acerto", latest_reconciliation.get("best_hits", 0)) or 0
+    )
+    backend = str(snapshot.get("backend", "-") or "-")
+    backend_ok = backend.lower() == "postgresql"
+    last_reconciliation_date = str(latest_reconciliation.get("created_at", "") or "")[:10] or "—"
+    generation_loaded = bool(
+        (st.session_state.get("institutional_generation") or {}).get("games")
+        or (st.session_state.get("institutional_generation_result") or {}).get("jogos")
+    )
     active_commit = _resolve_active_commit()
     v3_mode = get_v3_mode()
-    st.write(
-        "Home institucional — navegação e status do runtime cloud. "
-        "Geração, recalibração e histórico pesado ficam nas páginas dedicadas."
-    )
-    cols = st.columns(4)
-    cols[0].metric("status runtime", "ativo")
-    cols[1].metric("build", BUILD_MARKER)
-    cols[2].metric("commit deploy", active_commit)
-    cols[3].metric("backend conectado", snapshot.get("backend", "-"))
-    latest_contest = _load_latest_contest_summary()
-    st.metric("último concurso", int(latest_contest.get("contest_number", 0) or 0) if latest_contest else "-")
+
+    st.markdown('<div class="lotoia-home-header">', unsafe_allow_html=True)
+    header_cols = st.columns([2.2, 1.2, 1.4, 0.8])
+    with header_cols[0]:
+        brand_cols = st.columns([0.28, 0.72])
+        with brand_cols[0]:
+            if LOGO_PATH.exists():
+                st.image(str(LOGO_PATH), width=72)
+        with brand_cols[1]:
+            st.markdown(
+                """
+                <div class="lotoia-home-brand">
+                    <div class="lotoia-home-brand-name">Painel Institucional LotoIA</div>
+                    <div class="lotoia-home-brand-sub">Runtime cloud PostgreSQL · cobertura estrutural completa</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    with header_cols[1]:
+        st.markdown(
+            f"""
+            <div class="lotoia-home-clock">
+                <div style="font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; opacity:0.8;">Deploy</div>
+                <div>{BUILD_MARKER}</div>
+                <div style="font-size:0.78rem; opacity:0.85;">commit {active_commit}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with header_cols[2]:
+        st.markdown(
+            f"""
+            <div>
+                <div class="lotoia-home-contest-label">Último concurso monitorado</div>
+                <div class="lotoia-home-contest-value">{contest_number or "—"}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with header_cols[3]:
+        st.markdown(
+            """
+            <div style="text-align:right;">
+                <span class="lotoia-pill lotoia-pill-success">ATIVO</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    metric_cols = st.columns(5)
+    with metric_cols[0]:
+        _render_home_metric_card(
+            "Último Concurso",
+            str(contest_number or "—"),
+            value_class="lotoia-metric-value-accent",
+        )
+    with metric_cols[1]:
+        _render_home_metric_card(
+            "Jogos Gerados",
+            str(generated_games),
+            caption=f"{'↑' if generation_events > 0 else '—'} {generation_events} gerações persistidas",
+        )
+    with metric_cols[2]:
+        _render_home_metric_card(
+            "Conferências Realizadas",
+            str(reconciliation_runs),
+            caption=f"última: {last_reconciliation_date}",
+        )
+    with metric_cols[3]:
+        _render_home_metric_card(
+            "Melhor Acerto",
+            str(best_hits),
+            value_class="lotoia-metric-value-success" if best_hits >= 13 else "",
+            caption="destaque institucional" if best_hits >= 13 else "",
+        )
+    with metric_cols[4]:
+        _render_home_metric_card(
+            "Status Backend",
+            "ONLINE" if backend_ok else "ATENÇÃO",
+            value_class="lotoia-metric-value-success" if backend_ok else "lotoia-metric-value-danger",
+            caption=backend,
+        )
+
     governance_cols = st.columns(2)
     governance_cols[0].metric(CORE_REALIGN_V3_ENV_VAR, v3_mode)
     governance_cols[1].metric("lote V3 shadow_test", CORE_REALIGN_V3_BATCH_LABEL)
-    st.caption(
-        "Lei 15 é comando soberano | Lei 17/18 são validação/referência | áreas de quarentena e ações destrutivas permanecem bloqueadas."
+
+    st.markdown(
+        '<div class="lotoia-status-panel"><div class="lotoia-section-heading">Estado do sistema</div>',
+        unsafe_allow_html=True,
     )
-    st.markdown("##### Atalhos institucionais")
-    shortcut_cols = st.columns(3)
-    shortcut_cols[0].markdown("- Gerador ADM - Lei 15 Limpo\n- Conferir Resultados")
-    shortcut_cols[1].markdown("- Simular Resultados\n- Histórico Analítico")
-    shortcut_cols[2].markdown("- Auditoria e Monitoramento\n- Histórico Institucional")
-    st.markdown("##### Estado institucional")
-    state_cols = st.columns(4)
-    state_cols[0].metric("Gerador", "não carregado")
-    state_cols[1].metric("Geração automática", "bloqueada na home")
-    state_cols[2].metric("Quarentena", "restrita")
-    state_cols[3].metric("Destrutivas", "bloqueadas")
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.caption(
-            f"build={BUILD_MARKER} | commit={active_commit} | "
-            f"{CORE_REALIGN_V3_ENV_VAR}={v3_mode} | label={CORE_REALIGN_V3_BATCH_LABEL}"
+    status_cols = st.columns(5)
+    with status_cols[0]:
+        _render_home_status_pill("Lei 15", "SOBERANA", "success")
+    with status_cols[1]:
+        _render_home_status_pill(
+            "Geração",
+            "ATIVO" if generation_loaded else "DISPONÍVEL",
+            "success" if generation_loaded else "warning",
         )
+    with status_cols[2]:
+        _render_home_status_pill("Recalibração", "BLOQUEADA", "danger")
+    with status_cols[3]:
+        _render_home_status_pill("ML", "OBSERVACIONAL", "info")
+    with status_cols[4]:
+        _render_home_status_pill("Destrutivas", "BLOQUEADAS", "danger")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.caption(
+        "Lei 15 é comando soberano | Lei 17/18 são validação/referência | "
+        "quarentena e ações destrutivas permanecem restritas."
+    )
+    _render_home_quick_access()
 
 
 def _render_fallback_page(snapshot: dict[str, Any]) -> None:
@@ -12450,20 +12708,22 @@ def _render_fallback_page(snapshot: dict[str, Any]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="LotoIA Institucional", page_icon="🧭", layout="wide")
+    try:
+        enforce_cloud_runtime_policy(DB_PATH)
+    except RuntimeError as exc:
+        st.error("Runtime cloud bloqueado — política Lei No 001 violada.")
+        st.code(str(exc), language="text")
+        st.stop()
+    require_institutional_login(DB_PATH)
     _ensure_institutional_schema()
     snapshot = _database_snapshot()
+    snapshot["cloud_runtime_policy"] = cloud_runtime_policy_snapshot(DB_PATH)
     _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(
         st.session_state.get("institutional_page_id", "home"),
         snapshot,
     )
     st.session_state["institutional_page_id"] = page
-    active_commit = _resolve_active_commit()
-    st.success(f"{BUILD_MARKER} | commit={active_commit}")
-    st.caption(
-        f"Runtime cloud PostgreSQL | {CORE_REALIGN_V3_ENV_VAR}={get_v3_mode()} | "
-        f"lote={CORE_REALIGN_V3_BATCH_LABEL}"
-    )
     if page == "audit":
         _render_runtime_audit_page(snapshot)
     elif page == "home":
