@@ -32,6 +32,11 @@ from sqlalchemy.exc import IntegrityError
 from dashboard.institutional_auth import require_institutional_login
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.governance.cloud_runtime_policy import cloud_runtime_policy_snapshot, enforce_cloud_runtime_policy
+from lotoia.governance.analysis_batch_labels import (
+    BATCH_LABEL_UI_OPTIONS,
+    build_batch_metadata,
+    is_reserved_batch_label,
+)
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
@@ -171,6 +176,7 @@ LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15_15D_CONGELADO
 LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_LEI15A_PRIORITARIAS
 LEI15A_REGISTRATION_MAX_FORMAT = 20
 LEI15A_REGISTRATION_PENDING_FORMATS = (21, 22, 23)
+RUNTIME_GENERATION_CARD_FORMATS = tuple(range(15, LEI15A_REGISTRATION_MAX_FORMAT + 1))
 LEI15A_VIGILANCIA = (4, 11, 12, 15)
 LEI15A_BLIND_SPOTS = (6, 16, 17, 21)
 LEI15A_MARGINAL = (8,)
@@ -8495,6 +8501,12 @@ def _render_diagnostic_evidence_base(
     metric_cols[2].metric("Runs", int(base.get("total_runs", 0) or 0))
     st.write(f"Nível de evidência: `{base.get('evidence_level', '—')}`")
     st.write(f"Concursos analisados: `{base.get('concursos_analisados', [])}`")
+    if base.get("analysis_batch_label"):
+        st.write(f"analysis_batch_label: `{base.get('analysis_batch_label')}`")
+    elif base.get("analysis_batch_labels"):
+        st.write(f"analysis_batch_labels: `{base.get('analysis_batch_labels', [])}`")
+    if base.get("formatos_analisados"):
+        st.write(f"formatos_analisados: `{base.get('formatos_analisados', [])}`")
     st.write(f"generation_event_ids: `{base.get('generation_event_ids', [])}`")
     st.write(f"reconciliation_run_ids: `{base.get('reconciliation_run_ids', [])}`")
 
@@ -8842,7 +8854,49 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
         "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
     )
-    payload = load_card_structure_diagnostics_from_db(DB_PATH)
+    filter_cols = st.columns(5)
+    batch_options = ["(todos)"] + list(BATCH_LABEL_UI_OPTIONS)
+    selected_batch_option = filter_cols[0].selectbox(
+        "Lote de análise",
+        options=batch_options,
+        index=0,
+        key="structural_coverage_batch_label",
+    )
+    selected_game_size = filter_cols[1].selectbox(
+        "game_size",
+        options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
+        index=0,
+        key="structural_coverage_game_size",
+    )
+    selected_generation_event_id = filter_cols[2].number_input(
+        "generation_event_id",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_generation_event_id",
+    )
+    selected_reconciliation_run_id = filter_cols[3].number_input(
+        "reconciliation_run_id",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_reconciliation_run_id",
+    )
+    selected_concurso = filter_cols[4].number_input(
+        "concurso_analisado",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_concurso_analisado",
+    )
+    payload = load_card_structure_diagnostics_from_db(
+        DB_PATH,
+        analysis_batch_label=None if selected_batch_option == "(todos)" else str(selected_batch_option),
+        game_size=None if selected_game_size == "(todos)" else int(selected_game_size),
+        generation_event_id=int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
+        reconciliation_run_id=int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
+        concurso_analisado=int(selected_concurso) if int(selected_concurso) > 0 else None,
+    )
     st.caption(
         f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
         f"operational_effect=`{payload.get('operational_effect', False)}`"
@@ -8857,6 +8911,8 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     summary_cols[1].metric("Jogos", int(summary.get("total_jogos", 0) or 0))
     summary_cols[2].metric("Concursos comparados", int(summary.get("total_concursos_comparados", 0) or 0))
     summary_cols[3].metric("Formatos", ", ".join(str(size) for size in (summary.get("formatos_analisados") or [])) or "-")
+    if summary.get("analysis_batch_label"):
+        st.caption(f"Lote selecionado: `{summary.get('analysis_batch_label')}`")
 
     st.markdown("### Resumo estrutural")
     st.write(
@@ -9225,6 +9281,10 @@ def _persist_generation_snapshot(
     target_contest: int | None,
     batch_id: str | None = None,
     generation_context: dict[str, Any] | None = None,
+    analysis_batch_label: str | None = None,
+    analysis_batch_type: str | None = None,
+    analysis_batch_created_by: str | None = None,
+    analysis_batch_created_at: datetime | None = None,
 ) -> dict[str, Any]:
     started_at = time.monotonic()
     context_payload = {
@@ -9308,6 +9368,10 @@ def _persist_generation_snapshot(
             strategy="institutional_clean_hb",
             ranking_score=0.0,
             execution_time_ms=0.0,
+            analysis_batch_label=analysis_batch_label,
+            analysis_batch_type=analysis_batch_type,
+            analysis_batch_created_by=analysis_batch_created_by,
+            analysis_batch_created_at=analysis_batch_created_at,
         )
         session.add(event)
         session.flush()
@@ -9442,6 +9506,13 @@ def _persist_generation_snapshot(
             **event_context,
             "generation_event_id": generation_event_id,
             "game_signatures": list(game_signatures),
+            "analysis_batch_label": analysis_batch_label,
+            "analysis_batch_type": analysis_batch_type,
+            "analysis_batch_created_by": analysis_batch_created_by,
+            "analysis_batch_created_at": (
+                analysis_batch_created_at.isoformat() if analysis_batch_created_at is not None else None
+            ),
+            "analysis_batch_operational_effect": False,
         }
         event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
         try:
@@ -9457,6 +9528,8 @@ def _persist_generation_snapshot(
             "games_count": len(games),
             "target_contest": target_contest,
             "batch_id": batch_id,
+            "analysis_batch_label": analysis_batch_label,
+            "analysis_batch_type": analysis_batch_type,
         }
 
 
@@ -11353,6 +11426,9 @@ def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
     selected_card_format: int,
+    analysis_batch_label: str | None = None,
+    analysis_batch_custom_label: str | None = None,
+    analysis_batch_created_by: str | None = None,
 ) -> dict[str, Any]:
     games = list(result.get("games") or [])
     if not games:
@@ -11428,12 +11504,35 @@ def _persist_clean_law15_generation_history(
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
         "card_format": int(selected_card_format),
     }
+    batch_metadata: dict[str, Any] = {}
+    if analysis_batch_label:
+        try:
+            batch_metadata = build_batch_metadata(
+                analysis_batch_label,
+                game_size=int(selected_card_format),
+                created_by=analysis_batch_created_by,
+                custom_label=analysis_batch_custom_label,
+                runtime_max_format=LEI15A_REGISTRATION_MAX_FORMAT,
+            )
+        except ValueError as exc:
+            return {
+                "persistence_blocked": True,
+                "persistence_guard_status": "ANALYSIS_BATCH_LABEL_INVALID",
+                "analysis_batch_error": str(exc),
+            }
     return _persist_generation_snapshot(
         games=payload_games,
         seed=int(result.get("seed", 0) or 0),
         target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
         batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
-        generation_context=generation_context,
+        generation_context={
+            **generation_context,
+            **batch_metadata,
+        },
+        analysis_batch_label=batch_metadata.get("analysis_batch_label"),
+        analysis_batch_type=batch_metadata.get("analysis_batch_type"),
+        analysis_batch_created_by=batch_metadata.get("analysis_batch_created_by"),
+        analysis_batch_created_at=batch_metadata.get("analysis_batch_created_at"),
     )
 
 
@@ -12815,15 +12914,47 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     )
     st.session_state.setdefault("clean_law15_card_format", 15)
     current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
+    if current_card_format not in RUNTIME_GENERATION_CARD_FORMATS:
+        current_card_format = 15
+        st.session_state["clean_law15_card_format"] = 15
     selected_card_format = int(
         st.selectbox(
             "Formato do cartão",
-            options=list(OFFICIAL_CARD_FORMATS),
-            index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
+            options=list(RUNTIME_GENERATION_CARD_FORMATS),
+            index=list(RUNTIME_GENERATION_CARD_FORMATS).index(current_card_format)
+            if current_card_format in RUNTIME_GENERATION_CARD_FORMATS
+            else 0,
             format_func=_clean_law15_format_label,
             key="clean_law15_card_format",
         )
     )
+    batch_cols = st.columns([2, 2])
+    suggested_batch_label = f"STRUCT_TEST_{selected_card_format}D"
+    batch_options = list(BATCH_LABEL_UI_OPTIONS)
+    batch_default_index = (
+        batch_options.index(suggested_batch_label)
+        if suggested_batch_label in batch_options
+        else 0
+    )
+    selected_batch_label = batch_cols[0].selectbox(
+        "Lote de análise",
+        options=batch_options,
+        index=batch_default_index,
+        key="clean_law15_analysis_batch_label",
+        help="Metadado observacional — não altera cartões gerados nem regras da Lei 15/15A.",
+    )
+    custom_batch_label = ""
+    if selected_batch_label == "CUSTOM":
+        custom_batch_label = batch_cols[1].text_input(
+            "Rótulo personalizado",
+            value="",
+            key="clean_law15_analysis_batch_custom_label",
+        )
+    elif is_reserved_batch_label(str(selected_batch_label)):
+        batch_cols[1].info(
+            f"{selected_batch_label} é um lote reservado (21D–23D). "
+            "Disponível como metadado; geração ainda não liberada no runtime."
+        )
     left, right = st.columns(2)
     left.metric("Formato", f"{selected_card_format} dezenas")
     right.metric("Estratégia ativa", "Lei 15")
@@ -12846,10 +12977,19 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         persisted_snapshot = _persist_clean_law15_generation_history(
             result=result,
             selected_card_format=selected_card_format,
+            analysis_batch_label=str(selected_batch_label or "").strip() or None,
+            analysis_batch_custom_label=str(custom_batch_label or "").strip() or None,
+            analysis_batch_created_by=_resolve_ml_diagnostic_adm_user(snapshot),
         )
-        if persisted_snapshot:
-            result.update(persisted_snapshot)
-            st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
+        if persisted_snapshot.get("persistence_blocked"):
+            st.error(
+                persisted_snapshot.get("analysis_batch_error")
+                or persisted_snapshot.get("persistence_guard_status", "Persistência bloqueada.")
+            )
+        else:
+            if persisted_snapshot:
+                result.update(persisted_snapshot)
+                st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
         st.rerun()
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
@@ -12873,6 +13013,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     f"reservas_auditadas_count={result.get('reservas_auditadas_count', 0)}",
                     f"cartao_final_size={result.get('cartao_final_size', result.get('selected_card_format', 15))}",
                     f"generation_event_id={result.get('generation_event_id', '-')}",
+                    f"analysis_batch_label={result.get('analysis_batch_label', '-')}",
                 ]
             )
         )
