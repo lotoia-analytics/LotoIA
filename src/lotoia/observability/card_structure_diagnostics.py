@@ -295,7 +295,7 @@ def build_card_structure_payload(
 def load_card_structure_diagnostics_from_db(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
-    run_limit: int = 20,
+    run_limit: int = 500,
     official_window: int = DEFAULT_OFFICIAL_WINDOW,
     analysis_batch_label: str | None = None,
     game_size: int | None = None,
