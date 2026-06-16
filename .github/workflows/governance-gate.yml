@@ -71,6 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -78,3 +80,19 @@ jobs:
         run: pip install -r requirements.txt
       - name: Validate dashboard semantic labels
         run: python scripts/checks/dashboard_semantic_label_check.py
+
+  dashboard-deploy-manifest-check:
+    name: dashboard-deploy-manifest-check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch base branch
+        run: git fetch origin "${{ github.base_ref }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require BUILD_MARKER bump when dashboard changes
+        run: python scripts/checks/dashboard_deploy_manifest_check.py

@@ -1,0 +1,60 @@
+name: railway-panel-deploy-gate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "dashboard/**"
+      - "railway.toml"
+      - "Procfile"
+
+permissions:
+  contents: read
+
+jobs:
+  production-panel-sync:
+    name: production-panel-sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve expected build marker
+        id: build
+        run: |
+          python - <<'PY'
+          from dashboard.institutional_build import BUILD_MARKER
+          with open("${GITHUB_OUTPUT}", "a", encoding="utf-8") as handle:
+              handle.write(f"marker={BUILD_MARKER}\n")
+          PY
+
+      - name: Trigger Railway redeploy (optional hook)
+        env:
+          RAILWAY_DEPLOY_HOOK_URL: ${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RAILWAY_DEPLOY_HOOK_URL" ]; then
+            curl -fsS -X POST "$RAILWAY_DEPLOY_HOOK_URL"
+            echo "Railway deploy hook triggered."
+          else
+            echo "RAILWAY_DEPLOY_HOOK_URL not configured — relying on Railway GitHub auto-deploy."
+          fi
+
+      - name: Wait until production panel matches main
+        env:
+          LOOTOIA_PANEL_URL: ${{ vars.LOOTOIA_PANEL_URL || 'https://lotoia-production.up.railway.app' }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_BUILD: ${{ steps.build.outputs.marker }}
+        run: |
+          python scripts/checks/railway_panel_deploy_sync_check.py \
+            --url "$LOOTOIA_PANEL_URL" \
+            --expected-sha "$EXPECTED_SHA" \
+            --expected-build "$EXPECTED_BUILD" \
+            --max-wait-seconds 900 \
+            --poll-interval 30

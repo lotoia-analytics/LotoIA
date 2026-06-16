@@ -17,6 +17,12 @@ RUNTIME_ORIGIN = "railway_cloud"
 AUTH_GATE_BUILD = "institutional-auth-gate-v1"
 
 
+def _panel_build_marker() -> str:
+    from dashboard.institutional_build import BUILD_MARKER
+
+    return BUILD_MARKER
+
+
 def _bootstrap_admin_if_configured(service: AuthenticationService) -> None:
     email = os.getenv("LOTOIA_ADMIN_EMAIL", "").strip().lower()
     password = os.getenv("LOTOIA_ADMIN_PASSWORD", "").strip()
@@ -61,7 +67,8 @@ def _render_login_page(db_path: Path) -> None:
     st.title("LotoIA — Acesso Institucional")
     st.caption("Painel ADM protegido. Autenticação obrigatória em runtime cloud.")
     st.caption(
-        f"build={AUTH_GATE_BUILD} | auth=on | cloud_runtime={is_cloud_production_runtime()} | "
+        f"build={AUTH_GATE_BUILD} | panel={_panel_build_marker()} | auth=on | "
+        f"cloud_runtime={is_cloud_production_runtime()} | "
         f"domain={os.getenv('RAILWAY_PUBLIC_DOMAIN', '-')}"
     )
     service = AuthenticationService(db_path)

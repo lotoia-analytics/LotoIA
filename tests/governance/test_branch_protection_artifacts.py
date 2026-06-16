@@ -28,6 +28,7 @@ def test_governance_gate_workflow_declares_required_checks() -> None:
         "name: governance-contract-check",
         "name: lei15-lei15a-boundary-check",
         "name: dashboard-semantic-label-check",
+        "name: dashboard-deploy-manifest-check",
     ):
         assert check in workflow
 
@@ -45,6 +46,8 @@ def test_institutional_check_scripts_exist() -> None:
         "scripts/checks/governance_contract_check.py",
         "scripts/checks/lei15_lei15a_boundary_check.py",
         "scripts/checks/dashboard_semantic_label_check.py",
+        "scripts/checks/dashboard_deploy_manifest_check.py",
+        "scripts/checks/railway_panel_deploy_sync_check.py",
         "scripts/apply_main_branch_protection.sh",
     ):
         assert (ROOT / script).exists()

@@ -73,10 +73,12 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
-BUILD_MARKER = "institutional-adm-runtime-v3"
-APP_BUILD = BUILD_MARKER
-CORE_REALIGN_V3_BATCH_LABEL = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
-CORE_REALIGN_V3_ENV_VAR = "LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3"
+from dashboard.institutional_build import (
+    APP_BUILD,
+    BUILD_MARKER,
+    CORE_REALIGN_V3_BATCH_LABEL,
+    CORE_REALIGN_V3_ENV_VAR,
+)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
