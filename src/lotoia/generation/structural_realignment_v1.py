@@ -236,6 +236,9 @@ def apply_gp_realignment_scoring(
 # GP composition with structural diversity (active mode)
 # ---------------------------------------------------------------------------
 
+_COMPOSE_POOL_CAP = 600  # max candidates evaluated in each greedy step
+
+
 def compose_diverse_gp(
     pool: list[dict],
     count: int,
@@ -251,6 +254,11 @@ def compose_diverse_gp(
 
     Does NOT mutate game numbers or any Law-15 rule.
     Every selected game carries full realignment_metadata.
+
+    Performance note: pool is capped at _COMPOSE_POOL_CAP candidates.  The pool
+    is pre-sorted by base_score so the cap retains the highest-quality candidates.
+    This keeps the greedy O(count × pool) complexity manageable even when the
+    caller provides a large pool (e.g. 1500 for production runs).
     """
     if count < 1 or not pool:
         return []
@@ -262,6 +270,11 @@ def compose_diverse_gp(
             + float(g.get("final_score", {}).get("final_score", 0))
         )
 
+    # Cap pool: sort by base_score descending, keep top _COMPOSE_POOL_CAP
+    effective_pool = sorted(pool, key=_base_score, reverse=True)
+    if len(effective_pool) > _COMPOSE_POOL_CAP:
+        effective_pool = effective_pool[:_COMPOSE_POOL_CAP]
+
     selected: list[dict] = []
     selected_keys: set[tuple[int, ...]] = set()
     prefix3_counts: Counter = Counter()
@@ -269,7 +282,7 @@ def compose_diverse_gp(
     suffix3_counts: Counter = Counter()
     suffix4_counts: Counter = Counter()
 
-    remaining = [g for g in pool if g]
+    remaining = [g for g in effective_pool if g]
 
     while len(selected) < count and remaining:
         best_game: dict | None = None

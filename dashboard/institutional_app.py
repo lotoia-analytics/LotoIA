@@ -4509,19 +4509,41 @@ def _generate_direct_15_games(
         else:
             diagnostics["rfe_blocked_reasons"] = ["RFE-01: concurso anterior indisponível para validação estrutural."]
         return []
+    import time as _time
     relaxed_repeat_min = 0
     relaxed_repeat_max = max(15, repeat_max)
     relaxed_sequence_max = max(sequence_max, 10)
     relaxed_coverage_min = 0.0 if coverage_min > 0.0 else coverage_min
     relaxed_entropy_min = 0.0 if entropy_min > 0.0 else entropy_min
-    candidate_count = max(total_games * 30, 300)
-    ranked_candidates = generate_ranked_games(
-        total_games=candidate_count,
-        seed=seed,
-        ml_enabled=False,
-        pool_size=max(candidate_count, 50),
-        batch_label=analysis_batch_label,
+
+    # Progressive candidate pool: start small for shadow/realign test labels.
+    _is_realign_label = bool(
+        analysis_batch_label and str(analysis_batch_label).startswith("STRUCT_REALIGN_V1_")
     )
+    _candidate_steps = [300, 600, 1500] if _is_realign_label else [max(total_games * 30, 300)]
+
+    ranked_candidates: list[dict] = []
+    for _cand_step in _candidate_steps:
+        _t0_cand = _time.monotonic()
+        _try_count = max(_cand_step, total_games * 2)
+        try:
+            ranked_candidates = generate_ranked_games(
+                total_games=_try_count,
+                seed=seed,
+                ml_enabled=False,
+                pool_size=max(_try_count, total_games),
+                batch_label=analysis_batch_label,
+            )
+        except Exception:  # noqa: BLE001 – escalate to next step
+            ranked_candidates = []
+        _elapsed_cand = _time.monotonic() - _t0_cand
+        if diagnostics is not None:
+            diagnostics.setdefault("candidate_steps_log", []).append(
+                {"step": _cand_step, "generated": len(ranked_candidates), "elapsed_s": round(_elapsed_cand, 2)}
+            )
+        if len(ranked_candidates) >= total_games:
+            break
+
     attempt_limit = max(total_games * 80, len(ranked_candidates) * 4, 400)
     attempt = 0
     while len(games) < total_games and attempt < attempt_limit:
