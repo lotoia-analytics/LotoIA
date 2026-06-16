@@ -8843,6 +8843,31 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
     )
 
 
+def _render_structural_coverage_ranking_tables(
+    section: dict[str, Any],
+    *,
+    kind: str,
+) -> None:
+    prefix = "prefixo" if kind == "abertura" else "sufixo"
+    table_specs = [
+        (f"LotoIA — {prefix} 3", f"lotoia_{prefix}_3_ranking"),
+        (f"Concursos oficiais — {prefix} 3", f"official_{prefix}_3_ranking"),
+        (f"LotoIA — {prefix} 4", f"lotoia_{prefix}_4_ranking"),
+        (f"Concursos oficiais — {prefix} 4", f"official_{prefix}_4_ranking"),
+    ]
+    first_row = st.columns(2)
+    second_row = st.columns(2)
+    for index, (title, source_key) in enumerate(table_specs):
+        target_col = first_row[index] if index < 2 else second_row[index - 2]
+        rows = list(section.get(source_key) or [])
+        with target_col:
+            st.markdown(f"**{title}**")
+            if rows:
+                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            else:
+                st.caption("Sem dados.")
+
+
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
@@ -8929,23 +8954,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     abertura_cols[1].write(f"Prefixo 4 mais gerado: `{prefix4.get('estrutura', '-')}` ({prefix4.get('frequencia', 0)}x)")
     if abertura.get("prefixos_pouco_cobertos"):
         st.caption(f"Prefixos pouco cobertos: {', '.join(abertura['prefixos_pouco_cobertos'])}")
-    if abertura.get("ranking_prefixo_3"):
-        st.dataframe(pd.DataFrame(abertura["ranking_prefixo_3"]), hide_index=True, use_container_width=True)
-    comparacao_prefixo = dict((abertura.get("comparacao_com_concursos_oficiais") or {}))
-    if comparacao_prefixo:
-        compare_cols = st.columns(2)
-        compare_cols[0].markdown("**LotoIA — prefixo 3**")
-        compare_cols[0].dataframe(
-            pd.DataFrame(comparacao_prefixo.get("lotoia") or []),
-            hide_index=True,
-            use_container_width=True,
-        )
-        compare_cols[1].markdown("**Concursos oficiais — prefixo 3**")
-        compare_cols[1].dataframe(
-            pd.DataFrame(comparacao_prefixo.get("oficial") or []),
-            hide_index=True,
-            use_container_width=True,
-        )
+    _render_structural_coverage_ranking_tables(abertura, kind="abertura")
 
     fechamento = dict(payload.get("fechamento") or {})
     st.markdown("### Fechamento do cartão")
@@ -8956,8 +8965,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     fechamento_cols[1].write(f"Sufixo 4 mais gerado: `{suffix4.get('estrutura', '-')}` ({suffix4.get('frequencia', 0)}x)")
     if fechamento.get("sufixos_pouco_cobertos"):
         st.caption(f"Sufixos pouco cobertos: {', '.join(fechamento['sufixos_pouco_cobertos'])}")
-    if fechamento.get("ranking_sufixo_3"):
-        st.dataframe(pd.DataFrame(fechamento["ranking_sufixo_3"]), hide_index=True, use_container_width=True)
+    _render_structural_coverage_ranking_tables(fechamento, kind="fechamento")
 
     faixas_gaps = dict(payload.get("faixas_gaps") or {})
     st.markdown("### Faixas e gaps")

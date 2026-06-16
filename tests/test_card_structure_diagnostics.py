@@ -178,3 +178,44 @@ def test_evidence_level_local_vs_structural_recurrent() -> None:
         resolve_evidence_level(total_geracoes=20, total_concursos=5)
         == EVIDENCE_LEVEL_STRUCTURAL_RECURRENT
     )
+
+
+def test_payload_inclui_rankings_prefixo_sufixo_3_e_4() -> None:
+    from lotoia.observability.card_structure_diagnostics import build_card_structure_payload
+
+    payload = build_card_structure_payload(
+        games=[{"numbers": CARD_13_HITS}, {"numbers": CARD_14_HITS}],
+        official_cards=[OFFICIAL_15, OFFICIAL_15],
+        official_contests=[3700, 3701],
+        generation_event_ids=[1],
+        reconciliation_run_ids=[10],
+        contest_ids=[3700],
+    )
+    abertura = payload["abertura"]
+    fechamento = payload["fechamento"]
+
+    for key in (
+        "lotoia_prefixo_3_ranking",
+        "official_prefixo_3_ranking",
+        "lotoia_prefixo_4_ranking",
+        "official_prefixo_4_ranking",
+    ):
+        assert key in abertura
+        assert isinstance(abertura[key], list)
+
+    for key in (
+        "lotoia_sufixo_3_ranking",
+        "official_sufixo_3_ranking",
+        "lotoia_sufixo_4_ranking",
+        "official_sufixo_4_ranking",
+    ):
+        assert key in fechamento
+        assert isinstance(fechamento[key], list)
+
+    prefix4_top = abertura["prefixo_4_mais_gerado"]["estrutura"]
+    assert any(row.get("estrutura") == prefix4_top for row in abertura["lotoia_prefixo_4_ranking"])
+    suffix4_top = fechamento["sufixo_4_mais_gerado"]["estrutura"]
+    assert any(row.get("estrutura") == suffix4_top for row in fechamento["lotoia_sufixo_4_ranking"])
+    assert abertura["official_prefixo_4_ranking"]
+    assert fechamento["official_sufixo_4_ranking"]
+    assert payload["operational_effect"] is False
