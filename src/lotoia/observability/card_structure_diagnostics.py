@@ -237,7 +237,9 @@ def build_card_structure_payload(
         "janela_oficial": DEFAULT_OFFICIAL_WINDOW,
     }
     abertura["comparacao_com_concursos_oficiais"] = comparacao.get("prefixo_3")
+    abertura["comparacao_com_concursos_oficiais_prefixo_4"] = comparacao.get("prefixo_4")
     fechamento["comparacao_com_concursos_oficiais"] = comparacao.get("sufixo_3")
+    fechamento["comparacao_com_concursos_oficiais_sufixo_4"] = comparacao.get("sufixo_4")
 
     official_numbers = official_cards[0] if official_cards else []
     travamento = analyze_stuck_games(games, official_numbers=official_numbers)
