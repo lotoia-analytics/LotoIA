@@ -72,6 +72,7 @@ INSUFFICIENT_EVIDENCE_MARKERS = frozenset(
         "poucas_geracoes",
         "drilldown_incompleto",
         "falta_cartao_final_ou_resultado_oficial",
+        "base_nao_identificavel",
     }
 )
 INVALID_EVIDENCE_MARKERS = frozenset(
@@ -534,6 +535,120 @@ def assess_alert_evidence_gaps(
     return sorted(set(gaps))
 
 
+def _collect_context_evidence_ids(contexts: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    contest_ids: set[int] = set()
+    generation_ids: set[int] = set()
+    run_ids: set[int] = set()
+    for context in contexts:
+        if not context:
+            continue
+        run_id = int(context.get("reconciliation_run_id", 0) or 0)
+        if run_id > 0:
+            run_ids.add(run_id)
+        contest_id = int(context.get("contest_id", 0) or 0)
+        if contest_id > 0:
+            contest_ids.add(contest_id)
+        generation_event_id = int(context.get("generation_event_id", 0) or 0)
+        if generation_event_id > 0:
+            generation_ids.add(generation_event_id)
+        for game in context.get("games") or []:
+            game_gen = int(game.get("generation_event_id", 0) or 0)
+            if game_gen > 0:
+                generation_ids.add(game_gen)
+            game_contest = int(game.get("contest_id", 0) or 0)
+            if game_contest > 0:
+                contest_ids.add(game_contest)
+    concursos = sorted(contest_ids)
+    generation_event_ids = sorted(generation_ids)
+    reconciliation_run_ids = sorted(run_ids)
+    return {
+        "concursos_analisados": concursos,
+        "generation_event_ids": generation_event_ids,
+        "reconciliation_run_ids": reconciliation_run_ids,
+        "total_concursos": len(concursos),
+        "total_geracoes": len(generation_event_ids),
+        "total_runs": len(reconciliation_run_ids),
+    }
+
+
+def _merge_drilldown_evidence_ids(
+    evidence_base: dict[str, Any],
+    leakage_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(evidence_base)
+    contest_ids = set(merged.get("concursos_analisados") or [])
+    generation_ids = set(merged.get("generation_event_ids") or [])
+    run_ids = set(merged.get("reconciliation_run_ids") or [])
+    for rows in (leakage_evidence.get("drilldown_per_dezena") or {}).values():
+        for row in rows or []:
+            contest = int(row.get("concurso_analisado", 0) or 0)
+            gen_id = int(row.get("generation_event_id", 0) or 0)
+            run_id = int(row.get("reconciliation_run_id", 0) or 0)
+            if contest > 0:
+                contest_ids.add(contest)
+            if gen_id > 0:
+                generation_ids.add(gen_id)
+            if run_id > 0:
+                run_ids.add(run_id)
+    merged["concursos_analisados"] = sorted(contest_ids)
+    merged["generation_event_ids"] = sorted(generation_ids)
+    merged["reconciliation_run_ids"] = sorted(run_ids)
+    merged["total_concursos"] = len(merged["concursos_analisados"])
+    merged["total_geracoes"] = len(merged["generation_event_ids"])
+    merged["total_runs"] = len(merged["reconciliation_run_ids"])
+    return merged
+
+
+def _evidence_base_identifiable(evidence_base: dict[str, Any]) -> bool:
+    return bool(evidence_base.get("generation_event_ids")) and bool(
+        evidence_base.get("reconciliation_run_ids")
+    ) and bool(evidence_base.get("concursos_analisados"))
+
+
+def build_alert_evidence_base(alert: dict[str, Any]) -> dict[str, Any]:
+    """Base auditável exibida no relatório ML (PostgreSQL / reconciliation_runs)."""
+    contexts = list(alert.get("evidence_contexts") or [])
+    if not contexts and int(alert.get("reconciliation_run_id", 0) or 0) > 0:
+        contexts = [
+            {
+                "available": True,
+                "reconciliation_run_id": int(alert.get("reconciliation_run_id", 0) or 0),
+                "contest_id": 0,
+                "generation_event_id": 0,
+                "games": [],
+            }
+        ]
+    base = _collect_context_evidence_ids(contexts)
+    leakage_evidence = dict(alert.get("leakage_evidence") or {})
+    if leakage_evidence:
+        base = _merge_drilldown_evidence_ids(base, leakage_evidence)
+    base["evidence_level"] = str(alert.get("evidence_level") or EVIDENCE_LEVEL_LOCAL)
+    return base
+
+
+def build_panel_evidence_base(
+    context: dict[str, Any],
+    *,
+    local_alerts: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    contexts: list[dict[str, Any]] = []
+    if context.get("available"):
+        contexts.append(context)
+    for alert in local_alerts or []:
+        contexts.extend(list(alert.get("evidence_contexts") or []))
+    base = _collect_context_evidence_ids(contexts)
+    if context.get("available"):
+        base = _merge_drilldown_evidence_ids(base, build_lateral_leakage_evidence(context))
+    levels = [str(alert.get("evidence_level") or "") for alert in (local_alerts or []) if alert.get("evidence_level")]
+    if EVIDENCE_LEVEL_RECURRENT in levels:
+        base["evidence_level"] = EVIDENCE_LEVEL_RECURRENT
+    elif levels:
+        base["evidence_level"] = levels[0]
+    else:
+        base["evidence_level"] = EVIDENCE_LEVEL_LOCAL
+    return base
+
+
 def _detect_invalid_evidence_markers(alert: dict[str, Any]) -> list[str]:
     markers: list[str] = []
     proposal = dict(alert.get("ml_proposal") or {})
@@ -596,6 +711,7 @@ def _evidence_complete_checks(alert: dict[str, Any], gaps: Sequence[str]) -> dic
         "cartao_final_presente": "falta_cartao_final_ou_resultado_oficial" not in gaps,
         "resultado_oficial_presente": "falta_cartao_final_ou_resultado_oficial" not in gaps,
         "source_PostgreSQL": str(alert.get("fonte") or SOURCE_POSTGRESQL) == SOURCE_POSTGRESQL,
+        "evidence_base_identificavel": _evidence_base_identifiable(dict(alert.get("evidence_base") or {})),
     }
 
 
@@ -656,7 +772,12 @@ def enrich_alert_card_for_display(alert: dict[str, Any]) -> dict[str, Any]:
     enriched["fonte"] = SOURCE_POSTGRESQL
     enriched["generation_cmd"] = False
     enriched["recalibration_cmd"] = False
-    enriched["evidence_gaps"] = assess_alert_evidence_gaps(alert)
+    enriched["evidence_base"] = build_alert_evidence_base(enriched)
+    enriched["evidence_gaps"] = assess_alert_evidence_gaps(enriched)
+    if not _evidence_base_identifiable(enriched["evidence_base"]):
+        enriched["evidence_gaps"] = sorted(
+            set(enriched["evidence_gaps"]) | {"base_nao_identificavel"}
+        )
     enriched["adm_guide"] = build_adm_verdict_guide(enriched)
     return enriched
 
@@ -696,14 +817,17 @@ def build_alert_001_cards(contexts: Sequence[dict[str, Any]]) -> list[dict[str, 
     latest = ordered[0]
     run_id = int(latest.get("reconciliation_run_id", 0) or 0)
     streak_by_dezena: dict[int, int] = {}
+    streak_contexts_by_dezena: dict[int, list[dict[str, Any]]] = {}
     percent_by_dezena: dict[int, float] = {}
     for context in ordered:
         leak_map = _side_leak_dezenas_for_context(context)
         for dezena in list(streak_by_dezena.keys()):
             if dezena not in leak_map:
                 streak_by_dezena[dezena] = 0
+                streak_contexts_by_dezena[dezena] = []
         for dezena, percentual in leak_map.items():
             streak_by_dezena[dezena] = streak_by_dezena.get(dezena, 0) + 1
+            streak_contexts_by_dezena.setdefault(dezena, []).append(context)
             if context is latest:
                 percent_by_dezena[dezena] = percentual
     cards: list[dict[str, Any]] = []
@@ -750,6 +874,7 @@ def build_alert_001_cards(contexts: Sequence[dict[str, Any]]) -> list[dict[str, 
             "vazamento_definition": latest_evidence.get("vazamento_definition"),
             "sobra_real_definition": latest_evidence.get("sobra_real_definition"),
         }
+        card["evidence_contexts"] = list(streak_contexts_by_dezena.get(dezena, []))
         cards.append(card)
     return cards
 
@@ -793,6 +918,7 @@ def build_alert_002_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
                     reconciliation_run_id=run_id,
                 )
             )
+            cards[-1]["evidence_contexts"] = [context]
     return cards
 
 
@@ -841,6 +967,7 @@ def build_alert_003_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
                 reconciliation_run_id=run_id,
             )
         )
+        cards[-1]["evidence_contexts"] = [context]
     return cards
 
 
@@ -1316,6 +1443,7 @@ def build_side_leak_panel_payload(
     evidence = build_lateral_leakage_evidence(context)
     leakage_table = list(evidence.get("leakage_table") or [])
     locals_for_panel = list(local_alerts or [])
+    evidence_base = build_panel_evidence_base(context, local_alerts=locals_for_panel)
     return {
         "available": bool(evidence.get("available")),
         "source": SOURCE_POSTGRESQL,
@@ -1338,6 +1466,7 @@ def build_side_leak_panel_payload(
         "local_diagnostic_label": LOCAL_DIAGNOSTIC_LABEL,
         "local_diagnostics": locals_for_panel,
         "min_required_generations": MIN_GENERATIONS_FOR_CENTRAL,
+        "evidence_base": evidence_base,
     }
 
 
