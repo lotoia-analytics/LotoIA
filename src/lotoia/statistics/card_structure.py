@@ -284,6 +284,7 @@ def analyze_stuck_games(
 ) -> dict[str, Any]:
     stuck_13: list[dict[str, Any]] = []
     stuck_14: list[dict[str, Any]] = []
+    stuck_15: list[dict[str, Any]] = []
     missing_for_14_counter: Counter[int] = Counter()
     missing_for_15_counter: Counter[int] = Counter()
 
@@ -315,10 +316,13 @@ def analyze_stuck_games(
             stuck_14.append(row)
             for number in missing:
                 missing_for_15_counter[number] += 1
+        elif hits >= 15:
+            stuck_15.append(row)
 
     return {
         "jogos_com_13_hits": stuck_13,
         "jogos_com_14_hits": stuck_14,
+        "jogos_com_15_hits": stuck_15,
         "dezenas_faltantes_para_14": [
             {"dezena": f"{number:02d}", "frequencia": count}
             for number, count in missing_for_14_counter.most_common()
