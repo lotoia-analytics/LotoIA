@@ -236,8 +236,28 @@ def build_card_structure_payload(
         "total_concursos_oficiais": len(official_contests),
         "janela_oficial": DEFAULT_OFFICIAL_WINDOW,
     }
-    abertura["comparacao_com_concursos_oficiais"] = comparacao.get("prefixo_3")
-    fechamento["comparacao_com_concursos_oficiais"] = comparacao.get("sufixo_3")
+    prefixo_3_comparison = dict(comparacao.get("prefixo_3") or {})
+    prefixo_4_comparison = dict(comparacao.get("prefixo_4") or {})
+    sufixo_3_comparison = dict(comparacao.get("sufixo_3") or {})
+    sufixo_4_comparison = dict(comparacao.get("sufixo_4") or {})
+    abertura["lotoia_prefixo_3_ranking"] = list(
+        prefixo_3_comparison.get("lotoia") or abertura.get("ranking_prefixo_3") or []
+    )
+    abertura["official_prefixo_3_ranking"] = list(prefixo_3_comparison.get("oficial") or [])
+    abertura["lotoia_prefixo_4_ranking"] = list(
+        prefixo_4_comparison.get("lotoia") or abertura.get("ranking_prefixo_4") or []
+    )
+    abertura["official_prefixo_4_ranking"] = list(prefixo_4_comparison.get("oficial") or [])
+    abertura["comparacao_com_concursos_oficiais"] = prefixo_3_comparison
+    fechamento["lotoia_sufixo_3_ranking"] = list(
+        sufixo_3_comparison.get("lotoia") or fechamento.get("ranking_sufixo_3") or []
+    )
+    fechamento["official_sufixo_3_ranking"] = list(sufixo_3_comparison.get("oficial") or [])
+    fechamento["lotoia_sufixo_4_ranking"] = list(
+        sufixo_4_comparison.get("lotoia") or fechamento.get("ranking_sufixo_4") or []
+    )
+    fechamento["official_sufixo_4_ranking"] = list(sufixo_4_comparison.get("oficial") or [])
+    fechamento["comparacao_com_concursos_oficiais"] = sufixo_3_comparison
 
     official_numbers = official_cards[0] if official_cards else []
     travamento = analyze_stuck_games(games, official_numbers=official_numbers)
