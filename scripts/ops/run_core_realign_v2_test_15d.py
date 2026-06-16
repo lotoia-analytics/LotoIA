@@ -2,9 +2,14 @@
 """Gera rodadas de STRUCT_CORE_REALIGN_V2_15D_001 (GP:50) e valida core_realignment_v2_applied.
 
 Modo de uso:
-  python scripts/ops/run_core_realign_v2_test_15d.py                     # 1 geracao
-  python scripts/ops/run_core_realign_v2_test_15d.py --generations 20   # fechar lote completo
-  python scripts/ops/run_core_realign_v2_test_15d.py --validate-only    # validar DB
+  # Teste inicial (1ª geração do lote)
+  python scripts/ops/run_core_realign_v2_test_15d.py --generations 1
+  python scripts/ops/run_core_realign_v2_test_15d.py --validate-only
+
+  # Completar lote até 20 events totais (recomendado após validar 1x)
+  python scripts/ops/run_core_realign_v2_test_15d.py --target-total 20
+
+  # Ou manualmente, se já existir 1 event: --generations 19 (NÃO --generations 20)
 
 ADR: ADR-044-REAVALIACAO-NUCLEOS-LEI15-15A
 Missao: MISSAO_DA_VITORIA_REAVALIAR_NUCLEOS_LEI15_15A
@@ -37,6 +42,7 @@ GAMES_COUNT = 50
 CARD_FORMAT = 15
 OFFICIAL_GROUP = "G50"
 STEP_TIMEOUT_S = 90  # V2 may need slightly more time due to pool pre-filter
+DEFAULT_LOT_TARGET = 20
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +213,59 @@ def _reconcile(*, gen_event_id: int, games: list[dict], contest: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Batch progress (PostgreSQL)
+# ---------------------------------------------------------------------------
+
+def _count_existing_events(label: str = BATCH_LABEL) -> int:
+    import psycopg
+
+    url = os.environ.get("DATABASE_URL", "").replace("postgresql+psycopg://", "postgresql://")
+    if not url:
+        return 0
+    with psycopg.connect(url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM generation_events WHERE analysis_batch_label = %s",
+                (label,),
+            )
+            row = cur.fetchone()
+    return int(row[0] if row else 0)
+
+
+def _resolve_generation_plan(
+    *,
+    generations: int,
+    target_total: int | None,
+    lot_target: int = DEFAULT_LOT_TARGET,
+) -> tuple[int, int, int]:
+    """Return (existing, to_run, final_total_expected).
+
+    When target_total is set, to_run = max(0, target_total - existing).
+    Without target_total, uses generations but blocks overflow past lot_target.
+    """
+    existing = _count_existing_events()
+    if target_total is not None:
+        if target_total < 1:
+            raise ValueError("--target-total deve ser >= 1")
+        to_run = max(0, target_total - existing)
+        final_total = existing + to_run
+        return existing, to_run, final_total
+
+    if generations < 1:
+        raise ValueError("--generations deve ser >= 1")
+
+    final_total = existing + generations
+    if final_total > lot_target:
+        remaining = max(0, lot_target - existing)
+        raise RuntimeError(
+            f"Lote {BATCH_LABEL} já tem {existing} event(s). "
+            f"--generations {generations} fecharia com {final_total} (max {lot_target}). "
+            f"Use --target-total {lot_target} ou --generations {remaining}."
+        )
+    return existing, generations, final_total
+
+
+# ---------------------------------------------------------------------------
 # Validation query
 # ---------------------------------------------------------------------------
 
@@ -296,7 +355,18 @@ def main() -> int:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--contests", type=int, default=1)
-    parser.add_argument("--generations", type=int, default=1)
+    parser.add_argument(
+        "--generations",
+        type=int,
+        default=1,
+        help="Quantidade de novas gerações nesta execução (default: 1)",
+    )
+    parser.add_argument(
+        "--target-total",
+        type=int,
+        default=0,
+        help=f"Fechar lote até N generation_events totais (ex.: 20). Calcula restante automaticamente.",
+    )
     parser.add_argument("--pool", type=int, default=0, help="pool_size inicial (0=progressivo [50,100,200])")
     parser.add_argument("--created-by", default="ops/run_core_realign_v2_test_15d")
     parser.add_argument("--validate-only", action="store_true")
@@ -322,8 +392,26 @@ def main() -> int:
     # pool steps
     pool_steps = [args.pool] if args.pool > 0 else [50, 100, 200]
 
-    n_gens = args.generations
+    target_total = args.target_total if args.target_total > 0 else None
+    existing, n_gens, final_total = _resolve_generation_plan(
+        generations=args.generations,
+        target_total=target_total,
+    )
     n_contests = args.contests
+
+    if n_gens == 0:
+        _log(
+            f"Lote {BATCH_LABEL} já completo: existing={existing} "
+            f"target={target_total or DEFAULT_LOT_TARGET} — nada a gerar."
+        )
+        val = _validate_db()
+        _print_validation(val)
+        return 0
+
+    _log(
+        f"Lote {BATCH_LABEL}: existing={existing}  run_now={n_gens}  "
+        f"final_expected={final_total}"
+    )
 
     from lotoia.governance.cloud_runtime_policy import evaluate_cloud_runtime_policy
     from lotoia.database.database import DEFAULT_DATABASE_PATH
@@ -350,7 +438,10 @@ def main() -> int:
     if len(contests) < n_contests:
         raise RuntimeError(f"Apenas {len(contests)} concursos válidos ({n_contests} necessários).")
 
-    _log(f"\n=== {BATCH_LABEL} | v2_mode={v2_mode} | gens={n_gens} | pool_steps={pool_steps} | GP={GAMES_COUNT} ===\n")
+    _log(
+        f"\n=== {BATCH_LABEL} | v2_mode={v2_mode} | existing={existing} | "
+        f"run={n_gens} | final={final_total} | pool_steps={pool_steps} | GP={GAMES_COUNT} ===\n"
+    )
 
     base_seed = int(time.time()) % 1_000_000
     ge_ids = []
@@ -363,9 +454,10 @@ def main() -> int:
             raise RuntimeError(f"Concurso {cn} não encontrado.")
 
         for run_i in range(1, n_gens + 1):
-            seed = base_seed + cn * 10 + run_i
+            global_run = existing + run_i
+            seed = base_seed + cn * 10 + global_run
             t_run = time.monotonic()
-            _log(f"--- concurso={cn} run={run_i}/{n_gens} seed={seed} ---")
+            _log(f"--- concurso={cn} run={global_run}/{final_total} seed={seed} ---")
 
             games, used_pool = _generate_games_progressive(seed=seed, pool_steps=pool_steps)
 
@@ -383,7 +475,7 @@ def main() -> int:
             report_events.append({
                 "ge_id": ge_id,
                 "contest": cn,
-                "run": run_i,
+                "run": global_run,
                 "pool_used": used_pool,
                 "games": len(games),
                 "best_hits": rec.get("best_hits"),
