@@ -16,11 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_institutional_database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
-    try:
-        from .adapter import InstitutionalDatabaseAdapter
-    except Exception:
-        resolved = path if path.is_absolute() else path.resolve()
-        return f"sqlite:///{resolved.as_posix()}"
+    from .adapter import InstitutionalDatabaseAdapter
+
     return InstitutionalDatabaseAdapter(path).database_url
 
 

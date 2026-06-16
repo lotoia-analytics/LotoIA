@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from lotoia.database.adapter import InstitutionalDatabaseAdapter
+from lotoia.database.adapter import InstitutionalDatabaseAdapter, is_operational_database_path
 
 _INSTITUTIONAL_DATABASE_ENV_VARS = (
     "DATABASE_URL",
@@ -80,24 +80,39 @@ def _is_localhost_database_url(database_url: str) -> bool:
 
 
 def evaluate_cloud_runtime_policy(db_path: Path) -> CloudRuntimePolicyResult:
-    adapter = InstitutionalDatabaseAdapter(db_path)
     cloud_runtime = is_cloud_production_runtime()
     auth_required = is_auth_required()
     postgresql_required = cloud_runtime or _truthy_env("LOTOIA_CLOUD_ONLY")
     violations: list[str] = []
 
     env_url, env_source = _resolve_database_url_from_env()
+    if not env_url and is_operational_database_path(db_path):
+        violations.append("DATABASE_URL ausente — PostgreSQL obrigatório (Lei No 001)")
+        return CloudRuntimePolicyResult(
+            cloud_runtime=cloud_runtime,
+            auth_required=auth_required,
+            postgresql_required=postgresql_required,
+            database_source="blocked",
+            backend="blocked",
+            violations=tuple(violations),
+        )
+
+    adapter = InstitutionalDatabaseAdapter(db_path)
     if postgresql_required:
         if not env_url:
             violations.append("DATABASE_URL ausente em runtime cloud — fallback SQLite proibido (Lei No 001)")
         elif not (env_url.lower().startswith("postgresql") or env_url.lower().startswith("postgres://")):
-            violations.append(f"DATABASE_URL deve ser PostgreSQL em runtime cloud (scheme atual inválido)")
+            violations.append("DATABASE_URL deve ser PostgreSQL em runtime cloud (scheme atual inválido)")
         elif _is_localhost_database_url(env_url):
             violations.append("DATABASE_URL aponta para localhost — proibido em runtime cloud")
         if adapter.backend != "postgresql":
             violations.append(f"backend={adapter.backend} — PostgreSQL obrigatório em runtime cloud")
-        if adapter.database_source == "sqlite_fallback":
-            violations.append("fonte sqlite_fallback detectada — Lei No 001 violada")
+        if adapter.database_source in {"sqlite_fallback", "sqlite_ephemeral"}:
+            violations.append(f"fonte {adapter.database_source} detectada — Lei No 001 violada")
+    elif is_operational_database_path(db_path) and adapter.backend != "postgresql":
+        violations.append(
+            f"backend={adapter.backend} em path operacional — PostgreSQL obrigatório (Lei No 001)"
+        )
 
     return CloudRuntimePolicyResult(
         cloud_runtime=cloud_runtime,

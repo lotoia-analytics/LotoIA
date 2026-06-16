@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 FORBIDDEN_LOCAL_SOURCES = (
     "sqlite_fallback",
+    "sqlite_ephemeral",
 )
 
 FORBIDDEN_LOCALHOST_MARKERS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
@@ -52,27 +53,6 @@ def run_validation(*, strict: bool = False) -> dict[str, Any]:
         "strict_mode": strict,
     }
 
-    adapter = InstitutionalDatabaseAdapter(DEFAULT_DATABASE_PATH)
-    evidence["adapter_backend"] = adapter.backend
-    evidence["database_source"] = adapter.database_source
-    evidence["database_host"] = adapter.database_host
-
-    if adapter.database_source in FORBIDDEN_LOCAL_SOURCES:
-        if strict or _is_cloud_runtime():
-            errors.append(f"fonte proibida detectada: {adapter.database_source}")
-        else:
-            warnings.append(f"fonte local detectada: {adapter.database_source} (aceitável apenas em dev local)")
-
-    if adapter.backend == "sqlite":
-        if strict or _is_cloud_runtime():
-            errors.append("backend sqlite detectado — Lei No 001 exige PostgreSQL em cloud")
-        else:
-            warnings.append("backend sqlite em ambiente não-cloud (aceitável para dev local)")
-
-    host = (adapter.database_host or "").lower()
-    if host and any(marker in host for marker in FORBIDDEN_LOCALHOST_MARKERS):
-        errors.append(f"DATABASE_URL aponta para host local: {host}")
-
     policy = evaluate_cloud_runtime_policy(DEFAULT_DATABASE_PATH)
     evidence["cloud_policy"] = {
         "cloud_runtime": policy.cloud_runtime,
@@ -80,7 +60,29 @@ def run_validation(*, strict: bool = False) -> dict[str, Any]:
         "postgresql_required": policy.postgresql_required,
         "violations": list(policy.violations),
     }
-    if policy.violations and (strict or policy.cloud_runtime):
+    evidence["adapter_backend"] = policy.backend
+    evidence["database_source"] = policy.database_source
+
+    if policy.database_source == "blocked":
+        errors.append("DATABASE_URL ausente — PostgreSQL obrigatório (Lei No 001)")
+        evidence["database_host"] = ""
+    else:
+        adapter = InstitutionalDatabaseAdapter(DEFAULT_DATABASE_PATH)
+        evidence["adapter_backend"] = adapter.backend
+        evidence["database_source"] = adapter.database_source
+        evidence["database_host"] = adapter.database_host
+
+        if adapter.database_source in FORBIDDEN_LOCAL_SOURCES:
+            errors.append(f"fonte proibida detectada: {adapter.database_source}")
+
+        if adapter.backend == "sqlite":
+            errors.append("backend sqlite detectado — Lei No 001 exige PostgreSQL operacional")
+
+        host = (adapter.database_host or "").lower()
+        if host and any(marker in host for marker in FORBIDDEN_LOCALHOST_MARKERS):
+            errors.append(f"DATABASE_URL aponta para host local: {host}")
+
+    if policy.violations:
         errors.extend(list(policy.violations))
 
     default_csv = ROOT / "data" / "raw" / "historico_lotofacil.csv"

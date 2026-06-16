@@ -77,6 +77,31 @@ def _build_supabase_pooler_username(database_url: str) -> str:
     return "postgres"
 
 
+def is_operational_database_path(path: Path = DEFAULT_DATABASE_PATH) -> bool:
+    """True when path is the default institutional DB location (not ephemeral test paths)."""
+    resolved = path if path.is_absolute() else path.resolve()
+    default = DEFAULT_DATABASE_PATH if DEFAULT_DATABASE_PATH.is_absolute() else DEFAULT_DATABASE_PATH.resolve()
+    return resolved == default
+
+
+def _has_institutional_database_url_in_env() -> bool:
+    pooler_url, _ = _read_pooler_database_url_from_env()
+    if pooler_url:
+        return True
+    env_url, _ = _read_database_url_from_env()
+    return bool(env_url)
+
+
+def _require_postgresql_for_operational_path(path: Path) -> None:
+    if _has_institutional_database_url_in_env():
+        return
+    if is_operational_database_path(path):
+        raise RuntimeError(
+            "DATABASE_URL (ou LOTOIA_DATABASE_URL) obrigatório para persistência operacional; "
+            "fallback SQLite em data/lotoia.db proibido (Lei No 001)."
+        )
+
+
 def _rewrite_supabase_url_to_pooler(database_url: str) -> str:
     parsed = urlparse(database_url)
     host = (parsed.hostname or "").lower()
@@ -111,6 +136,7 @@ class InstitutionalDatabaseAdapter:
         env_url, _ = _read_database_url_from_env()
         if env_url:
             return _rewrite_supabase_url_to_pooler(env_url)
+        _require_postgresql_for_operational_path(self.path)
         resolved = self.path if self.path.is_absolute() else self.path.resolve()
         return f"sqlite:///{resolved.as_posix()}"
 
@@ -139,7 +165,7 @@ class InstitutionalDatabaseAdapter:
         _, env_name = _read_database_url_from_env()
         if env_name:
             return env_name
-        return "sqlite_fallback"
+        return "sqlite_ephemeral"
 
     @property
     def database_host(self) -> str:
@@ -393,7 +419,7 @@ class InstitutionalDatabaseAdapter:
 
 
 class SQLiteInstitutionalAdapter(InstitutionalDatabaseAdapter):
-    """SQLite-backed institutional adapter kept for local/runtime compatibility."""
+    """SQLite adapter for ephemeral unit-test paths only (tmp_path)."""
 
     pass
 
