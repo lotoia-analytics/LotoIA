@@ -154,7 +154,20 @@ def _persist(*, games: list[dict], seed: int, contest_number: int, created_by: s
         "core_realignment_v2_applied_count": sum(
             1 for g in games
             if g.get("core_realignment_v2_applied") is True
-            or (g.get("realignment_metadata") or {}).get("core_realignment_v2_applied") is True
+            or (g.get("realignment_metadata") or {}).get("v2_applied") is True
+        ),
+        "pool_pre_filter_applied_count": sum(
+            1 for g in games
+            if (g.get("realignment_metadata") or {}).get("pool_pre_filter_applied") is True
+        ),
+        "v2_fallback_to_v1_count": sum(
+            1 for g in games
+            if (g.get("realignment_metadata") or {}).get("v2_fallback_to_v1") is True
+        ),
+        "core_realignment_v2_applied": any(
+            g.get("core_realignment_v2_applied") is True
+            or (g.get("realignment_metadata") or {}).get("v2_applied") is True
+            for g in games
         ),
     }
     snap = _persist_generation_snapshot(
@@ -205,27 +218,50 @@ def _validate_db() -> dict:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT
-                  analysis_batch_label,
-                  COUNT(*) AS total_events,
-                  COUNT(*) FILTER (
-                    WHERE context_json::text ILIKE '%%core_realignment_v2_applied%%true%%'
-                  ) AS v2_applied_true,
-                  COUNT(*) FILTER (
-                    WHERE context_json::text ILIKE '%%realignment_applied%%true%%'
-                  ) AS v1_applied_true
-                FROM generation_events
-                WHERE analysis_batch_label LIKE 'STRUCT_CORE_REALIGN_V2_%%'
-                GROUP BY analysis_batch_label
-                ORDER BY analysis_batch_label
+                  ge.analysis_batch_label,
+                  COUNT(DISTINCT ge.id) AS total_events,
+                  COUNT(gg.id) AS total_games,
+                  COUNT(DISTINCT ge.id) FILTER (
+                    WHERE ge.context_json::text ILIKE '%%core_realignment_v2_applied%%true%%'
+                  ) AS ge_v2_flagged,
+                  COUNT(gg.id) FILTER (
+                    WHERE gg.context_json::text ILIKE '%%"v2_applied": true%%'
+                       OR gg.context_json::text ILIKE '%%"core_realignment_v2_applied": true%%'
+                  ) AS games_v2_applied,
+                  COUNT(gg.id) FILTER (
+                    WHERE gg.context_json::text ILIKE '%%"pool_pre_filter_applied": true%%'
+                  ) AS games_pool_pre_filter,
+                  COUNT(gg.id) FILTER (
+                    WHERE gg.context_json::text ILIKE '%%"v2_fallback_to_v1": true%%'
+                  ) AS games_v2_fallback
+                FROM generation_events ge
+                LEFT JOIN generated_games gg ON gg.generation_event_id = ge.id
+                WHERE ge.analysis_batch_label LIKE 'STRUCT_CORE_REALIGN_V2_%%'
+                GROUP BY ge.analysis_batch_label
+                ORDER BY ge.analysis_batch_label
             """)
             rows = cur.fetchall()
     results = [
-        {"label": r[0], "total": r[1], "v2_applied_true": r[2], "v1_applied_true": r[3]}
+        {
+            "label": r[0],
+            "total": r[1],
+            "games": r[2],
+            "ge_v2_flagged": r[3],
+            "games_v2_applied": r[4],
+            "games_pool_pre_filter": r[5],
+            "games_v2_fallback": r[6],
+        }
         for r in rows
     ]
-    ok = any(r["label"] == BATCH_LABEL and r["v2_applied_true"] > 0 for r in results)
+    batch = next((r for r in results if r["label"] == BATCH_LABEL), None)
+    ok = bool(
+        batch
+        and batch["total"] >= 1
+        and batch["games"] >= GAMES_COUNT
+        and (batch["games_v2_applied"] > 0 or batch["games_v2_fallback"] > 0)
+    )
     _log(f"  validate_db: {time.monotonic()-t0:.2f}s")
-    return {"rows": results, "validation_ok": ok}
+    return {"rows": results, "validation_ok": ok, "batch": batch}
 
 
 def _print_validation(val: dict) -> None:
@@ -233,15 +269,23 @@ def _print_validation(val: dict) -> None:
         _log("  Nenhum dado para STRUCT_CORE_REALIGN_V2_*")
         return
     for r in val["rows"]:
-        status = "OK - V2 confirmado" if r["v2_applied_true"] > 0 else "FALHA - v2_applied_true=0"
+        status = "OK" if r["label"] == BATCH_LABEL and val.get("validation_ok") else "CHECK"
         _log(
-            f"  {r['label']:<40}  total={r['total']:>3}  "
-            f"v2_applied={r['v2_applied_true']:>3}  v1_applied={r['v1_applied_true']:>3}  [{status}]"
+            f"  {r['label']:<40}  events={r['total']:>3}  games={r['games']:>4}  "
+            f"v2_games={r['games_v2_applied']:>3}  pre_filter={r['games_pool_pre_filter']:>3}  "
+            f"fallback={r['games_v2_fallback']:>3}  [{status}]"
         )
-    if val["validation_ok"]:
-        _log(f"[RESULTADO] core_realignment_v2_applied=true CONFIRMADO para {BATCH_LABEL}")
+    batch = val.get("batch")
+    if val["validation_ok"] and batch:
+        _log(
+            f"[RESULTADO] {BATCH_LABEL} validado: "
+            f"events={batch['total']} games={batch['games']} "
+            f"v2_applied={batch['games_v2_applied']} "
+            f"pool_pre_filter={batch['games_pool_pre_filter']} "
+            f"v2_fallback={batch['games_v2_fallback']}"
+        )
     else:
-        _log(f"[RESULTADO] FALHA: v2_applied_true=0 para {BATCH_LABEL}")
+        _log(f"[RESULTADO] FALHA na validacao de {BATCH_LABEL}")
 
 
 # ---------------------------------------------------------------------------

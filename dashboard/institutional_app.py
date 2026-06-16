@@ -7831,6 +7831,12 @@ def _persist_generation_snapshot(
                 "validation_status_lei_17": str(game.get("validation_status_lei_17", "") or ""),
                 "validation_status_lei_18": str(game.get("validation_status_lei_18", "") or ""),
             }
+            if game.get("realignment_metadata") is not None:
+                per_game_context["realignment_metadata"] = game.get("realignment_metadata")
+            if "core_realignment_v2_applied" in game:
+                per_game_context["core_realignment_v2_applied"] = bool(game.get("core_realignment_v2_applied"))
+            if "realignment_applied" in game:
+                per_game_context["realignment_applied"] = bool(game.get("realignment_applied"))
             session.add(
                 GeneratedGame(
                     generation_event_id=generation_event_id,

@@ -592,7 +592,10 @@ def generate_best_games(
             for _g in best_games:
                 meta = dict(_g.get("realignment_metadata") or {})
                 meta["v2_fallback_to_v1"] = True
+                meta["v1_applied"] = True
+                meta["v2_applied"] = False
                 meta["core_realignment_v2_applied"] = False
+                meta["pool_pre_filter_applied"] = False
                 _g["realignment_metadata"] = meta
                 _g["core_realignment_v2_applied"] = False
         elif len(best_games) < count:
@@ -633,6 +636,10 @@ def generate_best_games(
             _g["realignment_metadata"]["realignment_applied"] = _apply_realign or (_apply_v2 and not _v2_fallback_to_v1)
             _g["realignment_metadata"]["core_realignment_v2_applied"] = _apply_v2 and not _v2_fallback_to_v1
             _g["realignment_metadata"]["v2_fallback_to_v1"] = _v2_fallback_to_v1
+            if _apply_v2 and not _v2_fallback_to_v1:
+                _g["realignment_metadata"].setdefault("v1_applied", True)
+                _g["realignment_metadata"].setdefault("v2_applied", True)
+                _g["realignment_metadata"].setdefault("v2_fallback_to_v1", False)
             _g["realignment_metadata"]["gp_metrics"] = _rm
     # -------------------------------------------------------------------------
 
