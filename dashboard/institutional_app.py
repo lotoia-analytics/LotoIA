@@ -62,6 +62,23 @@ from lotoia.governance.output_commander import (
     output_commander_validate_games,
 )
 from lotoia.governance.lei15_15a_core_realignment_v3 import get_v3_mode
+from lotoia.governance.analysis_batch_labels import BATCH_LABEL_UI_OPTIONS
+from lotoia.observability.card_structure_diagnostics import load_card_structure_diagnostics_from_db
+from lotoia.observability.ml_diagnostic_panels import (
+    ACTIVE_ALERT_STATUSES,
+    ALERT_001,
+    CENTRAL_EMPTY_NO_RECURRENT_MESSAGE,
+    STATUS_PENDENTE,
+    VERDICT_ACCEPT_DIAGNOSTIC,
+    VERDICT_REJECT,
+    VERDICT_REQUEST_MORE_EVIDENCE,
+    _evidence_base_identifiable,
+    build_central_ml_diagnostics_payload,
+    list_ml_diagnostic_decisions,
+    register_ml_diagnostic_verdict,
+)
+from dashboard.display_dataframe import make_arrow_safe_dataframe, strip_adm_technical_columns, strip_adm_technical_records
+
 from lotoia.governance.structural_rfe import (
     RFEPreviousContestReference,
     RFEValidationResult,
@@ -122,6 +139,7 @@ LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
 LEI15A_RESERVAS_PRIORITARIAS = RESERVAS_LEI15A_PRIORITARIAS
 LEI15A_REGISTRATION_MAX_FORMAT = 20
 LEI15A_REGISTRATION_PENDING_FORMATS = (21, 22, 23)
+RUNTIME_GENERATION_CARD_FORMATS = tuple(range(15, LEI15A_REGISTRATION_MAX_FORMAT + 1))
 LEI15A_VIGILANCIA = (4, 11, 12, 15)
 LEI15A_BLIND_SPOTS = (6, 16, 17, 21)
 LEI15A_MARGINAL = (8,)
@@ -7530,50 +7548,549 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
         )
 
 
+def _render_ml_diagnostic_source_caption(
+    payload: dict[str, Any],
+    *,
+    analysis_only: bool = False,
+) -> None:
+    parts = [
+        "Fonte: PostgreSQL (reconciliation_runs / reconciliation_games)",
+        "Camada: diagnóstico observacional",
+        "Sem efeito operacional",
+    ]
+    if analysis_only:
+        parts.append("Modo: análise apenas")
+    st.caption(" | ".join(parts))
+
+
+
+
+def _resolve_ml_diagnostic_adm_user(snapshot: dict[str, Any]) -> str:
+    for key in ("adm_user", "institutional_user", "operator_email", "user_email"):
+        value = str(snapshot.get(key) or st.session_state.get(key) or "").strip()
+        if value:
+            return value
+    return "adm@institucional.local"
+
+
+
+def _render_diagnostic_evidence_base(
+    evidence_base: dict[str, Any] | None,
+    *,
+    title: str = "Base do diagnóstico",
+) -> None:
+    base = dict(evidence_base or {})
+    if not _evidence_base_identifiable(base):
+        st.warning("Base do diagnóstico não identificável — IDs ausentes.")
+        return
+    st.markdown(f"**{title}**")
+    metric_cols = st.columns(3)
+    metric_cols[0].metric("Gerações", int(base.get("total_geracoes", 0) or 0))
+    metric_cols[1].metric("Concursos", int(base.get("total_concursos", 0) or 0))
+    metric_cols[2].metric("Runs", int(base.get("total_runs", 0) or 0))
+    st.write(f"Nível de evidência: `{base.get('evidence_level', '—')}`")
+    st.write(f"Concursos analisados: `{base.get('concursos_analisados', [])}`")
+    if base.get("analysis_batch_label"):
+        st.write(f"analysis_batch_label: `{base.get('analysis_batch_label')}`")
+    elif base.get("analysis_batch_labels"):
+        st.write(f"analysis_batch_labels: `{base.get('analysis_batch_labels', [])}`")
+    if base.get("formatos_analisados"):
+        st.write(f"formatos_analisados: `{base.get('formatos_analisados', [])}`")
+    st.write(f"generation_event_ids: `{base.get('generation_event_ids', [])}`")
+    st.write(f"reconciliation_run_ids: `{base.get('reconciliation_run_ids', [])}`")
+
+
+
+
+def _render_structural_coverage_ranking_tables(
+    section: dict[str, Any],
+    *,
+    kind: str,
+) -> None:
+    prefix = "prefixo" if kind == "abertura" else "sufixo"
+    table_specs = [
+        (f"LotoIA — {prefix} 3", f"lotoia_{prefix}_3_ranking"),
+        (f"Concursos oficiais — {prefix} 3", f"official_{prefix}_3_ranking"),
+        (f"LotoIA — {prefix} 4", f"lotoia_{prefix}_4_ranking"),
+        (f"Concursos oficiais — {prefix} 4", f"official_{prefix}_4_ranking"),
+    ]
+    first_row = st.columns(2)
+    second_row = st.columns(2)
+    for index, (title, source_key) in enumerate(table_specs):
+        target_col = first_row[index] if index < 2 else second_row[index - 2]
+        rows = list(section.get(source_key) or [])
+        with target_col:
+            st.markdown(f"**{title}**")
+            if rows:
+                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            else:
+                st.caption("Sem dados.")
+
+
+
+
+def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Central de Diagnósticos ML")
+    st.info(
+        "Princípio institucional: tudo o que o ML vê, o ADM vê. "
+        "O ML propõe; o ADM emite veredito (ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT). "
+        "Nenhum veredito gera efeito operacional, comando de geração, recalibração ou mutação da Lei 15."
+    )
+    payload = build_central_ml_diagnostics_payload(DB_PATH)
+    _render_ml_diagnostic_source_caption(payload)
+    header_cols = st.columns(3)
+    header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
+    header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
+    header_cols[2].metric("Fonte", "PostgreSQL")
+    st.caption("política: ADM_VERDICT_POLICY (3 vereditos, sem efeito operacional)")
+    if not payload.get("available"):
+        st.warning(
+            "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL. "
+            "Os alertas permanecem indisponíveis até haver conferência persistida."
+        )
+    alerts = list(payload.get("alerts") or [])
+    local_alerts_count = int(payload.get("local_alerts_count", 0) or 0)
+    if not alerts and local_alerts_count > 0:
+        st.info(payload.get("empty_state_message") or CENTRAL_EMPTY_NO_RECURRENT_MESSAGE)
+    elif not alerts and payload.get("available"):
+        st.success("Nenhum alerta ML recorrente ativo no momento para a última reconciliation_run.")
+    adm_user = _resolve_ml_diagnostic_adm_user(snapshot)
+    for alert in alerts:
+        status = str(alert.get("status") or STATUS_PENDENTE)
+        with st.container(border=True):
+            st.markdown(f"**{alert.get('tipo_alerta')}** — {alert.get('tipo_label')}")
+            info_cols = st.columns(3)
+            info_cols[0].write(f"Dezena: **{alert.get('dezena_fmt')}**")
+            info_cols[1].write(f"Status: **{status}**")
+            info_cols[2].write(f"Veredito: **{alert.get('verdict_type') or '—'}**")
+            st.markdown("**Evidência**")
+            st.write(alert.get("evidencia") or "—")
+            _render_diagnostic_evidence_base(
+                dict(alert.get("evidence_base") or {}),
+                title="Base do diagnóstico",
+            )
+            detail_cols = st.columns(2)
+            detail_cols[0].write(f"Regra base: `{alert.get('regra_base')}`")
+            detail_cols[1].write(f"Threshold: `{alert.get('threshold_usado')}`")
+            guard_cols = st.columns(3)
+            guard_cols[0].write(f"Fonte: `{alert.get('fonte')}`")
+            guard_cols[1].write(f"generation_cmd: `{alert.get('generation_cmd')}`")
+            guard_cols[2].write(f"recalibration_cmd: `{alert.get('recalibration_cmd')}`")
+            if alert.get("evidence_gaps"):
+                st.caption(f"Lacunas detectadas: {', '.join(alert.get('evidence_gaps') or [])}")
+            adm_guide = dict(alert.get("adm_guide") or {})
+            if adm_guide:
+                st.markdown("**Guia ADM**")
+                guide_cols = st.columns(2)
+                guide_cols[0].write(f"Evidência: **{adm_guide.get('evidence_status', '—')}**")
+                guide_cols[1].write(f"Governança: **{adm_guide.get('governance_status', '—')}**")
+                st.info(
+                    f"Veredito sugerido (somente orientação): **{adm_guide.get('suggested_verdict', '—')}** — "
+                    f"{adm_guide.get('reason_hint', '')}"
+                )
+                st.caption(
+                    "O ADM decide manualmente; override do veredito sugerido exige motivo. "
+                    "Nenhum veredito gera efeito operacional."
+                )
+            if alert.get("tipo_alerta") == ALERT_001:
+                leakage_evidence = dict(alert.get("leakage_evidence") or {})
+                leakage_table = list(leakage_evidence.get("leakage_table") or [])
+                drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
+                if leakage_table or drilldown_map:
+                    with st.expander("Drilldown auditável (vazamento lateral)", expanded=False):
+                        st.caption(
+                            "Vazamento = dezena em cartao_final e fora de resultado_oficial "
+                            "(sobra_real = cartao_final − resultado_oficial)."
+                        )
+                        if leakage_table:
+                            st.dataframe(
+                                strip_adm_technical_columns(pd.DataFrame(leakage_table)),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
+                        for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
+                            st.markdown(f"**Dezena {dezena_key}**")
+                            st.dataframe(
+                                strip_adm_technical_columns(pd.DataFrame(strip_adm_technical_records(drilldown_rows))),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
+            if status in ACTIVE_ALERT_STATUSES and alert.get("verdict_buttons_allowed"):
+                reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
+                suggested_verdict = str(adm_guide.get("suggested_verdict") or "")
+                st.text_input(
+                    "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE, REJECT e override)",
+                    key=reason_key,
+                )
+                action_cols = st.columns(3)
+                if action_cols[0].button(
+                    "ACCEPT_DIAGNOSTIC",
+                    key=f"ml_diag_accept_{alert.get('alert_key')}",
+                    type="primary",
+                ):
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    if suggested_verdict and suggested_verdict != VERDICT_ACCEPT_DIAGNOSTIC and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                db_path=DB_PATH,
+                            )
+                            st.success("Veredito ACCEPT_DIAGNOSTIC registrado (status=ACEITO).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                if action_cols[1].button(
+                    "REQUEST_MORE_EVIDENCE",
+                    key=f"ml_diag_more_evidence_{alert.get('alert_key')}",
+                ):
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    if not reason:
+                        st.error("Informe o motivo antes de confirmar REQUEST_MORE_EVIDENCE.")
+                    elif suggested_verdict and suggested_verdict != VERDICT_REQUEST_MORE_EVIDENCE and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                verdict_reason=reason,
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                missing_evidence=list(alert.get("evidence_gaps") or []),
+                                db_path=DB_PATH,
+                            )
+                            st.info("Veredito REQUEST_MORE_EVIDENCE registrado (status=PENDENTE_EVIDENCIA).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                if action_cols[2].button(
+                    "REJECT",
+                    key=f"ml_diag_reject_{alert.get('alert_key')}",
+                ):
+                    reason = str(st.session_state.get(reason_key) or "").strip()
+                    if not reason:
+                        st.error("Informe o motivo antes de confirmar REJECT.")
+                    elif suggested_verdict and suggested_verdict != VERDICT_REJECT and not reason:
+                        st.error("Override do veredito sugerido exige motivo.")
+                    else:
+                        try:
+                            register_ml_diagnostic_verdict(
+                                alert_type=str(alert.get("tipo_alerta")),
+                                dezena=int(alert.get("dezena") or 0),
+                                ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                verdict_type=VERDICT_REJECT,
+                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                verdict_reason=reason,
+                                adm_user=adm_user,
+                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                alert_card=alert,
+                                db_path=DB_PATH,
+                            )
+                            st.warning("Veredito REJECT registrado (status=REJEITADO).")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+            else:
+                if alert.get("verdict_reason") or alert.get("adm_reason"):
+                    st.caption(f"Motivo: {alert.get('verdict_reason') or alert.get('adm_reason')}")
+                if alert.get("missing_evidence"):
+                    st.caption(f"Evidência faltante: {', '.join(alert.get('missing_evidence') or [])}")
+                if alert.get("adr_candidate"):
+                    st.caption("ADR candidate: sim (sem efeito operacional)")
+                if alert.get("adm_user"):
+                    st.caption(f"ADM: {alert.get('adm_user')}")
+    st.markdown("### Histórico de decisões")
+    history = list_ml_diagnostic_decisions(db_path=DB_PATH, limit=200)
+    if not history:
+        st.caption("Nenhuma decisão ADM registrada ainda.")
+    else:
+        history_df = pd.DataFrame(
+            [
+                {
+                    "alert_type": row["alert_type"],
+                    "dezena": row["dezena_fmt"],
+                    "verdict_type": row.get("verdict_type") or "",
+                    "status": row.get("status") or row.get("decision") or "",
+                    "reason": row.get("verdict_reason") or row.get("reason") or "",
+                    "missing_evidence": ", ".join(row.get("missing_evidence") or []),
+                    "adr_candidate": row.get("adr_candidate"),
+                    "timestamp": row.get("timestamp") or "",
+                    "adm_user": row.get("adm_user") or "",
+                }
+                for row in history
+            ]
+        )
+        st.dataframe(history_df, hide_index=True, use_container_width=True)
+
+
+def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Métricas HB")
+    st.write("Leitura observacional de acertos, recorrência e dispersão estrutural da bateria analisada.")
+    st.info(
+        "Esta página é analítica e observacional. "
+        "Não gera jogos, não recalibra a Lei 15, não altera a Lei 16 "
+        "e não modifica histórico."
+    )
+    st.markdown(
+        "Nesta página, **HB** representa uma camada observacional de métricas "
+        "estruturais da bateria analisada. Ela resume acertos, sobreposição, "
+        "dispersão e volume analisado, sem atuar como comando de geração ou "
+        "recalibração."
+    )
+    metrics = _load_hb_metrics_from_reconciliation_db()
+    st.caption(
+        f"Fonte: PostgreSQL ({metrics.get('tables', 'reconciliation_runs / reconciliation_games')}) | "
+        f"Prêmios: {metrics.get('prize_count', 0)} | "
+        f"Melhor acerto: {metrics.get('best_hits', 0)} | "
+        f"Resultado oficial: {metrics.get('official_source', 'indisponivel')}"
+    )
+    if not metrics.get("available"):
+        st.warning("Nenhuma reconciliation_run persistida encontrada no PostgreSQL para calcular as métricas HB.")
+    avg_hits = float(metrics.get("media_acertos", 0.0) or 0.0)
+    hits_11_plus = int(metrics.get("jogos_11_mais", 0) or 0)
+    hits_12_plus = int(metrics.get("jogos_12_mais", 0) or 0)
+    entropy = float(metrics.get("entropia_estrutural", 0.0) or 0.0)
+    average_overlap = float(metrics.get("media_sobreposicao", 0.0) or 0.0)
+    dominant_numbers = list(metrics.get("dezenas_dominantes", []) or [])
+    contests_analyzed = int(metrics.get("concursos_analisados", 0) or 0)
+    games_count = int(metrics.get("jogos_analisados", 0) or 0)
+    pool_size = int(metrics.get("tamanho_conjunto", 0) or 0)
+    cols = st.columns(4)
+    cols[0].metric("Média de acertos", avg_hits)
+    cols[1].metric("Jogos com 11+ acertos", hits_11_plus)
+    cols[2].metric("Jogos com 12+ acertos", hits_12_plus)
+    cols[3].metric("Entropia estrutural", entropy)
+    st.caption(
+        "As métricas acima resumem o comportamento estrutural da bateria analisada. "
+        "Elas não representam recomendação automática, alteração de estratégia "
+        "ou mudança da governança soberana."
+    )
+    st.subheader("Resumo observacional HB")
+    st.caption("Indicadores estruturais derivados da última reconciliation_run persistida.")
+    metrics_df = pd.DataFrame(
+        [
+            {"métrica": "media_sobreposicao", "valor": average_overlap},
+            {
+                "métrica": "dezenas_dominantes",
+                "valor": _format_hb_dominant_numbers(dominant_numbers),
+            },
+            {"métrica": "concursos_analisados", "valor": contests_analyzed},
+            {"métrica": "jogos_analisados", "valor": games_count},
+            {"métrica": "tamanho_conjunto", "valor": pool_size},
+        ]
+    )
+    metric_label_map = {
+        "media_sobreposicao": "Média de sobreposição",
+        "dezenas_dominantes": "Dezenas dominantes",
+        "concursos_analisados": "Concursos analisados",
+        "jogos_analisados": "Jogos analisados",
+        "tamanho_conjunto": "Tamanho do conjunto",
+    }
+    metrics_display_df = metrics_df.copy()
+    metrics_display_df["métrica"] = metrics_display_df["métrica"].astype(str).replace(metric_label_map)
+    metrics_display_df = metrics_display_df.rename(columns={"métrica": "Métrica", "valor": "Valor"})
+    metrics_display_df = make_arrow_safe_dataframe(metrics_display_df)
+    st.dataframe(metrics_display_df, hide_index=True, use_container_width=True)
+    st.subheader("Interpretação observacional")
+    st.markdown(
+        "As Métricas HB permitem observar a média de acertos, a concentração de dezenas, "
+        "a dispersão estrutural e o volume analisado. Esta leitura serve para auditoria "
+        "e acompanhamento institucional, sem gerar jogos, sem recalibrar leis e sem "
+        "alterar histórico."
+    )
+
+
+
+
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
-    st.write("Leitura observacional da distribuição, concentração e recorrência das dezenas na bateria persistida.")
-    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
-    games = _institutional_generation_games()
-    games_count = _safe_count_games(games)
-    stats = _summarize_games_structurally(games)
-    cobertura_labels = {
-        "GAMES": "Jogos analisados",
-        "AVERAGE_OVERLAP": "Média de sobreposição",
-        "AVERAGE_UNIQUE_NUMBERS": "Média de dezenas únicas",
-        "DOMINANT_NUMBERS": "Dezenas dominantes",
-    }
-    cols = st.columns(4)
-    cols[0].metric(cobertura_labels["GAMES"], games_count)
-    cols[1].metric(cobertura_labels["AVERAGE_OVERLAP"], f"{stats.get('average_overlap', 0.0):.4f}")
-    cols[2].metric(cobertura_labels["AVERAGE_UNIQUE_NUMBERS"], f"{stats.get('average_unique_numbers', 0.0):.4f}")
-    cols[3].metric(cobertura_labels["DOMINANT_NUMBERS"], len(stats.get("dominant_numbers") or []))
-    if stats.get("dominant_numbers"):
-        st.markdown("##### Dezenas dominantes da bateria")
-        st.caption("As dezenas dominantes são as dezenas que mais apareceram nos jogos da bateria analisada. Esta leitura mede concentração estrutural e não representa recomendação automática.")
-        dominant_display_df = pd.DataFrame(stats["dominant_numbers"]).copy()
-        if "number" in dominant_display_df.columns:
-            dominant_display_df = dominant_display_df.rename(columns={"number": "Dezena"})
-        if "frequency" in dominant_display_df.columns:
-            dominant_display_df = dominant_display_df.rename(columns={"frequency": "Frequência nos jogos"})
-        if games_count > 0 and "Frequência nos jogos" in dominant_display_df.columns:
-            frequency_values = pd.to_numeric(dominant_display_df["Frequência nos jogos"], errors="coerce").fillna(0)
-            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
-        elif games_count > 0 and "frequency" in dominant_display_df.columns:
-            frequency_values = pd.to_numeric(dominant_display_df["frequency"], errors="coerce").fillna(0)
-            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
-        else:
-            dominant_display_df["Percentual"] = "-"
-        display_columns = [column for column in ["Dezena", "Frequência nos jogos", "Percentual"] if column in dominant_display_df.columns]
-        st.dataframe(dominant_display_df[display_columns], hide_index=True, use_container_width=True)
-        st.markdown("##### Interpretação observacional")
-        st.info("A cobertura estrutural mostra como as dezenas se distribuem dentro da bateria persistida. A frequência indica recorrência interna da bateria, enquanto a média de dezenas únicas indica diversidade estrutural. Esta leitura não comanda novas gerações, não recalibra a Lei 15 e não altera histórico.")
-        with st.expander("Detalhes técnicos avançados", expanded=False):
-            st.json(stats)
-            st.json(dominant_display_df.to_dict(orient="records"))
-    else:
-        st.info("Nenhuma dezena dominante encontrada na bateria atual.")
+    st.write(
+        "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
+        "sequências, ausências, redundância GP e travamento em 13/14."
+    )
+    st.info(
+        "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
+        "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
+    )
+    filter_cols = st.columns(5)
+    batch_options = ["(todos)"] + list(BATCH_LABEL_UI_OPTIONS)
+    selected_batch_option = filter_cols[0].selectbox(
+        "Lote de análise",
+        options=batch_options,
+        index=0,
+        key="structural_coverage_batch_label",
+    )
+    selected_game_size = filter_cols[1].selectbox(
+        "game_size",
+        options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
+        index=0,
+        key="structural_coverage_game_size",
+    )
+    selected_generation_event_id = filter_cols[2].number_input(
+        "generation_event_id",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_generation_event_id",
+    )
+    selected_reconciliation_run_id = filter_cols[3].number_input(
+        "reconciliation_run_id",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_reconciliation_run_id",
+    )
+    selected_concurso = filter_cols[4].number_input(
+        "concurso_analisado",
+        min_value=0,
+        value=0,
+        step=1,
+        key="structural_coverage_concurso_analisado",
+    )
+    payload = load_card_structure_diagnostics_from_db(
+        DB_PATH,
+        analysis_batch_label=None if selected_batch_option == "(todos)" else str(selected_batch_option),
+        game_size=None if selected_game_size == "(todos)" else int(selected_game_size),
+        generation_event_id=int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
+        reconciliation_run_id=int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
+        concurso_analisado=int(selected_concurso) if int(selected_concurso) > 0 else None,
+    )
+    st.caption(
+        f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
+        f"operational_effect=`{payload.get('operational_effect', False)}`"
+    )
+    if not payload.get("available"):
+        st.warning("Nenhuma reconciliation persistida com jogos encontrada no PostgreSQL.")
+        return
+
+    summary = dict(payload.get("summary") or {})
+    summary_cols = st.columns(4)
+    summary_cols[0].metric("Gerações", int(summary.get("total_geracoes", 0) or 0))
+    summary_cols[1].metric("Jogos", int(summary.get("total_jogos", 0) or 0))
+    summary_cols[2].metric("Concursos comparados", int(summary.get("total_concursos_comparados", 0) or 0))
+    summary_cols[3].metric("Formatos", ", ".join(str(size) for size in (summary.get("formatos_analisados") or [])) or "-")
+    if summary.get("analysis_batch_label"):
+        st.caption(f"Lote selecionado: `{summary.get('analysis_batch_label')}`")
+
+    st.markdown("### Resumo estrutural")
+    st.write(
+        f"Nível de evidência: `{payload.get('evidence_level', 'LOCAL_DIAGNOSTIC')}` | "
+        f"ml_role=`{payload.get('ml_role', 'diagnostic_only')}`"
+    )
+
+    abertura = dict(payload.get("abertura") or {})
+    st.markdown("### Abertura do cartão")
+    abertura_cols = st.columns(2)
+    prefix3 = abertura.get("prefixo_3_mais_gerado") or {}
+    prefix4 = abertura.get("prefixo_4_mais_gerado") or {}
+    abertura_cols[0].write(f"Prefixo 3 mais gerado: `{prefix3.get('estrutura', '-')}` ({prefix3.get('frequencia', 0)}x)")
+    abertura_cols[1].write(f"Prefixo 4 mais gerado: `{prefix4.get('estrutura', '-')}` ({prefix4.get('frequencia', 0)}x)")
+    if abertura.get("prefixos_pouco_cobertos"):
+        st.caption(f"Prefixos pouco cobertos: {', '.join(abertura['prefixos_pouco_cobertos'])}")
+    _render_structural_coverage_ranking_tables(abertura, kind="abertura")
+
+    fechamento = dict(payload.get("fechamento") or {})
+    st.markdown("### Fechamento do cartão")
+    fechamento_cols = st.columns(2)
+    suffix3 = fechamento.get("sufixo_3_mais_gerado") or {}
+    suffix4 = fechamento.get("sufixo_4_mais_gerado") or {}
+    fechamento_cols[0].write(f"Sufixo 3 mais gerado: `{suffix3.get('estrutura', '-')}` ({suffix3.get('frequencia', 0)}x)")
+    fechamento_cols[1].write(f"Sufixo 4 mais gerado: `{suffix4.get('estrutura', '-')}` ({suffix4.get('frequencia', 0)}x)")
+    if fechamento.get("sufixos_pouco_cobertos"):
+        st.caption(f"Sufixos pouco cobertos: {', '.join(fechamento['sufixos_pouco_cobertos'])}")
+    _render_structural_coverage_ranking_tables(fechamento, kind="fechamento")
+
+    faixas_gaps = dict(payload.get("faixas_gaps") or {})
+    st.markdown("### Faixas e gaps")
+    if faixas_gaps.get("distribuicao_baixas_medias_altas"):
+        st.write("Distribuição média por faixa:", faixas_gaps["distribuicao_baixas_medias_altas"])
+    st.write(f"Maior gap observado: `{faixas_gaps.get('maior_gap', 0)}`")
+    gap_cols = st.columns(2)
+    if faixas_gaps.get("gaps_mais_comuns"):
+        gap_cols[0].dataframe(pd.DataFrame(faixas_gaps["gaps_mais_comuns"]), hide_index=True, use_container_width=True)
+    if faixas_gaps.get("sequencias_mais_comuns"):
+        gap_cols[1].dataframe(
+            pd.DataFrame(faixas_gaps["sequencias_mais_comuns"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    travamento = dict(payload.get("travamento_13_14") or {})
+    st.markdown("### Travamento em 13/14")
+    stuck_cols = st.columns(2)
+    stuck_cols[0].metric("Jogos com 13 hits", len(travamento.get("jogos_com_13_hits") or []))
+    stuck_cols[1].metric("Jogos com 14 hits", len(travamento.get("jogos_com_14_hits") or []))
+    missing_cols = st.columns(2)
+    if travamento.get("dezenas_faltantes_para_14"):
+        missing_cols[0].markdown("**Dezenas faltantes para 14**")
+        missing_cols[0].dataframe(
+            pd.DataFrame(travamento["dezenas_faltantes_para_14"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+    if travamento.get("dezenas_faltantes_para_15"):
+        missing_cols[1].markdown("**Dezenas faltantes para 15**")
+        missing_cols[1].dataframe(
+            pd.DataFrame(travamento["dezenas_faltantes_para_15"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+    if travamento.get("jogos_com_13_hits"):
+        with st.expander("Estrutura dos jogos travados em 13 hits", expanded=False):
+            st.dataframe(pd.DataFrame(travamento["jogos_com_13_hits"]), hide_index=True, use_container_width=True)
+
+    redundancia = dict(payload.get("redundancia_gp") or {})
+    st.markdown("### Redundância GP")
+    redundancy_cols = st.columns(3)
+    redundancy_cols[0].metric("Similaridade média", redundancia.get("similaridade_media_entre_jogos", 0.0))
+    redundancy_cols[1].metric("Sobreposição máxima", redundancia.get("sobreposicao_maxima", 0))
+    redundancy_cols[2].metric("Quase repetidos", redundancia.get("cartoes_quase_repetidos", 0))
+    if redundancia.get("ausencias_recorrentes_no_GP"):
+        st.dataframe(
+            pd.DataFrame(redundancia["ausencias_recorrentes_no_GP"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    comparacao = dict(payload.get("comparacao_oficial") or {})
+    if comparacao.get("available"):
+        st.markdown("### Comparação LotoIA vs concursos oficiais")
+        insight_cols = st.columns(2)
+        if comparacao.get("prefixos_oficiais_raros_na_LotoIA"):
+            insight_cols[0].markdown("**Prefixos oficiais raros na LotoIA**")
+            insight_cols[0].dataframe(
+                pd.DataFrame(comparacao["prefixos_oficiais_raros_na_LotoIA"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        if comparacao.get("prefixos_LotoIA_excessivos"):
+            insight_cols[1].markdown("**Prefixos LotoIA excessivos**")
+            insight_cols[1].dataframe(
+                pd.DataFrame(comparacao["prefixos_LotoIA_excessivos"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    _render_diagnostic_evidence_base(
+        dict(payload.get("evidence_base") or {}),
+        title="Base do diagnóstico",
+    )
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
@@ -8843,10 +9360,9 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     _apply_institutional_styles()
     _render_sidebar_logo()
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-nav-hint">Navega??o institucional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption(f"commit={_resolve_active_commit()}")
-    st.sidebar.caption("Painel institucional ADM")
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
         resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
@@ -8854,7 +9370,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">N?cleo Operacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
         ("Gerador ADM - Lei 15 Limpo", "clean_law15_generation"),
@@ -8863,59 +9379,51 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Hist?ricos e Rastreabilidade</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos e Rastreabilidade</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Hist?rico Anal?tico", "history_analytical"),
-        ("Hist?rico Institucional", "history_institutional"),
-        ("Comparativos hist?rico", "comparative_history"),
+        ("Histórico Analítico", "history_analytical"),
+        ("Histórico Institucional", "history_institutional"),
+        ("Comparativos histórico", "comparative_history"),
     ]:
         _nav_entry(label, page_id)
 
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Auditoria Runtime", "audit"),
-        ("Auditoria e Monitoramento", "audit_monitoring"),
-        ("Confer?ncia por concurso", "audit_monitoring_conference"),
-        ("Desempenho por grupo", "audit_monitoring_group_performance"),
+        ("Conferência por concurso", "audit_monitoring_conference"),
         ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
         ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Anal?tico Observacional</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Analítico observacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Benchmark resumido", "summary_benchmark"),
-        ("Estat?sticas operacionais", "operational_statistics"),
-        ("M?tricas HB", "hb_metrics"),
+        ("Métricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
     ]:
         _nav_entry(label, page_id)
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Camadas auditadas disponíveis</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Diagnósticos ML</div>', unsafe_allow_html=True)
     for label, page_id in [
+        ("Central de Diagnósticos ML", "central_ml_diagnostics"),
         ("Vazamento lateral", "audit_monitoring_side_leak"),
         ("Evolução 13 -> 14", "audit_monitoring_13_to_14"),
         ("Evolução 14 -> 15", "audit_monitoring_14_to_15"),
     ]:
         _nav_entry(label, page_id)
-    st.sidebar.caption("Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico.")
+    st.sidebar.caption(
+        "Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico."
+    )
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Quarentena Institucional</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Hip?teses para teste offline", "audit_monitoring_offline_hypotheses"),
-        ("An?lises Estrat?gicas", "strategies_analysis"),
-        ("Testar Estrat?gias", "strategies_test"),
-        ("Simular Estrat?gias", "strategies_simulation"),
-        ("Replay institucional", "institutional_replay"),
-        ("HB Geometry", "hb_geometry"),
-    ]:
-        _nav_entry(label, page_id, disabled=True)
-    st.sidebar.caption("Itens de quarentena permanecem vis?veis apenas como refer?ncia institucional.")
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">?rea Bloqueada / Restrita</div>', unsafe_allow_html=True)
-    for label, page_id in [("Limpar Hist?ricos", "clear_histories"), ("Apagar Hist?rico", "delete_history")]:
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Área bloqueada / restrita</div>', unsafe_allow_html=True)
+    for label, page_id in [("Limpar Históricos", "clear_histories"), ("Apagar Histórico", "delete_history")]:
         _nav_entry(label, page_id)
-    st.sidebar.caption("A??es destrutivas continuam protegidas pela confirma??o interna da tela.")
+    st.sidebar.caption("Ações destrutivas continuam protegidas pela confirmação interna da tela.")
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
@@ -8929,33 +9437,20 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "history_institutional",
         "comparative_history",
         "audit",
-        "audit_monitoring",
         "audit_monitoring_conference",
-        "audit_monitoring_group_performance",
         "audit_monitoring_missing_numbers",
         "audit_monitoring_extra_numbers",
         "summary_benchmark",
-        "operational_statistics",
         "hb_metrics",
         "structural_coverage",
         "audit_monitoring_side_leak",
         "audit_monitoring_13_to_14",
         "audit_monitoring_14_to_15",
+        "central_ml_diagnostics",
         "clear_histories",
         "delete_history",
     }
-    blocked_pages = {
-        "audit_monitoring_offline_hypotheses",
-        "strategies_analysis",
-        "strategies_test",
-        "strategies_simulation",
-        "institutional_replay",
-        "hb_geometry",
-    }
-    if choice in blocked_pages:
-        st.sidebar.warning("P?gina bloqueada por pol?tica institucional.")
-        choice = "home"
-    elif choice not in allowed_pages:
+    if choice not in allowed_pages:
         choice = _canonical_page_id(page)
     if choice not in allowed_pages:
         choice = "fallback"
@@ -12774,6 +13269,8 @@ def main() -> None:
         _render_strategies_page("Simular Estratégias", snapshot)
     elif page == "hb_metrics":
         _render_metrics_hb_page(snapshot)
+    elif page == "central_ml_diagnostics":
+        _render_central_ml_diagnostics_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
     elif page == "institutional_replay":

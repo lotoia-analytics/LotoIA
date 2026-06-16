@@ -81,6 +81,7 @@ def validate_panel_body(
                 "institutional-adm-runtime-v1",
                 "institutional-adm-runtime-v2",
                 "institutional-adm-runtime-v3",
+                "institutional-adm-runtime-v4",
             )
             if marker in body
         )
