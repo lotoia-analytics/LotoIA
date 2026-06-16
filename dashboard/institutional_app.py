@@ -79,6 +79,7 @@ from lotoia.governance.structural_rfe import (
     validate_rfe_final_card,
 )
 from lotoia.ingestion.result_sync_service import ResultSyncService
+from lotoia.observability.card_structure_diagnostics import load_card_structure_diagnostics_from_db
 from lotoia.observability.hb_metrics import (
     build_hb_metrics_payload_from_reconciliation as _build_hb_metrics_payload_from_reconciliation,
     empty_hb_metrics_payload as _empty_hb_metrics_payload,
@@ -8833,44 +8834,150 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
-    st.write("Leitura observacional da distribuição, concentração e recorrência das dezenas na bateria persistida.")
-    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
-    games = _institutional_generation_games()
-    games_count = _safe_count_games(games)
-    stats = _summarize_games_structurally(games)
-    cobertura_labels = {
-        "GAMES": "Jogos analisados",
-        "AVERAGE_OVERLAP": "Média de sobreposição",
-        "AVERAGE_UNIQUE_NUMBERS": "Média de dezenas únicas",
-        "DOMINANT_NUMBERS": "Dezenas dominantes",
-    }
-    cols = st.columns(4)
-    cols[0].metric(cobertura_labels["GAMES"], games_count)
-    cols[1].metric(cobertura_labels["AVERAGE_OVERLAP"], f"{stats.get('average_overlap', 0.0):.4f}")
-    cols[2].metric(cobertura_labels["AVERAGE_UNIQUE_NUMBERS"], f"{stats.get('average_unique_numbers', 0.0):.4f}")
-    cols[3].metric(cobertura_labels["DOMINANT_NUMBERS"], len(stats.get("dominant_numbers") or []))
-    if stats.get("dominant_numbers"):
-        st.markdown("##### Dezenas dominantes da bateria")
-        st.caption("As dezenas dominantes são as dezenas que mais apareceram nos jogos da bateria analisada. Esta leitura mede concentração estrutural e não representa recomendação automática.")
-        dominant_display_df = pd.DataFrame(stats["dominant_numbers"]).copy()
-        if "number" in dominant_display_df.columns:
-            dominant_display_df = dominant_display_df.rename(columns={"number": "Dezena"})
-        if "frequency" in dominant_display_df.columns:
-            dominant_display_df = dominant_display_df.rename(columns={"frequency": "Frequência nos jogos"})
-        if games_count > 0 and "Frequência nos jogos" in dominant_display_df.columns:
-            frequency_values = pd.to_numeric(dominant_display_df["Frequência nos jogos"], errors="coerce").fillna(0)
-            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
-        elif games_count > 0 and "frequency" in dominant_display_df.columns:
-            frequency_values = pd.to_numeric(dominant_display_df["frequency"], errors="coerce").fillna(0)
-            dominant_display_df["Percentual"] = (frequency_values / float(games_count) * 100).round(2).astype(str) + "%"
-        else:
-            dominant_display_df["Percentual"] = "-"
-        display_columns = [column for column in ["Dezena", "Frequência nos jogos", "Percentual"] if column in dominant_display_df.columns]
-        st.dataframe(dominant_display_df[display_columns], hide_index=True, use_container_width=True)
-        st.markdown("##### Interpretação observacional")
-        st.info("A cobertura estrutural mostra como as dezenas se distribuem dentro da bateria persistida. A frequência indica recorrência interna da bateria, enquanto a média de dezenas únicas indica diversidade estrutural. Esta leitura não comanda novas gerações, não recalibra a Lei 15 e não altera histórico.")
-    else:
-        st.info("Nenhuma dezena dominante encontrada na bateria atual.")
+    st.write(
+        "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
+        "sequências, ausências, redundância GP e travamento em 13/14."
+    )
+    st.info(
+        "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
+        "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
+    )
+    payload = load_card_structure_diagnostics_from_db(DB_PATH)
+    st.caption(
+        f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
+        f"operational_effect=`{payload.get('operational_effect', False)}`"
+    )
+    if not payload.get("available"):
+        st.warning("Nenhuma reconciliation persistida com jogos encontrada no PostgreSQL.")
+        return
+
+    summary = dict(payload.get("summary") or {})
+    summary_cols = st.columns(4)
+    summary_cols[0].metric("Gerações", int(summary.get("total_geracoes", 0) or 0))
+    summary_cols[1].metric("Jogos", int(summary.get("total_jogos", 0) or 0))
+    summary_cols[2].metric("Concursos comparados", int(summary.get("total_concursos_comparados", 0) or 0))
+    summary_cols[3].metric("Formatos", ", ".join(str(size) for size in (summary.get("formatos_analisados") or [])) or "-")
+
+    st.markdown("### Resumo estrutural")
+    st.write(
+        f"Nível de evidência: `{payload.get('evidence_level', 'LOCAL_DIAGNOSTIC')}` | "
+        f"ml_role=`{payload.get('ml_role', 'diagnostic_only')}`"
+    )
+
+    abertura = dict(payload.get("abertura") or {})
+    st.markdown("### Abertura do cartão")
+    abertura_cols = st.columns(2)
+    prefix3 = abertura.get("prefixo_3_mais_gerado") or {}
+    prefix4 = abertura.get("prefixo_4_mais_gerado") or {}
+    abertura_cols[0].write(f"Prefixo 3 mais gerado: `{prefix3.get('estrutura', '-')}` ({prefix3.get('frequencia', 0)}x)")
+    abertura_cols[1].write(f"Prefixo 4 mais gerado: `{prefix4.get('estrutura', '-')}` ({prefix4.get('frequencia', 0)}x)")
+    if abertura.get("prefixos_pouco_cobertos"):
+        st.caption(f"Prefixos pouco cobertos: {', '.join(abertura['prefixos_pouco_cobertos'])}")
+    if abertura.get("ranking_prefixo_3"):
+        st.dataframe(pd.DataFrame(abertura["ranking_prefixo_3"]), hide_index=True, use_container_width=True)
+    comparacao_prefixo = dict((abertura.get("comparacao_com_concursos_oficiais") or {}))
+    if comparacao_prefixo:
+        compare_cols = st.columns(2)
+        compare_cols[0].markdown("**LotoIA — prefixo 3**")
+        compare_cols[0].dataframe(
+            pd.DataFrame(comparacao_prefixo.get("lotoia") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+        compare_cols[1].markdown("**Concursos oficiais — prefixo 3**")
+        compare_cols[1].dataframe(
+            pd.DataFrame(comparacao_prefixo.get("oficial") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    fechamento = dict(payload.get("fechamento") or {})
+    st.markdown("### Fechamento do cartão")
+    fechamento_cols = st.columns(2)
+    suffix3 = fechamento.get("sufixo_3_mais_gerado") or {}
+    suffix4 = fechamento.get("sufixo_4_mais_gerado") or {}
+    fechamento_cols[0].write(f"Sufixo 3 mais gerado: `{suffix3.get('estrutura', '-')}` ({suffix3.get('frequencia', 0)}x)")
+    fechamento_cols[1].write(f"Sufixo 4 mais gerado: `{suffix4.get('estrutura', '-')}` ({suffix4.get('frequencia', 0)}x)")
+    if fechamento.get("sufixos_pouco_cobertos"):
+        st.caption(f"Sufixos pouco cobertos: {', '.join(fechamento['sufixos_pouco_cobertos'])}")
+    if fechamento.get("ranking_sufixo_3"):
+        st.dataframe(pd.DataFrame(fechamento["ranking_sufixo_3"]), hide_index=True, use_container_width=True)
+
+    faixas_gaps = dict(payload.get("faixas_gaps") or {})
+    st.markdown("### Faixas e gaps")
+    if faixas_gaps.get("distribuicao_baixas_medias_altas"):
+        st.write("Distribuição média por faixa:", faixas_gaps["distribuicao_baixas_medias_altas"])
+    st.write(f"Maior gap observado: `{faixas_gaps.get('maior_gap', 0)}`")
+    gap_cols = st.columns(2)
+    if faixas_gaps.get("gaps_mais_comuns"):
+        gap_cols[0].dataframe(pd.DataFrame(faixas_gaps["gaps_mais_comuns"]), hide_index=True, use_container_width=True)
+    if faixas_gaps.get("sequencias_mais_comuns"):
+        gap_cols[1].dataframe(
+            pd.DataFrame(faixas_gaps["sequencias_mais_comuns"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    travamento = dict(payload.get("travamento_13_14") or {})
+    st.markdown("### Travamento em 13/14")
+    stuck_cols = st.columns(2)
+    stuck_cols[0].metric("Jogos com 13 hits", len(travamento.get("jogos_com_13_hits") or []))
+    stuck_cols[1].metric("Jogos com 14 hits", len(travamento.get("jogos_com_14_hits") or []))
+    missing_cols = st.columns(2)
+    if travamento.get("dezenas_faltantes_para_14"):
+        missing_cols[0].markdown("**Dezenas faltantes para 14**")
+        missing_cols[0].dataframe(
+            pd.DataFrame(travamento["dezenas_faltantes_para_14"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+    if travamento.get("dezenas_faltantes_para_15"):
+        missing_cols[1].markdown("**Dezenas faltantes para 15**")
+        missing_cols[1].dataframe(
+            pd.DataFrame(travamento["dezenas_faltantes_para_15"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+    if travamento.get("jogos_com_13_hits"):
+        with st.expander("Estrutura dos jogos travados em 13 hits", expanded=False):
+            st.dataframe(pd.DataFrame(travamento["jogos_com_13_hits"]), hide_index=True, use_container_width=True)
+
+    redundancia = dict(payload.get("redundancia_gp") or {})
+    st.markdown("### Redundância GP")
+    redundancy_cols = st.columns(3)
+    redundancy_cols[0].metric("Similaridade média", redundancia.get("similaridade_media_entre_jogos", 0.0))
+    redundancy_cols[1].metric("Sobreposição máxima", redundancia.get("sobreposicao_maxima", 0))
+    redundancy_cols[2].metric("Quase repetidos", redundancia.get("cartoes_quase_repetidos", 0))
+    if redundancia.get("ausencias_recorrentes_no_GP"):
+        st.dataframe(
+            pd.DataFrame(redundancia["ausencias_recorrentes_no_GP"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    comparacao = dict(payload.get("comparacao_oficial") or {})
+    if comparacao.get("available"):
+        st.markdown("### Comparação LotoIA vs concursos oficiais")
+        insight_cols = st.columns(2)
+        if comparacao.get("prefixos_oficiais_raros_na_LotoIA"):
+            insight_cols[0].markdown("**Prefixos oficiais raros na LotoIA**")
+            insight_cols[0].dataframe(
+                pd.DataFrame(comparacao["prefixos_oficiais_raros_na_LotoIA"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        if comparacao.get("prefixos_LotoIA_excessivos"):
+            insight_cols[1].markdown("**Prefixos LotoIA excessivos**")
+            insight_cols[1].dataframe(
+                pd.DataFrame(comparacao["prefixos_LotoIA_excessivos"]),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    _render_diagnostic_evidence_base(
+        dict(payload.get("evidence_base") or {}),
+        title="Base do diagnóstico",
+    )
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
