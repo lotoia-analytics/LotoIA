@@ -8848,7 +8848,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Cobertura Estrutural")
     st.write(
         "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
-        "sequências, ausências, redundância GP e travamento em 13/14."
+        "sequências, ausências, redundância GP e travamento em 13/14/15."
     )
     st.info(
         "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
@@ -9024,10 +9024,11 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         )
 
     travamento = dict(payload.get("travamento_13_14") or {})
-    st.markdown("### Travamento em 13/14")
-    stuck_cols = st.columns(2)
+    st.markdown("### Travamento em 13/14/15")
+    stuck_cols = st.columns(3)
     stuck_cols[0].metric("Jogos com 13 hits", len(travamento.get("jogos_com_13_hits") or []))
     stuck_cols[1].metric("Jogos com 14 hits", len(travamento.get("jogos_com_14_hits") or []))
+    stuck_cols[2].metric("Jogos com 15 hits", len(travamento.get("jogos_com_15_hits") or []))
     missing_cols = st.columns(2)
     if travamento.get("dezenas_faltantes_para_14"):
         missing_cols[0].markdown("**Dezenas faltantes para 14**")
@@ -9046,6 +9047,12 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     if travamento.get("jogos_com_13_hits"):
         with st.expander("Estrutura dos jogos travados em 13 hits", expanded=False):
             st.dataframe(pd.DataFrame(travamento["jogos_com_13_hits"]), hide_index=True, use_container_width=True)
+    if travamento.get("jogos_com_14_hits"):
+        with st.expander("Estrutura dos jogos travados em 14 hits", expanded=False):
+            st.dataframe(pd.DataFrame(travamento["jogos_com_14_hits"]), hide_index=True, use_container_width=True)
+    if travamento.get("jogos_com_15_hits"):
+        with st.expander("Estrutura dos jogos travados em 15 hits", expanded=False):
+            st.dataframe(pd.DataFrame(travamento["jogos_com_15_hits"]), hide_index=True, use_container_width=True)
 
     redundancia = dict(payload.get("redundancia_gp") or {})
     st.markdown("### Redundância GP")
