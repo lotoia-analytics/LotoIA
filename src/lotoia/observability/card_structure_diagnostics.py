@@ -8,11 +8,13 @@ from typing import Any, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    GenerationEvent,
     LotofacilOfficialHistory,
     ReconciliationGame,
     ReconciliationRun,
     get_session,
 )
+from lotoia.governance.analysis_batch_labels import batch_label_game_size
 from lotoia.observability.hb_metrics import resolve_official_numbers_for_contest, resolve_reconciliation_game_hits
 from lotoia.statistics.card_structure import (
     analyze_stuck_games,
@@ -60,6 +62,9 @@ def empty_card_structure_payload() -> dict[str, Any]:
             "concursos_analisados": [],
             "generation_event_ids": [],
             "reconciliation_run_ids": [],
+            "analysis_batch_label": None,
+            "analysis_batch_labels": [],
+            "formatos_analisados": [],
             "total_concursos": 0,
             "total_geracoes": 0,
             "total_runs": 0,
@@ -204,6 +209,8 @@ def build_card_structure_payload(
     generation_event_ids: Sequence[int],
     reconciliation_run_ids: Sequence[int],
     contest_ids: Sequence[int],
+    analysis_batch_labels: Sequence[str] | None = None,
+    selected_analysis_batch_label: str | None = None,
 ) -> dict[str, Any]:
     if not games:
         return empty_card_structure_payload()
@@ -239,11 +246,29 @@ def build_card_structure_payload(
         "concursos_analisados": sorted(set(int(value) for value in contest_ids if int(value) > 0)),
         "generation_event_ids": sorted(set(int(value) for value in generation_event_ids if int(value) > 0)),
         "reconciliation_run_ids": sorted(set(int(value) for value in reconciliation_run_ids if int(value) > 0)),
+        "analysis_batch_label": selected_analysis_batch_label,
+        "analysis_batch_labels": sorted(
+            {
+                str(value).strip()
+                for value in (analysis_batch_labels or [])
+                if str(value or "").strip()
+            }
+        ),
+        "formatos_analisados": formats,
         "total_concursos": total_concursos,
         "total_geracoes": total_geracoes,
         "total_runs": len(set(int(value) for value in reconciliation_run_ids if int(value) > 0)),
         "evidence_level": evidence_level,
     }
+
+    summary_payload = {
+        "total_geracoes": total_geracoes,
+        "total_jogos": len(resolved_cards),
+        "total_concursos_comparados": len(set(official_contests)),
+        "formatos_analisados": formats,
+    }
+    if selected_analysis_batch_label:
+        summary_payload["analysis_batch_label"] = selected_analysis_batch_label
 
     return {
         "available": True,
@@ -253,12 +278,7 @@ def build_card_structure_payload(
         "generation_command": False,
         "recalibration_command": False,
         "ml_role": "diagnostic_only",
-        "summary": {
-            "total_geracoes": total_geracoes,
-            "total_jogos": len(resolved_cards),
-            "total_concursos_comparados": len(set(official_contests)),
-            "formatos_analisados": formats,
-        },
+        "summary": summary_payload,
         "abertura": abertura,
         "fechamento": fechamento,
         "faixas_gaps": faixas_gaps,
@@ -275,29 +295,72 @@ def load_card_structure_diagnostics_from_db(
     *,
     run_limit: int = 20,
     official_window: int = DEFAULT_OFFICIAL_WINDOW,
+    analysis_batch_label: str | None = None,
+    game_size: int | None = None,
+    generation_event_id: int | None = None,
+    reconciliation_run_id: int | None = None,
+    concurso_analisado: int | None = None,
 ) -> dict[str, Any]:
     """Carrega diagnóstico estrutural a partir das reconciliations persistidas."""
+    normalized_batch_label = str(analysis_batch_label or "").strip().upper() or None
     with get_session(db_path) as session:
+        query = session.query(ReconciliationRun)
+        if reconciliation_run_id is not None and int(reconciliation_run_id) > 0:
+            query = query.filter(ReconciliationRun.id == int(reconciliation_run_id))
+        if concurso_analisado is not None and int(concurso_analisado) > 0:
+            query = query.filter(ReconciliationRun.contest_id == int(concurso_analisado))
+        if generation_event_id is not None and int(generation_event_id) > 0:
+            query = query.filter(ReconciliationRun.generation_event_id == int(generation_event_id))
         runs = (
-            session.query(ReconciliationRun)
-            .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
+            query.order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
             .limit(max(1, int(run_limit)))
             .all()
         )
         if not runs:
             return empty_card_structure_payload()
 
+        generation_event_cache: dict[int, GenerationEvent | None] = {}
+
+        def _load_generation_event(event_id: int) -> GenerationEvent | None:
+            if event_id <= 0:
+                return None
+            if event_id not in generation_event_cache:
+                generation_event_cache[event_id] = (
+                    session.query(GenerationEvent).filter(GenerationEvent.id == event_id).one_or_none()
+                )
+            return generation_event_cache[event_id]
+
+        if normalized_batch_label:
+            filtered_runs: list[ReconciliationRun] = []
+            for run in runs:
+                event_id = int(getattr(run, "generation_event_id", 0) or 0)
+                event = _load_generation_event(event_id)
+                event_label = str(getattr(event, "analysis_batch_label", "") or "").strip().upper()
+                if event_label == normalized_batch_label:
+                    filtered_runs.append(run)
+            runs = filtered_runs
+            if not runs:
+                return empty_card_structure_payload()
+
+        expected_batch_game_size = batch_label_game_size(normalized_batch_label) if normalized_batch_label else None
+        effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else expected_batch_game_size
+
         games: list[dict[str, Any]] = []
         generation_event_ids: list[int] = []
         reconciliation_run_ids: list[int] = []
         contest_ids: list[int] = []
+        batch_labels_seen: set[str] = set()
 
         for run in runs:
             run_id = int(run.id or 0)
             reconciliation_run_ids.append(run_id)
-            generation_event_id = int(getattr(run, "generation_event_id", 0) or 0)
-            if generation_event_id > 0:
-                generation_event_ids.append(generation_event_id)
+            generation_event_id_value = int(getattr(run, "generation_event_id", 0) or 0)
+            if generation_event_id_value > 0:
+                generation_event_ids.append(generation_event_id_value)
+                event = _load_generation_event(generation_event_id_value)
+                event_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
+                if event_label:
+                    batch_labels_seen.add(event_label)
             contest_id = int(getattr(run, "contest_id", 0) or 0)
             if contest_id > 0:
                 contest_ids.append(contest_id)
@@ -318,6 +381,9 @@ def load_card_structure_diagnostics_from_db(
                     prize_tier=payload.get("prize_tier"),
                 )
                 payload["official_numbers"] = list(official_numbers)
+                resolved_card = resolve_cartao_final_from_game(payload)
+                if effective_game_size is not None and len(resolved_card) != int(effective_game_size):
+                    continue
                 games.append(payload)
 
         official_cards, official_contests = _load_official_cards(session, limit=official_window)
@@ -329,4 +395,6 @@ def load_card_structure_diagnostics_from_db(
         generation_event_ids=generation_event_ids,
         reconciliation_run_ids=reconciliation_run_ids,
         contest_ids=contest_ids,
+        analysis_batch_labels=sorted(batch_labels_seen),
+        selected_analysis_batch_label=normalized_batch_label,
     )

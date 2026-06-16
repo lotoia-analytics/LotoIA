@@ -508,12 +508,20 @@ class GenerationEvent(Base):
     ranking_score: Mapped[float] = mapped_column(Float, nullable=False)
     execution_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
     channel: Mapped[str] = mapped_column(String(20), default="whatsapp", nullable=False)
+    analysis_batch_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    analysis_batch_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    analysis_batch_created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    analysis_batch_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     __table_args__ = (
         Index("ix_generation_events_created_at", "created_at"),
         Index("ix_generation_events_lead_id", "lead_id"),
         Index("ix_generation_events_first_name", "first_name"),
         Index("ix_generation_events_whatsapp", "whatsapp"),
         Index("ix_generation_events_ml_enabled", "ml_enabled"),
+        Index("ix_generation_events_analysis_batch_label", "analysis_batch_label"),
     )
 
 
@@ -1204,6 +1212,22 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                     "ALTER TABLE generation_events ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp'"
                 )
                 applied_migrations.append("generation_events.channel")
+            for column_sql, column_name in (
+                ("ALTER TABLE generation_events ADD COLUMN analysis_batch_label TEXT", "analysis_batch_label"),
+                ("ALTER TABLE generation_events ADD COLUMN analysis_batch_type TEXT", "analysis_batch_type"),
+                ("ALTER TABLE generation_events ADD COLUMN analysis_batch_created_by TEXT", "analysis_batch_created_by"),
+                (
+                    "ALTER TABLE generation_events ADD COLUMN analysis_batch_created_at TIMESTAMPTZ",
+                    "analysis_batch_created_at",
+                ),
+            ):
+                if column_name not in generation_event_columns:
+                    connection.exec_driver_sql(column_sql)
+                    applied_migrations.append(f"generation_events.{column_name}")
+            connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_generation_events_analysis_batch_label "
+                "ON generation_events(analysis_batch_label)"
+            )
             if "messenger_psid" not in lead_columns:
                 connection.exec_driver_sql(
                     "ALTER TABLE leads ADD COLUMN messenger_psid VARCHAR(64)"
@@ -1942,6 +1966,19 @@ def create_database(path: Path = DEFAULT_DATABASE_PATH) -> None:
                 "ALTER TABLE generation_events ADD COLUMN channel TEXT NOT NULL DEFAULT 'whatsapp'"
             )
             applied_migrations.append("generation_events.channel")
+        for column_sql, column_name in (
+            ("ALTER TABLE generation_events ADD COLUMN analysis_batch_label TEXT", "analysis_batch_label"),
+            ("ALTER TABLE generation_events ADD COLUMN analysis_batch_type TEXT", "analysis_batch_type"),
+            ("ALTER TABLE generation_events ADD COLUMN analysis_batch_created_by TEXT", "analysis_batch_created_by"),
+            ("ALTER TABLE generation_events ADD COLUMN analysis_batch_created_at TIMESTAMP", "analysis_batch_created_at"),
+        ):
+            if column_name not in generation_event_columns:
+                connection.exec_driver_sql(column_sql)
+                applied_migrations.append(f"generation_events.{column_name}")
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_generation_events_analysis_batch_label "
+            "ON generation_events(analysis_batch_label)"
+        )
         if "messenger_psid" not in lead_columns:
             connection.exec_driver_sql("ALTER TABLE leads ADD COLUMN messenger_psid TEXT")
             applied_migrations.append("leads.messenger_psid")
