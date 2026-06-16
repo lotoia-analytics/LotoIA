@@ -48,7 +48,7 @@ Constraints (immutable)
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final
 
 
@@ -198,11 +198,11 @@ def should_apply_v2(batch_label: str | None = None) -> bool:
     Rules:
       mode=off         → False always
       mode=shadow_test → True only for STRUCT_CORE_REALIGN_V2_* labels
-      mode=active      → True always
+      mode=active      → False (blocked per ADR-044 until ADM unlock)
     """
     mode = get_v2_mode()
     if mode == "off":
         return False
     if mode == "active":
-        return True
+        return False
     return is_v2_label(batch_label)

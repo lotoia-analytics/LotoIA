@@ -8,12 +8,14 @@ from typing import Any
 
 STRUCTURAL_COVERAGE_TEST = "STRUCTURAL_COVERAGE_TEST"
 STRUCTURAL_REALIGNMENT_TEST = "STRUCTURAL_REALIGNMENT_TEST"
+STRUCTURAL_CORE_REALIGNMENT_TEST = "STRUCTURAL_CORE_REALIGNMENT_TEST"
 ADM_DIAGNOSTIC_TEST = "ADM_DIAGNOSTIC_TEST"
 GENERAL_ANALYSIS = "GENERAL_ANALYSIS"
 
 BATCH_TYPE_VALUES: tuple[str, ...] = (
     STRUCTURAL_COVERAGE_TEST,
     STRUCTURAL_REALIGNMENT_TEST,
+    STRUCTURAL_CORE_REALIGNMENT_TEST,
     ADM_DIAGNOSTIC_TEST,
     GENERAL_ANALYSIS,
 )
@@ -113,7 +115,7 @@ def is_reserved_batch_label(label: str | None) -> bool:
 def infer_batch_type(label: str | None) -> str:
     normalized = str(label or "").strip().upper()
     if normalized.startswith("STRUCT_CORE_REALIGN_V2_"):
-        return STRUCTURAL_REALIGNMENT_TEST
+        return STRUCTURAL_CORE_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_REALIGN_"):
         return STRUCTURAL_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_TEST_"):

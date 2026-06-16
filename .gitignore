@@ -27,9 +27,14 @@ checkpoints/
 logs/
 *.log
 
-# Relatórios
+# Relatórios e artefatos gerados
 reports/
 *.pdf
+*.dump
+*.csv
+exports/
+screenshots/
+data/backups/
 
 # Cache
 .pytest_cache/
