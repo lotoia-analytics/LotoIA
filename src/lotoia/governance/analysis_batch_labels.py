@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 STRUCTURAL_COVERAGE_TEST = "STRUCTURAL_COVERAGE_TEST"
+STRUCTURAL_REALIGNMENT_TEST = "STRUCTURAL_REALIGNMENT_TEST"
 ADM_DIAGNOSTIC_TEST = "ADM_DIAGNOSTIC_TEST"
 GENERAL_ANALYSIS = "GENERAL_ANALYSIS"
 
 BATCH_TYPE_VALUES: tuple[str, ...] = (
     STRUCTURAL_COVERAGE_TEST,
+    STRUCTURAL_REALIGNMENT_TEST,
     ADM_DIAGNOSTIC_TEST,
     GENERAL_ANALYSIS,
 )
@@ -28,8 +31,8 @@ LEGACY_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_23D",
 )
 
-# Labels ativos EPOCH_001 — fase auditável
-ALLOWED_BATCH_LABELS: tuple[str, ...] = (
+# Labels ativos EPOCH_001 — fase auditável (baseline)
+_EPOCH_001_BASELINE: tuple[str, ...] = (
     "STRUCT_TEST_15D_001",
     "STRUCT_TEST_16D_001",
     "STRUCT_TEST_17D_001",
@@ -37,6 +40,17 @@ ALLOWED_BATCH_LABELS: tuple[str, ...] = (
     "STRUCT_TEST_19D_001",
     "STRUCT_TEST_20D_001",
 )
+
+# Labels REALIGN_V1 — fase shadow_test / comparativa
+# ADR: IMPLEMENTAR_REALINHAMENTO_ESTRUTURAL_LEI15_V1
+_REALIGN_V1_LABELS: tuple[str, ...] = (
+    "STRUCT_REALIGN_V1_15D_001",
+    "STRUCT_REALIGN_V1_16D_001",
+    "STRUCT_REALIGN_V1_17D_001",
+    "STRUCT_REALIGN_V1_18D_001",
+)
+
+ALLOWED_BATCH_LABELS: tuple[str, ...] = (*_EPOCH_001_BASELINE, *_REALIGN_V1_LABELS)
 
 RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
     {
@@ -51,26 +65,25 @@ RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
     }
 )
 
-# UI mostra apenas labels ativos EPOCH_001
+# UI mostra labels baseline + realinhamento + CUSTOM
 BATCH_LABEL_UI_OPTIONS: tuple[str, ...] = (*ALLOWED_BATCH_LABELS, "CUSTOM")
 
 OPERATIONAL_EFFECT = False
 
+# Pattern: STRUCT_REALIGN_V1_<size>D_<epoch>
+_REALIGN_PATTERN = re.compile(r"^STRUCT_REALIGN_V\d+_(\d+)D_\d+$")
+# Pattern: STRUCT_TEST_<size>D[_<epoch>]
+_TEST_PATTERN = re.compile(r"^STRUCT_TEST_(\d+)D(?:_\d+)?$")
+
 
 def batch_label_game_size(label: str | None) -> int | None:
     normalized = str(label or "").strip().upper()
-    if not normalized.startswith("STRUCT_TEST_"):
-        return None
-    # Suporta STRUCT_TEST_15D e STRUCT_TEST_15D_001 (EPOCH_001)
-    core = normalized.removeprefix("STRUCT_TEST_")
-    # Remove sufixo de epoch (_001, _002, ...) se presente
-    if "_" in core:
-        core = core.split("_")[0]
-    if not core.endswith("D"):
-        return None
-    suffix = core.removesuffix("D")
-    if suffix.isdigit():
-        return int(suffix)
+    m = _REALIGN_PATTERN.match(normalized)
+    if m:
+        return int(m.group(1))
+    m = _TEST_PATTERN.match(normalized)
+    if m:
+        return int(m.group(1))
     return None
 
 
@@ -80,6 +93,8 @@ def is_reserved_batch_label(label: str | None) -> bool:
 
 def infer_batch_type(label: str | None) -> str:
     normalized = str(label or "").strip().upper()
+    if normalized.startswith("STRUCT_REALIGN_"):
+        return STRUCTURAL_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_TEST_"):
         return STRUCTURAL_COVERAGE_TEST
     if normalized.startswith("ADM_"):
