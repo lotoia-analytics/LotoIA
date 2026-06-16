@@ -50,7 +50,21 @@ _REALIGN_V1_LABELS: tuple[str, ...] = (
     "STRUCT_REALIGN_V1_18D_001",
 )
 
-ALLOWED_BATCH_LABELS: tuple[str, ...] = (*_EPOCH_001_BASELINE, *_REALIGN_V1_LABELS)
+# Labels CORE_REALIGN_V2 — fase shadow_test / comparativa V2
+# ADR: ADR-044-REAVALIACAO-NUCLEOS-LEI15-15A
+# Mission: MISSAO_DA_VITORIA_REAVALIAR_NUCLEOS_LEI15_15A
+_CORE_REALIGN_V2_LABELS: tuple[str, ...] = (
+    "STRUCT_CORE_REALIGN_V2_15D_001",
+    "STRUCT_CORE_REALIGN_V2_16D_001",
+    "STRUCT_CORE_REALIGN_V2_17D_001",
+    "STRUCT_CORE_REALIGN_V2_18D_001",
+)
+
+ALLOWED_BATCH_LABELS: tuple[str, ...] = (
+    *_EPOCH_001_BASELINE,
+    *_REALIGN_V1_LABELS,
+    *_CORE_REALIGN_V2_LABELS,
+)
 
 RESERVED_BATCH_LABELS: frozenset[str] = frozenset(
     {
@@ -72,6 +86,8 @@ OPERATIONAL_EFFECT = False
 
 # Pattern: STRUCT_REALIGN_V1_<size>D_<epoch>
 _REALIGN_PATTERN = re.compile(r"^STRUCT_REALIGN_V\d+_(\d+)D_\d+$")
+# Pattern: STRUCT_CORE_REALIGN_V2_<size>D_<epoch>
+_CORE_V2_PATTERN = re.compile(r"^STRUCT_CORE_REALIGN_V2_(\d+)D_\d+$")
 # Pattern: STRUCT_TEST_<size>D[_<epoch>]
 _TEST_PATTERN = re.compile(r"^STRUCT_TEST_(\d+)D(?:_\d+)?$")
 
@@ -79,6 +95,9 @@ _TEST_PATTERN = re.compile(r"^STRUCT_TEST_(\d+)D(?:_\d+)?$")
 def batch_label_game_size(label: str | None) -> int | None:
     normalized = str(label or "").strip().upper()
     m = _REALIGN_PATTERN.match(normalized)
+    if m:
+        return int(m.group(1))
+    m = _CORE_V2_PATTERN.match(normalized)
     if m:
         return int(m.group(1))
     m = _TEST_PATTERN.match(normalized)
@@ -93,6 +112,8 @@ def is_reserved_batch_label(label: str | None) -> bool:
 
 def infer_batch_type(label: str | None) -> str:
     normalized = str(label or "").strip().upper()
+    if normalized.startswith("STRUCT_CORE_REALIGN_V2_"):
+        return STRUCTURAL_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_REALIGN_"):
         return STRUCTURAL_REALIGNMENT_TEST
     if normalized.startswith("STRUCT_TEST_"):

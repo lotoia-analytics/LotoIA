@@ -27,6 +27,10 @@ from lotoia.governance.law15_structural_realignment_v1 import (
     realignment_is_observable,
     should_apply_gp_realignment,
 )
+from lotoia.governance.lei15_15a_core_realignment_v2 import (
+    get_v2_config,
+    should_apply_v2,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -561,6 +565,10 @@ def generate_best_games(
     _realign_cfg = get_realignment_config()
     _apply_realign = should_apply_gp_realignment(batch_label)
 
+    # --- Core Realignment V2 hook (ADR-044) ----------------------------------
+    _v2_cfg = get_v2_config()
+    _apply_v2 = should_apply_v2(batch_label)
+
     if realignment_is_observable():
         from lotoia.generation.structural_realignment_v1 import apply_gp_realignment_scoring
         games = apply_gp_realignment_scoring(games, _realign_cfg, game_size=count)
@@ -569,7 +577,38 @@ def generate_best_games(
             _realign_cfg.mode, batch_label, _apply_realign, len(games),
         )
 
-    if _apply_realign:
+    _v2_fallback_to_v1 = False
+    if _apply_v2:
+        # V2: two-layer (pool pre-filter + tighter composition)
+        from lotoia.generation.core_realignment_v2 import compose_gp_v2
+        from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
+
+        best_games, v2_fallback_to_v1 = compose_gp_v2(games, count, _v2_cfg, game_size=count)
+        if v2_fallback_to_v1:
+            logger.warning(
+                "[CoreRealignV2] pool pós-filtro abaixo do mínimo — fallback obrigatório V1",
+            )
+            best_games = compose_diverse_gp(games, count, _realign_cfg, game_size=count)
+            for _g in best_games:
+                meta = dict(_g.get("realignment_metadata") or {})
+                meta["v2_fallback_to_v1"] = True
+                meta["core_realignment_v2_applied"] = False
+                _g["realignment_metadata"] = meta
+                _g["core_realignment_v2_applied"] = False
+        elif len(best_games) < count:
+            logger.warning(
+                "[CoreRealignV2] composed only %d/%d — completando remainder com V1",
+                len(best_games), count,
+            )
+            v2_keys = {tuple(g["numbers"]) for g in best_games}
+            remainder = [g for g in games if tuple(g["numbers"]) not in v2_keys]
+            v1_fill = compose_diverse_gp(remainder, count - len(best_games), _realign_cfg, game_size=count)
+            best_games = best_games + v1_fill
+        logger.info(
+            "[CoreRealignV2] mode=%s batch_label=%r apply_v2=%s fallback_v1=%s total=%d",
+            _v2_cfg.mode, batch_label, _apply_v2, v2_fallback_to_v1, len(best_games),
+        )
+    elif _apply_realign:
         from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
         best_games = compose_diverse_gp(games, count, _realign_cfg, game_size=count)
     else:
@@ -578,7 +617,7 @@ def generate_best_games(
     if realignment_is_observable() and best_games:
         from lotoia.generation.structural_realignment_v1 import compute_gp_realignment_metrics
         _rm = compute_gp_realignment_metrics(best_games, game_size=count)
-        _rm["realignment_applied"] = _apply_realign
+        _rm["realignment_applied"] = _apply_realign or _apply_v2
         _rm["batch_label"] = batch_label
         logger.info(
             "[RealignmentV1] realignment_applied=%s top_p3=%s(%.0f%%) top_s3=%s(%.0f%%) near_dups=%d",
@@ -591,7 +630,9 @@ def generate_best_games(
         for _g in best_games:
             if "realignment_metadata" not in _g:
                 _g["realignment_metadata"] = {}
-            _g["realignment_metadata"]["realignment_applied"] = _apply_realign
+            _g["realignment_metadata"]["realignment_applied"] = _apply_realign or (_apply_v2 and not _v2_fallback_to_v1)
+            _g["realignment_metadata"]["core_realignment_v2_applied"] = _apply_v2 and not _v2_fallback_to_v1
+            _g["realignment_metadata"]["v2_fallback_to_v1"] = _v2_fallback_to_v1
             _g["realignment_metadata"]["gp_metrics"] = _rm
     # -------------------------------------------------------------------------
 
