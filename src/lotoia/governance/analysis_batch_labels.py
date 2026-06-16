@@ -136,6 +136,6 @@ def build_batch_metadata(
         "analysis_batch_label": validation["label"],
         "analysis_batch_type": validation["batch_type"],
         "analysis_batch_created_by": str(created_by or "institutional").strip() or "institutional",
-        "analysis_batch_created_at": created_at,
+        "analysis_batch_created_at": created_at.isoformat(),
         "operational_effect": OPERATIONAL_EFFECT,
     }

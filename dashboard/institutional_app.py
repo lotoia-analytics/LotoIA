@@ -9274,6 +9274,34 @@ def _sync_latest_official_result_now() -> dict[str, Any]:
         }
 
 
+def _json_safe(value: Any) -> Any:
+    from datetime import date, datetime
+    from decimal import Decimal
+    from uuid import UUID
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _coerce_analysis_batch_created_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None
+
+
 def _persist_generation_snapshot(
     *,
     games: list[dict[str, Any]],
@@ -9357,12 +9385,16 @@ def _persist_generation_snapshot(
             "reduce_priority_numbers": reduce_priority_numbers,
             "real_gap_number": real_gap_number,
         }
+        safe_games = _json_safe(games)
+        safe_event_context = _json_safe(event_context)
+        safe_context_payload = _json_safe(context_payload)
+        resolved_analysis_batch_created_at = _coerce_analysis_batch_created_at(analysis_batch_created_at)
         event = GenerationEvent(
             lead_id=None,
             first_name="institutional",
             whatsapp="",
-            generated_games=games,
-            context_json=event_context,
+            generated_games=safe_games,
+            context_json=safe_event_context,
             ml_enabled=0,
             seed=seed,
             strategy="institutional_clean_hb",
@@ -9371,18 +9403,20 @@ def _persist_generation_snapshot(
             analysis_batch_label=analysis_batch_label,
             analysis_batch_type=analysis_batch_type,
             analysis_batch_created_by=analysis_batch_created_by,
-            analysis_batch_created_at=analysis_batch_created_at,
+            analysis_batch_created_at=resolved_analysis_batch_created_at,
         )
         session.add(event)
         session.flush()
         generation_event_id = int(event.id)
-        event.context_json = {
-            **event_context,
-            "generation_event_id": generation_event_id,
-            "game_signatures": [],
-        }
+        event.context_json = _json_safe(
+            {
+                **safe_event_context,
+                "generation_event_id": generation_event_id,
+                "game_signatures": [],
+            }
+        )
         game_signatures: list[str] = []
-        for index, game in enumerate(games, start=1):
+        for index, game in enumerate(safe_games, start=1):
             numbers = list(game.get("numbers", []))
             signature = _game_signature(numbers)
             game_signatures.append(signature)
@@ -9414,45 +9448,47 @@ def _persist_generation_snapshot(
                     profile_type=str(game.get("profile_type", "")),
                     final_score=dict(game.get("final_score", {})) if isinstance(game.get("final_score"), dict) else {},
                     quadra_score=dict(game.get("quadra_score", {})) if isinstance(game.get("quadra_score"), dict) else {},
-                    context_json={
-                        **context_payload,
-                    **per_game_context,
-                    "generation_hierarchy": "LOTOIA_LAW_ONLY",
-                    "scientific_law_role": "COMMANDER",
-                    "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
-                    "calibration_engine_role": "DISABLED",
-                    "geometric_filters_role": "SAFETY_GUARDRAIL",
-                    "output_commander_role": "AUDITOR",
-                    "memory_registry_role": "REGISTRY",
-                    "legacy_removed_from_runtime": True,
-                    "legacy_runtime_access": False,
-                    "legacy_reason": "historical_compatibility_or_tests_only",
-                    "policy_origin": policy_origin,
-                    "policy_adjustment_reason": policy_adjustment_reason,
-                    "status_prospectivo": status_prospectivo,
-                    "memory_role": memory_role,
-                    "dominant_memory": dominant_memory,
-                    "dominant_memory_mode": dominant_memory_mode,
-                    "policy_mode": policy_mode,
-                    "validation_threshold": validation_threshold,
-                    "target_band": target_band,
-                    "current_target": current_target,
-                    "secondary_target": secondary_target,
-                    "selection_variant": selection_variant,
-                    "cross_validation_reason": cross_validation_reason,
-                    "based_on_memory_kind": based_on_memory_kind or None,
-                    "based_on_memory_id": based_on_memory_id,
-                    "based_on_batch_id": based_on_batch_id or None,
-                    "based_on_generation_range": based_on_generation_range or None,
-                    "based_on_best_generations": based_on_best_generations,
-                    "core_numbers_to_preserve": core_numbers_to_preserve,
-                    "controlled_support_numbers": controlled_support_numbers,
-                    "promote_numbers_for_12_plus": promote_numbers_for_12_plus,
-                    "reduce_priority_numbers": reduce_priority_numbers,
-                    "real_gap_number": real_gap_number,
-                    "game_signature": signature,
-                    "game_index": index,
-                },
+                    context_json=_json_safe(
+                        {
+                            **safe_context_payload,
+                            **per_game_context,
+                            "generation_hierarchy": "LOTOIA_LAW_ONLY",
+                            "scientific_law_role": "COMMANDER",
+                            "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
+                            "calibration_engine_role": "DISABLED",
+                            "geometric_filters_role": "SAFETY_GUARDRAIL",
+                            "output_commander_role": "AUDITOR",
+                            "memory_registry_role": "REGISTRY",
+                            "legacy_removed_from_runtime": True,
+                            "legacy_runtime_access": False,
+                            "legacy_reason": "historical_compatibility_or_tests_only",
+                            "policy_origin": policy_origin,
+                            "policy_adjustment_reason": policy_adjustment_reason,
+                            "status_prospectivo": status_prospectivo,
+                            "memory_role": memory_role,
+                            "dominant_memory": dominant_memory,
+                            "dominant_memory_mode": dominant_memory_mode,
+                            "policy_mode": policy_mode,
+                            "validation_threshold": validation_threshold,
+                            "target_band": target_band,
+                            "current_target": current_target,
+                            "secondary_target": secondary_target,
+                            "selection_variant": selection_variant,
+                            "cross_validation_reason": cross_validation_reason,
+                            "based_on_memory_kind": based_on_memory_kind or None,
+                            "based_on_memory_id": based_on_memory_id,
+                            "based_on_batch_id": based_on_batch_id or None,
+                            "based_on_generation_range": based_on_generation_range or None,
+                            "based_on_best_generations": based_on_best_generations,
+                            "core_numbers_to_preserve": core_numbers_to_preserve,
+                            "controlled_support_numbers": controlled_support_numbers,
+                            "promote_numbers_for_12_plus": promote_numbers_for_12_plus,
+                            "reduce_priority_numbers": reduce_priority_numbers,
+                            "real_gap_number": real_gap_number,
+                            "game_signature": signature,
+                            "game_index": index,
+                        }
+                    ),
             )
             )
             session.add(
@@ -9460,60 +9496,66 @@ def _persist_generation_snapshot(
                     batch_id=str(batch_id or "").strip() or "global",
                     generation_event_id=generation_event_id,
                     game_signature=signature,
-                    payload={
-                        "game_index": index,
-                        "numbers": numbers,
-                        **per_game_context,
-                        "source": "institutional_app",
-                        "build_marker": BUILD_MARKER,
-                        "generation_hierarchy": "LOTOIA_LAW_ONLY",
-                        "scientific_law_role": "COMMANDER",
-                        "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
-                        "calibration_engine_role": "DISABLED",
-                        "geometric_filters_role": "SAFETY_GUARDRAIL",
-                        "output_commander_role": "AUDITOR",
-                        "memory_registry_role": "REGISTRY",
-                        "legacy_removed_from_runtime": True,
-                        "legacy_runtime_access": False,
-                        "legacy_reason": "historical_compatibility_or_tests_only",
-                        "policy_origin": policy_origin,
-                        "policy_adjustment_reason": policy_adjustment_reason,
-                        "status_prospectivo": status_prospectivo,
-                        "memory_role": memory_role,
-                        "dominant_memory": dominant_memory,
-                        "dominant_memory_mode": dominant_memory_mode,
-                        "policy_mode": policy_mode,
-                        "validation_threshold": validation_threshold,
-                        "target_band": target_band,
-                        "current_target": current_target,
-                        "secondary_target": secondary_target,
-                        "selection_variant": selection_variant,
-                        "cross_validation_reason": cross_validation_reason,
-                        "based_on_memory_kind": based_on_memory_kind or None,
-                        "based_on_memory_id": based_on_memory_id,
-                        "based_on_batch_id": based_on_batch_id or None,
-                        "based_on_generation_range": based_on_generation_range or None,
-                        "based_on_best_generations": based_on_best_generations,
-                        "core_numbers_to_preserve": core_numbers_to_preserve,
-                        "controlled_support_numbers": controlled_support_numbers,
-                        "promote_numbers_for_12_plus": promote_numbers_for_12_plus,
-                        "reduce_priority_numbers": reduce_priority_numbers,
-                        "real_gap_number": real_gap_number,
-                    },
+                    payload=_json_safe(
+                        {
+                            "game_index": index,
+                            "numbers": numbers,
+                            **per_game_context,
+                            "source": "institutional_app",
+                            "build_marker": BUILD_MARKER,
+                            "generation_hierarchy": "LOTOIA_LAW_ONLY",
+                            "scientific_law_role": "COMMANDER",
+                            "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
+                            "calibration_engine_role": "DISABLED",
+                            "geometric_filters_role": "SAFETY_GUARDRAIL",
+                            "output_commander_role": "AUDITOR",
+                            "memory_registry_role": "REGISTRY",
+                            "legacy_removed_from_runtime": True,
+                            "legacy_runtime_access": False,
+                            "legacy_reason": "historical_compatibility_or_tests_only",
+                            "policy_origin": policy_origin,
+                            "policy_adjustment_reason": policy_adjustment_reason,
+                            "status_prospectivo": status_prospectivo,
+                            "memory_role": memory_role,
+                            "dominant_memory": dominant_memory,
+                            "dominant_memory_mode": dominant_memory_mode,
+                            "policy_mode": policy_mode,
+                            "validation_threshold": validation_threshold,
+                            "target_band": target_band,
+                            "current_target": current_target,
+                            "secondary_target": secondary_target,
+                            "selection_variant": selection_variant,
+                            "cross_validation_reason": cross_validation_reason,
+                            "based_on_memory_kind": based_on_memory_kind or None,
+                            "based_on_memory_id": based_on_memory_id,
+                            "based_on_batch_id": based_on_batch_id or None,
+                            "based_on_generation_range": based_on_generation_range or None,
+                            "based_on_best_generations": based_on_best_generations,
+                            "core_numbers_to_preserve": core_numbers_to_preserve,
+                            "controlled_support_numbers": controlled_support_numbers,
+                            "promote_numbers_for_12_plus": promote_numbers_for_12_plus,
+                            "reduce_priority_numbers": reduce_priority_numbers,
+                            "real_gap_number": real_gap_number,
+                        }
+                    ),
                 )
             )
-        event.context_json = {
-            **event_context,
-            "generation_event_id": generation_event_id,
-            "game_signatures": list(game_signatures),
-            "analysis_batch_label": analysis_batch_label,
-            "analysis_batch_type": analysis_batch_type,
-            "analysis_batch_created_by": analysis_batch_created_by,
-            "analysis_batch_created_at": (
-                analysis_batch_created_at.isoformat() if analysis_batch_created_at is not None else None
-            ),
-            "analysis_batch_operational_effect": False,
-        }
+        event.context_json = _json_safe(
+            {
+                **safe_event_context,
+                "generation_event_id": generation_event_id,
+                "game_signatures": list(game_signatures),
+                "analysis_batch_label": analysis_batch_label,
+                "analysis_batch_type": analysis_batch_type,
+                "analysis_batch_created_by": analysis_batch_created_by,
+                "analysis_batch_created_at": (
+                    resolved_analysis_batch_created_at.isoformat()
+                    if resolved_analysis_batch_created_at is not None
+                    else None
+                ),
+                "analysis_batch_operational_effect": False,
+            }
+        )
         event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
         try:
             session.commit()
@@ -9525,7 +9567,7 @@ def _persist_generation_snapshot(
         return {
             "generation_event_id": generation_event_id,
             "seed": seed,
-            "games_count": len(games),
+            "games_count": len(safe_games),
             "target_contest": target_contest,
             "batch_id": batch_id,
             "analysis_batch_label": analysis_batch_label,
@@ -11521,18 +11563,22 @@ def _persist_clean_law15_generation_history(
                 "analysis_batch_error": str(exc),
             }
     return _persist_generation_snapshot(
-        games=payload_games,
+        games=_json_safe(payload_games),
         seed=int(result.get("seed", 0) or 0),
         target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
         batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
-        generation_context={
-            **generation_context,
-            **batch_metadata,
-        },
+        generation_context=_json_safe(
+            {
+                **generation_context,
+                **batch_metadata,
+            }
+        ),
         analysis_batch_label=batch_metadata.get("analysis_batch_label"),
         analysis_batch_type=batch_metadata.get("analysis_batch_type"),
         analysis_batch_created_by=batch_metadata.get("analysis_batch_created_by"),
-        analysis_batch_created_at=batch_metadata.get("analysis_batch_created_at"),
+        analysis_batch_created_at=_coerce_analysis_batch_created_at(
+            batch_metadata.get("analysis_batch_created_at")
+        ),
     )
 
 
