@@ -14,6 +14,22 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 
+
+def _load_dotenv() -> None:
+    env_path = ROOT / ".env"
+    if not env_path.is_file():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", maxsplit=1)
+        key = key.strip()
+        if key in os.environ:
+            continue
+        os.environ[key] = value.strip().strip('"').strip("'")
+
+
 DATABASE_ENV_VARS = (
     "LOTOIA_DATABASE_POOLER_URL",
     "STREAMLIT_DATABASE_POOLER_URL",
@@ -53,6 +69,7 @@ def _resolve_database_url() -> tuple[str, str]:
 
 
 def run_health_check() -> dict[str, Any]:
+    _load_dotenv()
     errors: list[str] = []
     warnings: list[str] = []
     evidence: dict[str, Any] = {"checked_at": datetime.now(UTC).isoformat()}
