@@ -27,7 +27,7 @@ rules:
   - PostgreSQL institutional is the sole operational source of truth (Lei No 001)
   - Statistical logic must remain separated from persistence layer
   - CSV in data/ is backup/export only — never operational source
-  - SQLite is dev/test isolation only — never production truth
+  - SQLite allowed only in ephemeral unit-test fixtures — never operational truth or development runtime
   - session_state is ephemeral UI state — never persisted as truth
   - Every import must follow: Caixa -> Validacao -> PostgreSQL -> confirmacao pos-commit
   - Migrations must be reversible and versioned

@@ -73,14 +73,14 @@ LotoIA is a scientific statistical platform focused on:
 
 ## Cursor Cloud specific instructions
 
-LotoIA is a **Python monorepo** (no Node.js, no Docker required). See `README.md` for the canonical setup.
+LotoIA is a **Python monorepo** (no Node.js, no Docker required). There is **no local development runtime** — operational work uses Railway PostgreSQL (Lei No 001). See `CLOUD_RUNTIME.md` and `docs/governance/RAILWAY_CLOUD_ONLY_DEPLOYMENT_2026_06_15.md`.
 
 ### Runtime
 
 - **Python**: repo pins `3.11.15` (`.python-version`, `runtime.txt`); **Python 3.12** works on Cloud VMs. One-time: `sudo apt-get install -y python3.12-venv`.
 - **Virtualenv**: `.venv/` at repo root — `source .venv/bin/activate` or `.venv/bin/pytest` directly.
 - **Package manager**: `pip install -r requirements.txt` and `pip install -e .` for the `lotoia` CLI.
-- **Persistence**: SQLite at `data/lotoia.db` by default; historical CSV at `data/raw/historico_lotofacil.csv`.
+- **Persistence**: PostgreSQL via `DATABASE_URL` / `LOTOIA_DATABASE_URL` (Railway secrets). Historical CSV at `data/raw/historico_lotofacil.csv` is backup/export only.
 
 ### Environment bootstrap (first session)
 
@@ -90,10 +90,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 cp -n .env.example .env
-python scripts/init_database.py
+# DATABASE_URL must be set (Railway PostgreSQL — injected in Cloud Agent secrets)
+python scripts/ops/apply_cloud_migrations.py
+python scripts/checks/postgresql_cloud_health_check.py
 ```
 
-### Services (manual start; only one Streamlit app per port)
+### Services (Railway production; manual start only for debugging)
 
 | Service | Command | Port |
 |---------|---------|------|
@@ -111,10 +113,10 @@ ruff check src backend dashboard tests scripts
 python -m pytest
 ```
 
-Optional PostgreSQL (`DATABASE_URL` / `LOTOIA_DATABASE_URL`) is not required for local development.
+Unit tests may use ephemeral SQLite in `tmp_path` for isolation — that is test infrastructure, not an operational development database.
 
 ### Gotchas
 
 - Streamlit binds port **8501**; FastAPI uses **8000** (`API_HOST` / `API_PORT` in `.env`).
-- Run `python scripts/init_database.py` if you need tables before UI tests.
-- Historical analysis may read CSV (`load_draws_csv`); operational data lives in SQLite/PostgreSQL.
+- Without `DATABASE_URL`, cloud policy fails closed — do not bootstrap with `scripts/init_database.py`.
+- Operational data lives in PostgreSQL only; CSV is never an operational source on institutional panels.

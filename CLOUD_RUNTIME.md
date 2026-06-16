@@ -34,9 +34,14 @@ When cloud runtime is active:
 - `enforce_cloud_runtime_policy()` fails closed without PostgreSQL
 - `require_institutional_login()` blocks the panel until login
 
-## Local development
+## Development workflow
 
-Local development may still use SQLite when cloud signals are absent. Set `LOTOIA_AUTH_REQUIRED=0` to skip login locally.
+There is **no local development runtime**. All operational work runs on Railway with PostgreSQL (`DATABASE_URL`).
+
+- Cursor Cloud agents and CI must have `DATABASE_URL` (or `LOTOIA_DATABASE_URL`) injected via secrets.
+- Bootstrap schema with `python scripts/ops/apply_cloud_migrations.py`, not `scripts/init_database.py`.
+- Validate with `python scripts/checks/postgresql_cloud_health_check.py` and `python scripts/checks/lei_001_zero_local_read_validation.py --strict`.
+- Unit tests may still use ephemeral SQLite in `tmp_path` for isolation — that is not operational persistence.
 
 ## Validation scripts
 

@@ -6,18 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LotoIA is a **statistical structural platform with incremental supervised assistance** for analyzing LOTOFACIL lottery results. It is **not** a prediction system — it provides structural prioritization, probabilistic ranking, and historical analysis. ML is auxiliary and never replaces the core statistical engine.
 
-## Environment setup (Windows)
+## Environment setup (cloud-only)
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+There is **no local development runtime**. Operational persistence is PostgreSQL on Railway (Lei No 001).
+
+For Cursor Cloud agents and CI:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-Copy-Item .env.example .env
-python scripts/init_database.py
+cp -n .env.example .env
+# DATABASE_URL must point to Railway PostgreSQL (injected via secrets)
+python scripts/ops/apply_cloud_migrations.py
+python scripts/checks/postgresql_cloud_health_check.py
 ```
-
-On Linux/macOS (or Railway/Cursor Cloud): use `source .venv/bin/activate` instead.
 
 ## Common commands
 
@@ -58,7 +62,7 @@ backend/           # FastAPI routes (main.py entry point)
 dashboard/         # Streamlit UIs (institutional_app.py, public_app.py)
 tests/             # pytest suite
 scripts/           # Utility CLI tools (init_database.py, etc.)
-data/              # SQLite DB + historical CSV
+data/              # Historical CSV (backup/export) — not operational truth
 docs/              # Technical docs and governance policies
 ADRs/              # Architecture Decision Records (40+)
 experiments/       # ML governance and supervised validation artifacts
@@ -89,14 +93,14 @@ snapshots/         # Institutional evolution records
 
 ### Persistence
 
-- **Local dev**: SQLite at `data/lotoia.db` (default via `.env`)
-- **Production**: PostgreSQL on Railway.app (`DATABASE_URL` env var)
-- Historical draws: `data/raw/historico_lotofacil.csv` (read by `load_draws_csv`)
-- Lei No 001: PostgreSQL is the **only** operational source of truth in production
+- **Operational truth**: PostgreSQL on Railway.app (`DATABASE_URL` / `LOTOIA_DATABASE_URL`)
+- Historical draws: `data/raw/historico_lotofacil.csv` (backup/export only — not operational source)
+- Lei No 001: PostgreSQL is the **only** operational source of truth
+- SQLite fallback in code exists for legacy/unit-test isolation only — not for development or production
 
-### Cloud detection
+### Cloud runtime
 
-The app detects Railway via `RAILWAY_*` env vars, `LOTOIA_CLOUD_ONLY=1`, or `APP_ENV=production` and switches to PostgreSQL automatically.
+Railway is detected via `RAILWAY_*` env vars, `LOTOIA_CLOUD_ONLY=1`, or `APP_ENV=production`. Without a valid PostgreSQL `DATABASE_URL`, `enforce_cloud_runtime_policy()` fails closed.
 
 ## Architectural constraints (mandatory)
 

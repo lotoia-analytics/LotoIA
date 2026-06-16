@@ -40,7 +40,7 @@ runtime:
 checks:
   - pytest exercises FastAPI in-process without running servers
   - DATABASE_URL / LOTOIA_DATABASE_URL resolves correctly
-  - init_database.py run before UI tests needing tables
+  - DATABASE_URL required; apply_cloud_migrations.py for schema — not init_database.py / SQLite bootstrap
   - no nested DB session leaks in institutional read paths
 
 references:
