@@ -8753,17 +8753,22 @@ def main() -> None:
 
     st.error(f"ADMIN BUILD {APP_BUILD} ACTIVE")
     st.success("INSTITUTIONAL DASHBOARD ACTIVE")
+    try:
+        from lotoia.governance.cloud_runtime_policy import enforce_cloud_runtime_policy
+
+        enforce_cloud_runtime_policy(DB_PATH)
+    except RuntimeError as exc:
+        st.error(f"Runtime bloqueado — política Lei No 001: {exc}")
+        st.stop()
+
     adapter = resolve_institutional_adapter(DB_PATH)
-    if adapter.is_shared_cloud_ready:
-        _runtime_audit("bootstrap", "shared_backend_skipped")
-    else:
-        bootstrap_state = bootstrap_institutional_database(DB_PATH)
-        st.caption(
-            "SQLite bootstrap ativo: "
-            f"{bootstrap_state.get('backend', '-')}"
-            f" | {bootstrap_state.get('database_url', '-')}"
+    if not adapter.is_shared_cloud_ready:
+        st.error(
+            "PostgreSQL obrigatório (DATABASE_URL). "
+            "Fallback SQLite operacional desabilitado (Lei No 001)."
         )
-        _runtime_audit("bootstrap", f"local_backend_bootstrapped:{bootstrap_state.get('backend', '-')}")
+        st.stop()
+    _runtime_audit("bootstrap", "shared_backend_required")
 
     _render_shared_backend_status()
     _render_sqlite_runtime_audit()

@@ -83,8 +83,24 @@ def run_dashboard_cli() -> None:
 
 
 def init_database_cli() -> None:
+    import os
+    import sys
+
+    env_vars = (
+        "DATABASE_URL",
+        "LOTOIA_DATABASE_URL",
+        "STREAMLIT_DATABASE_URL",
+        "LOTOIA_DATABASE_POOLER_URL",
+        "STREAMLIT_DATABASE_POOLER_URL",
+    )
+    if not any(os.getenv(name, "").strip() for name in env_vars):
+        print(
+            "DATABASE_URL obrigatório. Fallback SQLite operacional desabilitado (Lei No 001).",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     create_database()
-    print(f"Banco inicializado em {DEFAULT_DATABASE_PATH}")
+    print("Schema inicializado via PostgreSQL (DATABASE_URL).")
 
 
 def show_runs_cli() -> None:
