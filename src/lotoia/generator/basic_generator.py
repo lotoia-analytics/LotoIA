@@ -22,6 +22,11 @@ from lotoia.statistics.historical_intelligence import (
     profile_score,
 )
 from lotoia.statistics.generation_trace import persist_stage_snapshot, record_discarded_game, stage_snapshot
+from lotoia.governance.law15_structural_realignment_v1 import (
+    get_realignment_config,
+    realignment_is_active,
+    realignment_is_observable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -547,7 +552,34 @@ def generate_best_games(
         }
         _record_generation_stage("post_rerank", games, history, rerank_profile_distribution)
 
-    best_games = _compose_profiled_games(games, count)
+    # --- Structural Realignment V1 hook (feature-flagged) -------------------
+    _realign_cfg = get_realignment_config()
+    if realignment_is_observable():
+        from lotoia.generation.structural_realignment_v1 import (
+            apply_gp_realignment_scoring,
+            compose_diverse_gp,
+            compute_gp_realignment_metrics,
+        )
+        games = apply_gp_realignment_scoring(games, _realign_cfg, game_size=count)
+        logger.info("[RealignmentV1] mode=%s pool_size=%d", _realign_cfg.mode, len(games))
+
+    if realignment_is_active():
+        from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
+        best_games = compose_diverse_gp(games, count, _realign_cfg, game_size=count)
+    else:
+        best_games = _compose_profiled_games(games, count)
+
+    if realignment_is_observable() and best_games:
+        from lotoia.generation.structural_realignment_v1 import compute_gp_realignment_metrics
+        _rm = compute_gp_realignment_metrics(best_games, game_size=count)
+        logger.info(
+            "[RealignmentV1] top_p3=%s(%.0f%%) top_s3=%s(%.0f%%) near_dups=%d",
+            _rm.get("top_prefix3"), _rm.get("top_prefix3_ratio", 0) * 100,
+            _rm.get("top_suffix3"), _rm.get("top_suffix3_ratio", 0) * 100,
+            _rm.get("near_duplicate_pairs", 0),
+        )
+    # -------------------------------------------------------------------------
+
     final_profile_distribution = {
         profile: sum(1 for game in best_games if game.get("profile_type") == profile)
         for profile in GENERATION_PROFILE_RATIOS
