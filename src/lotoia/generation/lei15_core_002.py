@@ -1,0 +1,239 @@
+"""Lei 15 — Núcleo Soberano LEI15_CORE_002 (5 camadas).
+
+L1 generation_cand_d   — pool CAND-D N-C1..N-C6
+L2 v1_selection_compose — compose_diverse_gp (Realinhamento V1)
+L3 v1_strong_shield     — lei15_core_structural_payload
+L4 anti_clone_gp        — overlap e arquitetura no GP final
+L5 critical_digit_layer — reforço 07/23; penalização contextual 15/25
+"""
+
+from __future__ import annotations
+
+import logging
+from collections import Counter
+from typing import TYPE_CHECKING
+
+from lotoia.generation.lei15_core_structural_payload import (
+    apply_core_traceability_payload,
+    is_v1_strong_pattern,
+)
+from lotoia.governance.lei15_core_candidate_001 import (
+    BATCH_LABEL_D,
+    resolve_candidate_config,
+)
+from lotoia.governance.lei15_core_002_sovereign import (
+    CANDIDATE_ORIGIN_LABEL,
+    Core002SovereignConfig,
+    SOVEREIGN_STATUS,
+)
+
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger(__name__)
+
+_REINFORCE_DIGITS: frozenset[int] = frozenset({7, 12, 16, 23})
+_CONTEXTUAL_DISCOURAGE: frozenset[int] = frozenset({2, 4, 11, 15, 24, 25})
+_NEVER_HARD_BLOCK: frozenset[int] = frozenset({15, 24, 25})
+_GP_MAX_OVERLAP: int = 10
+_GP_MAX_ARCH_PCT: float = 0.12
+
+
+def _generation_cand_d_config():
+    return resolve_candidate_config(BATCH_LABEL_D)
+
+
+def _pairwise_overlap(a: list[int], b: list[int]) -> int:
+    return len(set(a) & set(b))
+
+
+def _architecture_key(game: dict) -> tuple[str, str]:
+    return (
+        str(game.get("prefix_signature") or ""),
+        str(game.get("suffix_signature") or ""),
+    )
+
+
+def apply_critical_digit_layer(pool: list[dict]) -> list[dict]:
+    """L5 — reforço suave de dezenas críticas; penalização contextual, sem veto."""
+    for game in pool:
+        nums = set(int(n) for n in (game.get("numbers") or []))
+        boost = sum(2.5 for d in _REINFORCE_DIGITS if d in nums)
+        penalty = 0.0
+        discourage_present = nums & _CONTEXTUAL_DISCOURAGE
+        if len(discourage_present) >= 4:
+            penalty = (len(discourage_present) - 3) * 1.5
+        # 15/24/25: penalização contextual apenas — nunca hard-block (_NEVER_HARD_BLOCK)
+        current = float(game.get("profile_score", 0) or 0)
+        game["profile_score"] = round(max(0.0, current + boost - penalty), 2)
+        game["critical_digit_layer_applied"] = True
+        meta = dict(game.get("lei15_core_002_metadata") or {})
+        meta["critical_digit_boost"] = round(boost, 2)
+        meta["critical_digit_penalty"] = round(penalty, 2)
+        game["lei15_core_002_metadata"] = meta
+    return pool
+
+
+def build_sovereign_pool(
+    pool_size: int,
+    *,
+    seed: int,
+    history: list[object],
+    config: Core002SovereignConfig,
+) -> list[dict]:
+    """L1 — pool diverso via motor CAND-D (N-C1..N-C6)."""
+    from lotoia.generation.lei15_core_candidate_001 import build_candidate_pool
+
+    cand_cfg = _generation_cand_d_config()
+    pool = build_candidate_pool(pool_size, seed=seed, history=history, config=cand_cfg)
+    pool = apply_critical_digit_layer(pool)
+    for game in pool:
+        game["generation_cand_d_applied"] = True
+        game["v1_strong_shield_applied"] = bool(game.get("v1_strong_pattern_shield"))
+        game["lei15_core_002_applied"] = True
+        game["sovereign_core_status"] = config.sovereign_core_status
+        game["candidate_origin_label"] = config.candidate_origin_label
+    logger.info(
+        "[LEI15_CORE_002] sovereign pool=%d cand_d_variant=D epoch=%s",
+        len(pool),
+        config.evidence_epoch,
+    )
+    return pool
+
+
+def _passes_anti_clone(
+    candidate: dict,
+    selected: list[dict],
+    *,
+    arch_counts: Counter,
+    gp_target: int,
+) -> bool:
+    nums = list(candidate.get("numbers") or [])
+    if is_v1_strong_pattern(nums):
+        return True
+    for other in selected:
+        if _pairwise_overlap(nums, list(other.get("numbers") or [])) > _GP_MAX_OVERLAP:
+            return False
+    arch = _architecture_key(candidate)
+    if selected and arch_counts[arch] / max(len(selected), 1) > _GP_MAX_ARCH_PCT:
+        return False
+    return True
+
+
+def apply_anti_clone_gp(
+    games: list[dict],
+    pool: list[dict],
+    count: int,
+    *,
+    game_size: int = 15,
+) -> list[dict]:
+    """L4 — limita redundância no GP; exceção para padrões V1-strong."""
+    selected: list[dict] = []
+    arch_counts: Counter = Counter()
+    seen_keys: set[tuple[int, ...]] = set()
+
+    ordered = sorted(
+        games,
+        key=lambda g: (
+            -float(g.get("profile_score", 0) or 0),
+            -float(g.get("final_score", {}).get("final_score", 0) or 0),
+        ),
+    )
+    for game in ordered:
+        key = tuple(game.get("numbers") or [])
+        if key in seen_keys:
+            continue
+        if _passes_anti_clone(game, selected, arch_counts=arch_counts, gp_target=count):
+            selected.append(game)
+            seen_keys.add(key)
+            arch_counts[_architecture_key(game)] += 1
+        if len(selected) >= count:
+            break
+
+    if len(selected) < count:
+        pool_ordered = sorted(
+            pool,
+            key=lambda g: -float(g.get("profile_score", 0) or 0),
+        )
+        for game in pool_ordered:
+            key = tuple(game.get("numbers") or [])
+            if key in seen_keys:
+                continue
+            if _passes_anti_clone(game, selected, arch_counts=arch_counts, gp_target=count):
+                enriched = dict(game)
+                enriched["anti_clone_completion"] = True
+                selected.append(enriched)
+                seen_keys.add(key)
+                arch_counts[_architecture_key(enriched)] += 1
+            if len(selected) >= count:
+                break
+
+    for game in selected:
+        game["anti_clone_gp_applied"] = True
+    logger.info(
+        "[LEI15_CORE_002] anti_clone_gp selected=%d target=%d game_size=%d",
+        len(selected),
+        count,
+        game_size,
+    )
+    return selected[:count]
+
+
+def compose_sovereign_gp(
+    pool: list[dict],
+    count: int,
+    config: Core002SovereignConfig,
+    *,
+    game_size: int = 15,
+) -> list[dict]:
+    """L2 compose V1 + L4 anti-clone + payload soberano completo."""
+    from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
+    from lotoia.governance.law15_structural_realignment_v1 import get_realignment_config
+
+    realign_cfg = get_realignment_config()
+    composed = compose_diverse_gp(pool, count, realign_cfg, game_size=game_size)
+    for game in composed:
+        game["v1_selection_compose_applied"] = True
+
+    gp = apply_anti_clone_gp(composed, pool, count, game_size=game_size)
+    tag_sovereign_gp_metadata(gp, config=config)
+    return gp
+
+
+def tag_sovereign_gp_metadata(
+    games: list[dict],
+    *,
+    config: Core002SovereignConfig,
+) -> None:
+    """Anexa payload institucional obrigatório a cada cartão do GP."""
+    for game in games:
+        origin = str(game.get("perfil_origem_real") or game.get("profile_type") or "")
+        apply_core_traceability_payload(
+            game,
+            profile_origin=origin,
+            relabeling_applied=bool(game.get("relabeling_applied")),
+            relabeling_reason=game.get("relabeling_reason"),
+        )
+        game["lei15_core_002_applied"] = True
+        game["sovereign_core_status"] = config.sovereign_core_status or SOVEREIGN_STATUS
+        game["candidate_origin_label"] = config.candidate_origin_label or CANDIDATE_ORIGIN_LABEL
+        game.setdefault("generation_cand_d_applied", True)
+        game.setdefault("v1_selection_compose_applied", True)
+        game.setdefault("v1_strong_shield_applied", bool(game.get("v1_strong_pattern_shield")))
+        game.setdefault("anti_clone_gp_applied", True)
+        game.setdefault("critical_digit_layer_applied", True)
+        meta = dict(game.get("lei15_core_002_metadata") or {})
+        meta.update(
+            {
+                "core_id": "LEI15_CORE_002",
+                "adr": config.adr,
+                "layers": [
+                    "generation_cand_d",
+                    "v1_selection_compose",
+                    "v1_strong_shield",
+                    "anti_clone_gp",
+                    "critical_digit_layer",
+                ],
+            }
+        )
+        game["lei15_core_002_metadata"] = meta

@@ -70,9 +70,13 @@ def is_v3_label(batch_label: str | None) -> bool:
 
 
 def should_apply_v3(batch_label: str | None = None) -> bool:
+    from lotoia.governance.lei15_core_realignment_v3_1 import is_v3_1_label
+
     mode = get_v3_mode()
     if mode == "off":
         return False
     if mode == "active":
+        return False
+    if is_v3_1_label(batch_label):
         return False
     return is_v3_label(batch_label)
