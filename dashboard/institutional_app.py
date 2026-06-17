@@ -94,6 +94,7 @@ from dashboard.institutional_governance import (
     GOVERNANCE_READ_ONLY_ALERT,
     render_governance_read_only_page,
 )
+from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -394,6 +395,7 @@ PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 PAGE_TARGETS = {
     "Painel Inicial Institucional": "home",
     "Governança Institucional — read-only": "governance_read_only",
+    "Núcleo Lei 15 — CORE_002": "core_002_read_only",
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
@@ -429,6 +431,7 @@ PAGE_TARGETS = {
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
+    {"icon": "🧬", "label": "Núcleo Lei 15 — CORE_002", "page_id": "core_002_read_only"},
     {"icon": "🎯", "label": "Gerador ADM CORE_002 — BLOQUEADO", "page_id": "clean_law15_generation"},
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
@@ -8176,6 +8179,11 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
+    st.info(
+        "Referência constitucional: **LEI15_CORE_002** — cobertura observacional, não contagem "
+        "cega de dezenas. Lotes V2/V3/V4 são **evidência histórica** — histórico não é núcleo "
+        "soberano. Ver também **Núcleo Lei 15 — CORE_002** (read-only)."
+    )
     _render_diagnostic_observational_caption()
     st.write(
         "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
@@ -9653,6 +9661,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Governança</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Governança Institucional — read-only", "governance_read_only"),
+        ("Núcleo Lei 15 — CORE_002", "core_002_read_only"),
     ]:
         _nav_entry(label, page_id)
     st.sidebar.caption(GOVERNANCE_READ_ONLY_ALERT)
@@ -9721,6 +9730,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "home",
         "fallback",
         "governance_read_only",
+        "core_002_read_only",
         "clean_law15_generation",
         "conference",
         "simulation",
@@ -13521,6 +13531,12 @@ def main() -> None:
             active_commit=_resolve_active_commit(),
             generation_blocked=_is_sovereign_generation_blocked(),
             inventory_reference=INVENTORY_REPORT_REFERENCE,
+            render_constitutional_panel=_render_constitutional_status_panel,
+            render_diagnostic_caption=_render_diagnostic_observational_caption,
+        )
+    elif page == "core_002_read_only":
+        render_core_002_read_only_page(
+            generation_blocked=_is_sovereign_generation_blocked(),
             render_constitutional_panel=_render_constitutional_status_panel,
             render_diagnostic_caption=_render_diagnostic_observational_caption,
         )

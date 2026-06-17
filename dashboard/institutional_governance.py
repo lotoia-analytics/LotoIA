@@ -44,9 +44,23 @@ MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
         "id": "M-VIS-032",
         "titulo": "Governança read-only no Painel ADM",
-        "status": "EM EXECUCAO / AGUARDANDO REVIEW",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
         "agentes": "agent_visual + agent_governanca + agent_plataforma",
-        "evidencia": "branch cursor/m-vis-032-governanca-read-only-cae6",
+        "evidencia": "PR #127 — merge 7df540c — PR #128 fechamento",
+    },
+    {
+        "id": "M-LEI15-003",
+        "titulo": "Unificar path geração ADM → generate_best_games",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_geracao + agent_plataforma + agent_qualidade",
+        "evidencia": "PR #131 — merge 6dea9e7 — PR #132 fechamento",
+    },
+    {
+        "id": "M-VIS-033",
+        "titulo": "Pacote Núcleo Lei 15 no Painel ADM",
+        "status": "EM EXECUCAO / AGUARDANDO REVIEW",
+        "agentes": "agent_visual + agent_governanca + agent_estatistico + agent_qualidade",
+        "evidencia": "branch cursor/m-vis-033-pacote-nucleo-lei15-cae6",
     },
 )
 
@@ -162,7 +176,7 @@ def build_governance_snapshot(
         "gestao_projetos_fase": "Fase 0 — documental/Git",
         "gestao_projetos_policy_status": "POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA",
         "missions": [dict(row) for row in MISSION_ROWS],
-        "next_authorized_mission": "M-VIS-032",
+        "next_authorized_mission": "M-VIS-033",
         "blocks": [dict(row) for row in BLOCK_ROWS],
         "laws": [
             {**dict(row), "disponivel": _doc_exists(row["path"])} for row in LAW_ROWS

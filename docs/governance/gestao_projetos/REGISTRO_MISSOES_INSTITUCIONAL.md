@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-033](#m-vis-033--pacote-núcleo-lei-15-no-painel-adm) | Pacote Núcleo Lei 15 ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `CONCLUIDA` | `INCORPORADA À MAIN` |
@@ -25,6 +26,28 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-033 — Pacote Núcleo Lei 15 no Painel ADM
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-LEI15-001` |
+| Agentes | `agent_visual` + `agent_governanca` + `agent_estatistico` + `agent_qualidade` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco | Médio (read-only) |
+| Branch | `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+
+**Objetivo:** Pacote read-only **Núcleo Lei 15 — CORE_002** no Painel ADM — matriz soberana,
+6 bases, cobertura orientada, evidências históricas reclassificadas.
+
+**Pré-requisito:** M-LEI15-003 fechada em `main` (PR #131/#132).
+
+**Veredicto alvo:** **M-VIS-033 CONCLUÍDA — PACOTE NÚCLEO LEI 15 READ-ONLY AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-VIS-033_PACOTE_NUCLEO_LEI15_PAINEL_ADM.md`
+
+---
 
 ### M-LEI15-003 — Unificar path de geração ADM para generate_best_games
 

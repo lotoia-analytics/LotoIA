@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-BUILD_MARKER = "institutional-adm-runtime-v8"
+BUILD_MARKER = "institutional-adm-runtime-v9"
 APP_BUILD = BUILD_MARKER
 CORE_REALIGN_V3_BATCH_LABEL = "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001"
 CORE_REALIGN_V3_ENV_VAR = "LOTOIA_LEI15_15A_CORE_REALIGNMENT_V3"
@@ -16,6 +16,7 @@ DEPRECATED_BUILD_MARKERS: frozenset[str] = frozenset(
         "institutional-adm-runtime-v5",
         "institutional-adm-runtime-v6",
         "institutional-adm-runtime-v7",
+        "institutional-adm-runtime-v8",
     }
 )
 
