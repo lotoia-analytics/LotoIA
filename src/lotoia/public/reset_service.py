@@ -78,6 +78,13 @@ class InstitutionalResetService:
             raise ValueError("confirm_token inválido; use 'confirmar' para prosseguir.")
 
         affected_tables = self._scope_tables(scope)
+        if affected_tables:
+            from lotoia.governance.history_preservation_policy import assert_generic_institutional_purge_blocked
+
+            assert_generic_institutional_purge_blocked(
+                source=f"InstitutionalResetService.reset_operational_history scope={scope.value}",
+                tables=list(affected_tables.keys()),
+            )
         removed_rows: dict[str, int] = {}
         with get_session(self.db_path) as session:
             for table_name, model in affected_tables.items():

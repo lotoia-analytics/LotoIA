@@ -97,6 +97,21 @@ from dashboard.institutional_build import (
     CORE_REALIGN_V3_BATCH_LABEL,
     CORE_REALIGN_V3_ENV_VAR,
 )
+from dashboard.institutional_light_mode import (
+    CACHE_TTL_SECONDS,
+    SESSION_LOAD_COMPARATIVE,
+    SESSION_LOAD_HISTORY,
+    SESSION_LOAD_STRUCTURAL,
+    batch_select_options,
+    default_batch_index,
+    is_light_mode_enabled,
+    render_lazy_load_gate,
+    render_paginated_dataframe,
+    request_lazy_load,
+    set_light_mode_enabled,
+)
+from lotoia.governance.law15_structural_realignment_v1 import get_realignment_mode
+from lotoia.governance.lei15_15a_core_realignment_v2 import get_v2_mode
 from lotoia.governance.cloud_runtime_policy import (
     cloud_runtime_policy_snapshot,
     enforce_cloud_runtime_policy,
@@ -940,9 +955,38 @@ def _database_snapshot() -> dict[str, Any]:
     }
 
 
-def _live_institutional_snapshot(snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
+def _light_database_snapshot() -> dict[str, Any]:
+    adapter = InstitutionalDatabaseAdapter(DB_PATH)
+    engine = _get_engine_cached()
+    return {
+        "backend": adapter.backend,
+        "engine_url": str(engine.url),
+        "database_url": adapter.database_url,
+        "database_source": adapter.database_source,
+        "counts": {},
+        "latest": {},
+        "tables": [],
+        "errors": {},
+        "query_logs": [],
+        "table_diagnostics": {},
+        "light_mode": True,
+    }
+
+
+def _resolve_database_snapshot(*, force_full: bool = False) -> dict[str, Any]:
+    if not force_full and is_light_mode_enabled():
+        return _light_database_snapshot()
+    return _database_snapshot()
+
+
+def _live_institutional_snapshot(
+    snapshot: dict[str, Any] | None = None,
+    *,
+    force_full: bool = False,
+) -> dict[str, Any]:
     try:
-        live_snapshot = _database_snapshot()
+        live_snapshot = _resolve_database_snapshot(force_full=force_full)
     except Exception:
         return snapshot or {
             "backend": "unknown",
@@ -958,6 +1002,25 @@ def _live_institutional_snapshot(snapshot: dict[str, Any] | None = None) -> dict
         snapshot.update(live_snapshot)
         return snapshot
     return live_snapshot
+
+
+@st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
+def _cached_card_structure_diagnostics_from_db(
+    db_path: str,
+    analysis_batch_label: str | None,
+    game_size: int | None,
+    generation_event_id: int | None,
+    reconciliation_run_id: int | None,
+    concurso_analisado: int | None,
+) -> dict[str, Any]:
+    return load_card_structure_diagnostics_from_db(
+        db_path,
+        analysis_batch_label=analysis_batch_label,
+        game_size=game_size,
+        generation_event_id=generation_event_id,
+        reconciliation_run_id=reconciliation_run_id,
+        concurso_analisado=concurso_analisado,
+    )
 
 
 def _institutional_source_map(snapshot: dict[str, Any]) -> list[dict[str, str]]:
@@ -6834,6 +6897,12 @@ def _align_institutional_runtime_with_database(snapshot: dict[str, Any]) -> None
 
 
 def _purge_institutional_history_tables() -> dict[str, Any]:
+    from lotoia.governance.history_preservation_policy import assert_generic_institutional_purge_blocked
+
+    assert_generic_institutional_purge_blocked(
+        source="dashboard.institutional_app._purge_institutional_history_tables",
+        tables=list(HISTORICAL_TEST_TABLES) + list(PURGE_ONLY_TABLES),
+    )
     before_snapshot = _database_snapshot()
     deleted: dict[str, int] = {}
     errors: dict[str, str] = {}
@@ -6873,10 +6942,23 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
 
 
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
+    snapshot = _live_institutional_snapshot(snapshot, force_full=True)
     live_counts = _database_snapshot()["counts"]
     st.subheader("Histórico Institucional")
     st.write("Visão institucional de rastreabilidade, memória pós-reconciliação e documentação legada.")
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_HISTORY,
+        "Carregar Histórico",
+        help_text=(
+            "Modo leve ativo: histórico acumulado não é carregado automaticamente. "
+            "Clique para reconstruir a memória institucional do PostgreSQL."
+        ),
+    ):
+        source_cols = st.columns(3)
+        source_cols[0].metric("backend", snapshot["backend"])
+        source_cols[1].metric("build", BUILD_MARKER)
+        source_cols[2].metric("commit", _resolve_active_commit())
+        return
 
     source_map = _institutional_source_map(snapshot)
     latest_sync = st.session_state.get("institutional_last_official_sync_summary", {})
@@ -7323,10 +7405,19 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
+    snapshot = _live_institutional_snapshot(snapshot, force_full=True)
     st.subheader("Comparativos Histórico")
     st.write("Leitura comparativa entre geração persistida, conferência e concurso oficial.")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_COMPARATIVE,
+        "Carregar Comparativo",
+        help_text=(
+            "Modo leve ativo: comparativo histórico não é carregado automaticamente. "
+            "Clique para consultar geração persistida e concurso oficial."
+        ),
+    ):
+        return
     latest_generation = _load_latest_generated_games() or {}
     latest_contest = _load_imported_contest()
     structural_stats = _summarize_games_structurally(list(latest_generation.get("games") or []))
@@ -7622,7 +7713,13 @@ def _render_structural_coverage_ranking_tables(
         with target_col:
             st.markdown(f"**{title}**")
             if rows:
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                if is_light_mode_enabled() and len(rows) > 25:
+                    render_paginated_dataframe(
+                        rows,
+                        page_key=f"struct_cov_{kind}_{source_key}",
+                    )
+                else:
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
             else:
                 st.caption("Sem dados.")
 
@@ -7928,14 +8025,36 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
         "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
     )
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_STRUCTURAL,
+        "Carregar Cobertura Estrutural",
+        help_text=(
+            "Modo leve ativo: métricas de cobertura estrutural não são carregadas automaticamente. "
+            "Clique para executar a consulta no lote selecionado."
+        ),
+    ):
+        batch_options = batch_select_options()
+        filter_cols = st.columns(5)
+        filter_cols[0].selectbox(
+            "Lote de análise (padrão V3)",
+            options=batch_options,
+            index=default_batch_index(batch_options),
+            key="structural_coverage_batch_label_preview",
+            disabled=True,
+        )
+        return
+
     filter_cols = st.columns(5)
-    batch_options = ["(todos)"] + list(BATCH_LABEL_UI_OPTIONS)
+    batch_options = batch_select_options(include_all=not is_light_mode_enabled())
     selected_batch_option = filter_cols[0].selectbox(
         "Lote de análise",
         options=batch_options,
-        index=0,
+        index=default_batch_index(batch_options),
         key="structural_coverage_batch_label",
     )
+    if is_light_mode_enabled() and selected_batch_option == "(todos)":
+        st.warning("Modo leve: selecione um lote específico. Consulta em todos os lotes desabilitada.")
+        return
     selected_game_size = filter_cols[1].selectbox(
         "game_size",
         options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
@@ -7963,13 +8082,13 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         step=1,
         key="structural_coverage_concurso_analisado",
     )
-    payload = load_card_structure_diagnostics_from_db(
+    payload = _cached_card_structure_diagnostics_from_db(
         DB_PATH,
-        analysis_batch_label=None if selected_batch_option == "(todos)" else str(selected_batch_option),
-        game_size=None if selected_game_size == "(todos)" else int(selected_game_size),
-        generation_event_id=int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
-        reconciliation_run_id=int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
-        concurso_analisado=int(selected_concurso) if int(selected_concurso) > 0 else None,
+        None if selected_batch_option == "(todos)" else str(selected_batch_option),
+        None if selected_game_size == "(todos)" else int(selected_game_size),
+        int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
+        int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
+        int(selected_concurso) if int(selected_concurso) > 0 else None,
     )
     st.caption(
         f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "

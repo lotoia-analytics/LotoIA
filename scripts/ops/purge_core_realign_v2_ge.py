@@ -11,6 +11,8 @@ from cloud_env_bootstrap import ensure_database_url, resolve_database_url
 
 import psycopg
 
+from lotoia.governance.history_preservation_policy import assert_generation_event_deletion_allowed
+
 GE_ID = 51
 BATCH_LABEL = "STRUCT_CORE_REALIGN_V2_15D_001"
 
@@ -30,6 +32,11 @@ def main() -> int:
                 return 0
             if row[0] != BATCH_LABEL:
                 raise RuntimeError(f"GE {GE_ID} label={row[0]!r} — abortado por segurança.")
+            assert_generation_event_deletion_allowed(
+                generation_event_id=GE_ID,
+                batch_label=row[0],
+                source="scripts.ops.purge_core_realign_v2_ge",
+            )
 
             for table, col in (
                 ("reconciliation_games", "reconciliation_run_id IN (SELECT id FROM reconciliation_runs WHERE generation_event_id = %s)"),

@@ -383,7 +383,12 @@ def _count_rows(table_name: str) -> int:
 def _delete_history_table(table_name: str) -> int:
     try:
         from clean_core import get_session  # local import to keep startup light
+        from lotoia.governance.history_preservation_policy import assert_table_generic_purge_blocked
 
+        assert_table_generic_purge_blocked(
+            table_name=table_name,
+            source="dashboard.lotoia_clean_zero._delete_history_table",
+        )
         with get_session(DB_PATH) as session:
             count = int(session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar() or 0)
             session.execute(text(f"DELETE FROM {table_name}"))
