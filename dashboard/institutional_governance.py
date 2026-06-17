@@ -12,6 +12,7 @@ import streamlit as st
 from dashboard.institutional_build import LOTOIA_PANEL_PRODUCTION_URL
 from dashboard.institutional_lei15a_governance import render_lei15a_governance_section
 from dashboard.institutional_route_inventory import render_route_inventory_section
+from dashboard.institutional_public_separation import render_public_adm_separation_section
 
 GOVERNANCE_READ_ONLY_ALERT = (
     "Governança read-only — nenhuma ação operacional é executada nesta tela."
@@ -22,6 +23,13 @@ GOVERNANCE_DOCS = REPO_ROOT / "docs" / "governance"
 GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "id": "M-PLAT-041",
+        "titulo": "Separação public_app x ADM Institucional",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_governanca + agent_visual + agent_qualidade",
+        "evidencia": "branch cursor/m-plat-041-public-adm-separation-cae6",
+    },
     {
         "id": "M-PLAT-040",
         "titulo": "Limpeza de órfãs e rotas legadas do Painel ADM",
@@ -164,6 +172,11 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
 )
 
 LAW_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "nome": "Inventário Entrypoints public/ADM",
+        "referencia": "Separação public_app x ADM — M-PLAT-041",
+        "path": "docs/governance/INVENTARIO_ENTRYPOINTS_PUBLIC_ADM_M_PLAT_041.md",
+    },
     {
         "nome": "Inventário Rotas ADM",
         "referencia": "Órfãs, aliases e rotas legadas — M-PLAT-040",
@@ -402,6 +415,11 @@ def render_governance_read_only_page(
         )
         st.caption("Sem chamada de API externa destrutiva e sem execução de deploy.")
 
+    st.markdown("---")
+    render_public_adm_separation_section(
+        app_build=app_build,
+        public_build="public-surface-v1-m-plat-041",
+    )
     st.markdown("---")
     render_route_inventory_section(app_build=app_build)
     st.markdown("---")

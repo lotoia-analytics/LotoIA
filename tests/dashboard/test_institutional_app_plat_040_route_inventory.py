@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v16"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
 
 
 def test_route_inventory_module_imports() -> None:
@@ -114,11 +114,14 @@ def test_governance_snapshot_includes_m_plat_040() -> None:
     assert "Inventário Rotas ADM" in law_names
 
 
-def test_public_app_not_modified() -> None:
+def test_public_app_does_not_import_route_inventory_module() -> None:
+    """M-PLAT-040: public_app não acopla inventário ADM; M-PLAT-041 altera public_app com segurança."""
     import dashboard.public_app
 
     source = inspect.getsource(dashboard.public_app)
     assert "institutional_route_inventory" not in source
+    assert "render_public_app" in source
+    assert "resolve_dashboard_mode" in source
 
 
 def test_m_lei15_003_regression_batch_label_none_rejected() -> None:
