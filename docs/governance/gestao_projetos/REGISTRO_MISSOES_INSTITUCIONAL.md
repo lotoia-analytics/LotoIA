@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-VIS-036](#m-vis-036--simulação-institucional--backtesting) | Simulação Institucional / Backtesting | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-035](#m-vis-035--ml-assistivo--vazamento-lateral-constitucional) | ML Assistivo + Vazamento Lateral | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-034](#m-vis-034--cobertura-estrutural--6-bases-refinadas-no-painel-adm) | Cobertura Estrutural + 6 Bases ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -29,6 +30,28 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-037 — Conferir Resultados / Auditoria de Lotes Reais Persistidos
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-LEI15-001` |
+| Agentes | `agent_visual` + `agent_dados` + `agent_governanca` + `agent_qualidade` + `agent_estatistico` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco | Médio (read-only) |
+| Branch | `cursor/m-vis-037-conferir-resultados-auditoria-cae6` |
+
+**Objetivo:** Conferir Resultados como auditoria de lotes reais persistidos (Lei 001 / PostgreSQL),
+separando conferência de simulação, session_state e geração.
+
+**Bloqueios relacionados:** BLK-GERACAO-001, BLK-LEI001-001, BLK-PURGE-001, BLK-CORE002-001, BLK-PUBLIC-APP-001.
+
+**Veredicto alvo:** **M-VIS-037 CONCLUÍDA — CONFERIR RESULTADOS READ-ONLY AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-VIS-037_CONFERIR_RESULTADOS_AUDITORIA_LOTES.md`
+
+---
 
 ### M-VIS-036 — Simulação Institucional / Backtesting
 
