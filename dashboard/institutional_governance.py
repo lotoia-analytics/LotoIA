@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-VIS-046",
+        "titulo": "Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15",
+        "status": "CONCLUIDA",
+        "agentes": "agent_visual + agent_governanca + agent_geracao + agent_qualidade",
+        "evidencia": "M-VIS-046 — Runtime Limpo 15D CORE_002 sem linguagem Lei 15A operacional",
+    },
+    {
         "id": "M-ML-045",
         "titulo": "Ativação Definitiva do ML Operacional Supervisionado",
         "status": "CONCLUIDA",
