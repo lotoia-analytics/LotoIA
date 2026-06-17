@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-ML-045",
+        "titulo": "Ativação Definitiva do ML Operacional Supervisionado",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_geracao + agent_estatistico + agent_dados + agent_governanca + agent_qualidade + agent_plataforma",
+        "evidencia": "M-ML-045 — ml_enabled=True path CORE_002 com trace PostgreSQL",
+    },
+    {
         "id": "M-GER-044",
         "titulo": "Ativação Geração Soberana Controlada CORE_002",
         "status": "CONCLUIDA",
@@ -295,7 +302,7 @@ def build_governance_snapshot(
         "gestao_projetos_fase": "Fase 0 — documental/Git",
         "gestao_projetos_policy_status": "POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA",
         "missions": [dict(row) for row in MISSION_ROWS],
-        "next_authorized_mission": "fase pós M-GER-044 — operação controlada",
+        "next_authorized_mission": "fase pós M-ML-045 — operação supervisionada CORE_002",
         "blocks": [dict(row) for row in BLOCK_ROWS],
         "laws": [
             {**dict(row), "disponivel": _doc_exists(row["path"])} for row in LAW_ROWS

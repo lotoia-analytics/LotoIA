@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-045](#m-ml-045--ativação-definitiva-do-ml-operacional-supervisionado) | ML Operacional Supervisionado CORE_002 | `CONCLUIDA` | `ML SUPERVISIONADO ATIVO / POSTGRESQL + TRACE` |
 | [M-GER-044](#m-ger-044--ativação-da-geração-soberana-controlada-core_002) | Geração Soberana CORE_002 | `CONCLUIDA` | `GERAÇÃO CONTROLADA ATIVA / POSTGRESQL` |
 | [M-GOV-042](#m-gov-042--auditoria-constitucional-final-do-painel-adm-e-public_app) | Auditoria Constitucional Final | `CONCLUIDA` | `FASE CONSTITUCIONAL ENCERRADA / 30-30 APROVADOS` |
 | [M-PLAT-041](#m-plat-041--separação-public_app-x-adm-institucional) | Separação public_app x ADM | `CONCLUIDA` | `PUBLIC_APP SEPARADO / RAILWAY ADM INTACTO` |
@@ -36,6 +37,30 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-045 — Ativação Definitiva do ML Operacional Supervisionado
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-ML-001` |
+| Agentes | `agent_ml` + `agent_geracao` + `agent_estatistico` + `agent_dados` + `agent_governanca` + `agent_qualidade` + `agent_plataforma` |
+| Status | `CONCLUIDA` |
+| Tipo | ML / Geração supervisionada |
+
+**Ativação:** `LOTOIA_ML_CORE_002_OPERATIONAL_ENABLED` default=`1`. Path único ADM via
+`generate_best_games(batch_label=STRUCT_LEI15_CORE_CANDIDATE_002_15D_001, ml_enabled=True)`.
+
+**Entregáveis:** `dashboard/institutional_supervised_ml.py`, build `institutional-adm-runtime-v20`,
+smoke `scripts/ops/smoke_supervised_ml_m_ml_045.py`.
+
+**Veredicto:** **M-ML-045 CONCLUÍDA E ATIVA EM PRODUÇÃO — ML OPERACIONAL SUPERVISIONADO ATIVO SOBRE CORE_002 COM PERSISTÊNCIA POSTGRESQL E RASTREABILIDADE**
+
+**Smoke PostgreSQL real:** `generation_event_id=167`, `batch_label=STRUCT_LEI15_CORE_CANDIDATE_002_15D_001`, 1 jogo persistido, `ml_enabled=1`, decision trace + feature attribution + ML × 6 Bases persistidos.
+
+**Cartão:** `cartoes/M-ML-045_ATIVACAO_ML_OPERACIONAL_SUPERVISIONADO.md`
+
+---
 
 ### M-GER-044 — Ativação da Geração Soberana Controlada CORE_002
 

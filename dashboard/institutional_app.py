@@ -122,6 +122,14 @@ from dashboard.institutional_sovereign_generation import (
     adm_generator_menu_label,
     sovereign_generation_status_label,
 )
+from dashboard.institutional_supervised_ml import (
+    SUPERVISED_ML_DISCLAIMER,
+    SUPERVISED_ML_GOVERNANCE_ALERT,
+    build_supervised_ml_persistence_bundle,
+    is_adm_supervised_ml_active,
+    resolve_adm_ml_enabled,
+    supervised_ml_status_label,
+)
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
     SESSION_LOAD_COMPARATIVE,
@@ -179,6 +187,7 @@ INSTITUTIONAL_REFERENCE_J34 = (1, 2, 3, 7, 8, 9, 10, 11, 13, 18, 20, 22, 23, 24,
 INSTITUTIONAL_REFERENCE_J71 = (1, 2, 3, 5, 7, 8, 9, 10, 13, 15, 18, 20, 22, 23, 24)
 # Lei 15A — núcleo operacional 15D congelado (docs/governance/LEI_15A_NUCLEO_OPERACIONAL_15D.md)
 NUCLEO_LEI15A_15D_CONGELADO = (1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 20, 22, 23, 24, 25)
+NUCLEO_LEI15_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
 RESERVAS_LEI15A_PRIORITARIAS = (15, 5, 7, 14, 19)
 RESERVAS_PRIORITARIAS_LEI15A = RESERVAS_LEI15A_PRIORITARIAS
 LEI15A_NUCLEO_15D_CONGELADO = NUCLEO_LEI15A_15D_CONGELADO
@@ -229,7 +238,7 @@ INSTITUTIONAL_MATRIX_TECHNICAL_COLUMNS = (
 INSTITUTIONAL_MATRIX_PRIMARY_LABELS = {
     "jogo": "Jogo",
     "formato_d": "Formato",
-    "nucleo_a_dezenas": "Núcleo Operacional GP Lei 15A",
+    "nucleo_a_dezenas": "Núcleo Lei 15 (insumo Lei 15A)",
     "auditadas_escolhidas": "Auditadas Lei 15A",
     "vigilantes_escolhidas": "Vigilantes Lei 15A",
     "cartao_final_lido": "Cartão validado Lei 15A",
@@ -248,7 +257,13 @@ LEI15A_PANEL_DESCRIPTION = (
     "o cartão validado deve coincidir com o cartão final superior; "
     "núcleo operacional GP, auditadas e vigilantes são componentes próprios da Lei 15A."
 )
-LEI15A_PANEL_FORMAT_16D_23D_LABEL = "16D–23D = cartão validado pela matriz GP da Lei 15A"
+LEI15A_PANEL_FORMAT_16D_20D_LABEL = (
+    "16D–20D = registro operacional Lei 15A — cartão validado pela matriz GP"
+)
+LEI15A_PANEL_FORMAT_21D_23D_LABEL = (
+    "21D–23D = leitura observacional — registro Lei 15A pendente"
+)
+LEI15A_PANEL_FORMAT_16D_23D_LABEL = LEI15A_PANEL_FORMAT_16D_20D_LABEL
 LEI15A_PANEL_SYNC_SUCCESS = (
     "Leitura operacional Lei 15A validada: cartão Lei 15A coincide com "
     "o cartão final gerado pela Lei 15, preservando componentes próprios."
@@ -258,7 +273,30 @@ LEI15A_PANEL_SYNC_SEMANTICS = (
     "cartão final Lei 15. Não significa cópia de núcleo, reservas, auditadas "
     "ou vigilantes entre as leis."
 )
-LEI15_PANEL_CONCEPT_15D = "15D = núcleo Lei 15 (geração soberana)"
+LEI15_PANEL_CONCEPT_15D = (
+    "15D = núcleo Lei 15 (geração soberana); conferência usa cartão final por jogo"
+)
+LEI15_PANEL_CONCEPT_EXPANDED = (
+    "16D–20D = expansão auditada do núcleo Lei 15 — conferência usa cartão final por jogo"
+)
+
+
+def _resolve_lei15a_panel_format_label(card_format: int) -> str:
+    fmt = int(card_format)
+    if fmt <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    if fmt <= 20:
+        return LEI15A_PANEL_FORMAT_16D_20D_LABEL
+    return LEI15A_PANEL_FORMAT_21D_23D_LABEL
+
+
+def _resolve_lei15_panel_concept_label(card_format: int) -> str:
+    fmt = int(card_format)
+    if fmt <= 15:
+        return LEI15_PANEL_CONCEPT_15D
+    return LEI15_PANEL_CONCEPT_EXPANDED
+
+
 INSTITUTIONAL_MATRIX_TECHNICAL_LABELS = {
     "jogo": "Jogo",
     "celula_matriz": "Célula matriz",
@@ -610,24 +648,29 @@ def _invoke_sovereign_adm_generate_best_games(
     batch_label: str | None = None,
     pool_size: int | None = None,
     seed: int | None = None,
+    ml_enabled: bool | None = None,
 ) -> dict[str, Any]:
     """Único path preparado para geração ADM Lei 15 (LEI15_CORE_002 / ADR-047)."""
     resolved_label = _resolve_adm_sovereign_batch_label(batch_label or SOVEREIGN_BATCH_LABEL)
+    effective_ml = resolve_adm_ml_enabled(ml_enabled=ml_enabled, batch_label=resolved_label)
     effective_pool = _sovereign_adm_pool_size(
         requested_count=requested_count,
         pool_size=pool_size,
     )
     from lotoia.generator.basic_generator import generate_best_games
 
-    return dict(
+    payload = dict(
         generate_best_games(
             count=int(requested_count),
             pool_size=effective_pool,
             batch_label=resolved_label,
-            ml_enabled=False,
+            ml_enabled=effective_ml,
             seed=seed,
         )
     )
+    payload["ml_enabled"] = effective_ml
+    payload["analysis_batch_label"] = resolved_label
+    return payload
 
 
 def _render_orphan_generation_blocked_page(snapshot: dict[str, Any]) -> None:
@@ -7922,7 +7965,11 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     st.info(
         "Princípio institucional: tudo o que o ML vê, o ADM vê. "
         "O ML propõe; o ADM emite veredito (ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT). "
-        "Nenhum veredito gera efeito operacional, comando de geração, recalibração ou mutação da Lei 15."
+        + (
+            "ML operacional supervisionado ativo no Gerador CORE_002 — decision trace persistido no PostgreSQL."
+            if is_adm_supervised_ml_active()
+            else "Nenhum veredito gera efeito operacional, comando de geração, recalibração ou mutação da Lei 15."
+        )
     )
     payload = build_central_ml_diagnostics_payload(DB_PATH)
     _render_ml_diagnostic_source_caption(payload)
@@ -8785,7 +8832,7 @@ def _persist_generation_snapshot(
             whatsapp="",
             generated_games=games,
             context_json=event_context,
-            ml_enabled=0,
+            ml_enabled=int(bool((generation_context or {}).get("ml_enabled", False))),
             seed=seed,
             strategy="institutional_clean_hb",
             ranking_score=0.0,
@@ -8826,6 +8873,16 @@ def _persist_generation_snapshot(
             }
             if game.get("realignment_metadata") is not None:
                 per_game_context["realignment_metadata"] = game.get("realignment_metadata")
+            if game.get("score_ml") is not None:
+                per_game_context["score_ml"] = float(game.get("score_ml", 0.0) or 0.0)
+            if isinstance(game.get("score_ml_details"), dict):
+                per_game_context["score_ml_details"] = dict(game.get("score_ml_details") or {})
+            if isinstance(game.get("decision_trace"), dict):
+                per_game_context["decision_trace"] = dict(game.get("decision_trace") or {})
+            if isinstance(game.get("feature_attribution"), dict):
+                per_game_context["feature_attribution"] = dict(game.get("feature_attribution") or {})
+            if isinstance(game.get("generation_lineage"), dict):
+                per_game_context["generation_lineage"] = dict(game.get("generation_lineage") or {})
             if "core_realignment_v2_applied" in game:
                 per_game_context["core_realignment_v2_applied"] = bool(game.get("core_realignment_v2_applied"))
             if "core_realignment_v3_applied" in game:
@@ -10722,7 +10779,7 @@ def _render_institutional_matrix_reading_section(
         st.info(LEI15_PANEL_CONCEPT_15D)
     with concept_cols[1]:
         st.info("Lei 15A = operação GP 10/20/30/50")
-        st.info(LEI15A_PANEL_FORMAT_16D_23D_LABEL)
+        st.info(_resolve_lei15a_panel_format_label(int(card_format)))
     with st.expander("O que significa sincronização?", expanded=False):
         st.caption(LEI15A_PANEL_SYNC_SEMANTICS)
 
@@ -10788,31 +10845,52 @@ def _persist_clean_law15_generation_history(
             "runtime_contract": runtime_contract,
         }
     payload_games: list[dict[str, Any]] = []
-    for game in formatted_games:
+    ml_enabled = bool(result.get("ml_enabled", False))
+    ml_bundle = build_supervised_ml_persistence_bundle(
+        list(games),
+        batch_label=str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        ml_enabled=ml_enabled,
+    )
+    trace_games = list(ml_bundle.get("decision_trace") or [])
+    trace_attributions = list(ml_bundle.get("feature_attribution") or [])
+    trace_lineages = list(ml_bundle.get("generation_lineage") or [])
+    for index, game in enumerate(formatted_games):
         core_numbers = list(game.get("core_numbers", game.get("numbers", [])) or [])
         reserves = list(game.get("audited_reserve_numbers", []) or [])
         final_card = list(game.get("final_card_numbers", game.get("numbers", [])) or [])
-        payload_games.append(
-            {
-                **dict(game),
-                "numbers": core_numbers,
-                "card_format": int(selected_card_format),
-                "selected_card_format": int(selected_card_format),
-                "core_numbers": core_numbers,
-                "audited_reserve_numbers": reserves,
-                "final_card_numbers": final_card,
-                "display_core_numbers": _format_numbers_for_history(core_numbers),
-                "display_audited_reserve_numbers": _format_numbers_for_history(reserves),
-                "display_final_card_numbers": _format_numbers_for_history(final_card),
-            }
-        )
+        enriched = {
+            **dict(game),
+            "numbers": core_numbers,
+            "card_format": int(selected_card_format),
+            "selected_card_format": int(selected_card_format),
+            "core_numbers": core_numbers,
+            "audited_reserve_numbers": reserves,
+            "final_card_numbers": final_card,
+            "display_core_numbers": _format_numbers_for_history(core_numbers),
+            "display_audited_reserve_numbers": _format_numbers_for_history(reserves),
+            "display_final_card_numbers": _format_numbers_for_history(final_card),
+        }
+        if index < len(trace_games):
+            enriched["decision_trace"] = trace_games[index]
+        if index < len(trace_attributions):
+            enriched["feature_attribution"] = trace_attributions[index]
+        if index < len(trace_lineages):
+            enriched["generation_lineage"] = trace_lineages[index]
+        payload_games.append(enriched)
     generation_context = {
         "generation_mode": "LEI15_CORE_002_SOVEREIGN",
-        "policy_mode": "M-GER-044_SOVEREIGN_CONTROLLED",
+        "policy_mode": str(ml_bundle.get("policy_mode") or "M-GER-044_SOVEREIGN_CONTROLLED"),
         "analysis_batch_label": str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
         "analysis_batch_type": "LEI15_CORE_002_SOVEREIGN",
         "sovereign_generation_path": "generate_best_games",
-        "ml_enabled": False,
+        "ml_enabled": ml_enabled,
+        "ml_operational_status": str(ml_bundle.get("ml_operational_status") or ""),
+        "supervised_ml_mission": str(ml_bundle.get("supervised_ml_mission") or ""),
+        "decision_trace": trace_games,
+        "feature_attribution": trace_attributions,
+        "generation_lineage": trace_lineages,
+        "ml_scored_games": int(ml_bundle.get("ml_scored_games", 0) or 0),
+        "ml_six_bases_reading": list(ml_bundle.get("ml_six_bases_reading") or []),
         "selected_card_format": int(selected_card_format),
         "format_cartao": int(selected_card_format),
         "selected_quantity": int(result.get("requested_count", 0) or 0),
@@ -12095,11 +12173,14 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         seed=seed,
     )
     games = list(sovereign_payload.get("games") or [])
+    ml_enabled = bool(sovereign_payload.get("ml_enabled", False))
     fill_diagnostics: dict[str, Any] = {
         "fill_completed": len(games) >= total_games,
         "sovereign_generation_path": "generate_best_games",
         "analysis_batch_label": analysis_batch_label,
         "generation_path": str(sovereign_payload.get("generation_path") or "LEI15_CORE_002"),
+        "ml_enabled": ml_enabled,
+        "ml_operational_status": supervised_ml_status_label() if ml_enabled else "ML_INATIVO",
     }
     commander_report = output_commander_validate_games(
         games,
@@ -12165,6 +12246,8 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "law_evolution_requires_audit": True,
         "target_contest": target_contest,
         "sovereign_generation_path": "generate_best_games",
+        "ml_enabled": ml_enabled,
+        "ml_operational_status": supervised_ml_status_label() if ml_enabled else "ML_INATIVO",
     }
 
 
@@ -12184,6 +12267,12 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         return
 
     st.success(SOVEREIGN_GENERATION_STATUS_ACTIVE)
+    if is_adm_supervised_ml_active():
+        st.success(supervised_ml_status_label())
+        st.info(SUPERVISED_ML_DISCLAIMER)
+        st.caption(SUPERVISED_ML_GOVERNANCE_ALERT)
+    else:
+        st.warning("ML operacional supervisionado inativo — geração soberana sem camada ML.")
     st.info(SOVEREIGN_GENERATION_DISCLAIMER)
     st.warning(
         "Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL "

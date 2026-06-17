@@ -14,7 +14,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_build_v18() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert BUILD_MARKER == "institutional-adm-runtime-v18"
+    assert BUILD_MARKER == "institutional-adm-runtime-v20"
 
 
 def test_sovereign_generation_active_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,6 +136,7 @@ def test_persist_path_includes_sovereign_batch_label(
     monkeypatch: pytest.MonkeyPatch,
     sovereign_generation_enabled,
 ) -> None:
+    monkeypatch.setenv("LOTOIA_ML_CORE_002_OPERATIONAL_ENABLED", "0")
     captured: dict[str, object] = {}
 
     def _fake_persist(**kwargs):

@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v20"
 
 
 def test_ml_assistive_module_imports() -> None:
@@ -27,16 +27,22 @@ def test_ml_assistive_snapshot_has_required_security_fields() -> None:
 
     assert payload["generation_cmd"] is False
     assert payload["recalibration_cmd"] is False
-    assert payload["ml_operacional"] is False
-    assert ml_assistive.GUARDIAN_ANALYTIC_QUOTE in text_blob
-    assert "Guardião Analítico Assistivo" in text_blob
-    assert "sem efeito operacional automático" in text_blob
+    assert payload["ml_operacional"] is True
+    assert payload["decision_trace_enabled"] is True
+    assert payload["feature_attribution_enabled"] is True
+    assert "Guardião Analítico Assistivo" in text_blob or "operacional supervisionado" in text_blob
     assert "geracao_por_ml" in payload["ml_security_status"]
-    assert payload["ml_security_status"]["geracao_por_ml"] == "proibida"
     assert payload["ml_security_status"]["promocao_automatica"] == "proibida"
     assert len(payload["ml_six_bases_relation"]) == 6
     assert len(payload["separation_matrix"]) == 5
     assert "M-VIS-036" in text_blob
+
+
+def test_ml_assistive_snapshot_read_only_when_ml_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOTOIA_ML_CORE_002_OPERATIONAL_ENABLED", "0")
+    payload = ml_assistive.build_ml_assistive_snapshot()
+    assert payload["ml_operacional"] is False
+    assert "efeito operacional automático" in payload["guardian_quote"]
 
 
 def test_side_leak_snapshot_has_constitutional_risks() -> None:
