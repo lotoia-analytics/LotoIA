@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 |
+| Atualização | 2026-06-17 (fechamento M-GOV-030) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,7 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
-| M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `EM_EXECUCAO` | branch `cursor/gestao-projetos-fase0-cae6` |
+| M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
 | M-GOV-029 | Inventário funcional ADM (Mission 29) | `agent_visual` | `CONGELADA` | docs em `main` |
 | M-GOV-028 | Manutenção institucional contínua (Mission 28) | `agent_governanca` | `CONCLUIDA` | `MISSION_28_CONTINUOUS_MAINTENANCE_POLICY.md` |
 | M-GOV-027 | Auditoria constitucional pós LEI15_CORE_002 | `agent_governanca` | `AGUARDANDO_VEREDICTO` | `AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md` |
