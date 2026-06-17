@@ -37,7 +37,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
-| M-VIS-037 | Conferir Resultados / Auditoria de Lotes Persistidos | `agent_visual` + `agent_dados` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-vis-037-conferir-resultados-auditoria-cae6` |
+| M-VIS-037 | Conferir Resultados / Auditoria de Lotes Persistidos | `agent_visual` + `agent_dados` | `CONCLUIDA` | merge `539f256` — produção `institutional-adm-runtime-v13` |
 | M-VIS-036 | Simulação Institucional / Backtesting | `agent_estatistico` + `agent_ml` | `CONCLUIDA` | merge `240e3d0` — produção `institutional-adm-runtime-v12` |
 | M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `CONCLUIDA` | merge `76031cb` — produção `institutional-adm-runtime-v11` |
 | M-VIS-034 | Cobertura Estrutural + 6 Bases refinadas no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a533e61` — produção `institutional-adm-runtime-v10` |
