@@ -95,6 +95,7 @@ from dashboard.institutional_governance import (
     render_governance_read_only_page,
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
+from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -8179,10 +8180,14 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
-    st.info(
-        "Referência constitucional: **LEI15_CORE_002** — cobertura observacional, não contagem "
-        "cega de dezenas. Lotes V2/V3/V4 são **evidência histórica** — histórico não é núcleo "
-        "soberano. Ver também **Núcleo Lei 15 — CORE_002** (read-only)."
+    render_structural_coverage_governance_section(
+        generation_blocked=_is_sovereign_generation_blocked(),
+    )
+    st.divider()
+    st.markdown("### Diagnóstico observacional de lote")
+    st.caption(
+        "Referência constitucional: **LEI15_CORE_002**. Lotes V2/V3/V4 abaixo são **evidência histórica** — "
+        "histórico não é núcleo soberano. Ver também **Núcleo Lei 15 — CORE_002** (read-only)."
     )
     _render_diagnostic_observational_caption()
     st.write(

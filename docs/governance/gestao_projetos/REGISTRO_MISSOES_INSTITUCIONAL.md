@@ -10,7 +10,8 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-VIS-033](#m-vis-033--pacote-núcleo-lei-15-no-painel-adm) | Pacote Núcleo Lei 15 ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-VIS-034](#m-vis-034--cobertura-estrutural--6-bases-refinadas-no-painel-adm) | Cobertura Estrutural + 6 Bases ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-VIS-033](#m-vis-033--pacote-núcleo-lei-15-no-painel-adm) | Pacote Núcleo Lei 15 ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `CONCLUIDA` | `INCORPORADA À MAIN` |
@@ -27,23 +28,54 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 ## Entradas
 
-### M-VIS-033 — Pacote Núcleo Lei 15 no Painel ADM
+### M-VIS-034 — Cobertura Estrutural + 6 Bases refinadas no Painel ADM
 
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
 | Projeto | `P-GOV-001` / `P-LEI15-001` |
-| Agentes | `agent_visual` + `agent_governanca` + `agent_estatistico` + `agent_qualidade` |
+| Agentes | `agent_visual` + `agent_estatistico` + `agent_governanca` + `agent_qualidade` |
 | Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
 | Risco | Médio (read-only) |
-| Branch | `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+| Branch | `cursor/m-vis-034-cobertura-estrutural-6-bases-cae6` |
+
+**Objetivo:** Refinar Cobertura Estrutural e leitura pelas 6 Bases no Painel ADM — modo
+read-only, separação soberano/histórico, alertas institucionais.
+
+**Pré-requisito:** M-VIS-033 fechada em `main` (PR #133 — merge `a2009cda`).
+
+**Veredicto alvo:** **M-VIS-034 CONCLUÍDA — COBERTURA ESTRUTURAL + 6 BASES READ-ONLY AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-VIS-034_COBERTURA_ESTRUTURAL_6_BASES_PAINEL_ADM.md`
+
+---
+
+### M-VIS-033 — Pacote Núcleo Lei 15 no Painel ADM
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-LEI15-001` |
+| Agentes | `agent_visual` + `agent_governanca` + `agent_estatistico` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Risco | Médio (read-only) |
+| Branch implantação | `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
 
 **Objetivo:** Pacote read-only **Núcleo Lei 15 — CORE_002** no Painel ADM — matriz soberana,
 6 bases, cobertura orientada, evidências históricas reclassificadas.
 
 **Pré-requisito:** M-LEI15-003 fechada em `main` (PR #131/#132).
 
-**Veredicto alvo:** **M-VIS-033 CONCLUÍDA — PACOTE NÚCLEO LEI 15 READ-ONLY AGUARDANDO REVIEW**
+**Evidência Git:** PR [#133](https://github.com/lotoia-analytics/LotoIA/pull/133) — merge
+`a2009cda458b2044020c5d9256693e0b19950e3b` — entrega `c5ce9ad259ce414b17500e04f4556cac0a973859`
+
+**Evidência produção:** `lotoia-production.up.railway.app` — build `institutional-adm-runtime-v9`
+— deploy Railway 2026-06-17T19:55:04Z — health `ok` — tela `core_002_read_only` read-only.
+
+**Veredicto:** **M-VIS-033 FECHADA FORMALMENTE — NÚCLEO LEI 15 READ-ONLY VALIDADO EM PRODUÇÃO**
+
+**Veredicto institucional:** **M-VIS-033 ATIVA EM PRODUÇÃO POR EVIDÊNCIA PROPORCIONAL — NÚCLEO LEI 15 READ-ONLY VALIDADO**
 
 **Cartão:** `cartoes/M-VIS-033_PACOTE_NUCLEO_LEI15_PAINEL_ADM.md`
 

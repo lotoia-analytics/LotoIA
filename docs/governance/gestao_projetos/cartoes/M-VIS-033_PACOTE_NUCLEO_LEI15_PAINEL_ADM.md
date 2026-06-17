@@ -7,8 +7,9 @@
 | **Projeto** | `P-GOV-001` / `P-LEI15-001` |
 | **Tipo** | Visual / Governança / Estatístico / Read-only |
 | **Data de abertura** | 2026-06-17 |
+| **Data encerramento** | 2026-06-17 |
 | **Agentes** | `agent_visual` + `agent_governanca` + `agent_estatistico` + `agent_qualidade` |
-| **Status atual** | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| **Status atual** | `CONCLUIDA` |
 | **Prioridade / Risco** | Médio (visual/read-only); alto se tocar geração, banco ou Núcleo |
 
 ## Objetivo
@@ -51,9 +52,70 @@ Cobertura Estrutural orientada ao CORE_002 e leitura pelas 6 Bases.
 
 | Campo | Valor |
 |-------|-------|
-| Branch | `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+| Branch implantação | `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+| PR implantação | [#133](https://github.com/lotoia-analytics/LotoIA/pull/133) |
+| Merge commit | `a2009cda458b2044020c5d9256693e0b19950e3b` |
+| Commit entrega | `c5ce9ad259ce414b17500e04f4556cac0a973859` |
 | Build marker | `institutional-adm-runtime-v9` |
 
-## Veredicto alvo
+## Evidência de deploy (Railway produção)
 
-**M-VIS-033 CONCLUÍDA — PACOTE NÚCLEO LEI 15 READ-ONLY AGUARDANDO REVIEW**
+| Campo | Valor |
+|-------|-------|
+| Ambiente | `lotoia-production.up.railway.app` |
+| Build marker | `institutional-adm-runtime-v9` |
+| Commit em produção | `a2009cda458b2044020c5d9256693e0b19950e3b` |
+| Deploy Railway | 2026-06-17T19:55:04Z |
+| Pendência de deploy | **NENHUMA** |
+| Tipo de evidência | Textual/operacional (P1–P5) — M-GOV-031 |
+
+## Confirmação textual/operacional em produção
+
+- HTTP 200 em `/`
+- Streamlit `/_stcore/health` → `ok`
+- Deploy Railway recebido com SHA `a2009cd`
+- Build `institutional-adm-runtime-v9`
+- Testes 28/28 passed (core_002 + M-VIS-031 + M-LEI15-003)
+- Tela `core_002_read_only` registrada
+- Tela read-only — sem `st.button` operacional
+- Sem chamada de geração/purge no módulo
+- Geração **BLOQUEADA**
+- `public_app` inalterado
+- LEI15_CORE_002 inalterado
+
+## Checklist de conformidade
+
+```text
+A Autorização:     [x] OK
+B Documentação:    [x] OK
+C Git:             [x] OK — PR #133 mergeada
+D Qualidade:       [x] OK — 9 testes core_002 + regressão
+E Deploy:          [x] OK — evidência leve produção (Railway 19:55:04Z)
+F Bloqueios:       [x] OK — geração bloqueada; read-only confirmado
+G Veredicto:       [x] OK
+```
+
+## Veredicto
+
+| Campo | Valor |
+|-------|-------|
+| **Veredicto** | `CONCLUIDA / VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
+| **Data** | 2026-06-17 |
+| **Emitido por** | `agent_governanca` + `agent_visual` + `agent_qualidade` |
+| **Resumo** | PR #133 mergeada em `main`; Railway em `a2009cda` com build `institutional-adm-runtime-v9`; pacote Núcleo Lei 15 read-only confirmado. |
+| **Veredicto institucional** | **M-VIS-033 ATIVA EM PRODUÇÃO POR EVIDÊNCIA PROPORCIONAL — NÚCLEO LEI 15 READ-ONLY VALIDADO** |
+| **Veredicto de fechamento** | **M-VIS-033 FECHADA FORMALMENTE — NÚCLEO LEI 15 READ-ONLY VALIDADO EM PRODUÇÃO** |
+| **Registro** | `REGISTRO_MISSOES_INSTITUCIONAL.md` — entrada M-VIS-033 |
+
+## Próxima missão autorizável
+
+`M-VIS-034` — Cobertura Estrutural + 6 Bases refinadas no Painel ADM
+
+## Histórico de transições
+
+| Data | De | Para | Motivo | Responsável |
+|------|----|------|--------|-------------|
+| 2026-06-17 | — | `EM_EXECUCAO` | Autorizada pós M-LEI15-003 | `agent_visual` |
+| 2026-06-17 | `EM_EXECUCAO` | `AGUARDANDO_REVIEW` | PR #133 aberta | `agent_visual` |
+| 2026-06-17 | `AGUARDANDO_REVIEW` | `INCORPORADA À MAIN` | Merge PR #133 | operador institucional |
+| 2026-06-17 | `INCORPORADA À MAIN` | `CONCLUIDA` | Deploy Railway + checkpoint produção validado | `agent_governanca` |
