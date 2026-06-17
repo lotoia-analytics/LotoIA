@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v19"
 
 
 def test_route_inventory_module_imports() -> None:

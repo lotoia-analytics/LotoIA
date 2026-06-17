@@ -21,7 +21,7 @@ def test_audit_report_exists_and_has_verdict() -> None:
 
 def test_build_markers_match_audit_base() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert BUILD_MARKER == "institutional-adm-runtime-v18"
+    assert BUILD_MARKER == "institutional-adm-runtime-v19"
     assert public_app.PUBLIC_APP_BUILD == "public-surface-v1-m-plat-041"
 
 

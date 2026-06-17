@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v19"
 
 
 def test_simulation_backtesting_module_imports() -> None:
@@ -89,7 +89,7 @@ def test_m_vis_035_regression_ml_assistive_module_exists() -> None:
     from dashboard import institutional_ml_assistive
 
     payload = institutional_ml_assistive.build_ml_assistive_snapshot()
-    assert payload["ml_operacional"] is False
+    assert payload["ml_operacional"] is True
 
 
 def test_m_vis_034_regression_structural_coverage_exists() -> None:
