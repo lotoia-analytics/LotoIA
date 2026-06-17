@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
@@ -22,6 +23,36 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-GOV-031 — Checkpoint de produção simplificado
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` |
+| Agentes | `agent_governanca` (primário), `agent_plataforma` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Tipo | Governança / Política |
+| Contexto | Lições M-VIS-031 / M-VIS-032 — screenshot e script HTTP burocráticos |
+
+**Objetivo:** Instituir evidência de produção proporcional ao risco; screenshot e script HTTP
+deixam de ser obrigatórios por padrão.
+
+**Decisão institucional:**
+
+- Screenshot: **opcional/condicional** (dúvida visual, layout crítico, divergência UI-runtime, solicitação operador)
+- Script HTTP: **opcional/condicional** (risco alto/crítico, geração/purge/banco/auth/entrypoint/public_app/API, incidente)
+- Evidência leve P1–P5: **suficiente** para missões documentais, read-only, visuais simples ou baixo/médio risco
+
+**Entregáveis:** `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`, checklist E, template, README, cartão M-GOV-031.
+
+**Veredicto alvo:** **POLÍTICA DE CHECKPOINT SIMPLIFICADA — SCREENSHOT E SCRIPT HTTP NÃO OBRIGATÓRIOS**
+
+**Veredicto:** pendente — aguardando review institucional da PR.
+
+**Cartão:** `cartoes/M-GOV-031_CHECKPOINT_PRODUCAO_SIMPLIFICADO.md`
+
+---
 
 ### M-VIS-032 — Governança read-only no Painel ADM
 

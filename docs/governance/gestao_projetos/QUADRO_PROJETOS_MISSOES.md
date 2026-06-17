@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-VIS-032 fechamento — validada em produção) |
+| Atualização | 2026-06-17 (M-GOV-031 checkpoint produção simplificado) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,6 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
+| M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-gov-031-checkpoint-producao-simplificado-cae6-v2` |
 | M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — [PR #127](https://github.com/lotoia-analytics/LotoIA/pull/127) — produção `7df540ce3bcc` / `institutional-adm-runtime-v7` |
 | M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
 | M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |

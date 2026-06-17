@@ -11,6 +11,7 @@ Camada documental e versionada no Git para controle institucional de missões.
 | Documento | Caminho | Uso |
 |-----------|---------|-----|
 | Política (lei) | [`../POLITICA_GESTAO_PROJETOS_LOTOIA.md`](../POLITICA_GESTAO_PROJETOS_LOTOIA.md) | Regras institucionais |
+| Checkpoint produção | [`../POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`](../POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md) | Evidência de produção proporcional ao risco |
 | Quadro de projetos | [`QUADRO_PROJETOS_MISSOES.md`](QUADRO_PROJETOS_MISSOES.md) | Visão ativa |
 | Checklist obrigatório | [`CHECKLIST_MISSAO_OBRIGATORIO.md`](CHECKLIST_MISSAO_OBRIGATORIO.md) | Gate por missão |
 | Cartão de tarefa | [`TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md`](TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md) | Modelo de tarefa |

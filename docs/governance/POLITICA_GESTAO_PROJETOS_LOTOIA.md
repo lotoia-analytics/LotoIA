@@ -73,6 +73,7 @@ assistivo e trilha ADR.
 | Lei / política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` | Regras institucionais |
 | Quadro | `gestao_projetos/QUADRO_PROJETOS_MISSOES.md` | Visão ativa de projetos e missões |
 | Checklist | `gestao_projetos/CHECKLIST_MISSAO_OBRIGATORIO.md` | Gate obrigatório por missão |
+| Checkpoint produção | `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` | Evidência de produção proporcional ao risco |
 | Template | `gestao_projetos/TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md` | Modelo de cartão de tarefa |
 | Matriz | `gestao_projetos/MATRIZ_STATUS_TAREFAS.md` | Estados, transições e bloqueios |
 | Registro | `gestao_projetos/REGISTRO_MISSOES_INSTITUCIONAL.md` | Log cronológico e veredictos |
@@ -89,7 +90,7 @@ assistivo e trilha ADR.
 | **Agente** | Domínio Cursor (`.cursor/rules/agent_*.mdc`) responsável pelo escopo |
 | **Evidência Git** | Branch, commits, diff revisável e push para remoto |
 | **Evidência de teste** | Saída de `pytest` e/ou `ruff check` quando o escopo tocar código |
-| **Evidência de deploy** | SHA validado, checklist Railway ou relatório de validação quando aplicável |
+| **Evidência de deploy** | Build + commit + confirmação deploy/painel (evidência leve); script HTTP e screenshot **condicionais** — ver `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` |
 | **Veredicto** | Decisão formal: `APROVADO`, `APROVADO_COM_RESSALVAS`, `BLOQUEADO`, `REJEITADO`, `CONGELADO` |
 | **Bloqueio** | Impedimento registrado que impede transição de status |
 
@@ -188,6 +189,7 @@ Uma missão está em conformidade com esta política quando:
 - `docs/governance/POLITICA_ML_ASSISTIVO.md`
 - `docs/governance/AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md`
 - `docs/governance/gestao_projetos/README.md`
+- `docs/governance/POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`
 - `AGENTS.md`
 - `.cursor/rules/agent_governanca.mdc`
 - `.cursor/rules/agent_plataforma.mdc`
@@ -199,3 +201,4 @@ Uma missão está em conformidade com esta política quando:
 | Data | Evento |
 |------|--------|
 | 2026-06-17 | Formalização da Política de Gestão de Projetos — Fase 0 |
+| 2026-06-17 | Referência à Política de Checkpoint de Produção simplificada |
