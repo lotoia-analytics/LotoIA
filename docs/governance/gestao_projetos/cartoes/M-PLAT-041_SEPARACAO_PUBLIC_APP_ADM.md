@@ -33,6 +33,16 @@
 - public_app não espelha ADM por default
 - Sem geração / purge / banco / Núcleo alterados
 
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#148](https://github.com/lotoia-analytics/LotoIA/pull/148) |
+| Merge commit | `1f8688a` |
+| Commit entrega | `9d030c4` |
+| Build ADM | `institutional-adm-runtime-v17` |
+| Build público | `public-surface-v1-m-plat-041` |
+
 ## Veredicto
 
 | Campo | Valor |
