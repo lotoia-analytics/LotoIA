@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
 | [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `CONCLUIDA` | `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA` |
@@ -21,6 +22,30 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-032 — Governança read-only no Painel ADM
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` |
+| Agentes | `agent_visual` (primário), `agent_governanca`, `agent_plataforma` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Tipo | Visual / Governança / Read-only |
+| Pré-requisito | M-VIS-031 fechada — PR #126 merge `510cccb` |
+
+**Objetivo:** Área read-only de Governança no Painel ADM — Gestão de Projetos, missões,
+bloqueios, leis/ADRs, Git/Railway — sem ações operacionais.
+
+**Entregáveis:** `dashboard/institutional_governance.py`, rota/menu Governança, testes, cartão M-VIS-032.
+
+**Bloqueios exibidos (sem alterar):** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-ADM-001`, `BLK-DEPLOY-001`
+
+**Veredicto:** pendente — aguardando review institucional da PR.
+
+**Cartão:** `cartoes/M-VIS-032_GOVERNANCA_READ_ONLY_PAINEL_ADM.md`
+
+---
 
 ### M-VIS-031 — Painel ADM Fase 1: Bloqueios Constitucionais e Status mínimo
 

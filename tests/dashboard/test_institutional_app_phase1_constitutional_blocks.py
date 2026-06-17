@@ -38,6 +38,7 @@ def test_run_clean_law15_generation_returns_blocked_payload_without_name_error(
 def test_orphan_generation_page_not_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
     sidebar_calls: list[str] = []
+    monkeypatch.setattr(institutional_app.st, "session_state", {})
 
     monkeypatch.setattr(institutional_app, "_apply_institutional_styles", lambda: None)
     monkeypatch.setattr(institutional_app, "_render_sidebar_logo", lambda: None)

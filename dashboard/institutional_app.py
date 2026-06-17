@@ -90,6 +90,10 @@ from lotoia.generator.engine import generate_ranked_games
 from lotoia.statistics.basic import number_frequency
 
 
+from dashboard.institutional_governance import (
+    GOVERNANCE_READ_ONLY_ALERT,
+    render_governance_read_only_page,
+)
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -389,6 +393,7 @@ PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 
 PAGE_TARGETS = {
     "Painel Inicial Institucional": "home",
+    "Governança Institucional — read-only": "governance_read_only",
     "Auditoria Runtime": "audit",
     "Auditoria e Monitoramento": "audit_monitoring",
     "Conferência por concurso": "audit_monitoring_conference",
@@ -423,6 +428,7 @@ PAGE_TARGETS = {
 }
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
+    {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
     {"icon": "🎯", "label": "Gerador ADM CORE_002 — BLOQUEADO", "page_id": "clean_law15_generation"},
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
@@ -9594,6 +9600,14 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
+    st.sidebar.markdown('<div class="lotoia-sidebar-group">Governança</div>', unsafe_allow_html=True)
+    for label, page_id in [
+        ("Governança Institucional — read-only", "governance_read_only"),
+    ]:
+        _nav_entry(label, page_id)
+    st.sidebar.caption(GOVERNANCE_READ_ONLY_ALERT)
+
+    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
@@ -9656,6 +9670,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     allowed_pages = {
         "home",
         "fallback",
+        "governance_read_only",
         "clean_law15_generation",
         "conference",
         "simulation",
@@ -13475,6 +13490,16 @@ def main() -> None:
         _render_runtime_audit_page(snapshot)
     elif page == "home":
         _render_home_page(snapshot)
+    elif page == "governance_read_only":
+        render_governance_read_only_page(
+            snapshot=snapshot,
+            app_build=APP_BUILD,
+            active_commit=_resolve_active_commit(),
+            generation_blocked=_is_sovereign_generation_blocked(),
+            inventory_reference=INVENTORY_REPORT_REFERENCE,
+            render_constitutional_panel=_render_constitutional_status_panel,
+            render_diagnostic_caption=_render_diagnostic_observational_caption,
+        )
     elif page == "fallback":
         _render_fallback_page(snapshot)
     elif page == "audit_monitoring":
