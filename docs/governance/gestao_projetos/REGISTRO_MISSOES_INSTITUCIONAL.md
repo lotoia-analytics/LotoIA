@@ -10,7 +10,8 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
@@ -24,31 +25,47 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 ## Entradas
 
-### M-GOV-031 — Checkpoint de produção simplificado
+### M-RODADA-001 — Rodada Multiagente Painel / CORE_002
 
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
 | Projeto | `P-GOV-001` |
-| Agentes | `agent_governanca` (primário), `agent_plataforma` |
+| Agentes | 8 agentes institucionais |
 | Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco pacote | Baixo (documental/planejamento) |
+| Branch | `cursor/rodada-multiagente-painel-core002-cae6` |
+
+**Objetivo:** Auditoria e organização multiagente; relatórios por domínio; política de pacotes;
+fila de missões propostas — sem geração, purge ou alteração de Núcleo.
+
+**Entregáveis:** `POLITICA_MISSOES_POR_PACOTE_LOTOIA.md`, `DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md`,
+`rodada_multiagente/RELATORIO_*.md`, fechamento M-GOV-031 documental.
+
+**Bloqueios identificados:** bypass `_generate_direct_15_games`; segregação public_app; órfãs page_keys.
+
+**Veredicto alvo:** **RODADA MULTIAGENTE PARCIAL — PR DE PACOTE AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-RODADA-001_RODADA_MULTIAGENTE_PAINEL_CORE002.md`
+
+---
+
+### M-GOV-031 — Checkpoint de produção simplificado
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` |
+| Agentes | `agent_governanca` (primário), `agent_plataforma` |
+| Status | `CONCLUIDA` |
 | Tipo | Governança / Política |
-| Contexto | Lições M-VIS-031 / M-VIS-032 — screenshot e script HTTP burocráticos |
 
-**Objetivo:** Instituir evidência de produção proporcional ao risco; screenshot e script HTTP
-deixam de ser obrigatórios por padrão.
+**Veredicto:** `CONCLUIDA / INCORPORADA À MAIN`
 
-**Decisão institucional:**
+**Veredicto institucional:** **M-GOV-031 INCORPORADA À MAIN — CHECKPOINT SIMPLIFICADO OFICIALIZADO**
 
-- Screenshot: **opcional/condicional** (dúvida visual, layout crítico, divergência UI-runtime, solicitação operador)
-- Script HTTP: **opcional/condicional** (risco alto/crítico, geração/purge/banco/auth/entrypoint/public_app/API, incidente)
-- Evidência leve P1–P5: **suficiente** para missões documentais, read-only, visuais simples ou baixo/médio risco
-
-**Entregáveis:** `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`, checklist E, template, README, cartão M-GOV-031.
-
-**Veredicto alvo:** **POLÍTICA DE CHECKPOINT SIMPLIFICADA — SCREENSHOT E SCRIPT HTTP NÃO OBRIGATÓRIOS**
-
-**Veredicto:** pendente — aguardando review institucional da PR.
+**Evidência Git:** PR [#129](https://github.com/lotoia-analytics/LotoIA/pull/129) — merge `1de7cfd`
 
 **Cartão:** `cartoes/M-GOV-031_CHECKPOINT_PRODUCAO_SIMPLIFICADO.md`
 

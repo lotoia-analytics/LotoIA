@@ -74,6 +74,8 @@ assistivo e trilha ADR.
 | Quadro | `gestao_projetos/QUADRO_PROJETOS_MISSOES.md` | Visão ativa de projetos e missões |
 | Checklist | `gestao_projetos/CHECKLIST_MISSAO_OBRIGATORIO.md` | Gate obrigatório por missão |
 | Checkpoint produção | `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` | Evidência de produção proporcional ao risco |
+| Missões por pacote | `POLITICA_MISSOES_POR_PACOTE_LOTOIA.md` | Agrupamento e risco de pacotes |
+| Multiagente | `DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md` | Rodadas multiagente |
 | Template | `gestao_projetos/TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md` | Modelo de cartão de tarefa |
 | Matriz | `gestao_projetos/MATRIZ_STATUS_TAREFAS.md` | Estados, transições e bloqueios |
 | Registro | `gestao_projetos/REGISTRO_MISSOES_INSTITUCIONAL.md` | Log cronológico e veredictos |

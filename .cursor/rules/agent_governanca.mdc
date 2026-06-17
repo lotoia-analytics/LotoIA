@@ -50,6 +50,8 @@ references:
   - docs/governance/POLITICA_ML_ASSISTIVO.md
   - docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md
   - docs/governance/POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md
+  - docs/governance/POLITICA_MISSOES_POR_PACOTE_LOTOIA.md
+  - docs/governance/DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md
   - docs/governance/gestao_projetos/README.md
   - docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md
   - docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md
