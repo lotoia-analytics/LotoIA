@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-VIS-031 Fase 1 ADM) |
+| Atualização | 2026-06-17 (M-VIS-031 fechamento — validada em produção) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,7 +35,8 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
-| M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `AGUARDANDO_REVIEW` | branch `cursor/m-vis-031-painel-adm-fase1-cae6` |
+| M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `AUTORIZADA` | próxima missão — pós M-VIS-031 |
+| M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
 | M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
 | M-GOV-029 | Inventário funcional ADM (Mission 29) | `agent_visual` | `CONGELADA` | docs em `main` |
 | M-GOV-028 | Manutenção institucional contínua (Mission 28) | `agent_governanca` | `CONCLUIDA` | `MISSION_28_CONTINUOUS_MAINTENANCE_POLICY.md` |

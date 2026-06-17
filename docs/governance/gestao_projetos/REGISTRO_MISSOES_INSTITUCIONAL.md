@@ -10,7 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `AGUARDANDO_REVIEW` | pendente |
+| [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
 | [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `CONCLUIDA` | `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA` |
 | [M-GOV-027](#m-gov-027--auditoria-constitucional) | Auditoria constitucional | `AGUARDANDO_VEREDICTO` | `LOTOIA CONFLITANTE` |
@@ -27,9 +27,10 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
 | Projeto | `P-GOV-001` |
-| Agentes | `agent_visual` (primário), `agent_plataforma` |
-| Status | `AGUARDANDO_REVIEW` |
+| Agentes | `agent_visual` (primário), `agent_plataforma`, `agent_governanca` (fechamento) |
+| Status | `CONCLUIDA` |
 | Tipo | Correção constitucional defensiva |
 | Base | Inventário PR #124 (`328d26f`) |
 
@@ -38,9 +39,54 @@ bloqueado, órfã `generation` removida, NameError corrigido.
 
 **Entregáveis:** `dashboard/institutional_app.py`, testes Fase 1, cartão M-VIS-031.
 
-**Bloqueios:** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-ADM-001`
+**Bloqueios mitigados:** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-ADM-001` — `BLK-DEPLOY-001` removido.
 
-**Veredicto:** pendente — aguardando review institucional da PR.
+**Evidência Git:**
+
+| Campo | Valor |
+|-------|-------|
+| Branch implantação | `cursor/m-vis-031-painel-adm-fase1-cae6` |
+| PR | [#125](https://github.com/lotoia-analytics/LotoIA/pull/125) |
+| Merge commit | `a5a3f2f250b1b749d0cd0915f1a6828dadf8a731` |
+| Merge em `main` | 2026-06-17 |
+| Branch fechamento | `cursor/m-vis-031-fechamento-cae6` |
+
+**Evidência testes:** `tests/dashboard/test_institutional_app_phase1_constitutional_blocks.py` — 7/7 passed.
+
+**Evidência deploy (Railway produção):**
+
+| Campo | Valor |
+|-------|-------|
+| Ambiente | `lotoia-production.up.railway.app` |
+| Build marker | `institutional-adm-runtime-v6` |
+| Commit em produção | `a5a3f2f250b1` |
+| Deploy | via GitHub merge PR #125 — sem deploy manual |
+| Pendência de deploy | **NENHUMA** |
+
+**Confirmação visual em produção:**
+
+- Status Constitucional visível
+- Núcleo soberano: `LEI15_CORE_002`
+- Label soberano: `STRUCT_LEI15_CORE_CANDIDATE_002_15D_001`
+- Geração: **BLOQUEADA**
+- Lei 15A: **SUSPENSA** / aguardando redefinição
+- ML: **ASSISTIVO** / diagnóstico / sem efeito operacional automático
+- Histórico/purge: **PROTEGIDO**
+- Gestão de Projetos Fase 0 implantada
+- Inventário Painel ADM aprovado pela PR #124
+- Gerador ADM CORE_002 bloqueado
+- Recalibração bloqueada
+- Purge protegido
+
+**Veredicto:** `CONCLUIDA / VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY`
+
+**Veredicto institucional:** **M-VIS-031 ATIVA EM PRODUÇÃO — PAINEL ADM FASE 1 VALIDADO**
+
+**Veredicto de fechamento:** **M-VIS-031 FECHADA FORMALMENTE — PAINEL ADM FASE 1 VALIDADO EM PRODUÇÃO**
+
+**Emitido por:** `agent_governanca` + `agent_visual` + `agent_plataforma` — 2026-06-17
+
+**Próxima missão autorizável:** `M-VIS-032` — Governança read-only no Painel ADM
 
 **Cartão:** `cartoes/M-VIS-031_PAINEL_ADM_FASE_1_BLOQUEIOS_CONSTITUCIONAIS.md`
 
