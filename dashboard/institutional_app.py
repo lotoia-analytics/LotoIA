@@ -131,11 +131,17 @@ from dashboard.institutional_supervised_ml import (
     supervised_ml_status_label,
 )
 from dashboard.institutional_clean_law15_runtime import (
-    ADM_RUNTIME_ACTIVE_CARD_FORMAT,
-    SOVEREIGN_RUNTIME_FORMAT_LABEL,
-    SOVEREIGN_RUNTIME_GAMES_COLUMN_LABELS,
-    render_lei15a_inoperative_notice,
-    render_sovereign_runtime_format_panel,
+    GENERATOR_PAGE_TITLE,
+    MULTIDEZENA_BLOCK_REASON,
+    is_multidezena_persistence_supported,
+    multidezena_format_label,
+    render_compact_status_chips,
+    render_generation_games_table,
+    render_generation_operation_block,
+    render_generation_result_summary,
+    render_governance_expander,
+    render_six_bases_expander,
+    render_technical_expander,
 )
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
@@ -12260,170 +12266,71 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
 
 def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader(adm_generator_menu_label())
-    _render_constitutional_status_panel(compact=False)
-    render_lei15a_inoperative_notice(compact=False)
-    if _is_sovereign_generation_blocked():
+    ml_active = is_adm_supervised_ml_active()
+    generation_active = not _is_sovereign_generation_blocked()
+
+    st.markdown(f"### {GENERATOR_PAGE_TITLE}")
+    render_compact_status_chips(ml_active=ml_active, generation_active=generation_active)
+
+    if not generation_active:
         st.error(
             "Geração bloqueada enquanto `LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`. "
             "Nenhum jogo será gerado neste estado."
         )
-        st.caption(
-            "Lei 15A permanece inoperante. Expansão mecânica 16–23D não está autorizada."
-        )
-        _render_diagnostic_observational_caption()
+        render_governance_expander(render_constitutional_panel=_render_constitutional_status_panel)
         return
 
-    st.success(SOVEREIGN_GENERATION_STATUS_ACTIVE)
-    if is_adm_supervised_ml_active():
-        st.success(supervised_ml_status_label())
-        st.info(SUPERVISED_ML_DISCLAIMER)
-        st.caption(SUPERVISED_ML_GOVERNANCE_ALERT)
-    else:
-        st.warning("ML operacional supervisionado inativo — geração soberana sem camada ML.")
-    st.info(SOVEREIGN_GENERATION_DISCLAIMER)
-    st.warning(
-        "Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL "
-        f"(label obrigatório: `{SOVEREIGN_BATCH_LABEL}`)."
-    )
-    st.caption(
-        "Runtime Limpo ADM 15 — geração exclusiva CORE_002 / 15D com saída auditada pelo OutputCommander."
-    )
-    st.markdown("##### Runtime Limpo ADM 15")
-    requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
-    st.session_state["clean_law15_card_format"] = ADM_RUNTIME_ACTIVE_CARD_FORMAT
-    selected_card_format = ADM_RUNTIME_ACTIVE_CARD_FORMAT
-    render_sovereign_runtime_format_panel()
-    left, right = st.columns(2)
-    left.metric("Formato", "15D — CORE_002")
-    right.metric("Estratégia ativa", "LEI15_CORE_002")
-    if st.button("Gerar CORE_002 (15D)", type="primary", key="clean_law15_generate_button"):
+    requested_count, selected_card_format = render_generation_operation_block(ml_active=ml_active)
+
+    if st.session_state.pop("_clean_law15_generate_clicked", False):
         result = _run_clean_law15_generation(requested_count=requested_count)
         result["selected_card_format"] = int(selected_card_format)
-        result["card_format_label"] = SOVEREIGN_RUNTIME_FORMAT_LABEL
-        result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
+        result["card_format_label"] = multidezena_format_label(selected_card_format)
+        result["display_games"] = _expand_generation_games_for_format(
+            result.get("games") or [],
+            selected_card_format,
+        )
         result["validation_status_lei_17"] = "N_A"
         result["validation_status_lei_18"] = "N_A"
+        if is_multidezena_persistence_supported(selected_card_format):
+            persisted_snapshot = _persist_clean_law15_generation_history(
+                result=result,
+                selected_card_format=selected_card_format,
+            )
+            if persisted_snapshot:
+                result.update(persisted_snapshot)
+                st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
+        else:
+            result["persistence_blocked"] = True
+            result["persistence_block_reason"] = MULTIDEZENA_BLOCK_REASON.format(format=selected_card_format)
         st.session_state["clean_law15_generation_result"] = result
-        persisted_snapshot = _persist_clean_law15_generation_history(
-            result=result,
-            selected_card_format=selected_card_format,
-        )
-        if persisted_snapshot:
-            result.update(persisted_snapshot)
-            st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
         st.rerun()
+
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
     if result:
-        st.success(
-            f"Quantidade solicitada={result.get('requested_count', '-')}"
-            f" | gerados={len(result.get('games') or [])}"
-            f" | dezenas/jogo={result.get('dezenas_por_jogo', '-')}"
-            f" | formato_cartao=15D-CORE_002"
-        )
-        st.caption(
-            " | ".join(
-                [
-                    f"generation_mode={result.get('generation_mode', '-')}",
-                    f"policy_mode={result.get('policy_mode', '-')}",
-                    f"batch_fill_strategy={result.get('batch_fill_strategy', '-')}",
-                    f"scientific_law_role={result.get('scientific_law_role', '-')}",
-                    f"clean_adm_runtime_role={result.get('clean_adm_runtime_role', '-')}",
-                    f"output_commander_role={result.get('output_commander_role', '-')}",
-                    f"nucleo_core_002_size=15",
-                    f"generation_event_id={result.get('generation_event_id', '-')}",
-                ]
+        render_generation_result_summary(result)
+        games = list(
+            result.get("display_games")
+            or _expand_generation_games_for_format(
+                result.get("games") or [],
+                int(result.get("selected_card_format", 15) or 15),
             )
         )
-        st.caption(
-            " | ".join(
-                [
-                    f"historical_deduplication_mode={result.get('historical_deduplication_mode', '-')}",
-                    f"historical_duplicates_removed={result.get('historical_duplicates_removed', '-')}",
-                    f"legacy_generation_flow={result.get('legacy_generation_flow', '-')}",
-                    f"legacy_dashboard_generation={result.get('legacy_dashboard_generation', '-')}",
-                    f"legacy_calibrator_role={result.get('legacy_calibrator_role', '-')}",
-                    f"calibration_engine_role={result.get('calibration_engine_role', '-')}",
-                    f"accepted_games={result.get('accepted_games', 0)}",
-                    f"valid_candidates={result.get('valid_candidates', 0)}",
-                    f"attempts_used={result.get('attempts_used', 0)}",
-                    f"fill_completed={result.get('fill_completed', False)}",
-                ]
-            )
+        render_generation_games_table(
+            games,
+            card_format=int(result.get("selected_card_format", 15) or 15),
+            format_numbers=_format_numbers_for_history,
+            extract_numbers=_extract_int_numbers,
         )
-        diag_cols = st.columns(4)
-        diag_cols[0].metric("accepted_games", int(diagnostics.get("accepted_games", 0) or 0))
-        diag_cols[1].metric("valid_candidates", int(diagnostics.get("valid_candidates_found", 0) or 0))
-        diag_cols[2].metric("attempts_used", int(diagnostics.get("attempts_used", 0) or 0))
-        diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
-        games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], ADM_RUNTIME_ACTIVE_CARD_FORMAT))
-        if games:
-            st.markdown("#### Jogos gerados — CORE_002 (15D)")
-            games_table_rows: list[dict[str, Any]] = []
-            for index, game in enumerate(games):
-                core_numbers = _extract_int_numbers(game.get("core_numbers", game.get("numbers", [])))
-                final_card_numbers = _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
-                games_table_rows.append(
-                    {
-                        "jogo": index + 1,
-                        "núcleo_core_002": _format_numbers_for_history(core_numbers),
-                        "cartão_final": _format_numbers_for_history(final_card_numbers),
-                    }
-                )
-            games_df = pd.DataFrame(games_table_rows).rename(columns=SOVEREIGN_RUNTIME_GAMES_COLUMN_LABELS)
-            st.dataframe(games_df, hide_index=True, use_container_width=True)
-            st.caption(
-                f"core_002_15d=15 | label={SOVEREIGN_BATCH_LABEL} | "
-                f"generation_event_id={result.get('generation_event_id', '-')}"
-            )
-        st.markdown("##### Rastros institucionais")
-        trace_cols = st.columns(4)
-        trace_cols[0].metric("generation_event_id", str(result.get("generation_event_id", "-") or "-"))
-        trace_cols[1].metric("official_contest_source", str(result.get("official_contest_source", "indisponivel") or "indisponivel"))
-        trace_cols[2].metric("official_contest_id", str(result.get("official_contest_id", "-") or "-"))
-        trace_cols[3].metric("official_contest_numbers", str(result.get("official_contest_numbers", "-") or "-"))
-        st.caption(
-            " | ".join(
-                [
-                    f"rfe_previous_contest_found={result.get('rfe_previous_contest_found', diagnostics.get('rfe_previous_contest_found', False))}",
-                    f"rfe_previous_contest_id={result.get('rfe_previous_contest_id', diagnostics.get('rfe_previous_contest_id', '-'))}",
-                    f"rfe_previous_contest_numbers={result.get('rfe_previous_contest_numbers', diagnostics.get('rfe_previous_contest_numbers', '-'))}",
-                    f"rfe_previous_contest_source={result.get('rfe_previous_contest_source', diagnostics.get('rfe_previous_contest_source', '-'))}",
-                    f"rfe_status={result.get('rfe_status', diagnostics.get('rfe_status', '-'))}",
-                ]
-            )
-        )
-        st.markdown("##### Diagnóstico inferior")
-        with st.expander("Diagnóstico da página limpa", expanded=False):
-            st.write(f"requested_count={result.get('requested_count', '-')}")
-            st.write(f"candidate_pool_generated={diagnostics.get('candidate_pool_generated', 0)}")
-            st.write(f"valid_candidates_found={diagnostics.get('valid_candidates_found', 0)}")
-            st.write(f"accepted_games={diagnostics.get('accepted_games', 0)}")
-            st.write(f"rejected_by_internal_duplicate={diagnostics.get('rejected_by_internal_duplicate', 0)}")
-            st.write(f"rejected_by_invalid_size={diagnostics.get('rejected_by_invalid_size', 0)}")
-            st.write(f"rejected_by_repeated_pattern={diagnostics.get('rejected_by_repeated_pattern', 0)}")
-            st.write(f"rejected_by_output_commander={diagnostics.get('rejected_by_output_commander', 0)}")
-            st.write(f"attempts_used={diagnostics.get('attempts_used', 0)}")
-            st.write(f"fill_completed={diagnostics.get('fill_completed', False)}")
-            st.write(f"insufficient_reason={diagnostics.get('insufficient_reason', 'none')}")
-            st.write(f"rfe_previous_contest_found={result.get('rfe_previous_contest_found', diagnostics.get('rfe_previous_contest_found', False))}")
-            st.write(f"rfe_previous_contest_id={result.get('rfe_previous_contest_id', diagnostics.get('rfe_previous_contest_id', '-'))}")
-            st.write(f"rfe_previous_contest_numbers={result.get('rfe_previous_contest_numbers', diagnostics.get('rfe_previous_contest_numbers', '-'))}")
-            st.write(f"rfe_previous_contest_source={result.get('rfe_previous_contest_source', diagnostics.get('rfe_previous_contest_source', '-'))}")
-            st.write(f"rfe_previous_contest_message={result.get('rfe_previous_contest_message', diagnostics.get('rfe_previous_contest_message', '-'))}")
-            st.write(f"rfe_status={result.get('rfe_status', diagnostics.get('rfe_status', '-'))}")
-        st.markdown("##### Assinaturas e rastreabilidade final")
-        st.caption(
-            " | ".join(
-                [
-                    f"official_contest_source={result.get('official_contest_source', 'indisponivel')}",
-                    f"official_contest_id={result.get('official_contest_id', '-')}",
-                    f"official_contest_numbers={result.get('official_contest_numbers', '-')}",
-                    f"generation_event_id={result.get('generation_event_id', '-')}",
-                ]
-            )
-        )
+
+    render_governance_expander(render_constitutional_panel=_render_constitutional_status_panel)
+    if result:
+        render_technical_expander(result, diagnostics=diagnostics)
+    render_six_bases_expander()
+
+
+
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
