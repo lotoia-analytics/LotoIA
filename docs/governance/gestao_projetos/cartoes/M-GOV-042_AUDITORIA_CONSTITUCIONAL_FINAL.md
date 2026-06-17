@@ -36,6 +36,15 @@ Executar auditoria final de consolidação da fase constitucional do Painel ADM 
 - Produção health HTTP 200
 - Sem geração / purge / banco / alteração funcional
 
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#150](https://github.com/lotoia-analytics/LotoIA/pull/150) |
+| Merge commit | `5346d0f` |
+| Commit entrega | `9a0c927` |
+| Build ADM | `institutional-adm-runtime-v17` (inalterado) |
+
 ## Veredicto
 
 | Campo | Valor |

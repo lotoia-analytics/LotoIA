@@ -70,6 +70,8 @@ Produção health HTTP 200.
 
 **Encerramento:** **FASE CONSTITUCIONAL DO PAINEL ADM E PUBLIC_APP ENCERRADA COM SUCESSO**
 
+**Evidência Git:** merge `5346d0f` — [PR #150](https://github.com/lotoia-analytics/LotoIA/pull/150) — commit `9a0c927`
+
 **Cartão:** `cartoes/M-GOV-042_AUDITORIA_CONSTITUCIONAL_FINAL.md`
 
 **Nota M-GOV-027:** Auditoria histórica `AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md` permanece
