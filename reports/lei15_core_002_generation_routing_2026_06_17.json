@@ -1,0 +1,96 @@
+{
+  "registry": "LEI15_GENERATION_ROUTING_ADR_047",
+  "adr": "ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002",
+  "sovereign_label": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+  "sovereign_batch_type": "LEI15_CORE_002_SOVEREIGN",
+  "generation_enabled_env": "LOTOIA_LEI15_CORE_002_GENERATION_ENABLED",
+  "core_002_status": {
+    "core_id": "LEI15_CORE_002",
+    "sovereign_core_status": "NUCLEO_SOBERANO_LEI15",
+    "candidate_origin_label": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+    "batch_label": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+    "implanted": true,
+    "generation_enabled": false,
+    "generation_blocked": true,
+    "active_public_blocked": true,
+    "lei15a": {
+      "open_15a": false,
+      "blocked_by": "LEI15_CORE_002",
+      "condition": "Ordem institucional posterior à validação operacional do Núcleo Soberano",
+      "sequence": [
+        "LEI15_CORE_002 soberano implantado",
+        "Painel ADM 100% funcional",
+        "Geração autorizada via ADM",
+        "Validação multi-GE / 6 bases",
+        "Ordem explícita para Lei 15A"
+      ]
+    },
+    "legacy_core": {
+      "status": "baseline_congelado_read_only",
+      "label": "STRUCT_TEST_15D_001"
+    },
+    "v1_evidence": {
+      "status": "preservada_historica_nao_soberana_isolada",
+      "label": "STRUCT_REALIGN_V1_15D_001"
+    },
+    "cand_d_evidence": {
+      "status": "preservada_estrutural_nao_soberana_isolada",
+      "label": "STRUCT_LEI15_CORE_CANDIDATE_001_D_15D_001"
+    },
+    "future_execution": "Painel ADM 100% funcional",
+    "adr": "ADR-046"
+  },
+  "protected_historical_labels_count": 32,
+  "routing_matrix": {
+    "batch_label_none": {
+      "allowed": false,
+      "apply_sovereign_core_002": false,
+      "batch_label": null,
+      "batch_type": null,
+      "generation_path": "blocked",
+      "legacy_path_blocked": true,
+      "v1_active_global_blocked": true,
+      "reason": "batch_label=None — legacy default operacional bloqueado"
+    },
+    "sovereign_label": {
+      "allowed": false,
+      "apply_sovereign_core_002": true,
+      "batch_label": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+      "batch_type": "LEI15_CORE_002_SOVEREIGN",
+      "generation_path": "LEI15_CORE_002",
+      "legacy_path_blocked": true,
+      "v1_active_global_blocked": true,
+      "reason": "geração bloqueada — LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0"
+    },
+    "v1_evidence_label": {
+      "allowed": false,
+      "apply_sovereign_core_002": false,
+      "batch_label": "STRUCT_REALIGN_V1_15D_001",
+      "batch_type": "STRUCTURAL_REALIGNMENT_TEST",
+      "generation_path": "blocked",
+      "legacy_path_blocked": true,
+      "v1_active_global_blocked": true,
+      "reason": "label='STRUCT_REALIGN_V1_15D_001' é evidência histórica — não caminho operacional soberano"
+    },
+    "legacy_baseline_label": {
+      "allowed": false,
+      "apply_sovereign_core_002": false,
+      "batch_label": "STRUCT_TEST_15D_001",
+      "batch_type": "STRUCTURAL_COVERAGE_TEST",
+      "generation_path": "blocked",
+      "legacy_path_blocked": true,
+      "v1_active_global_blocked": true,
+      "reason": "label='STRUCT_TEST_15D_001' é evidência histórica — não caminho operacional soberano"
+    }
+  },
+  "confirmations": {
+    "legacy_default_blocked": true,
+    "historical_v1_blocked": true,
+    "legacy_baseline_blocked": true,
+    "sovereign_routes_core_002": true,
+    "generation_blocked_by_flag": true,
+    "v1_active_global_blocked_policy": true
+  },
+  "generated_at": "2026-06-17T14:43:23.298823+00:00",
+  "verdict": "PATH UNICO CORE_002 GARANTIDO"
+}

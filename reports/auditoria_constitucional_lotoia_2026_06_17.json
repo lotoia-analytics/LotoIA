@@ -1,0 +1,22 @@
+{
+  "registry": "AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17",
+  "generated_at": "2026-06-17T12:00:00+00:00",
+  "mode": "read_only_constitutional_audit",
+  "verdict": "LOTOIA CONFLITANTE — EXIGE CORREÇÃO ANTES DO PAINEL",
+  "sovereign_core": "LEI15_CORE_002",
+  "generation_blocked": true,
+  "confirmations": {
+    "lei15_core_002_implanted": true,
+    "adm_panel_not_constitutionally_aligned": true,
+    "legacy_paths_identified": true,
+    "history_purge_risk_identified": true,
+    "lei15a_suspended": true
+  },
+  "next_missions_ordered": [
+    "agent_dados_history",
+    "agent_geracao_routing",
+    "agent_visual_plataforma_adm",
+    "agent_governanca_ml_15a"
+  ],
+  "source_document": "docs/governance/AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md"
+}

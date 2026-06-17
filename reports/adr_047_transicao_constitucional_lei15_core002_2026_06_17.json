@@ -1,0 +1,17 @@
+{
+  "registry": "ADR_047_TRANSICAO_CONSTITUCIONAL_LEI15_CORE002",
+  "generated_at": "2026-06-17T12:00:00+00:00",
+  "status": "TRANSIÇÃO CONSTITUCIONAL REGISTRADA",
+  "sovereign_core": "LEI15_CORE_002",
+  "sovereign_label": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+  "generation_operational": "BLOCKED",
+  "lei15a_operational": "SUSPENDED",
+  "adm_panel_updated": false,
+  "confirmations": {
+    "constitutional_audit_registered": true,
+    "history_preservation_mission_authorized": true,
+    "generation_routing_mission_authorized": true,
+    "no_runtime_implementation_by_adr": true
+  },
+  "source_document": "docs/adr/ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002.md"
+}

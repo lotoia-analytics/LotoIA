@@ -1,0 +1,122 @@
+{
+  "registry": "POLITICA_PRESERVACAO_HISTORICO_LOTOIA_2026_06_17",
+  "generated_at": "2026-06-17T14:44:17.260249+00:00",
+  "mode": "policy_export_offline",
+  "verdict": "HISTORICO INSTITUCIONAL PROTEGIDO — PURGE BLOQUEADO POR GUARDA — LIMPEZA FUTURA PREPARADA EM DRY-RUN",
+  "database_error": "offline_export_no_db_query",
+  "policy_summary": {
+    "registry": "POLITICA_PRESERVACAO_HISTORICO_LOTOIA_2026_06_17",
+    "adr": "ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002",
+    "audit": "AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17",
+    "protected_generation_event_ids": [
+      114,
+      115
+    ],
+    "protected_batch_labels_count": 32,
+    "protected_batch_labels_sample": [
+      "STRUCT_CORE_REALIGN_V2_15D_001",
+      "STRUCT_CORE_REALIGN_V2_16D_001",
+      "STRUCT_CORE_REALIGN_V2_17D_001",
+      "STRUCT_CORE_REALIGN_V2_18D_001",
+      "STRUCT_CORE_REALIGN_V3_BALANCED_15D_001",
+      "STRUCT_LEI15_CORE_CANDIDATE_001_15D_001",
+      "STRUCT_LEI15_CORE_CANDIDATE_001_B_15D_001",
+      "STRUCT_LEI15_CORE_CANDIDATE_001_C_15D_001",
+      "STRUCT_LEI15_CORE_CANDIDATE_001_D_15D_001",
+      "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+      "STRUCT_LEI15_CORE_V3_1_P15_PROTECTED_15D_001",
+      "STRUCT_LEI15_CORE_V3_1_PROTECTED_15D_001",
+      "STRUCT_LEI15_CORE_V4_PATTERN_PROTECTED_15D_001",
+      "STRUCT_REALIGN_V1_15D_001",
+      "STRUCT_REALIGN_V1_16D_001",
+      "STRUCT_REALIGN_V1_17D_001",
+      "STRUCT_REALIGN_V1_18D_001",
+      "STRUCT_TEST_15D",
+      "STRUCT_TEST_15D_001",
+      "STRUCT_TEST_16D"
+    ],
+    "sovereign_tables": [
+      "backtest_runs",
+      "benchmark_runs",
+      "calibration_runs",
+      "imported_contests",
+      "institutional_memory_lineage",
+      "institutional_memory_replay",
+      "institutional_memory_snapshots",
+      "institutional_memory_states",
+      "lotofacil_official_history",
+      "ml_diagnostic_decisions",
+      "schema_migrations",
+      "scientific_calibration_decisions",
+      "scientific_institutional_memory"
+    ],
+    "operational_history_tables": [
+      "generated_games",
+      "generation_events",
+      "institutional_output_signatures",
+      "operational_logs",
+      "reconciliation_events",
+      "reconciliation_games",
+      "reconciliation_runs",
+      "reset_events"
+    ],
+    "generic_purge_blocked": true,
+    "mandatory_preservation": {
+      "ge_114": "STRUCT_LEI15_CORE_CANDIDATE_001_15D_001 (CAND-A)",
+      "ge_115": "STRUCT_LEI15_CORE_CANDIDATE_001_D_15D_001 (CAND-D)",
+      "baseline": "STRUCT_TEST_15D_001 / EPOCH_001",
+      "v1": "STRUCT_REALIGN_V1_15D_001",
+      "sovereign": "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001"
+    },
+    "filesystem_artifacts": {
+      "reports": [
+        "reports/adr_047_transicao_constitucional_lei15_core002_2026_06_17.json",
+        "reports/auditoria_constitucional_lotoia_2026_06_17.json",
+        "reports/history_preservation_audit_2026_06_17.json",
+        "reports/lei15_core_002_implantation_2026_06_17.json",
+        "reports/lei15_core_6_bases_comparative_2026_06_17.json",
+        "reports/lei15_v1_strong_cards_6_bases_audit_2026_06_17.json",
+        "reports/ml_lei15_core_candidate_decision_2026_06_17.json"
+      ],
+      "adrs": [
+        "docs/adr/ADR-043-REALINHAMENTO-ESTRUTURAL-LEI15-V1.md",
+        "docs/adr/ADR-044-REAVALIACAO-NUCLEOS-LEI15-15A.md",
+        "docs/adr/ADR-045-CORE-REALIGNMENT-V3-BALANCED.md",
+        "docs/adr/ADR-046-NUCLEO-LEI15-CANDIDATE-002.md",
+        "docs/adr/ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002.md",
+        "docs/governance/AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md"
+      ]
+    },
+    "future_cleanup_sequence": [
+      "backup",
+      "congelamento",
+      "classificacao_por_label",
+      "autorizacao_agent_dados_agent_governanca",
+      "relatorio_preservacao",
+      "dry_run_aprovado"
+    ]
+  },
+  "generation_events_total": 0,
+  "generation_events_evaluation": {
+    "registry": "POLITICA_PRESERVACAO_HISTORICO_LOTOIA_2026_06_17",
+    "protected_count": 0,
+    "potentially_disposable_count": 0,
+    "inconclusive_count": 0,
+    "protected": [],
+    "potentially_disposable": [],
+    "inconclusive": [],
+    "generic_purge_allowed": false,
+    "fail_closed": true
+  },
+  "generic_purge_blocked": true,
+  "purge_guard_message": "[POLITICA_PRESERVACAO_HISTORICO_LOTOIA_2026_06_17] Purge genérico bloqueado para tabela='reconciliation_runs' (origem='git_consolidation_export'). Evidência institucional protegida conforme ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002. Use scripts/ops/dry_run_history_cleanup_lotoia.py e autorização agent_dados + agent_governanca após backup.",
+  "confirmations": {
+    "ge_114_protected": true,
+    "ge_115_protected": true,
+    "epoch_001_baseline_protected": true,
+    "v1_protected": true,
+    "reports_policy_registered": true,
+    "delete_history_blocked": true,
+    "no_rows_deleted": true
+  }
+}
