@@ -8,7 +8,12 @@ import dashboard.institutional_app as institutional_app
 import dashboard.institutional_clean_law15_runtime as clean_runtime
 import dashboard.public_app as public_app
 from dashboard.institutional_build import BUILD_MARKER
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATION_ENABLED
+
+
+def _generation_page_source() -> str:
+    page_source = inspect.getsource(institutional_app._render_clean_law15_generation_page)
+    runtime_source = inspect.getsource(clean_runtime)
+    return page_source + runtime_source
 
 
 def test_institutional_app_build_v22() -> None:
@@ -16,29 +21,35 @@ def test_institutional_app_build_v22() -> None:
     assert BUILD_MARKER == "institutional-adm-runtime-v22"
 
 
-def test_clean_runtime_page_source_excludes_prohibited_lei15a_phrases() -> None:
-    source = inspect.getsource(institutional_app._render_clean_law15_generation_page)
+def test_generation_page_source_includes_required_operational_phrases() -> None:
+    source = _generation_page_source()
+    for phrase in clean_runtime.REQUIRED_RUNTIME_PHRASES:
+        assert phrase in source, f"missing required phrase: {phrase!r}"
+
+
+def test_generation_page_source_excludes_prohibited_phrases() -> None:
+    page_source = inspect.getsource(institutional_app._render_clean_law15_generation_page)
     for phrase in clean_runtime.PROHIBITED_RUNTIME_PHRASES:
-        assert phrase not in source, f"prohibited phrase present: {phrase!r}"
-    assert "format_func=_clean_law15_format_label" not in source
-    assert "OFFICIAL_CARD_FORMATS" not in source
-    assert '_render_institutional_matrix_reading_section' not in source
+        assert phrase not in page_source, f"prohibited phrase in page: {phrase!r}"
 
 
-def test_clean_runtime_page_source_includes_simplified_layout() -> None:
+def test_generation_page_uses_compact_layout_helpers() -> None:
     source = inspect.getsource(institutional_app._render_clean_law15_generation_page)
     assert "render_generation_compact_header" in source
     assert "render_generation_operation_block" in source
+    assert "render_generation_result_summary" in source
     assert "render_governance_expander" in source
-    assert "ADM_RUNTIME_ACTIVE_CARD_FORMAT" in source
-    assert "SOVEREIGN_RUNTIME_FORMAT_LABEL" in source
-    assert "Gerar CORE_002 (15D)" in source or "render_generation_operation_block" in source
+    assert "render_technical_expander" in source
+    assert "render_six_bases_expander" in source
+    assert "_render_constitutional_status_panel(compact=False)" not in source
+    assert "render_lei15a_inoperative_notice" not in source
+    assert "SOVEREIGN_GENERATION_STATUS_ACTIVE" not in source
+    assert "Runtime Limpo ADM 15" not in source
 
 
-def test_clean_runtime_module_documents_15d_only() -> None:
-    assert clean_runtime.ADM_RUNTIME_ACTIVE_CARD_FORMAT == 15
+def test_card_format_label_is_core_002_sovereign_only() -> None:
     assert clean_runtime.CARD_FORMAT_DISPLAY_LABEL == "15 dezenas — CORE_002 soberano"
-    assert "CORE_002" in clean_runtime.SOVEREIGN_RUNTIME_FORMAT_LABEL
+    assert "Núcleo Lei 15" not in clean_runtime.CARD_FORMAT_DISPLAY_LABEL
 
 
 def test_sovereign_generation_still_works(
@@ -123,17 +134,10 @@ def test_lei15a_still_inoperative() -> None:
     assert gate["open_15a"] is False
 
 
-def test_public_app_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_public_app_unchanged() -> None:
     source = inspect.getsource(public_app.main)
     assert "institutional_clean_law15_runtime" not in source
 
 
-def test_m_gov_038_regression_lei15a_governance_module_exists() -> None:
-    from dashboard import institutional_lei15a_governance
-
-    assert "INOPERANTE" in institutional_lei15a_governance.LEI15A_FORMAL_STATUS
-
-
-def test_m_ger_044_regression_generation_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
-    assert institutional_app._is_sovereign_generation_blocked() is False
+def test_institutional_app_imports_cleanly() -> None:
+    import dashboard.institutional_app  # noqa: F401

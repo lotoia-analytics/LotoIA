@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-047](#m-vis-047--simplificar-página-de-geração-adm-core_002) | Geração ADM — layout simplificado | `CONCLUIDA` | `PÁGINA OPERACIONAL / DETALHES EM EXPANSORES` |
 | [M-VIS-046](#m-vis-046--corrigir-resíduo-visual-lei-15a-operacional-no-runtime-limpo-adm-15) | Runtime Limpo — resíduo Lei 15A | `CONCLUIDA` | `VISUAL CORRIGIDO / CORE_002 15D PRESERVADO` |
 | [M-ML-045](#m-ml-045--ativação-definitiva-do-ml-operacional-supervisionado) | ML Operacional Supervisionado CORE_002 | `CONCLUIDA` | `ML SUPERVISIONADO ATIVO / POSTGRESQL + TRACE` |
 | [M-GER-044](#m-ger-044--ativação-da-geração-soberana-controlada-core_002) | Geração Soberana CORE_002 | `CONCLUIDA` | `GERAÇÃO CONTROLADA ATIVA / POSTGRESQL` |
@@ -38,6 +39,27 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-047 — Simplificar Página de Geração ADM CORE_002
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Agentes | `agent_visual` + `agent_geracao` + `agent_governanca` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Simplificação visual / operacional |
+
+**Problema:** Página de geração ADM funcional porém visualmente pesada — múltiplos banners, status constitucional completo e detalhes técnicos antes dos controles principais.
+
+**Correção:** Cabeçalho compacto; bloco operacional (quantidade, formato 15D CORE_002, estratégia ML); resultado resumido; expansores para governança, técnico e Lei 15 / 6 Bases.
+
+**Build:** `institutional-adm-runtime-v22`
+
+**Veredicto:** **M-VIS-047 CONCLUÍDA E ATIVA EM PRODUÇÃO — PÁGINA DE GERAÇÃO ADM CORE_002 SIMPLIFICADA E SEM RESÍDUOS LEI 15A OPERACIONAL**
+
+**Cartão:** `cartoes/M-VIS-047_SIMPLIFICAR_GERACAO_ADM.md`
+
+---
 
 ### M-VIS-046 — Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15
 
