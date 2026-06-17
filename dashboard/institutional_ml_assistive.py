@@ -90,10 +90,10 @@ ML_SIX_BASES_RELATION: tuple[dict[str, str], ...] = tuple(
 )
 
 FUTURE_SIMULATION_PREP: tuple[str, ...] = (
-    "Replay histórico institucional (M-VIS-036 — futura, sem implementação agora).",
+    "Simulação Institucional / Backtesting — página dedicada M-VIS-036 (read-only).",
     "Walk-forward com corte temporal: concurso X usa apenas dados até X-1.",
     "Janelas comparáveis: 10 / 20 / 30 concursos.",
-    "Backtesting futuro — diagnóstico e governança, sem efeito operacional automático.",
+    "Execução automática de backtest com geração real — fora de escopo; missão futura.",
 )
 
 SIDE_LEAK_RISK_ROWS: tuple[dict[str, str], ...] = (
@@ -197,7 +197,7 @@ def render_ml_assistive_governance_section() -> None:
     )
     st.caption("O ML pode ajudar a ler as 6 Bases, mas não decide sozinho.")
 
-    st.markdown("##### Preparação futura — Simulação Institucional (M-VIS-036)")
+    st.markdown("##### Integração — Simulação Institucional (M-VIS-036)")
     for item in payload["future_simulation_prep"]:
         st.markdown(f"- {item}")
     st.info(EVOLUTION_HISTORICAL_NOTE)
