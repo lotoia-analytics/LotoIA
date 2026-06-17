@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-VIS-047",
+        "titulo": "Simplificação Operacional da Página de Geração ADM CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_visual + agent_geracao + agent_governanca + agent_qualidade",
+        "evidencia": "M-VIS-047 — Gerador ADM limpo; jogos 1–100; dezenas 15–23 multidezena CORE_002",
+    },
+    {
         "id": "M-VIS-046",
         "titulo": "Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15",
         "status": "CONCLUIDA",

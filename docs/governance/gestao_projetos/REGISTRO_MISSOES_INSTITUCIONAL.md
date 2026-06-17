@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-047](#m-vis-047--simplificação-operacional-da-página-de-geração-adm-core_002) | Geração ADM — simplificação operacional | `CONCLUIDA` | `PÁGINA LIMPA / JOGOS 1–100 / DEZENAS 15–23` |
 | [M-VIS-046](#m-vis-046--corrigir-resíduo-visual-lei-15a-operacional-no-runtime-limpo-adm-15) | Runtime Limpo — resíduo Lei 15A | `CONCLUIDA` | `VISUAL CORRIGIDO / CORE_002 15D PRESERVADO` |
 | [M-ML-045](#m-ml-045--ativação-definitiva-do-ml-operacional-supervisionado) | ML Operacional Supervisionado CORE_002 | `CONCLUIDA` | `ML SUPERVISIONADO ATIVO / POSTGRESQL + TRACE` |
 | [M-GER-044](#m-ger-044--ativação-da-geração-soberana-controlada-core_002) | Geração Soberana CORE_002 | `CONCLUIDA` | `GERAÇÃO CONTROLADA ATIVA / POSTGRESQL` |
@@ -38,6 +39,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-047 — Simplificação Operacional da Página de Geração ADM CORE_002
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Agentes | `agent_visual` + `agent_geracao` + `agent_governanca` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Simplificação visual / operacional |
+
+**Correção:** Página de geração ADM reduzida ao essencial operacional — quantidade de jogos 1–100, dezenas 15–23 (multidezena CORE_002), estratégia CORE_002 + ML supervisionado, botão Gerar lote, resultado compacto. Banners e textos longos movidos para expansores. Persistência 16D–23D bloqueada tecnicamente; 15D CORE_002 + ML preservados.
+
+**Build:** `institutional-adm-runtime-v23`
+
+**Veredicto:** **M-VIS-047 CONCLUÍDA — PÁGINA DE GERAÇÃO ADM CORE_002 SIMPLIFICADA, COM QUANTIDADE DE JOGOS 1–100 E SELEÇÃO DE DEZENAS 15–23**
+
+**Cartão:** `cartoes/M-VIS-047_OPERACIONAL_GERACAO_ADM.md`
+
+---
 
 ### M-VIS-046 — Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15
 
