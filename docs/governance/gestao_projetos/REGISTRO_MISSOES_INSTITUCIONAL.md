@@ -10,7 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `EM_EXECUCAO` | pendente |
+| [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
 | [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `AGUARDANDO_EVIDENCIA` | pendente |
 | [M-GOV-027](#m-gov-027--auditoria-constitucional) | Auditoria constitucional | `AGUARDANDO_VEREDICTO` | `LOTOIA CONFLITANTE` |
 | [M-LEI15-002](#m-lei15-002--implantação-lei15_core_002) | Implantação LEI15_CORE_002 | `CONCLUIDA` | `NÚCLEO SOBERANO IMPLANTADO` |
@@ -26,9 +26,10 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
 | Projeto | `P-GOV-001` |
 | Agentes | `agent_governanca` (primário), `agent_plataforma` (suporte) |
-| Status | `EM_EXECUCAO` |
+| Status | `CONCLUIDA` |
 | Origem | Missão institucional pós-incidente de deploy |
 
 **Objetivo:** Implantar camada documental de Gestão de Projetos (Fase 0) sem alterar Painel ADM, geração, banco ou `LEI15_CORE_002`.
@@ -46,11 +47,20 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Branch | `cursor/gestao-projetos-fase0-cae6` |
+| PR | [#121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
+| Merge commit | `7a10363f39afb131bc7bd34ca8a50ec21cdfbd26` |
+| Merge em `main` | 2026-06-17T16:27:21Z |
 | Tipo | documental |
 
-**Checklist:** B e C em preenchimento; D e E = N/A (escopo documental).
+**Checklist:** A–G = OK; D e E = N/A (escopo documental).
 
-**Veredicto:** pendente.
+**Veredicto:** `APROVADA / MERGED / INCORPORADA À MAIN`
+
+**Veredicto institucional:** **M-GOV-030 FECHADA FORMALMENTE — GESTÃO DE PROJETOS FASE 0 APROVADA EM MAIN**
+
+**Emitido por:** `agent_governanca` — 2026-06-17
+
+**Nota de fechamento:** commit de registro formal em branch `cursor/m-gov-030-fechamento-cae6` após merge da PR #121.
 
 ---
 
