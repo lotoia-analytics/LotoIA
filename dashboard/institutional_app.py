@@ -115,6 +115,13 @@ from dashboard.institutional_build import (
     CORE_REALIGN_V3_BATCH_LABEL,
     CORE_REALIGN_V3_ENV_VAR,
 )
+from dashboard.institutional_sovereign_generation import (
+    SOVEREIGN_GENERATION_DISCLAIMER,
+    SOVEREIGN_GENERATION_GOVERNANCE_ALERT,
+    SOVEREIGN_GENERATION_STATUS_ACTIVE,
+    adm_generator_menu_label,
+    sovereign_generation_status_label,
+)
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
     SESSION_LOAD_COMPARATIVE,
@@ -443,13 +450,14 @@ PAGE_TARGETS = {
     "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
     "Gerador ADM CORE_002 — BLOQUEADO": "clean_law15_generation",
+    "Gerador ADM CORE_002 — Geração Soberana Controlada": "clean_law15_generation",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
     {"icon": "🧬", "label": "Núcleo Lei 15 — CORE_002", "page_id": "core_002_read_only"},
-    {"icon": "🎯", "label": "Gerador ADM CORE_002 — BLOQUEADO", "page_id": "clean_law15_generation"},
+    {"icon": "🎯", "label": "Gerador ADM CORE_002 — Geração Soberana Controlada", "page_id": "clean_law15_generation"},
     {"icon": "✅", "label": "Conferir Resultados — Auditoria de Lotes Persistidos", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
@@ -478,7 +486,7 @@ def _constitutional_status_lines() -> dict[str, str]:
     return {
         "core_id": str(report.get("core_id") or SOVEREIGN_CORE_ID),
         "batch_label": str(report.get("batch_label") or SOVEREIGN_BATCH_LABEL),
-        "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
+        "generation_status": sovereign_generation_status_label(),
         "lei15a_status": LEI15A_FORMAL_STATUS,
         "ml_status": "ASSISTIVO — diagnóstico — sem efeito operacional automático",
         "history_status": "PROTEGIDO",
@@ -522,8 +530,12 @@ def _render_constitutional_status_panel(*, compact: bool = False) -> None:
     if _is_sovereign_generation_blocked():
         st.warning(
             "Geração soberana bloqueada (`LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`). "
-            "Fase 1 ADM — bloqueios constitucionais ativos (M-VIS-031)."
+            "Somente leitura/diagnóstico neste estado."
         )
+    else:
+        st.success(SOVEREIGN_GENERATION_STATUS_ACTIVE)
+        st.info(SOVEREIGN_GENERATION_DISCLAIMER)
+        st.caption(SOVEREIGN_GENERATION_GOVERNANCE_ALERT)
     st.caption(CONSTITUTIONAL_DIAGNOSTIC_CAPTION)
 
 
@@ -9690,7 +9702,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
-        ("Gerador ADM CORE_002 — BLOQUEADO", "clean_law15_generation"),
+        ("Gerador ADM CORE_002 — Geração Soberana Controlada", "clean_law15_generation"),
         ("Conferir Resultados — Auditoria de Lotes Persistidos", "conference"),
         ("Simular Resultados", "simulation"),
     ]:
@@ -10795,8 +10807,12 @@ def _persist_clean_law15_generation_history(
             }
         )
     generation_context = {
-        "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
-        "policy_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "generation_mode": "LEI15_CORE_002_SOVEREIGN",
+        "policy_mode": "M-GER-044_SOVEREIGN_CONTROLLED",
+        "analysis_batch_label": str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        "analysis_batch_type": "LEI15_CORE_002_SOVEREIGN",
+        "sovereign_generation_path": "generate_best_games",
+        "ml_enabled": False,
         "selected_card_format": int(selected_card_format),
         "format_cartao": int(selected_card_format),
         "selected_quantity": int(result.get("requested_count", 0) or 0),
@@ -10830,6 +10846,8 @@ def _persist_clean_law15_generation_history(
         target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
         batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
         generation_context=generation_context,
+        analysis_batch_label=str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
     )
 
 
@@ -12152,19 +12170,25 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
 
 def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Gerador ADM CORE_002 — BLOQUEADO")
+    st.subheader(adm_generator_menu_label())
     _render_constitutional_status_panel(compact=False)
     if _is_sovereign_generation_blocked():
         st.error(
             "Geração bloqueada enquanto `LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`. "
-            "Nenhum jogo será gerado nesta fase constitucional."
+            "Nenhum jogo será gerado neste estado."
         )
         st.caption(
-            "Lei 15A permanece suspensa. Expansão mecânica 16–23D não está autorizada nesta fase."
+            "Lei 15A permanece inoperante. Expansão mecânica 16–23D não está autorizada."
         )
         _render_diagnostic_observational_caption()
         return
 
+    st.success(SOVEREIGN_GENERATION_STATUS_ACTIVE)
+    st.info(SOVEREIGN_GENERATION_DISCLAIMER)
+    st.warning(
+        "Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL "
+        f"(label obrigatório: `{SOVEREIGN_BATCH_LABEL}`)."
+    )
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
@@ -13479,11 +13503,11 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     )
     status_cols = st.columns(5)
     generation_status = (
-        "BLOQUEADA"
-        if _is_sovereign_generation_blocked()
-        else ("ATIVO" if generation_loaded else "DISPONÍVEL")
+        sovereign_generation_status_label()
+        if not _is_sovereign_generation_blocked()
+        else "BLOQUEADA"
     )
-    generation_tone = "danger" if _is_sovereign_generation_blocked() else ("success" if generation_loaded else "warning")
+    generation_tone = "danger" if _is_sovereign_generation_blocked() else ("success" if generation_loaded else "success")
     with status_cols[0]:
         _render_home_status_pill("Lei 15", SOVEREIGN_CORE_ID, "success")
     with status_cols[1]:
@@ -13497,7 +13521,7 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
-        "Lei 15A suspensa | Geração soberana bloqueada por ADR-047 | "
+        "Lei 15A inoperante | Geração soberana controlada CORE_002 (M-GER-044) | "
         "Gestão de Projetos Fase 0 ativa | Inventário PR #124 aprovado."
     )
     _render_home_quick_access()

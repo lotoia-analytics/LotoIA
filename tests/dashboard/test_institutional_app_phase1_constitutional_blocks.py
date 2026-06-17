@@ -8,7 +8,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 
@@ -16,15 +16,20 @@ def test_institutional_light_mode_imports() -> None:
     assert callable(institutional_light_mode.is_light_mode_enabled)
 
 
-def test_sovereign_generation_blocked_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+def test_sovereign_generation_blocked_when_env_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     assert institutional_app._is_sovereign_generation_blocked() is True
 
 
-def test_run_clean_law15_generation_returns_blocked_payload_without_name_error(
+def test_sovereign_generation_active_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    assert institutional_app._is_sovereign_generation_blocked() is False
+
+
+def test_run_clean_law15_generation_returns_blocked_payload_when_env_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     monkeypatch.setattr(institutional_app.st, "session_state", {})
 
     result = institutional_app._run_clean_law15_generation(requested_count=10)
@@ -36,7 +41,7 @@ def test_run_clean_law15_generation_returns_blocked_payload_without_name_error(
 
 
 def test_orphan_generation_page_not_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     sidebar_calls: list[str] = []
     monkeypatch.setattr(institutional_app.st, "session_state", {})
 
@@ -59,10 +64,10 @@ def test_orphan_generation_page_not_allowed(monkeypatch: pytest.MonkeyPatch) -> 
     assert page == "clean_law15_generation"
 
 
-def test_constitutional_status_lines_include_required_fields(
+def test_constitutional_status_lines_blocked_when_env_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     lines = institutional_app._constitutional_status_lines()
 
     assert lines["core_id"] == "LEI15_CORE_002"

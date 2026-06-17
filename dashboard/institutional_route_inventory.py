@@ -79,8 +79,8 @@ ACTIVE_ROUTE_ROWS: tuple[dict[str, str], ...] = (
 BLOCKED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
     {
         "page_id": "clean_law15_generation",
-        "label": "Gerador ADM CORE_002 — BLOQUEADO",
-        "motivo": "Geração soberana bloqueada (ADR-047 / M-LEI15-003)",
+        "label": "Gerador ADM CORE_002 — Geração Soberana Controlada",
+        "motivo": "Geração soberana controlada ativa — path generate_best_games (M-GER-044)",
     },
 )
 
@@ -155,7 +155,7 @@ CONSTITUTIONAL_LABELS: tuple[str, ...] = (
     "Conferir Resultados — Auditoria de Lotes Persistidos",
     "Área Restrita — Limpeza Controlada",
     "Lei 15A — Camada futura inoperante (via Governança)",
-    "Gerador ADM CORE_002 — BLOQUEADO",
+    "Gerador ADM CORE_002 — Geração Soberana Controlada",
 )
 
 ROUTE_GUARDS: tuple[str, ...] = (

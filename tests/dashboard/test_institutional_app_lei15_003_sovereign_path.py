@@ -9,7 +9,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 
@@ -62,7 +62,7 @@ def test_generate_direct_15_games_is_legacy_blocked() -> None:
 
 
 def test_run_clean_law15_generation_blocked_with_flag_zero(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     monkeypatch.setattr(institutional_app.st, "session_state", {})
 
     result = institutional_app._run_clean_law15_generation(requested_count=10)
@@ -112,7 +112,7 @@ def test_run_clean_law15_generation_uses_generate_best_games_when_enabled(
 
 
 def test_orphan_generation_page_not_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     sidebar_calls: list[str] = []
     monkeypatch.setattr(institutional_app.st, "session_state", {})
     monkeypatch.setattr(institutional_app, "_apply_institutional_styles", lambda: None)
@@ -146,8 +146,8 @@ def test_run_institutional_generation_source_uses_sovereign_helper() -> None:
     assert "_generate_direct_15_games" not in source
 
 
-def test_m_vis_031_constitutional_blocks_regression(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+def test_m_vis_031_constitutional_status_blocked_when_env_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     lines = institutional_app._constitutional_status_lines()
 
     assert lines["core_id"] == "LEI15_CORE_002"

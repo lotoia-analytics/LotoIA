@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
 
 
 def test_institutional_light_mode_imports() -> None:
@@ -23,7 +23,7 @@ def test_institutional_light_mode_imports() -> None:
 def test_governance_read_only_snapshot_contains_required_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     payload = institutional_governance.build_governance_snapshot(
         app_build=BUILD_MARKER,
         active_commit="a5a3f2f250b1",
@@ -64,7 +64,7 @@ def test_governance_page_source_is_read_only_without_generation_or_purge_calls()
 
 
 def test_governance_sidebar_route_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     monkeypatch.setattr(institutional_app.st, "session_state", {})
     monkeypatch.setattr(institutional_app, "_apply_institutional_styles", lambda: None)
     monkeypatch.setattr(institutional_app, "_render_sidebar_logo", lambda: None)

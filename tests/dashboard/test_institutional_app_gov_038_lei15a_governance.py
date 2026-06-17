@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
 
 
 def test_lei15a_governance_module_imports() -> None:
@@ -64,7 +64,7 @@ def test_governance_page_integrates_lei15a_section() -> None:
 def test_constitutional_status_lines_lei15a_redefined(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     lines = institutional_app._constitutional_status_lines()
 
     assert "REDEFINIDA" in lines["lei15a_status"]
@@ -89,7 +89,7 @@ def test_governance_snapshot_includes_m_gov_038_mission() -> None:
 
 
 def test_m_vis_031_regression_blocks_generation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     result = institutional_app._run_clean_law15_generation(requested_count=5)
     assert result["blocked"] is True
 

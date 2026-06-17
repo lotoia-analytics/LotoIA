@@ -13,6 +13,7 @@ from dashboard.institutional_build import LOTOIA_PANEL_PRODUCTION_URL
 from dashboard.institutional_lei15a_governance import render_lei15a_governance_section
 from dashboard.institutional_route_inventory import render_route_inventory_section
 from dashboard.institutional_public_separation import render_public_adm_separation_section
+from dashboard.institutional_sovereign_generation import sovereign_generation_status_label
 
 GOVERNANCE_READ_ONLY_ALERT = (
     "Governança read-only — nenhuma ação operacional é executada nesta tela."
@@ -23,6 +24,13 @@ GOVERNANCE_DOCS = REPO_ROOT / "docs" / "governance"
 GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "id": "M-GER-044",
+        "titulo": "Ativação Geração Soberana Controlada CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_geracao + agent_dados + agent_qualidade + agent_governanca + agent_plataforma",
+        "evidencia": "M-GER-044 — generate_best_games label soberano ativo",
+    },
     {
         "id": "M-GOV-042",
         "titulo": "Auditoria Constitucional Final — Painel ADM e public_app",
@@ -148,8 +156,8 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
     },
     {
         "codigo": "BLK-GERACAO-001",
-        "descricao": "Geração soberana bloqueada — Gerador ADM CORE_002 inoperante",
-        "estado": "ATIVO — mitigado M-VIS-031",
+        "descricao": "Geração soberana controlada CORE_002 — path único generate_best_games (M-GER-044)",
+        "estado": "ATIVO — CONTROLADO",
     },
     {
         "codigo": "BLK-PURGE-001",
@@ -287,13 +295,15 @@ def build_governance_snapshot(
         "gestao_projetos_fase": "Fase 0 — documental/Git",
         "gestao_projetos_policy_status": "POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA",
         "missions": [dict(row) for row in MISSION_ROWS],
-        "next_authorized_mission": "a definir pós M-GOV-038",
+        "next_authorized_mission": "fase pós M-GER-044 — operação controlada",
         "blocks": [dict(row) for row in BLOCK_ROWS],
         "laws": [
             {**dict(row), "disponivel": _doc_exists(row["path"])} for row in LAW_ROWS
         ],
         "veredicts": [dict(row) for row in VERDICT_ROWS],
-        "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
+        "generation_status": (
+            "BLOQUEADA" if generation_blocked else sovereign_generation_status_label()
+        ),
         "purge_status": "PROTEGIDO",
         "git_railway": {
             "build": app_build,
@@ -385,7 +395,8 @@ def render_governance_read_only_page(
         if gen_status == "BLOQUEADA":
             st.success(f"Geração: **{gen_status}** (`LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`)")
         else:
-            st.error(f"Geração: **{gen_status}** — estado inesperado na Fase 1 ADM")
+            st.success(f"Geração: **{gen_status}**")
+            st.caption("Path único CORE_002 — sem promessa de acerto — PostgreSQL rastreável")
         st.success(f"Purge / histórico: **{purge_status}**")
 
     with tab_bloqueios:

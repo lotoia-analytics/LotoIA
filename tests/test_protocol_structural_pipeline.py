@@ -190,7 +190,7 @@ def test_generation_stops_before_attempts_when_previous_contest_missing() -> Non
 
 
 def test_clean_law15_generation_preserves_rfe_block_when_attempts_zero(monkeypatch) -> None:
-    monkeypatch.delenv("LOTOIA_LEI15_CORE_002_GENERATION_ENABLED", raising=False)
+    monkeypatch.setenv("LOTOIA_LEI15_CORE_002_GENERATION_ENABLED", "0")
     monkeypatch.setattr(admin_app.st, "session_state", {})
 
     result = admin_app._run_clean_law15_generation(requested_count=10)

@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
 
 
 def test_route_inventory_module_imports() -> None:
@@ -67,7 +67,7 @@ def test_route_inventory_module_has_no_generation_or_purge() -> None:
 
 
 def test_orphan_generation_redirects_to_blocked_generator(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     monkeypatch.setattr(institutional_app.st, "session_state", {})
     monkeypatch.setattr(institutional_app, "_apply_institutional_styles", lambda: None)
     monkeypatch.setattr(institutional_app, "_render_sidebar_logo", lambda: None)
@@ -134,6 +134,6 @@ def test_m_dados_039_regression_delete_history_alias() -> None:
 
 
 def test_m_vis_031_regression_blocks_generation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     result = institutional_app._run_clean_law15_generation(requested_count=5)
     assert result["blocked"] is True

@@ -122,17 +122,28 @@ TEMPORAL_LEAKAGE_RISKS: tuple[dict[str, str], ...] = (
 
 def build_simulation_backtesting_snapshot(*, generation_blocked: bool) -> dict[str, Any]:
     """Snapshot read-only para testes — sem efeitos colaterais."""
+    flow_rows = [dict(row) for row in FLOW_SEPARATION_ROWS]
+    for row in flow_rows:
+        if row.get("fluxo") == "Geração operacional":
+            if generation_blocked:
+                row["proposito"] = "Produzir jogos via path soberano (bloqueado)"
+                row["geracao"] = "BLOQUEADA (LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0)"
+            else:
+                row["proposito"] = "Produzir jogos via path soberano controlado (M-GER-044)"
+                row["geracao"] = "CONTROLADA — label CORE_002 obrigatório"
+    from dashboard.institutional_sovereign_generation import sovereign_generation_status_label
+
     return {
         "read_only_alert": SIMULATION_BACKTESTING_READ_ONLY_ALERT,
         "institutional_alerts": list(INSTITUTIONAL_ALERTS),
         "temporal_cut_rule": TEMPORAL_CUT_RULE,
         "six_bases_quote": SIX_BASES_QUOTE,
-        "flow_separation": [dict(row) for row in FLOW_SEPARATION_ROWS],
+        "flow_separation": flow_rows,
         "walk_forward_windows": [dict(row) for row in WALK_FORWARD_WINDOWS],
         "backtesting_security": dict(BACKTESTING_SECURITY_STATUS),
         "six_bases_backtesting": [dict(row) for row in BACKTESTING_SIX_BASES_ROWS],
         "temporal_leakage_risks": [dict(row) for row in TEMPORAL_LEAKAGE_RISKS],
-        "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
+        "generation_status": "BLOQUEADA" if generation_blocked else sovereign_generation_status_label(),
         "execucao_backtest_automatica": False,
         "geracao_real": False,
     }

@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v17"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v18"
 
 
 def test_structural_coverage_module_imports() -> None:
@@ -81,7 +81,7 @@ def test_cobertura_page_integrates_governance_and_is_read_only() -> None:
 
 
 def test_m_vis_031_regression_blocks_generation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     result = institutional_app._run_clean_law15_generation(requested_count=5)
     assert result["blocked"] is True
     assert result["games"] == []
