@@ -39,6 +39,8 @@ objetivo: Implantar camada documental de Gestão de Projetos Fase 0
 artefatos:
   - docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md
   - docs/governance/gestao_projetos/*
+commit: 7b3d632
+branch: main
 causa_gatilho: Incidente deploy — institutional_light_mode.py não versionado
 veredicto: GESTAO_PROJETOS_FASE_0_IMPLANTADA
 notas: Sem painel, banco, geração ou Núcleo alterados

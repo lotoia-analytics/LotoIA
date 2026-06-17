@@ -23,7 +23,7 @@ Visão **ativa** de projetos e missões. Atualizar a cada mudança de status.
 
 | mission_id | Owner | Status | Commit(s) | Veredicto |
 |------------|-------|--------|-----------|-----------|
-| `GESTAO_PROJETOS_FASE_0` | `agent_governanca` | `CONCLUÍDA` | *(este commit)* | `GESTAO_PROJETOS_FASE_0_IMPLANTADA` |
+| `GESTAO_PROJETOS_FASE_0` | `agent_governanca` | `CONCLUÍDA` | `7b3d632` | `GESTAO_PROJETOS_FASE_0_IMPLANTADA` |
 | `HOTFIX_INSTITUTIONAL_LIGHT_MODE` | `agent_visual` + `agent_plataforma` | `CONCLUÍDA` | `f0c1261` | `PAINEL RESTAURADO` |
 | `LEI15_CORE_002_CONSTITUTIONAL_TRANSITION` | `agent_governanca` | `CONCLUÍDA` | `06d3932` | `GIT SINCRONIZADO` |
 | `LEI15_CORE_002_SOVEREIGN` | `agent_geracao` | `CONCLUÍDA` | `fea8e2e` | Núcleo implantado; geração bloqueada |
