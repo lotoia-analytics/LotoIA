@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v9"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v10"
 
 
 def test_core_002_module_imports() -> None:
@@ -88,12 +88,11 @@ def test_core_002_sidebar_route_is_allowed(monkeypatch: pytest.MonkeyPatch) -> N
     assert page == "core_002_read_only"
 
 
-def test_cobertura_page_references_core_002_not_v3_sovereign() -> None:
+def test_cobertura_page_integrates_governance_section() -> None:
     source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
+    assert "render_structural_coverage_governance_section" in source
     assert "LEI15_CORE_002" in source
     assert "histórico não é núcleo" in source
-    assert "soberano" in source
-    assert "V2/V3/V4" in source
 
 
 def test_m_vis_031_and_lei15_regression_blocks(monkeypatch: pytest.MonkeyPatch) -> None:

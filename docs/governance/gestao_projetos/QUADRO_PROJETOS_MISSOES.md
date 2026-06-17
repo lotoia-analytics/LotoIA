@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-VIS-033 pacote Núcleo Lei 15) |
+| Atualização | 2026-06-17 (M-VIS-034 Cobertura Estrutural + 6 Bases) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -37,7 +37,8 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
-| M-VIS-033 | Pacote Núcleo Lei 15 no Painel ADM | `agent_visual` + `agent_estatistico` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+| M-VIS-034 | Cobertura Estrutural + 6 Bases refinadas no Painel ADM | `agent_visual` + `agent_estatistico` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-vis-034-cobertura-estrutural-6-bases-cae6` |
+| M-VIS-033 | Pacote Núcleo Lei 15 no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a2009cda` — produção `institutional-adm-runtime-v9` |
 | M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — produção `institutional-adm-runtime-v7` |
 | M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
 | M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
