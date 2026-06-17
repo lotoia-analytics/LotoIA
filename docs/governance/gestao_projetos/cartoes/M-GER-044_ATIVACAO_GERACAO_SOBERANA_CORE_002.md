@@ -31,6 +31,19 @@ generate_best_games(
 | Persistência | PostgreSQL — `generation_events` / `generated_games` |
 | Build ADM | `institutional-adm-runtime-v18` |
 
+## Smoke PostgreSQL real (checkpoint final)
+
+| Campo | Valor |
+|-------|-------|
+| Data | 2026-06-17 |
+| `generation_event_id` | **116** |
+| `batch_label` | `STRUCT_LEI15_CORE_CANDIDATE_002_15D_001` |
+| Quantidade solicitada | 1 |
+| Quantidade persistida (`generated_games`) | 1 |
+| `ml_enabled` (DB) | 0 |
+| Jogos únicos | 1 |
+| Veredicto smoke | **M-GER-044 VALIDADA COM SMOKE POSTGRESQL REAL** |
+
 ## Veredicto
 
 | Campo | Valor |

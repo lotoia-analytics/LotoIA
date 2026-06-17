@@ -13,6 +13,15 @@ _LOTOIA_DB_ENV = "LOTOIA_" + _DB_URL_ENV
 
 
 def _operational_db_url() -> str:
+    for key in (
+        _DB_URL_ENV,
+        _LOTOIA_DB_ENV,
+        "LOTOIA_DATABASE_POOLER_URL",
+        "DATABASE_PUBLIC_URL",
+    ):
+        value = str(os.getenv(key, "") or "").strip()
+        if _db_url_usable(value):
+            return value
     return str(os.getenv(_DB_URL_ENV) or os.getenv(_LOTOIA_DB_ENV) or "").strip()
 
 
