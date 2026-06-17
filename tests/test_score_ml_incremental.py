@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from unittest.mock import patch
+
+import pytest
 
 from lotoia.benchmark.benchmark_engine import STRATEGY_LOTOIA, run_benchmark
+from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL
 from lotoia.generator.basic_generator import generate_best_games
 from lotoia.ml.score_ml import (
     InterpretableLinearScoreML,
@@ -64,25 +68,37 @@ def test_supervised_rerank_is_explicit_and_does_not_mutate_hybrid_contract() -> 
     assert ranked[0]["numbers"] == high_ml["numbers"]
 
 
-def test_generator_keeps_hybrid_ranking_when_score_ml_enabled(monkeypatch) -> None:
+def test_generator_keeps_hybrid_ranking_when_score_ml_enabled(
+    monkeypatch, sovereign_generation_enabled
+) -> None:
     pool = [
         make_game([1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24], 10),
         make_game([1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 30),
         make_game([1, 2, 4, 5, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25], 20),
     ]
 
-    monkeypatch.setattr(
-        "lotoia.generator.basic_generator.generate_filtered_game",
-        lambda: pool.pop(0),
-    )
+    def _mock_pool(pool_size, *, seed, history, config):
+        return deepcopy(pool)[:pool_size]
 
-    result = generate_best_games(count=3, pool_size=3, ml_enabled=True)
+    def _mock_compose(games, count, config, *, game_size=15):
+        return list(games[:count])
+
+    with patch("lotoia.generation.lei15_core_002.build_sovereign_pool", side_effect=_mock_pool):
+        with patch(
+            "lotoia.generation.lei15_core_002.compose_sovereign_gp",
+            side_effect=_mock_compose,
+        ):
+            result = generate_best_games(
+                count=3, pool_size=3, ml_enabled=True, batch_label=BATCH_LABEL
+            )
 
     assert len(result["games"]) == 3
-    assert result["profile_counts"]["recorrente"] == 1
-    assert result["profile_counts"]["hibrido"] == 1
-    assert result["profile_counts"]["caotico"] == 1
     assert all("score_ml" in game for game in result["games"])
+
+
+def test_generator_legacy_path_blocked_without_sovereign_label() -> None:
+    with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
+        generate_best_games(count=3, pool_size=3, ml_enabled=True)
 
 
 def test_score_ml_calibration_rejects_temporal_leakage() -> None:

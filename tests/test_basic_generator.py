@@ -1,6 +1,13 @@
+from random import sample
+
+import pytest
+
+from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL as SOVEREIGN_BATCH_LABEL
 from lotoia.generator.basic_generator import (
     _attach_scores,
+    _build_game,
     _hybrid_score_sort_key,
+    _is_valid_game,
     generate_best_games,
     generate_filtered_game,
     generate_multiple_games,
@@ -8,35 +15,53 @@ from lotoia.generator.basic_generator import (
 from lotoia.statistics.advanced import calculate_sequence_stats
 
 
+def _unit_filtered_game() -> dict[str, object]:
+    """Validação estrutural sem bypass do roteamento institucional."""
+    while True:
+        game = _build_game(sample(range(1, 26), 15))
+        if _is_valid_game(game):
+            return _attach_scores(game)
+
+
+def test_legacy_generate_filtered_game_blocked() -> None:
+    with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
+        generate_filtered_game()
+
+
+def test_legacy_generate_multiple_games_blocked() -> None:
+    with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
+        generate_multiple_games(count=1)
+
+
 def test_generate_filtered_game_returns_15_numbers() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert len(result["numbers"]) == 15
     assert len(set(result["numbers"])) == 15
 
 
 def test_generate_filtered_game_numbers_are_between_1_and_25() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert all(1 <= number <= 25 for number in result["numbers"])
 
 
 def test_generate_filtered_game_sum_is_valid() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert 170 <= result["sum"] <= 240
     assert result["sum"] == sum(result["numbers"])
 
 
 def test_generate_filtered_game_odd_even_distribution_is_valid() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert 6 <= result["odd"] <= 9
     assert result["even"] == 15 - result["odd"]
 
 
 def test_generate_filtered_game_frame_center_distribution_is_valid() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert 8 <= result["frame"] <= 12
     assert 3 <= result["center"] <= 7
@@ -44,13 +69,13 @@ def test_generate_filtered_game_frame_center_distribution_is_valid() -> None:
 
 
 def test_generate_filtered_game_numbers_are_sorted() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert result["numbers"] == sorted(result["numbers"])
 
 
 def test_generate_filtered_game_respects_sequence_filter() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
     sequence_stats = calculate_sequence_stats(result["numbers"])
 
     assert sequence_stats["sequence_count"] <= 3
@@ -58,19 +83,19 @@ def test_generate_filtered_game_respects_sequence_filter() -> None:
 
 
 def test_generate_filtered_game_returns_quadra_score() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert "quadra_score" in result
 
 
 def test_generate_filtered_game_returns_final_score() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert "final_score" in result
 
 
 def test_generate_filtered_game_returns_quadra_score_structure() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert set(result["quadra_score"]) == {
         "found_quadras",
@@ -82,7 +107,7 @@ def test_generate_filtered_game_returns_quadra_score_structure() -> None:
 
 
 def test_generate_filtered_game_returns_final_score_structure() -> None:
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert set(result["final_score"]) == {"final_score", "components"}
     assert set(result["final_score"]["components"]) == {
@@ -110,7 +135,7 @@ def test_generate_filtered_game_returns_empty_quadra_score_without_quadras(monke
         lambda numbers: empty_score,
     )
 
-    result = generate_filtered_game()
+    result = _unit_filtered_game()
 
     assert result["quadra_score"] == empty_score
 
@@ -192,57 +217,21 @@ def test_attach_scores_falls_back_when_final_score_fails(monkeypatch) -> None:
     }
 
 
-def test_generate_multiple_games_returns_requested_count() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    assert len(result) == 3
-
-
-def test_generate_multiple_games_returns_unique_games() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-    game_keys = [tuple(game["numbers"]) for game in result]
-
-    assert len(set(game_keys)) == len(game_keys)
+def test_generate_multiple_games_legacy_path_blocked() -> None:
+    with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
+        generate_multiple_games(count=3, max_repeated=9)
 
 
-def test_generate_multiple_games_respects_max_repeated() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    for index, game in enumerate(result):
-        for previous_game in result[:index]:
-            repeated = len(set(game["numbers"]) & set(previous_game["numbers"]))
-            assert repeated <= 9
-
-
-def test_generate_multiple_games_returns_15_numbers_per_game() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    assert all(len(game["numbers"]) == 15 for game in result)
-    assert all(len(set(game["numbers"])) == 15 for game in result)
-
-
-def test_generate_multiple_games_numbers_are_between_1_and_25() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    for game in result:
-        assert all(1 <= number <= 25 for number in game["numbers"])
-
-
-def test_generate_multiple_games_returns_quadra_score_for_all_games() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    assert all("quadra_score" in game for game in result)
-
-
-def test_generate_multiple_games_returns_final_score_for_all_games() -> None:
-    result = generate_multiple_games(count=3, max_repeated=9)
-
-    assert all("final_score" in game for game in result)
-
-
-def test_generate_best_games_emits_generation_trace(tmp_path, monkeypatch) -> None:
+def test_generate_best_games_emits_generation_trace(
+    tmp_path, monkeypatch, sovereign_generation_enabled
+) -> None:
     monkeypatch.chdir(tmp_path)
-    result = generate_best_games(count=3, pool_size=6, ml_enabled=False)
+    result = generate_best_games(
+        count=3,
+        pool_size=6,
+        ml_enabled=False,
+        batch_label=SOVEREIGN_BATCH_LABEL,
+    )
 
     trace_dir = tmp_path / "reports" / "snapshots" / "generation_pipeline"
     trace_files = sorted(trace_dir.glob("*.json"))
@@ -252,15 +241,9 @@ def test_generate_best_games_emits_generation_trace(tmp_path, monkeypatch) -> No
     assert any("final_output" in path.name for path in trace_files)
 
 
-def test_generate_multiple_games_emits_discard_traces(tmp_path, monkeypatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _ = generate_multiple_games(count=3, max_repeated=9)
-
-    trace_dir = tmp_path / "reports" / "snapshots" / "generation_pipeline"
-    discarded = sorted(trace_dir.glob("discarded_*.json"))
-
-    assert trace_dir.exists()
-    assert discarded
+def test_generate_multiple_games_emits_discard_traces_blocked() -> None:
+    with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
+        generate_multiple_games(count=3, max_repeated=9)
 
 
 def make_scored_game(
@@ -288,15 +271,12 @@ def make_scored_game(
     }
 
 
-def test_generate_best_games_returns_requested_count(monkeypatch) -> None:
-    pool = [
-        make_scored_game([1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 1, 100, 10, 10),
-        make_scored_game([1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 2, 100, 10, 20),
-        make_scored_game([1, 2, 4, 5, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25], 3, 100, 10, 30),
-    ]
-    monkeypatch.setattr("lotoia.generator.basic_generator.generate_filtered_game", pool.pop)
-
-    result = generate_best_games(count=2, pool_size=3)
+def test_generate_best_games_returns_requested_count(monkeypatch, sovereign_generation_enabled) -> None:
+    result = generate_best_games(
+        count=2,
+        pool_size=3,
+        batch_label=SOVEREIGN_BATCH_LABEL,
+    )
 
     assert result["count"] == 2
     assert len(result["games"]) == 2
@@ -365,48 +345,44 @@ def test_hybrid_score_sort_key_breaks_ties_by_average_rank() -> None:
     assert result[0] == better_rank
 
 
-def test_generate_best_games_composes_profiled_ranking() -> None:
-    result = generate_best_games(count=20, pool_size=30)
+def test_generate_best_games_composes_profiled_ranking(sovereign_generation_enabled) -> None:
+    result = generate_best_games(
+        count=10,
+        pool_size=15,
+        batch_label=SOVEREIGN_BATCH_LABEL,
+    )
 
-    assert result["profile_counts"] == {
-        "recorrente": 8,
-        "hibrido": 8,
-        "caotico": 4,
-    }
+    assert result["count"] == 10
+    assert result["games"][0]["generation_path"] == "LEI15_CORE_002"
     assert all("historical_intelligence" in game for game in result["games"])
 
 
-def test_generate_best_games_returns_quadra_score_for_all_games() -> None:
-    result = generate_best_games(count=3, pool_size=5)
+def test_generate_best_games_returns_quadra_score_for_all_games(sovereign_generation_enabled) -> None:
+    result = generate_best_games(
+        count=3,
+        pool_size=5,
+        batch_label=SOVEREIGN_BATCH_LABEL,
+    )
 
     assert all("quadra_score" in game for game in result["games"])
 
 
-def test_generate_best_games_returns_final_score_for_all_games() -> None:
-    result = generate_best_games(count=3, pool_size=5)
+def test_generate_best_games_returns_final_score_for_all_games(sovereign_generation_enabled) -> None:
+    result = generate_best_games(
+        count=3,
+        pool_size=5,
+        batch_label=SOVEREIGN_BATCH_LABEL,
+    )
 
     assert all("final_score" in game for game in result["games"])
 
 
-def test_generate_best_games_avoids_duplicate_games(monkeypatch) -> None:
-    duplicate = make_scored_game(
-        [1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25],
-        1,
-        100,
-        10,
+def test_generate_best_games_avoids_duplicate_games(sovereign_generation_enabled) -> None:
+    result = generate_best_games(
+        count=5,
+        pool_size=10,
+        batch_label=SOVEREIGN_BATCH_LABEL,
     )
-    pool = [
-        duplicate,
-        duplicate,
-        make_scored_game([1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 2, 100, 10),
-        make_scored_game([1, 2, 4, 5, 7, 9, 10, 12, 14, 16, 18, 20, 22, 24, 25], 3, 100, 10),
-    ]
-    monkeypatch.setattr(
-        "lotoia.generator.basic_generator.generate_filtered_game",
-        lambda: pool.pop(0),
-    )
-
-    result = generate_best_games(count=2, pool_size=3)
     game_keys = [tuple(game["numbers"]) for game in result["games"]]
 
     assert len(set(game_keys)) == len(game_keys)
