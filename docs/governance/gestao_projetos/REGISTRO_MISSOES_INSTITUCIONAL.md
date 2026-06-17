@@ -61,6 +61,18 @@ mecânica 15+1/15+2 e não possui efeito operacional.
 **Bloqueios relacionados:** `BLK-GERACAO-001`, `BLK-CORE002-001`, `BLK-LEI15A-001`,
 `BLK-ML-OPERACIONAL-001`, `BLK-PUBLIC-APP-001`.
 
+**Evidência Git:**
+
+| Campo | Valor |
+|-------|-------|
+| Branch | `cursor/m-gov-038-lei15a-redefinida-cae6` |
+| PR | [#142](https://github.com/lotoia-analytics/LotoIA/pull/142) |
+| Merge commit | `0c2dadb` |
+| Commit entrega | `9134945` |
+| Build marker | `institutional-adm-runtime-v14` |
+
+**Evidência testes:** `tests/dashboard/test_institutional_app_gov_038_lei15a_governance.py` + regressões — 86/86 passed.
+
 **Confirmações:**
 
 - LEI15_CORE_002 permanece soberano

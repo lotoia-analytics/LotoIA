@@ -34,6 +34,15 @@ A Lei 15A é uma camada futura subordinada ao LEI15_CORE_002. No estado atual, e
 - `BLK-ML-OPERACIONAL-001`
 - `BLK-PUBLIC-APP-001`
 
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#142](https://github.com/lotoia-analytics/LotoIA/pull/142) |
+| Merge commit | `0c2dadb` |
+| Commit entrega | `9134945` |
+| Build marker | `institutional-adm-runtime-v14` |
+
 ## Confirmação
 
 - LEI15_CORE_002 permanece soberano
