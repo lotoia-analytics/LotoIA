@@ -37,7 +37,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
-| M-PLAT-041 | Separação public_app x ADM Institucional | `agent_plataforma` + `agent_governanca` | `CONCLUIDA` | branch `cursor/m-plat-041-public-adm-separation-cae6` — build `institutional-adm-runtime-v17` |
+| M-PLAT-041 | Separação public_app x ADM Institucional | `agent_plataforma` + `agent_governanca` | `CONCLUIDA` | merge `1f8688a` — [PR #148](https://github.com/lotoia-analytics/LotoIA/pull/148) — build `institutional-adm-runtime-v17` |
 | M-PLAT-040 | Limpeza de órfãs e rotas legadas do Painel ADM | `agent_plataforma` + `agent_visual` | `CONCLUIDA` | merge `8cc1568` — [PR #146](https://github.com/lotoia-analytics/LotoIA/pull/146) — build `institutional-adm-runtime-v16` |
 | M-DADOS-039 | Área Restrita / Limpeza Controlada protegida pela Lei 001 | `agent_dados` + `agent_governanca` | `CONCLUIDA` | merge `ae15edf` — [PR #144](https://github.com/lotoia-analytics/LotoIA/pull/144) — build `institutional-adm-runtime-v15` |
 | M-GOV-038 | Lei 15A redefinida — camada futura subordinada ao CORE_002 | `agent_governanca` + `agent_geracao` | `CONCLUIDA` | merge `0c2dadb` — [PR #142](https://github.com/lotoia-analytics/LotoIA/pull/142) — build `institutional-adm-runtime-v14` |

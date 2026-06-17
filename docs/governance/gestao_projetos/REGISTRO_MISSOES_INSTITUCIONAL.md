@@ -73,6 +73,8 @@ default = canal público seguro; ADM via `LOTOIA_DASHBOARD_MODE=institutional` e
 
 **Veredicto:** **M-PLAT-041 CONCLUÍDA E ATIVA EM PRODUÇÃO — PUBLIC_APP SEPARADO DO ADM INSTITUCIONAL COM SEGURANÇA**
 
+**Evidência Git:** merge `1f8688a` — [PR #148](https://github.com/lotoia-analytics/LotoIA/pull/148) — commit `9d030c4`
+
 **Cartão:** `cartoes/M-PLAT-041_SEPARACAO_PUBLIC_APP_ADM.md`
 
 ---
