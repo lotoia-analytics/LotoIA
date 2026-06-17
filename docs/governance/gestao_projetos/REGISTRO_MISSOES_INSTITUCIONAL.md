@@ -55,6 +55,8 @@ smoke `scripts/ops/smoke_sovereign_generation_m_ger_044.py`.
 
 **Veredicto:** **M-GER-044 CONCLUÍDA E ATIVA EM PRODUÇÃO — GERAÇÃO SOBERANA CONTROLADA CORE_002 VALIDADA COM PERSISTÊNCIA POSTGRESQL**
 
+**Evidência Git:** merge `167d46e` — [PR #152](https://github.com/lotoia-analytics/LotoIA/pull/152) — commit `c05e135`
+
 **Cartão:** `cartoes/M-GER-044_ATIVACAO_GERACAO_SOBERANA_CORE_002.md`
 
 ---
