@@ -130,6 +130,13 @@ from dashboard.institutional_supervised_ml import (
     resolve_adm_ml_enabled,
     supervised_ml_status_label,
 )
+from dashboard.institutional_clean_law15_runtime import (
+    ADM_RUNTIME_ACTIVE_CARD_FORMAT,
+    SOVEREIGN_RUNTIME_FORMAT_LABEL,
+    SOVEREIGN_RUNTIME_GAMES_COLUMN_LABELS,
+    render_lei15a_inoperative_notice,
+    render_sovereign_runtime_format_panel,
+)
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
     SESSION_LOAD_COMPARATIVE,
@@ -12255,6 +12262,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader(adm_generator_menu_label())
     _render_constitutional_status_panel(compact=False)
+    render_lei15a_inoperative_notice(compact=False)
     if _is_sovereign_generation_blocked():
         st.error(
             "Geração bloqueada enquanto `LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`. "
@@ -12278,38 +12286,24 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         "Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL "
         f"(label obrigatório: `{SOVEREIGN_BATCH_LABEL}`)."
     )
-    st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
+    st.caption(
+        "Runtime Limpo ADM 15 — geração exclusiva CORE_002 / 15D com saída auditada pelo OutputCommander."
+    )
     st.markdown("##### Runtime Limpo ADM 15")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
-    st.session_state.setdefault("clean_law15_card_format", 15)
-    current_card_format = int(st.session_state.get("clean_law15_card_format", 15) or 15)
-    selected_card_format = int(
-        st.selectbox(
-            "Formato do cartão",
-            options=list(OFFICIAL_CARD_FORMATS),
-            index=list(OFFICIAL_CARD_FORMATS).index(current_card_format) if current_card_format in OFFICIAL_CARD_FORMATS else 0,
-            format_func=_clean_law15_format_label,
-            key="clean_law15_card_format",
-        )
-    )
+    st.session_state["clean_law15_card_format"] = ADM_RUNTIME_ACTIVE_CARD_FORMAT
+    selected_card_format = ADM_RUNTIME_ACTIVE_CARD_FORMAT
+    render_sovereign_runtime_format_panel()
     left, right = st.columns(2)
-    left.metric("Formato", f"{selected_card_format} dezenas")
-    right.metric("Estratégia ativa", "Lei 15")
-    st.info(
-        "Lei 15 gera base 11+ com busca por 14/15. "
-        "Lei 17 valida 12+ com busca por 14/15. "
-        "Lei 18 valida 13+ com busca por 14/15."
-    )
-    st.caption(
-        "16 a 23 dezenas significam apenas expansão auditada do núcleo: 15 + reservas auditadas."
-    )
-    if st.button("Gerar com Lei 15", type="primary", key="clean_law15_generate_button"):
+    left.metric("Formato", "15D — CORE_002")
+    right.metric("Estratégia ativa", "LEI15_CORE_002")
+    if st.button("Gerar CORE_002 (15D)", type="primary", key="clean_law15_generate_button"):
         result = _run_clean_law15_generation(requested_count=requested_count)
         result["selected_card_format"] = int(selected_card_format)
-        result["card_format_label"] = _clean_law15_format_label(selected_card_format)
+        result["card_format_label"] = SOVEREIGN_RUNTIME_FORMAT_LABEL
         result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
-        result["validation_status_lei_17"] = "VALIDA_12_PLUS" if int(selected_card_format) in (17, 18) else "N_A"
-        result["validation_status_lei_18"] = "VALIDA_13_PLUS" if int(selected_card_format) == 18 else "N_A"
+        result["validation_status_lei_17"] = "N_A"
+        result["validation_status_lei_18"] = "N_A"
         st.session_state["clean_law15_generation_result"] = result
         persisted_snapshot = _persist_clean_law15_generation_history(
             result=result,
@@ -12326,7 +12320,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             f"Quantidade solicitada={result.get('requested_count', '-')}"
             f" | gerados={len(result.get('games') or [])}"
             f" | dezenas/jogo={result.get('dezenas_por_jogo', '-')}"
-            f" | formato_cartao={result.get('selected_card_format', 15)}"
+            f" | formato_cartao=15D-CORE_002"
         )
         st.caption(
             " | ".join(
@@ -12337,9 +12331,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     f"scientific_law_role={result.get('scientific_law_role', '-')}",
                     f"clean_adm_runtime_role={result.get('clean_adm_runtime_role', '-')}",
                     f"output_commander_role={result.get('output_commander_role', '-')}",
-                    f"nucleo_lei_15_size={result.get('nucleo_lei_15_size', 15)}",
-                    f"reservas_auditadas_count={result.get('reservas_auditadas_count', 0)}",
-                    f"cartao_final_size={result.get('cartao_final_size', result.get('selected_card_format', 15))}",
+                    f"nucleo_core_002_size=15",
                     f"generation_event_id={result.get('generation_event_id', '-')}",
                 ]
             )
@@ -12365,41 +12357,26 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         diag_cols[1].metric("valid_candidates", int(diagnostics.get("valid_candidates_found", 0) or 0))
         diag_cols[2].metric("attempts_used", int(diagnostics.get("attempts_used", 0) or 0))
         diag_cols[3].metric("fill_completed", str(bool(diagnostics.get("fill_completed", False))))
-        games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], int(result.get("selected_card_format", 15) or 15)))
+        games = list(result.get("display_games") or _expand_generation_games_for_format(result.get("games") or [], ADM_RUNTIME_ACTIVE_CARD_FORMAT))
         if games:
-            st.markdown(f"#### {LEI15_UPPER_PANEL_TITLE}")
-            cartoes_finais_superiores: list[list[int]] = []
+            st.markdown("#### Jogos gerados — CORE_002 (15D)")
             games_table_rows: list[dict[str, Any]] = []
             for index, game in enumerate(games):
+                core_numbers = _extract_int_numbers(game.get("core_numbers", game.get("numbers", [])))
                 final_card_numbers = _extract_int_numbers(game.get("final_card_numbers", game.get("numbers", [])))
-                cartoes_finais_superiores.append(final_card_numbers)
                 games_table_rows.append(
                     {
                         "jogo": index + 1,
-                        "núcleo_lei_15": _format_numbers_for_history(game.get("core_numbers", game.get("numbers", []))),
-                        "reservas_auditadas": " ".join(f"+{int(number):02d}" for number in game.get("audited_reserve_numbers", [])) or "-",
+                        "núcleo_core_002": _format_numbers_for_history(core_numbers),
                         "cartão_final": _format_numbers_for_history(final_card_numbers),
                     }
                 )
-            games_df = pd.DataFrame(games_table_rows).rename(columns=LEI15_UPPER_PANEL_COLUMN_LABELS)
+            games_df = pd.DataFrame(games_table_rows).rename(columns=SOVEREIGN_RUNTIME_GAMES_COLUMN_LABELS)
             st.dataframe(games_df, hide_index=True, use_container_width=True)
             st.caption(
-                f"núcleo_lei_15=15 | formato_cartao={int(result.get('selected_card_format', 15) or 15)} | "
-                f"reservas_auditadas={len(games[0].get('audited_reserve_numbers', []))} | "
-                f"cartão_final={len(games[0].get('final_card_numbers', games[0].get('numbers', [])))}"
+                f"core_002_15d=15 | label={SOVEREIGN_BATCH_LABEL} | "
+                f"generation_event_id={result.get('generation_event_id', '-')}"
             )
-            institutional_rows = build_institutional_matrix_rows(
-                games,
-                result.get("selected_card_format", 15),
-                result.get("requested_count", len(games)),
-                superior_final_cards=cartoes_finais_superiores,
-            )
-            if institutional_rows:
-                _render_institutional_matrix_reading_section(
-                    institutional_rows=institutional_rows,
-                    games_table_rows=games_table_rows,
-                    card_format=int(result.get("selected_card_format", 15) or 15),
-                )
         st.markdown("##### Rastros institucionais")
         trace_cols = st.columns(4)
         trace_cols[0].metric("generation_event_id", str(result.get("generation_event_id", "-") or "-"))

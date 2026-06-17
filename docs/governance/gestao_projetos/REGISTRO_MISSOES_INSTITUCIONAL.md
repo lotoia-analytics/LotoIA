@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-046](#m-vis-046--corrigir-resíduo-visual-lei-15a-operacional-no-runtime-limpo-adm-15) | Runtime Limpo — resíduo Lei 15A | `CONCLUIDA` | `VISUAL CORRIGIDO / CORE_002 15D PRESERVADO` |
 | [M-ML-045](#m-ml-045--ativação-definitiva-do-ml-operacional-supervisionado) | ML Operacional Supervisionado CORE_002 | `CONCLUIDA` | `ML SUPERVISIONADO ATIVO / POSTGRESQL + TRACE` |
 | [M-GER-044](#m-ger-044--ativação-da-geração-soberana-controlada-core_002) | Geração Soberana CORE_002 | `CONCLUIDA` | `GERAÇÃO CONTROLADA ATIVA / POSTGRESQL` |
 | [M-GOV-042](#m-gov-042--auditoria-constitucional-final-do-painel-adm-e-public_app) | Auditoria Constitucional Final | `CONCLUIDA` | `FASE CONSTITUCIONAL ENCERRADA / 30-30 APROVADOS` |
@@ -37,6 +38,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-046 — Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Agentes | `agent_visual` + `agent_governanca` + `agent_geracao` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Correção visual / constitucional |
+
+**Correção:** Removido selectbox 16D–23D e textos "Lei 15 + reserva auditada" / "Leitura operacional Lei 15A" da página Gerador ADM CORE_002. Formato fixo 15D CORE_002. Lei 15A exibida apenas como futura/inoperante.
+
+**Build:** `institutional-adm-runtime-v21`
+
+**Veredicto:** **M-VIS-046 CONCLUÍDA E ATIVA EM PRODUÇÃO — RESÍDUO VISUAL LEI 15A OPERACIONAL REMOVIDO / CORE_002 15D PRESERVADO**
+
+**Cartão:** `cartoes/M-VIS-046_RUNTIME_LIMPO_LEI15A_VISUAL.md`
+
+---
 
 ### M-ML-045 — Ativação Definitiva do ML Operacional Supervisionado
 
