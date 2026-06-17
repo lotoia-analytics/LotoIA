@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-LEI15-003 fechamento produção) |
+| Atualização | 2026-06-17 (M-VIS-033 pacote Núcleo Lei 15) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -37,7 +37,8 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
-| M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — [PR #127](https://github.com/lotoia-analytics/LotoIA/pull/127) — produção `7df540ce3bcc` / `institutional-adm-runtime-v7` |
+| M-VIS-033 | Pacote Núcleo Lei 15 no Painel ADM | `agent_visual` + `agent_estatistico` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-vis-033-pacote-nucleo-lei15-cae6` |
+| M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — produção `institutional-adm-runtime-v7` |
 | M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
 | M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
 | M-GOV-029 | Inventário funcional ADM (Mission 29) | `agent_visual` | `CONGELADA` | docs em `main` |
@@ -48,7 +49,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Bloqueio |
 |-----------|--------|-----------------|--------|----------|
-| M-LEI15-003 | Unificar path geração ADM → generate_best_games | `agent_geracao` + `agent_plataforma` | `CONCLUIDA` | merge `6dea9e7` — [PR #131](https://github.com/lotoia-analytics/LotoIA/pull/131) — produção `6dea9e7` / `institutional-adm-runtime-v8` — geração bloqueada |
+| M-LEI15-003 | Unificar path geração ADM → generate_best_games | `agent_geracao` + `agent_plataforma` | `CONCLUIDA` | merge `6dea9e7` — produção `institutional-adm-runtime-v8` |
 | M-LEI15-002 | Implantação LEI15_CORE_002 | `agent_geracao` | `CONCLUIDA` | Geração bloqueada (`GENERATION_ENABLED=0`) |
 | M-LEI15-001 | Alinhamento constitucional doc/painel/ADM | `agent_governanca` | `BLOQUEADA` | Painel ADM conflitante — ver auditoria |
 
