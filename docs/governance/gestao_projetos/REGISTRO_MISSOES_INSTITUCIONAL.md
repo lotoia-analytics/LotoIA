@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-PLAT-041](#m-plat-041--separação-public_app-x-adm-institucional) | Separação public_app x ADM | `CONCLUIDA` | `PUBLIC_APP SEPARADO / RAILWAY ADM INTACTO` |
 | [M-PLAT-040](#m-plat-040--limpeza-de-órfãs-e-rotas-legadas-do-painel-adm) | Limpeza órfãs/rotas legadas ADM | `CONCLUIDA` | `ROTAS LEGADAS BLOQUEADAS / ALIASES SEGUROS` |
 | [M-DADOS-039](#m-dados-039--área-restrita--limpeza-controlada-protegida-pela-lei-001) | Área Restrita / Limpeza Controlada | `CONCLUIDA` | `PURGE BLOQUEADO / LEI 001 SOBERANA` |
 | [M-GOV-038](#m-gov-038--lei-15a-redefinida-como-camada-futura-subordinada-ao-core_002) | Lei 15A redefinida / inoperante | `CONCLUIDA` | `LEI 15A FUTURA / SUBORDINADA / INOPERANTE` |
@@ -33,6 +34,48 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-PLAT-041 — Separação public_app x ADM Institucional
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-OPS-001` |
+| Agentes | `agent_plataforma` + `agent_governanca` + `agent_visual` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Plataforma / Segurança / Governança / Alto risco |
+| Risco | Alto (separação de interface) |
+
+**Objetivo:** Separar canal público `public_app` do Painel ADM institucional sem quebrar
+produção Railway (`institutional_app.py`).
+
+**Decisão aplicada (Opção A):** Railway permanece em `institutional_app.py`. `public_app.py`
+default = canal público seguro; ADM via `LOTOIA_DASHBOARD_MODE=institutional` explícito.
+
+**Entregáveis:**
+
+- `dashboard/public_surface.py` — canal público seguro
+- `dashboard/entrypoint_inventory.py` — inventário entrypoints
+- `dashboard/public_app.py` — separação por modo
+- `dashboard/institutional_public_separation.py` — bloco governança
+- Build ADM `institutional-adm-runtime-v17`
+- Build público `public-surface-v1-m-plat-041`
+
+**Bloqueios relacionados:** `BLK-PUBLIC-APP-001`, `BLK-ADM-001`, `BLK-GERACAO-001`,
+`BLK-PURGE-001`, `BLK-LEI001-001`, `BLK-CORE002-001`, `BLK-ML-OPERACIONAL-001`, `BLK-LEI15A-001`.
+
+**Confirmações:**
+
+- Railway entrypoint inalterado (`institutional_app.py`)
+- public_app não espelha ADM por default
+- Sem geração, purge, banco, Núcleo ou Lei 15A operacional
+
+**Veredicto:** **M-PLAT-041 CONCLUÍDA E ATIVA EM PRODUÇÃO — PUBLIC_APP SEPARADO DO ADM INSTITUCIONAL COM SEGURANÇA**
+
+**Cartão:** `cartoes/M-PLAT-041_SEPARACAO_PUBLIC_APP_ADM.md`
+
+---
 
 ### M-PLAT-040 — Limpeza de Órfãs e Rotas Legadas do Painel ADM
 

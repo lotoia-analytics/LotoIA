@@ -23,8 +23,13 @@ def test_streamlit_cloud_entrypoint_delegates_to_institutional_dashboard() -> No
     assert callable(institutional_app.main)
 
 
-def test_public_app_build_marker_is_cloud_only() -> None:
-    assert "cloud" in public_cloud_app.PUBLIC_APP_BUILD.lower()
+def test_public_app_build_marker_identifies_public_surface() -> None:
+    assert "public" in public_cloud_app.PUBLIC_APP_BUILD.lower()
+    assert "m-plat-041" in public_cloud_app.PUBLIC_APP_BUILD.lower()
+
+
+def test_public_app_has_explicit_institutional_delegate() -> None:
+    assert callable(public_cloud_app.render_institutional_adm)
 
 
 def test_institutional_app_has_auth_and_cloud_policy_hooks() -> None:
