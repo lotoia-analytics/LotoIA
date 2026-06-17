@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-VIS-034 Cobertura Estrutural + 6 Bases) |
+| Atualização | 2026-06-17 (M-VIS-035 ML Assistivo + Vazamento Lateral) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -37,6 +37,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
+| M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/m-vis-035-ml-assistivo-vazamento-lateral-cae6` |
 | M-VIS-034 | Cobertura Estrutural + 6 Bases refinadas no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a533e61` — produção `institutional-adm-runtime-v10` |
 | M-VIS-033 | Pacote Núcleo Lei 15 no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a2009cda` — produção `institutional-adm-runtime-v9` |
 | M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — produção `institutional-adm-runtime-v7` |
@@ -65,6 +66,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status |
 |-----------|--------|-----------------|--------|
+| M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `EM EXECUCAO / AGUARDANDO REVIEW` |
 | M-ML-009 | Política ML assistivo (ADR-042 / ADR-009) | `agent_ml` | `CONCLUIDA` |
 
 ---

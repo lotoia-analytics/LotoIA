@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-035](#m-vis-035--ml-assistivo--vazamento-lateral-constitucional) | ML Assistivo + Vazamento Lateral | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-VIS-034](#m-vis-034--cobertura-estrutural--6-bases-refinadas-no-painel-adm) | Cobertura Estrutural + 6 Bases ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-033](#m-vis-033--pacote-núcleo-lei-15-no-painel-adm) | Pacote Núcleo Lei 15 ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -27,6 +28,31 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-035 — ML Assistivo + Vazamento Lateral Constitucional
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-ML-001` |
+| Agentes | `agent_ml` + `agent_visual` + `agent_governanca` + `agent_estatistico` + `agent_qualidade` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco | Médio (read-only) |
+| Branch | `cursor/m-vis-035-ml-assistivo-vazamento-lateral-cae6` |
+
+**Objetivo:** Central ML Assistiva + Vazamento Lateral Constitucional read-only — ML como
+Guardião Analítico Assistivo, sem efeito operacional automático.
+
+**Pré-requisito:** M-VIS-034 em `main` (PR #134 — merge `a533e61`).
+
+**Bloqueios relacionados:** BLK-GERACAO-001, BLK-CORE002-001, BLK-ML-OPERACIONAL-001,
+BLK-LEI15A-001, BLK-PURGE-001, BLK-PUBLIC-APP-001.
+
+**Veredicto alvo:** **M-VIS-035 CONCLUÍDA — ML ASSISTIVO + VAZAMENTO LATERAL READ-ONLY AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-VIS-035_ML_ASSISTIVO_VAZAMENTO_LATERAL.md`
+
+---
 
 ### M-VIS-034 — Cobertura Estrutural + 6 Bases refinadas no Painel ADM
 
