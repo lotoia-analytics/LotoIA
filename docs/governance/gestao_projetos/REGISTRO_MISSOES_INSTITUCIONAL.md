@@ -10,7 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -31,11 +31,13 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
 | Projeto | `P-LEI15-001` |
-| Agentes | `agent_geracao` + `agent_plataforma` + `agent_qualidade` |
-| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Agentes | `agent_geracao` + `agent_plataforma` + `agent_qualidade` + `agent_governanca` (fechamento) |
+| Status | `CONCLUIDA` |
 | Risco | Crítico |
-| Branch | `cursor/m-lei15-003-unificar-path-geracao-cae6` |
+| Branch implantação | `cursor/m-lei15-003-unificar-path-geracao-cae6` |
+| Branch fechamento | `cursor/m-lei15-003-fechamento-producao-cae6` |
 
 **Objetivo:** Unificar Painel ADM para path único `generate_best_games` com label soberano
 `STRUCT_LEI15_CORE_CANDIDATE_002_15D_001`; bloquear `_generate_direct_15_games`; manter
@@ -43,7 +45,17 @@ geração bloqueada com flag `0`.
 
 **Bloqueios tratados:** `BLK-GERACAO-001`, `BLK-ADM-001`, `BLK-CORE002-001`, `BLK-LEGACY-GEN-001`.
 
-**Veredicto alvo:** **M-LEI15-003 CONCLUÍDA — PATH ÚNICO ADM → generate_best_games AGUARDANDO REVIEW**
+**Evidência Git:** PR [#131](https://github.com/lotoia-analytics/LotoIA/pull/131) — merge
+`6dea9e7f50bba2565c6981b50e47b30ad0ec473f` — entrega `b63a1f677066495ab68b5cdd7531aeecc3765024`
+
+**Evidência produção:** `lotoia-production.up.railway.app` — build `institutional-adm-runtime-v8`
+— deploy Railway 2026-06-17T19:02:10Z — health `ok` — geração **BLOQUEADA**.
+
+**Veredicto:** **M-LEI15-003 FECHADA FORMALMENTE — PATH ÚNICO ADM VALIDADO EM PRODUÇÃO COM GERAÇÃO BLOQUEADA**
+
+**Veredicto institucional:** **M-LEI15-003 ATIVA EM PRODUÇÃO — PATH ÚNICO ADM VALIDADO COM GERAÇÃO BLOQUEADA**
+
+**Ressalva:** futura liberação de geração exige missão/autorização própria — fora do escopo M-LEI15-003.
 
 **Cartão:** `cartoes/M-LEI15-003_UNIFICAR_PATH_GERACAO_ADM.md`
 
