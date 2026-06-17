@@ -527,12 +527,75 @@ def _sovereign_generation_blocked_result(*, requested_count: int) -> dict[str, A
         "fill_diagnostics": {
             "insufficient_reason": "SOVEREIGN_GENERATION_BLOCKED",
             "fill_completed": False,
+            "sovereign_generation_path": "generate_best_games",
+            "analysis_batch_label": SOVEREIGN_BATCH_LABEL,
         },
         "generation_mode": "SOVEREIGN_GENERATION_BLOCKED",
         "policy_mode": "ADR_047_CONSTITUTIONAL_BLOCK",
         "dezenas_por_jogo": 15,
         "analysis_batch_label": SOVEREIGN_BATCH_LABEL,
     }
+
+
+LEGACY_DIRECT_15_BLOCKED_REASON = "LEGACY_DIRECT_15_GENERATION_BLOCKED_M_LEI15_003"
+ADM_SOVEREIGN_GENERATION_SOURCE = "dashboard.institutional_app.adm_sovereign_generation"
+
+
+def _raise_legacy_direct_15_games_blocked(*, caller: str) -> None:
+    raise RuntimeError(
+        f"[M-LEI15-003 / BLK-LEGACY-GEN-001] {caller} não é caminho operacional da "
+        f"Lei 15 soberana (LEI15_CORE_002). Path canônico ADM: generate_best_games("
+        f"batch_label={SOVEREIGN_BATCH_LABEL!r}, ml_enabled=False)."
+    )
+
+
+def _resolve_adm_sovereign_batch_label(batch_label: str | None) -> str:
+    """Fail-closed: batch_label=None ou label não soberano é erro institucional ADM."""
+    if batch_label is None or not str(batch_label).strip():
+        raise RuntimeError(
+            "[M-LEI15-003] batch_label=None rejeitado no contexto ADM Painel. "
+            f"Label soberano obrigatório: {SOVEREIGN_BATCH_LABEL}."
+        )
+    normalized = str(batch_label).strip().upper()
+    sovereign = str(SOVEREIGN_BATCH_LABEL).strip().upper()
+    if normalized != sovereign:
+        raise RuntimeError(
+            f"[M-LEI15-003] Label ADM inválido {normalized!r}. Obrigatório: {SOVEREIGN_BATCH_LABEL}."
+        )
+    return normalized
+
+
+def _sovereign_adm_pool_size(*, requested_count: int, pool_size: int | None = None) -> int:
+    count = max(1, int(requested_count))
+    if pool_size is not None:
+        return max(int(pool_size), count)
+    return max(count * 3, count, 30)
+
+
+def _invoke_sovereign_adm_generate_best_games(
+    *,
+    requested_count: int,
+    batch_label: str | None = None,
+    pool_size: int | None = None,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """Único path preparado para geração ADM Lei 15 (LEI15_CORE_002 / ADR-047)."""
+    resolved_label = _resolve_adm_sovereign_batch_label(batch_label or SOVEREIGN_BATCH_LABEL)
+    effective_pool = _sovereign_adm_pool_size(
+        requested_count=requested_count,
+        pool_size=pool_size,
+    )
+    from lotoia.generator.basic_generator import generate_best_games
+
+    return dict(
+        generate_best_games(
+            count=int(requested_count),
+            pool_size=effective_pool,
+            batch_label=resolved_label,
+            ml_enabled=False,
+            seed=seed,
+        )
+    )
 
 
 def _render_orphan_generation_blocked_page(snapshot: dict[str, Any]) -> None:
@@ -4134,6 +4197,7 @@ def _generate_direct_15_games(
     previous_contest_numbers: Sequence[int] | None = None,
     analysis_batch_label: str | None = None,
 ) -> list[dict[str, Any]]:
+    _raise_legacy_direct_15_games_blocked(caller="_generate_direct_15_games")
     games: list[dict[str, Any]] = []
     used_signatures: set[str] = set(seen_signatures or set())
     diagnostics = fill_diagnostics if fill_diagnostics is not None else {}
@@ -4979,33 +5043,19 @@ def _run_institutional_generation(
         ]
         games = []
     elif direct_generation_mode:
-        games = _generate_direct_15_games(
-            total_games=total_games,
+        sovereign_payload = _invoke_sovereign_adm_generate_best_games(
+            requested_count=total_games,
+            batch_label=SOVEREIGN_BATCH_LABEL,
             seed=seed,
-            history_frequency=history_frequency,
-            latest_numbers=latest_numbers,
-            batch_number_usage=batch_number_usage,
-            batch_profile_usage=batch_profile_usage,
-            batch_total_games=batch_total_games,
-            core_numbers=core_numbers,
-            discouraged_numbers=discouraged_numbers,
-            max_frequency_ratio=max_frequency_ratio,
-            min_frequency_ratio=min_frequency_ratio,
-            preferred_profile_ratios=preferred_profile_ratios,
-            odd_min=effective_odd_min,
-            odd_max=effective_odd_max,
-            even_min=effective_even_min,
-            even_max=effective_even_max,
-            sequence_max=effective_sequence_max,
-            coverage_min=effective_coverage_min,
-            entropy_min=effective_entropy_min,
-            repeat_min=repeat_min,
-            repeat_max=repeat_max,
-            preferred_parity_pairs=preferred_parity_pairs,
-            allowed_parity_pairs=allowed_parity_pairs,
-            fill_diagnostics=fill_diagnostics,
-            previous_contest_numbers=previous_contest_numbers,
         )
+        games = list(sovereign_payload.get("games") or [])
+        fill_diagnostics["sovereign_generation_path"] = "generate_best_games"
+        fill_diagnostics["analysis_batch_label"] = SOVEREIGN_BATCH_LABEL
+        fill_diagnostics["fill_completed"] = len(games) >= total_games
+        if len(games) < total_games:
+            fill_diagnostics["insufficient_reason"] = "INSUFFICIENT_VALID_CANDIDATES"
+        else:
+            fill_diagnostics["insufficient_reason"] = "none"
     else:
         candidate_count = max(total_games * 20, 200 if use_top50 else 120)
         compact_candidate_multiplier = int(policy.get("compactation_adjustment_candidate_multiplier", 0) or 0)
@@ -11990,52 +12040,32 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
-    if _is_sovereign_generation_blocked():
-        return _sovereign_generation_blocked_result(requested_count=requested_count)
-    analysis_batch_label = str(
-        st.session_state.get("clean_law15_analysis_batch_label") or SOVEREIGN_BATCH_LABEL
-    )
-    fill_diagnostics: dict[str, Any] = {}
     total_games = int(requested_count)
+    if _is_sovereign_generation_blocked():
+        return _sovereign_generation_blocked_result(requested_count=total_games)
+
+    analysis_batch_label = _resolve_adm_sovereign_batch_label(
+        str(st.session_state.get("clean_law15_analysis_batch_label") or SOVEREIGN_BATCH_LABEL)
+    )
     seed = int(time.time()) % 1_000_000
     latest_contest = get_latest_official_contest() or {}
     latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
-    history_frequency = _history_number_frequency()
-    latest_numbers = set(int(number) for number in (latest_contest or {}).get("dezenas", []))
-    batch_number_usage: dict[int, int] = {}
-    batch_profile_usage: dict[tuple[int, int], int] = {}
     target_contest = None
     if latest_contest_number is not None and latest_contest_number > 0:
         target_contest = int(latest_contest_number) + 1
-    previous_contest_reference = _load_previous_contest_numbers_for_rfe(target_contest)
-    games = _generate_direct_15_games(
-        total_games=total_games,
+
+    sovereign_payload = _invoke_sovereign_adm_generate_best_games(
+        requested_count=total_games,
+        batch_label=analysis_batch_label,
         seed=seed,
-        history_frequency=history_frequency,
-        latest_numbers=latest_numbers,
-        batch_number_usage=batch_number_usage,
-        batch_profile_usage=batch_profile_usage,
-        batch_total_games=total_games,
-        core_numbers=[],
-        discouraged_numbers=[],
-        max_frequency_ratio=1.0,
-        min_frequency_ratio=0.0,
-        preferred_profile_ratios={},
-        odd_min=5,
-        odd_max=10,
-        even_min=5,
-        even_max=10,
-        sequence_max=15,
-        coverage_min=0.0,
-        entropy_min=0.0,
-        repeat_min=0,
-        repeat_max=15,
-        preferred_parity_pairs=[],
-        allowed_parity_pairs=[],
-        fill_diagnostics=fill_diagnostics,
-        previous_contest_numbers=previous_contest_reference.numbers,
-        analysis_batch_label=analysis_batch_label,
     )
+    games = list(sovereign_payload.get("games") or [])
+    fill_diagnostics: dict[str, Any] = {
+        "fill_completed": len(games) >= total_games,
+        "sovereign_generation_path": "generate_best_games",
+        "analysis_batch_label": analysis_batch_label,
+        "generation_path": str(sovereign_payload.get("generation_path") or "LEI15_CORE_002"),
+    }
     commander_report = output_commander_validate_games(
         games,
         batch_id=f"clean-law15-{seed}",
@@ -12046,32 +12076,19 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         persisted_signatures=set(load_all_output_signatures()),
         historical_deduplication_mode="AUDIT_ONLY",
     )
-    rfe_blocked_reason = fill_diagnostics.get("insufficient_reason") in {
-        "RFE_PREVIOUS_CONTEST_NOT_FOUND",
-        "RFE_PREVIOUS_CONTEST_INVALID_NUMBERS",
-        "INSUFFICIENT_RFE_APPROVED_CANDIDATES",
-    }
-    if len(games) < total_games and not rfe_blocked_reason:
+    if len(games) < total_games:
         commander_report = {
             **commander_report,
             "status_comandante_saida": "BLOQUEADO",
             "motivo_bloqueio": "INSUFFICIENT_VALID_CANDIDATES",
             "error_message": "INSUFFICIENT_VALID_CANDIDATES",
         }
-    if rfe_blocked_reason:
-        commander_report = {
-            **commander_report,
-            "status_comandante_saida": "BLOQUEADO",
-            "motivo_bloqueio": str(fill_diagnostics.get("insufficient_reason", "RFE_PREVIOUS_CONTEST_NOT_FOUND") or "RFE_PREVIOUS_CONTEST_NOT_FOUND"),
-            "error_message": str(fill_diagnostics.get("insufficient_reason", "RFE_PREVIOUS_CONTEST_NOT_FOUND") or "RFE_PREVIOUS_CONTEST_NOT_FOUND"),
-            "quantidade_jogos_rejeitados": 0,
-        }
-    fill_diagnostics["rejected_by_output_commander"] = 0 if rfe_blocked_reason else int(commander_report.get("quantidade_jogos_rejeitados", 0) or 0)
-    fill_diagnostics["fill_completed"] = len(games) >= total_games
-    if len(games) >= total_games:
-        fill_diagnostics["insufficient_reason"] = "none"
-    elif not rfe_blocked_reason:
         fill_diagnostics["insufficient_reason"] = "INSUFFICIENT_VALID_CANDIDATES"
+    else:
+        fill_diagnostics["insufficient_reason"] = "none"
+    fill_diagnostics["rejected_by_output_commander"] = int(
+        commander_report.get("quantidade_jogos_rejeitados", 0) or 0
+    )
     return {
         "seed": seed,
         "batch_id": f"clean-law15-{seed}",
@@ -12079,18 +12096,24 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "games": games,
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
-        "official_contest_source": str((latest_contest or {}).get("official_contest_source", "indisponivel") or "indisponivel"),
+        "analysis_batch_label": analysis_batch_label,
+        "official_contest_source": str(
+            (latest_contest or {}).get("official_contest_source", "indisponivel") or "indisponivel"
+        ),
         "official_contest_id": latest_contest_number,
-        "official_contest_numbers": " ".join(f"{number:02d}" for number in (latest_contest or {}).get("dezenas", [])) or "-",
-        "rfe_previous_contest_found": bool(previous_contest_reference.found),
-        "rfe_previous_contest_id": previous_contest_reference.contest_id,
-        "rfe_previous_contest_numbers": " ".join(f"{number:02d}" for number in previous_contest_reference.numbers) or "-",
-        "rfe_previous_contest_source": previous_contest_reference.source,
-        "rfe_previous_contest_message": previous_contest_reference.message or "",
-        "rfe_status": str(fill_diagnostics.get("rfe_status", "OK") or "OK"),
-        "batch_fill_strategy": "FILL_UNTIL_REQUESTED_QUANTITY",
-        "generation_mode": "CLEAN_LAW15_ISOLATED_PAGE",
-        "policy_mode": "CLEAN_LAW15_ISOLATED_PAGE",
+        "official_contest_numbers": " ".join(
+            f"{number:02d}" for number in (latest_contest or {}).get("dezenas", [])
+        )
+        or "-",
+        "rfe_previous_contest_found": False,
+        "rfe_previous_contest_id": None,
+        "rfe_previous_contest_numbers": "-",
+        "rfe_previous_contest_source": "not_applicable_sovereign_path",
+        "rfe_previous_contest_message": "",
+        "rfe_status": "NOT_APPLICABLE_SOVEREIGN_PATH",
+        "batch_fill_strategy": "SOVEREIGN_GENERATE_BEST_GAMES",
+        "generation_mode": "LEI15_CORE_002_SOVEREIGN",
+        "policy_mode": "ADR_047_CONSTITUTIONAL",
         "selected_quantity": total_games,
         "dezenas_por_jogo": 15,
         "scientific_law_role": "COMMANDER",
@@ -12106,6 +12129,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "silent_recalibration_allowed": False,
         "law_evolution_requires_audit": True,
         "target_contest": target_contest,
+        "sovereign_generation_path": "generate_best_games",
     }
 
 
