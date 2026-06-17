@@ -12,6 +12,9 @@ Camada documental e versionada no Git para controle institucional de missões.
 |-----------|---------|-----|
 | Política (lei) | [`../POLITICA_GESTAO_PROJETOS_LOTOIA.md`](../POLITICA_GESTAO_PROJETOS_LOTOIA.md) | Regras institucionais |
 | Checkpoint produção | [`../POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`](../POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md) | Evidência de produção proporcional ao risco |
+| Missões por pacote | [`../POLITICA_MISSOES_POR_PACOTE_LOTOIA.md`](../POLITICA_MISSOES_POR_PACOTE_LOTOIA.md) | Agrupamento e risco de pacotes |
+| Multiagente | [`../DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md`](../DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md) | Rodadas multiagente |
+| Rodada multiagente | [`rodada_multiagente/`](rodada_multiagente/) | Relatórios por agente |
 | Quadro de projetos | [`QUADRO_PROJETOS_MISSOES.md`](QUADRO_PROJETOS_MISSOES.md) | Visão ativa |
 | Checklist obrigatório | [`CHECKLIST_MISSAO_OBRIGATORIO.md`](CHECKLIST_MISSAO_OBRIGATORIO.md) | Gate por missão |
 | Cartão de tarefa | [`TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md`](TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md) | Modelo de tarefa |
