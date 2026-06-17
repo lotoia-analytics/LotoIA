@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-DADOS-039](#m-dados-039--área-restrita--limpeza-controlada-protegida-pela-lei-001) | Área Restrita / Limpeza Controlada | `CONCLUIDA` | `PURGE BLOQUEADO / LEI 001 SOBERANA` |
 | [M-GOV-038](#m-gov-038--lei-15a-redefinida-como-camada-futura-subordinada-ao-core_002) | Lei 15A redefinida / inoperante | `CONCLUIDA` | `LEI 15A FUTURA / SUBORDINADA / INOPERANTE` |
 | [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-036](#m-vis-036--simulação-institucional--backtesting) | Simulação Institucional / Backtesting | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -31,6 +32,47 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-DADOS-039 — Área Restrita / Limpeza Controlada protegida pela Lei 001
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-OPS-001` |
+| Agentes | `agent_dados` + `agent_governanca` + `agent_visual` + `agent_qualidade` + `agent_plataforma` |
+| Status | `CONCLUIDA` |
+| Tipo | Dados / Governança / Visual / Segurança / Read-only defensivo |
+| Risco | Médio (read-only/defensivo) |
+
+**Objetivo:** Reorganizar a área de limpeza no Painel ADM separando limpeza de sessão,
+limpeza visual, dry-run e purge real bloqueado — histórico protegido pela Lei 001.
+
+**Frase obrigatória:** Limpeza de sessão não é purge. Purge real é operação crítica,
+protegida pela Lei 001, e não pode apagar evidência institucional sem missão específica,
+dry-run, guarda por label e autorização.
+
+**Entregáveis:**
+
+- `dashboard/institutional_controlled_cleanup.py`
+- Página `Área Restrita — Limpeza Controlada` com 4 abas
+- Build `institutional-adm-runtime-v15`
+
+**Bloqueios relacionados:** `BLK-PURGE-001`, `BLK-LEI001-001`, `BLK-HISTORICO-001`,
+`BLK-GERACAO-001`, `BLK-CORE002-001`, `BLK-PUBLIC-APP-001`.
+
+**Confirmações:**
+
+- Purge real bloqueado — sem execução de DELETE pelo painel
+- Limpeza de sessão ≠ purge
+- PostgreSQL permanece fonte soberana
+- Sem alteração de banco/schema, geração, Núcleo, Lei 15A operacional, ML ou public_app
+
+**Veredicto:** **M-DADOS-039 CONCLUÍDA E ATIVA EM PRODUÇÃO — ÁREA RESTRITA / LIMPEZA CONTROLADA VALIDADA COM PURGE BLOQUEADO**
+
+**Cartão:** `cartoes/M-DADOS-039_AREA_RESTRITA_LIMPEZA_CONTROLADA.md`
+
+---
 
 ### M-GOV-038 — Lei 15A Redefinida como Camada Futura Subordinada ao CORE_002
 

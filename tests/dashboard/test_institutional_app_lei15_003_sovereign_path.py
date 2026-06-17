@@ -9,7 +9,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v14"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v15"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 
@@ -159,4 +159,4 @@ def test_m_vis_031_constitutional_blocks_regression(monkeypatch: pytest.MonkeyPa
 
     source = inspect.getsource(institutional_app._render_delete_history_page)
     assert "Apagar historico persistido" not in source
-    assert "Limpeza Controlada — BLOQUEADA" in source
+    assert "_purge_institutional_history_tables" not in source

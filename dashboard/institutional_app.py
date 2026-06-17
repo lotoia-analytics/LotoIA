@@ -103,6 +103,7 @@ from dashboard.institutional_ml_assistive import (
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
 from dashboard.institutional_conference_audit import render_conference_governance_section
 from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
+from dashboard.institutional_controlled_cleanup import render_restricted_controlled_cleanup_page
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -421,8 +422,10 @@ PAGE_TARGETS = {
     "Historico Analitico": "history_analytical",
     "Histórico Institucional": "history_institutional",
     "Historico Institucional": "history_institutional",
-    "Limpar Históricos": "clear_histories",
-    "Apagar Histórico": "delete_history",
+    "Limpar Históricos": "restricted_controlled_cleanup",
+    "Área Restrita — Limpeza Controlada": "restricted_controlled_cleanup",
+    "Limpeza Controlada — BLOQUEADA": "restricted_controlled_cleanup",
+    "Apagar Histórico": "restricted_controlled_cleanup",
     "Comparativos histórico": "comparative_history",
     "Análises Estratégicas": "strategies_analysis",
     "Testar Estratégias": "strategies_test",
@@ -7537,43 +7540,33 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             st.info("Ainda não há eventos suficientes para montar a timeline institucional.")
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Limpeza de Sessão")
-    st.write("Limpa apenas os estados visuais e operacionais desta sessão. Não apaga o banco.")
-    _render_diagnostic_observational_caption()
-    state_keys = sorted([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
-    st.caption(f"Chaves institucionais ativas: {len(state_keys)}")
-    st.code("\n".join(state_keys) if state_keys else "-", language="text")
-    if st.button("Limpar historicos desta sessao", type="primary"):
-        _clear_institutional_history_state()
-        st.success("Historicos visuais limpos desta sessao.")
-        st.rerun()
-
+    _render_restricted_controlled_cleanup_page(snapshot)
 
 
 def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
+    _render_restricted_controlled_cleanup_page(snapshot)
+
+
+def _render_restricted_controlled_cleanup_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Limpeza Controlada — BLOQUEADA")
-    st.error(RESTRICTED_PURGE_BLOCK_MESSAGE)
-    st.write(
-        "Purge de histórico institucional permanece bloqueado na Fase 1 ADM (M-VIS-031). "
-        "Operação destrutiva exige missão específica, backup, dry-run e autorização "
-        "`agent_dados` + `agent_governanca`."
+    state_keys = sorted(
+        [key for key in st.session_state.keys() if str(key).startswith("institutional_")]
     )
-    _render_constitutional_status_panel(compact=False)
-    before_rows = [
-        {
-            "tabela": table,
-            "contagem": int(snapshot["counts"].get(table, 0) or 0),
-            "ultima_persistencia": str(snapshot["latest"].get(table, "-") or "-"),
-        }
-        for table in HISTORICAL_TEST_TABLES
-    ]
-    st.markdown("##### Diagnóstico read-only (sem purge)")
-    st.dataframe(_make_arrow_safe(pd.DataFrame(before_rows)), hide_index=True, use_container_width=True)
-    st.info(
-        "Botão de purge desabilitado. Evidências protegidas por Lei 001, ADR-047 e "
-        "Política de Preservação de Histórico."
+
+    def _clear_visual_cache() -> None:
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+
+    render_restricted_controlled_cleanup_page(
+        table_counts={str(k): int(v or 0) for k, v in snapshot["counts"].items()},
+        table_latest={str(k): str(v or "-") for k, v in snapshot["latest"].items()},
+        session_institutional_keys=state_keys,
+        on_clear_session=_clear_institutional_history_state,
+        on_clear_visual_cache=_clear_visual_cache,
+        render_constitutional_panel=_render_constitutional_status_panel,
+        render_diagnostic_caption=_render_diagnostic_observational_caption,
     )
 
 
@@ -9739,8 +9732,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Área bloqueada / restrita</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Limpeza de Sessão", "clear_histories"),
-        ("Limpeza Controlada — BLOQUEADA", "delete_history"),
+        ("Área Restrita — Limpeza Controlada", "restricted_controlled_cleanup"),
     ]:
         _nav_entry(label, page_id)
     st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
@@ -9769,6 +9761,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "audit_monitoring_13_to_14",
         "audit_monitoring_14_to_15",
         "central_ml_diagnostics",
+        "restricted_controlled_cleanup",
         "clear_histories",
         "delete_history",
     }
@@ -13608,10 +13601,8 @@ def main() -> None:
         _render_analytical_page(snapshot)
     elif page == "history_institutional":
         _render_history_institutional_page(snapshot)
-    elif page == "clear_histories":
-        _render_clear_histories_page(snapshot)
-    elif page == "delete_history":
-        _render_delete_history_page(snapshot)
+    elif page in ("restricted_controlled_cleanup", "clear_histories", "delete_history"):
+        _render_restricted_controlled_cleanup_page(snapshot)
     elif page == "comparative_history":
         _render_comparative_history_page(snapshot)
     elif page == "strategies_analysis":

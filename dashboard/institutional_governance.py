@@ -22,6 +22,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-DADOS-039",
+        "titulo": "Área Restrita / Limpeza Controlada protegida pela Lei 001",
+        "status": "CONCLUIDA",
+        "agentes": "agent_dados + agent_governanca + agent_visual + agent_qualidade + agent_plataforma",
+        "evidencia": "branch cursor/m-dados-039-limpeza-controlada-cae6",
+    },
+    {
         "id": "M-GOV-038",
         "titulo": "Lei 15A redefinida — camada futura subordinada ao CORE_002",
         "status": "CONCLUIDA",
@@ -102,14 +109,24 @@ MISSION_ROWS: tuple[dict[str, str], ...] = (
 
 BLOCK_ROWS: tuple[dict[str, str], ...] = (
     {
+        "codigo": "BLK-LEI001-001",
+        "descricao": "Lei 001 — PostgreSQL fonte soberana; purge UI bloqueado",
+        "estado": "ATIVO — M-DADOS-039",
+    },
+    {
+        "codigo": "BLK-HISTORICO-001",
+        "descricao": "Histórico institucional protegido — evidência não apagável por botão",
+        "estado": "ATIVO — M-DADOS-039",
+    },
+    {
         "codigo": "BLK-GERACAO-001",
         "descricao": "Geração soberana bloqueada — Gerador ADM CORE_002 inoperante",
         "estado": "ATIVO — mitigado M-VIS-031",
     },
     {
         "codigo": "BLK-PURGE-001",
-        "descricao": "Limpeza Controlada bloqueada — histórico protegido",
-        "estado": "ATIVO — mitigado M-VIS-031",
+        "descricao": "Limpeza Controlada bloqueada — purge real inoperante (M-DADOS-039)",
+        "estado": "ATIVO — mitigado M-VIS-031 / reforçado M-DADOS-039",
     },
     {
         "codigo": "BLK-ADM-001",
