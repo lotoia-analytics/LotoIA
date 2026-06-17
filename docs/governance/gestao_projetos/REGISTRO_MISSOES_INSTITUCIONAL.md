@@ -59,6 +59,18 @@ aliases antigos e rotas legadas do Painel ADM.
 **Bloqueios relacionados:** `BLK-LEGACY-ROUTES-001`, `BLK-GERACAO-001`, `BLK-PURGE-001`,
 `BLK-LEI001-001`, `BLK-CORE002-001`, `BLK-LEI15A-001`, `BLK-ML-OPERACIONAL-001`, `BLK-PUBLIC-APP-001`.
 
+**Evidência Git:**
+
+| Campo | Valor |
+|-------|-------|
+| Branch | `cursor/m-plat-040-rotas-legadas-cae6` |
+| PR | [#146](https://github.com/lotoia-analytics/LotoIA/pull/146) |
+| Merge commit | `8cc1568` |
+| Commit entrega | `3cdb295` |
+| Build marker | `institutional-adm-runtime-v16` |
+
+**Evidência testes:** `tests/dashboard/test_institutional_app_plat_040_route_inventory.py` + regressões — 113/113 passed.
+
 **Confirmações:**
 
 - Rotas legadas não geram, não executam purge, não alteram banco
