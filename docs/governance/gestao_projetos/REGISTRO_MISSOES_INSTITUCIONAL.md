@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-GER-044](#m-ger-044--ativação-da-geração-soberana-controlada-core_002) | Geração Soberana CORE_002 | `CONCLUIDA` | `GERAÇÃO CONTROLADA ATIVA / POSTGRESQL` |
 | [M-GOV-042](#m-gov-042--auditoria-constitucional-final-do-painel-adm-e-public_app) | Auditoria Constitucional Final | `CONCLUIDA` | `FASE CONSTITUCIONAL ENCERRADA / 30-30 APROVADOS` |
 | [M-PLAT-041](#m-plat-041--separação-public_app-x-adm-institucional) | Separação public_app x ADM | `CONCLUIDA` | `PUBLIC_APP SEPARADO / RAILWAY ADM INTACTO` |
 | [M-PLAT-040](#m-plat-040--limpeza-de-órfãs-e-rotas-legadas-do-painel-adm) | Limpeza órfãs/rotas legadas ADM | `CONCLUIDA` | `ROTAS LEGADAS BLOQUEADAS / ALIASES SEGUROS` |
@@ -35,6 +36,28 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-GER-044 — Ativação da Geração Soberana Controlada CORE_002
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-OPS-001` |
+| Agentes | `agent_geracao` + `agent_dados` + `agent_qualidade` + `agent_governanca` + `agent_plataforma` |
+| Status | `CONCLUIDA` |
+| Tipo | Geração / Crítica |
+
+**Ativação:** `LOTOIA_LEI15_CORE_002_GENERATION_ENABLED` default=`1`. Path único ADM via
+`generate_best_games(batch_label=STRUCT_LEI15_CORE_CANDIDATE_002_15D_001, ml_enabled=False)`.
+
+**Entregáveis:** `dashboard/institutional_sovereign_generation.py`, build `institutional-adm-runtime-v18`,
+smoke `scripts/ops/smoke_sovereign_generation_m_ger_044.py`.
+
+**Veredicto:** **M-GER-044 CONCLUÍDA E ATIVA EM PRODUÇÃO — GERAÇÃO SOBERANA CONTROLADA CORE_002 VALIDADA COM PERSISTÊNCIA POSTGRESQL**
+
+**Cartão:** `cartoes/M-GER-044_ATIVACAO_GERACAO_SOBERANA_CORE_002.md`
+
+---
 
 ### M-GOV-042 — Auditoria Constitucional Final do Painel ADM e public_app
 

@@ -53,7 +53,7 @@ def test_historical_labels_blocked_operational() -> None:
 
 def test_sovereign_label_routes_core_002(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOTOIA_LEI15_CORE_002", "sovereign")
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     decision = resolve_generation_routing(BATCH_LABEL)
     assert decision.apply_sovereign_core_002 is True
     assert decision.generation_path == SOVEREIGN_GENERATION_PATH
@@ -63,7 +63,7 @@ def test_sovereign_label_routes_core_002(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_generation_blocked_when_flag_zero(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOTOIA_LEI15_CORE_002", "sovereign")
-    monkeypatch.delenv(ENV_GENERATION_ENABLED, raising=False)
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "0")
     with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
         generate_best_games(count=3, pool_size=5, batch_label=BATCH_LABEL)
 

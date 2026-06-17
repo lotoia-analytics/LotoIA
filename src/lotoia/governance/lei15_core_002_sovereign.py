@@ -4,7 +4,8 @@ ADR: ADR-046-NUCLEO-LEI15-CANDIDATE-002
 Status institucional: NÚCLEO SOBERANO DA LEI 15
 
 Label técnico rastreável: STRUCT_LEI15_CORE_CANDIDATE_002_15D_001
-Geração bloqueada por padrão — execução futura somente via Painel ADM 100% funcional.
+Geração soberana controlada ativa por padrão (M-GER-044) — desativável via
+LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0.
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def is_sovereign_core_label(batch_label: str | None) -> bool:
 
 
 def is_generation_enabled() -> bool:
-    raw = os.getenv(ENV_GENERATION_ENABLED, "0").strip().lower()
+    raw = os.getenv(ENV_GENERATION_ENABLED, "1").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
@@ -76,7 +77,7 @@ def should_apply_core_002(batch_label: str | None = None) -> bool:
 
 
 def enforce_generation_policy(batch_label: str | None = None) -> None:
-    """Falha fechada: geração CAND-002 bloqueada até Painel ADM autorizar."""
+    """Falha fechada: geração CAND-002 requer flag explícita quando desativada."""
     if not is_sovereign_core_label(batch_label):
         return
     if not is_generation_enabled():

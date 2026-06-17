@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-GOV-042 Auditoria Constitucional Final) |
+| Atualização | 2026-06-17 (M-GER-044 Geração Soberana Controlada CORE_002) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,6 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
+| M-GER-044 | Ativação Geração Soberana Controlada CORE_002 | `agent_geracao` + `agent_dados` | `CONCLUIDA` | branch `cursor/m-ger-044-sovereign-generation-cae6` — build `institutional-adm-runtime-v18` |
 | M-GOV-042 | Auditoria Constitucional Final — Painel ADM e public_app | `agent_governanca` + multiagente | `CONCLUIDA` | merge `5346d0f` — [PR #150](https://github.com/lotoia-analytics/LotoIA/pull/150) — 30/30 itens — build `institutional-adm-runtime-v17` |
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |

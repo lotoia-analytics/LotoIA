@@ -42,9 +42,9 @@ def test_sovereign_label_registered() -> None:
     assert is_sovereign_core_label(BATCH_LABEL)
 
 
-def test_generation_blocked_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generation_blocked_when_env_zero(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOTOIA_LEI15_CORE_002", "sovereign")
-    monkeypatch.delenv("LOTOIA_LEI15_CORE_002_GENERATION_ENABLED", raising=False)
+    monkeypatch.setenv("LOTOIA_LEI15_CORE_002_GENERATION_ENABLED", "0")
     with pytest.raises(RuntimeError, match="Geração bloqueada"):
         enforce_generation_policy(BATCH_LABEL)
     with pytest.raises(RuntimeError, match="Geração Lei 15 bloqueada"):
@@ -57,10 +57,12 @@ def test_should_apply_when_sovereign_implanted(monkeypatch: pytest.MonkeyPatch) 
     assert should_apply_core_002("STRUCT_REALIGN_V1_15D_001") is False
 
 
-def test_institutional_status_snapshot() -> None:
+def test_institutional_status_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOTOIA_LEI15_CORE_002_GENERATION_ENABLED", raising=False)
     report = institutional_status_report()
     assert report["core_id"] == "LEI15_CORE_002"
-    assert report["generation_blocked"] is True
+    assert report["generation_blocked"] is False
+    assert report["generation_enabled"] is True
     assert report["active_public_blocked"] is True
     assert report["legacy_core"]["status"] == "baseline_congelado_read_only"
     assert lei15a_operational_gate()["open_15a"] is False
