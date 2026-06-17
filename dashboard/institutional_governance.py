@@ -24,6 +24,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-GOV-042",
+        "titulo": "Auditoria Constitucional Final — Painel ADM e public_app",
+        "status": "CONCLUIDA",
+        "agentes": "multiagente (8) — auditoria read-only",
+        "evidencia": "AUDITORIA_CONSTITUCIONAL_FINAL_PAINEL_ADM_PUBLIC_APP_M_GOV_042.md",
+    },
+    {
         "id": "M-PLAT-041",
         "titulo": "Separação public_app x ADM Institucional",
         "status": "CONCLUIDA",
@@ -172,6 +179,11 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
 )
 
 LAW_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "nome": "Auditoria Constitucional Final ADM/public_app",
+        "referencia": "Encerramento fase constitucional — M-GOV-042",
+        "path": "docs/governance/AUDITORIA_CONSTITUCIONAL_FINAL_PAINEL_ADM_PUBLIC_APP_M_GOV_042.md",
+    },
     {
         "nome": "Inventário Entrypoints public/ADM",
         "referencia": "Separação public_app x ADM — M-PLAT-041",

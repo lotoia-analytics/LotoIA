@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-GOV-042](#m-gov-042--auditoria-constitucional-final-do-painel-adm-e-public_app) | Auditoria Constitucional Final | `CONCLUIDA` | `FASE CONSTITUCIONAL ENCERRADA / 30-30 APROVADOS` |
 | [M-PLAT-041](#m-plat-041--separação-public_app-x-adm-institucional) | Separação public_app x ADM | `CONCLUIDA` | `PUBLIC_APP SEPARADO / RAILWAY ADM INTACTO` |
 | [M-PLAT-040](#m-plat-040--limpeza-de-órfãs-e-rotas-legadas-do-painel-adm) | Limpeza órfãs/rotas legadas ADM | `CONCLUIDA` | `ROTAS LEGADAS BLOQUEADAS / ALIASES SEGUROS` |
 | [M-DADOS-039](#m-dados-039--área-restrita--limpeza-controlada-protegida-pela-lei-001) | Área Restrita / Limpeza Controlada | `CONCLUIDA` | `PURGE BLOQUEADO / LEI 001 SOBERANA` |
@@ -34,6 +35,47 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-GOV-042 — Auditoria Constitucional Final do Painel ADM e public_app
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` |
+| Agentes | `agent_governanca` + `agent_plataforma` + `agent_qualidade` + `agent_visual` + `agent_dados` + `agent_geracao` + `agent_ml` + `agent_estatistico` |
+| Status | `CONCLUIDA` |
+| Tipo | Governança / Auditoria / Consolidação |
+| Risco | Médio (auditoria documental) |
+
+**Objetivo:** Auditar consolidação da fase constitucional do Painel ADM e `public_app` após
+missões M-LEI15-003 a M-PLAT-041.
+
+**Entregáveis:**
+
+- `docs/governance/AUDITORIA_CONSTITUCIONAL_FINAL_PAINEL_ADM_PUBLIC_APP_M_GOV_042.md`
+- Tabela 30 itens obrigatórios — **30/30 APROVADOS**
+- Veredicto por agente (8 agentes — todos APROVADOS)
+- Testes: 130 regressão + 6 M-GOV-042 = **136 passed**
+
+**Base auditada:** `main` @ `32797c9` — build `institutional-adm-runtime-v17`
+
+**Bloqueios validados:** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-LEI001-001`, `BLK-CORE002-001`,
+`BLK-LEI15A-001`, `BLK-ML-OPERACIONAL-001`, `BLK-PUBLIC-APP-001`, `BLK-LEGACY-ROUTES-001`
+
+**Confirmações:** Sem geração, purge, banco/schema ou alteração funcional durante auditoria.
+Produção health HTTP 200.
+
+**Veredicto:** **M-GOV-042 CONCLUÍDA — AUDITORIA CONSTITUCIONAL FINAL APROVADA**
+
+**Encerramento:** **FASE CONSTITUCIONAL DO PAINEL ADM E PUBLIC_APP ENCERRADA COM SUCESSO**
+
+**Cartão:** `cartoes/M-GOV-042_AUDITORIA_CONSTITUCIONAL_FINAL.md`
+
+**Nota M-GOV-027:** Auditoria histórica `AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md` permanece
+como evidência pré-correções; veredicto operacional do painel passa a ser M-GOV-042.
+
+---
 
 ### M-PLAT-041 — Separação public_app x ADM Institucional
 
