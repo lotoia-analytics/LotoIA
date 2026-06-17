@@ -34,6 +34,15 @@ Limpeza de sessão não é purge. Purge real é operação crítica, protegida p
 - `BLK-CORE002-001`
 - `BLK-PUBLIC-APP-001`
 
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#144](https://github.com/lotoia-analytics/LotoIA/pull/144) |
+| Merge commit | `ae15edf` |
+| Commit entrega | `7e502d1` |
+| Build marker | `institutional-adm-runtime-v15` |
+
 ## Confirmação
 
 - Purge real bloqueado — sem botão destrutivo

@@ -61,6 +61,18 @@ dry-run, guarda por label e autorização.
 **Bloqueios relacionados:** `BLK-PURGE-001`, `BLK-LEI001-001`, `BLK-HISTORICO-001`,
 `BLK-GERACAO-001`, `BLK-CORE002-001`, `BLK-PUBLIC-APP-001`.
 
+**Evidência Git:**
+
+| Campo | Valor |
+|-------|-------|
+| Branch | `cursor/m-dados-039-limpeza-controlada-cae6` |
+| PR | [#144](https://github.com/lotoia-analytics/LotoIA/pull/144) |
+| Merge commit | `ae15edf` |
+| Commit entrega | `7e502d1` |
+| Build marker | `institutional-adm-runtime-v15` |
+
+**Evidência testes:** `tests/dashboard/test_institutional_app_dados_039_controlled_cleanup.py` + regressões — 99/99 passed.
+
 **Confirmações:**
 
 - Purge real bloqueado — sem execução de DELETE pelo painel
