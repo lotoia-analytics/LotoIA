@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v13"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v14"
 
 
 def test_core_002_module_imports() -> None:
@@ -35,7 +35,7 @@ def test_core_002_snapshot_contains_required_concepts(monkeypatch: pytest.Monkey
     assert payload["controlled_prefix_digits"] == [1, 2, 3]
     assert set(payload["controlled_suffix_digits"]) == {22, 23, 24, 25}
     assert payload["generation_status"] == "BLOQUEADA"
-    assert "SUSPENSA" in payload["lei15a_status"]
+    assert "INOPERANTE" in payload["lei15a_status"] or "REDEFINIDA" in payload["lei15a_status"]
     assert "ASSISTIVO" in payload["ml_status"]
     assert len(payload["six_bases_definitions"]) == 6
     assert "V1" in payload["six_bases_historical"]

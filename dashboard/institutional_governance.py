@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.institutional_build import LOTOIA_PANEL_PRODUCTION_URL
+from dashboard.institutional_lei15a_governance import render_lei15a_governance_section
 
 GOVERNANCE_READ_ONLY_ALERT = (
     "Governança read-only — nenhuma ação operacional é executada nesta tela."
@@ -20,6 +21,13 @@ GOVERNANCE_DOCS = REPO_ROOT / "docs" / "governance"
 GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "id": "M-GOV-038",
+        "titulo": "Lei 15A redefinida — camada futura subordinada ao CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_governanca + agent_geracao + agent_estatistico + agent_qualidade",
+        "evidencia": "branch cursor/m-gov-038-lei15a-redefinida-cae6",
+    },
     {
         "id": "M-GOV-030",
         "titulo": "Gestão de Projetos — Fase 0",
@@ -58,9 +66,37 @@ MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
         "id": "M-VIS-033",
         "titulo": "Pacote Núcleo Lei 15 no Painel ADM",
-        "status": "EM EXECUCAO / AGUARDANDO REVIEW",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
         "agentes": "agent_visual + agent_governanca + agent_estatistico + agent_qualidade",
-        "evidencia": "branch cursor/m-vis-033-pacote-nucleo-lei15-cae6",
+        "evidencia": "PR #133 — merge a2009cd — build v9",
+    },
+    {
+        "id": "M-VIS-034",
+        "titulo": "Cobertura Estrutural + 6 Bases no Painel ADM",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_estatistico + agent_qualidade",
+        "evidencia": "PR #134/#135 — merge a533e61 — build v10",
+    },
+    {
+        "id": "M-VIS-035",
+        "titulo": "ML Assistivo + Vazamento Lateral Constitucional",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_ml + agent_visual + agent_governanca + agent_qualidade",
+        "evidencia": "PR #136/#137 — merge 76031cb — build v11",
+    },
+    {
+        "id": "M-VIS-036",
+        "titulo": "Simulação Institucional / Backtesting",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_estatistico + agent_ml + agent_visual + agent_qualidade",
+        "evidencia": "PR #138/#139 — merge 240e3d0 — build v12",
+    },
+    {
+        "id": "M-VIS-037",
+        "titulo": "Conferir Resultados / Auditoria de Lotes Persistidos",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_dados + agent_governanca + agent_qualidade",
+        "evidencia": "PR #140/#141 — merge 539f256 — build v13",
     },
 )
 
@@ -81,6 +117,16 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
         "estado": "ATIVO — mitigado M-VIS-031",
     },
     {
+        "codigo": "BLK-LEI15A-001",
+        "descricao": "Lei 15A inoperante — expansão e geração 15A proibidas (M-GOV-038)",
+        "estado": "ATIVO",
+    },
+    {
+        "codigo": "BLK-CORE002-001",
+        "descricao": "Núcleo LEI15_CORE_002 protegido — alteração proibida sem missão",
+        "estado": "ATIVO",
+    },
+    {
         "codigo": "BLK-DEPLOY-001",
         "descricao": "Deploy manual fora do fluxo Git/Railway",
         "estado": "REMOVIDO — monitoramento M-OPS-INC-001",
@@ -88,6 +134,11 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
 )
 
 LAW_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "nome": "Lei 15A",
+        "referencia": "Camada futura subordinada ao CORE_002 — inoperante (M-GOV-038)",
+        "path": "docs/governance/LEI_15A_CAMADA_FUTURA_SUBORDINADA_CORE_002.md",
+    },
     {
         "nome": "Lei 001",
         "referencia": "Fonte única da verdade — PostgreSQL operacional",
@@ -176,7 +227,7 @@ def build_governance_snapshot(
         "gestao_projetos_fase": "Fase 0 — documental/Git",
         "gestao_projetos_policy_status": "POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA",
         "missions": [dict(row) for row in MISSION_ROWS],
-        "next_authorized_mission": "M-VIS-033",
+        "next_authorized_mission": "a definir pós M-GOV-038",
         "blocks": [dict(row) for row in BLOCK_ROWS],
         "laws": [
             {**dict(row), "disponivel": _doc_exists(row["path"])} for row in LAW_ROWS
@@ -316,5 +367,7 @@ def render_governance_read_only_page(
         )
         st.caption("Sem chamada de API externa destrutiva e sem execução de deploy.")
 
+    st.markdown("---")
+    render_lei15a_governance_section(generation_blocked=generation_blocked)
     st.markdown("---")
     render_constitutional_panel(compact=False)

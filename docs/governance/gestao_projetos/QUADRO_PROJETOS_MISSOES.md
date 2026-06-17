@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-VIS-037 Conferir Resultados / Auditoria Lotes) |
+| Atualização | 2026-06-17 (M-GOV-038 Lei 15A redefinida / inoperante) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -37,6 +37,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
+| M-GOV-038 | Lei 15A redefinida — camada futura subordinada ao CORE_002 | `agent_governanca` + `agent_geracao` | `CONCLUIDA` | branch `cursor/m-gov-038-lei15a-redefinida-cae6` — build `institutional-adm-runtime-v14` |
 | M-VIS-037 | Conferir Resultados / Auditoria de Lotes Persistidos | `agent_visual` + `agent_dados` | `CONCLUIDA` | merge `539f256` — produção `institutional-adm-runtime-v13` |
 | M-VIS-036 | Simulação Institucional / Backtesting | `agent_estatistico` + `agent_ml` | `CONCLUIDA` | merge `240e3d0` — produção `institutional-adm-runtime-v12` |
 | M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `CONCLUIDA` | merge `76031cb` — produção `institutional-adm-runtime-v11` |

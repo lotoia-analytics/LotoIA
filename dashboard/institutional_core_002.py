@@ -11,6 +11,7 @@ from lotoia.governance.lei15_core_002_sovereign import (
     BATCH_LABEL as SOVEREIGN_BATCH_LABEL,
     REALIGNMENT_NAME as SOVEREIGN_CORE_ID,
 )
+from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
 from lotoia.governance.lei15_core_six_bases_evaluation import (
     BASE_LABELS_PT,
     BASE_NAMES,
@@ -105,10 +106,10 @@ HISTORICAL_EVIDENCE_ROWS: tuple[dict[str, str], ...] = (
         "nota": "Read-only — não candidato ativo.",
     },
     {
-        "variante": "Lei 15A (expansão mecânica)",
-        "classificacao": "Suspensa",
+        "variante": "Lei 15A (camada futura)",
+        "classificacao": "Redefinida / inoperante",
         "soberano": "NÃO",
-        "nota": "Aguardando ordem institucional posterior ao CORE_002.",
+        "nota": "Subordinada ao CORE_002 — expansão 15+1/15+2 não reativada (M-GOV-038).",
     },
     {
         "variante": SOVEREIGN_CORE_ID,
@@ -170,7 +171,7 @@ def build_core_002_snapshot(*, generation_blocked: bool) -> dict[str, Any]:
         "controlled_suffix_digits": sorted(CONTROLLED_SUFFIX_DIGITS),
         "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
         "ml_status": "ASSISTIVO — sem efeito operacional automático",
-        "lei15a_status": "SUSPENSA / aguardando redefinição",
+        "lei15a_status": LEI15A_FORMAL_STATUS,
         "adm_path": "generate_best_games preparado (M-LEI15-003)",
         "public_app_scope": "fora do escopo desta missão",
         "matrix_rows": build_sovereign_matrix_rows(),
@@ -223,7 +224,7 @@ def render_core_002_read_only_page(
         cols[0].metric("Universo elegível", payload["eligible_universe"])
         cols[1].metric("Geração", payload["generation_status"])
         cols[0].metric("ML", "ASSISTIVO")
-        cols[1].metric("Lei 15A", "SUSPENSA")
+        cols[1].metric("Lei 15A", "INOPERANTE")
         st.caption(
             f"Path ADM preparado: `{payload['adm_path']}`. "
             f"`public_app`: {payload['public_app_scope']}."
