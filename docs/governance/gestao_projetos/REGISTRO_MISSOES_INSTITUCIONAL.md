@@ -51,7 +51,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 **Ativação:** `LOTOIA_ML_CORE_002_OPERATIONAL_ENABLED` default=`1`. Path único ADM via
 `generate_best_games(batch_label=STRUCT_LEI15_CORE_CANDIDATE_002_15D_001, ml_enabled=True)`.
 
-**Entregáveis:** `dashboard/institutional_supervised_ml.py`, build `institutional-adm-runtime-v19`,
+**Entregáveis:** `dashboard/institutional_supervised_ml.py`, build `institutional-adm-runtime-v20`,
 smoke `scripts/ops/smoke_supervised_ml_m_ml_045.py`.
 
 **Veredicto:** **M-ML-045 CONCLUÍDA E ATIVA EM PRODUÇÃO — ML OPERACIONAL SUPERVISIONADO ATIVO SOBRE CORE_002 COM PERSISTÊNCIA POSTGRESQL E RASTREABILIDADE**

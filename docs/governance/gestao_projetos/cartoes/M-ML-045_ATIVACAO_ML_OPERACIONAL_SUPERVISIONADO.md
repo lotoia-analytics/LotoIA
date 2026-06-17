@@ -4,7 +4,7 @@
 |-------|-------|
 | Missão | M-ML-045 |
 | Status | CONCLUIDA |
-| Build ADM | `institutional-adm-runtime-v19` |
+| Build ADM | `institutional-adm-runtime-v20` |
 | Pré-requisito | M-GER-044 — geração soberana CORE_002 validada |
 
 ## Objetivo
