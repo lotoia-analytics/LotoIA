@@ -177,6 +177,44 @@ SIDE_LEAK_RISK_ROWS: tuple[dict[str, str], ...] = (
     {"risco": "Furar M-LEI15-003", "descricao": "Bypass de generate_best_games ou batch_label legado"},
 )
 
+SIDE_LEAK_ML_045_MONITOR_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "risco": "ML fora do CORE_002",
+        "bloqueio": "BLK-ML-FREE-001",
+        "descricao": "ML operacional somente com label STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+    },
+    {
+        "risco": "ML sem batch_label soberano",
+        "bloqueio": "BLK-ML-FREE-001",
+        "descricao": "batch_label=None ou label não soberano rejeitado fail-closed",
+    },
+    {
+        "risco": "ML via public_app",
+        "bloqueio": "BLK-PUBLIC-APP-001",
+        "descricao": "public_app não gera e não expõe ML operacional",
+    },
+    {
+        "risco": "ML tentando operar Lei 15A",
+        "bloqueio": "BLK-LEI15A-001",
+        "descricao": "Lei 15A permanece futura/subordinada/inoperante",
+    },
+    {
+        "risco": "ML tentando alterar Núcleo",
+        "bloqueio": "BLK-CORE002-001",
+        "descricao": "LEI15_CORE_002 soberano — ML subordinado, sem mutação de papéis/pesos",
+    },
+    {
+        "risco": "ML sem decision trace",
+        "bloqueio": "BLK-ML-NO-TRACE-001",
+        "descricao": "Persistência PostgreSQL exige trace/attribution/lineage no context_json",
+    },
+    {
+        "risco": "Rota legada _generate_direct_15_games",
+        "bloqueio": "BLK-LEGACY-GEN-001",
+        "descricao": "Geração legada bloqueada — path único generate_best_games",
+    },
+)
+
 SIDE_LEAK_DOES_NOT: tuple[str, ...] = (
     "Não gera jogos.",
     "Não bloqueia banco sozinho.",
@@ -232,9 +270,17 @@ def build_ml_assistive_snapshot() -> dict[str, Any]:
 
 def build_constitutional_side_leak_snapshot() -> dict[str, Any]:
     """Snapshot read-only vazamento lateral — sem efeitos colaterais."""
+    ml_monitoring = is_ml_operational_enabled()
+    risk_rows = [dict(row) for row in SIDE_LEAK_RISK_ROWS]
+    if ml_monitoring:
+        risk_rows.extend(dict(row) for row in SIDE_LEAK_ML_045_MONITOR_ROWS)
     return {
         "read_only_alert": SIDE_LEAK_READ_ONLY_ALERT,
-        "status": "Diagnóstico constitucional read-only.",
+        "status": (
+            "Diagnóstico constitucional read-only + monitoramento ML operacional CORE_002."
+            if ml_monitoring
+            else "Diagnóstico constitucional read-only."
+        ),
         "definition": (
             "Diagnóstico de risco de uma política, lote, tela ou leitura produzir "
             "interpretação indevida ou operação fora do caminho soberano."
@@ -243,11 +289,21 @@ def build_constitutional_side_leak_snapshot() -> dict[str, Any]:
             "sobra_real = cartao_final − resultado_oficial — dezena em cartão final "
             "e fora do resultado oficial."
         ),
-        "risk_rows": [dict(row) for row in SIDE_LEAK_RISK_ROWS],
+        "risk_rows": risk_rows,
+        "ml_045_monitor_rows": [dict(row) for row in SIDE_LEAK_ML_045_MONITOR_ROWS],
+        "constitutional_blocks": [
+            "BLK-CORE002-001",
+            "BLK-LEI15A-001",
+            "BLK-PURGE-001",
+            "BLK-PUBLIC-APP-001",
+            "BLK-LEGACY-GEN-001",
+            "BLK-ML-FREE-001",
+            "BLK-ML-NO-TRACE-001",
+        ],
         "does_not": list(SIDE_LEAK_DOES_NOT),
         "generation_cmd": False,
         "recalibration_cmd": False,
-        "ml_operacional_monitoring": is_ml_operational_enabled(),
+        "ml_operacional_monitoring": ml_monitoring,
     }
 
 
@@ -346,6 +402,17 @@ def render_constitutional_side_leak_section() -> None:
         hide_index=True,
         use_container_width=True,
     )
+    if payload.get("ml_operacional_monitoring"):
+        st.markdown("##### Monitoramento ML operacional (M-ML-045)")
+        st.caption(
+            "Bloqueios ativos: BLK-ML-FREE-001 (ML livre proibido), "
+            "BLK-ML-NO-TRACE-001 (ML sem rastreabilidade proibido)."
+        )
+        st.dataframe(
+            pd.DataFrame(payload.get("ml_045_monitor_rows") or []),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     st.markdown("##### O que este bloco não faz")
     for item in payload["does_not"]:
