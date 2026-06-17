@@ -10,7 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
 | [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `CONCLUIDA` | `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA` |
@@ -28,9 +28,10 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
 | Projeto | `P-GOV-001` |
 | Agentes | `agent_visual` (primário), `agent_governanca`, `agent_plataforma` |
-| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Status | `CONCLUIDA` |
 | Tipo | Visual / Governança / Read-only |
 | Pré-requisito | M-VIS-031 fechada — PR #126 merge `510cccb` |
 
@@ -41,7 +42,46 @@ bloqueios, leis/ADRs, Git/Railway — sem ações operacionais.
 
 **Bloqueios exibidos (sem alterar):** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-ADM-001`, `BLK-DEPLOY-001`
 
-**Veredicto:** pendente — aguardando review institucional da PR.
+**Evidência Git:**
+
+| Campo | Valor |
+|-------|-------|
+| Branch implantação | `cursor/m-vis-032-governanca-read-only-cae6` |
+| PR implantação | [#127](https://github.com/lotoia-analytics/LotoIA/pull/127) |
+| Merge commit | `7df540ce3bcc3a0eae3916afdf8baaa6c97a447f` |
+| Merge em `main` | 2026-06-17 |
+| Branch fechamento | `cursor/m-vis-032-fechamento-cae6` |
+
+**Evidência testes:** `tests/dashboard/test_institutional_app_governance_read_only.py` — 13/13 passed.
+
+**Evidência deploy (Railway produção):**
+
+| Campo | Valor |
+|-------|-------|
+| Ambiente | `lotoia-production.up.railway.app` |
+| Build marker | `institutional-adm-runtime-v7` |
+| Commit em produção | `7df540ce3bcc` |
+| Deploy | via GitHub merge PR #127 — sem deploy manual |
+| Pendência de deploy | **NENHUMA** |
+| Tipo de evidência | Textual/operacional — screenshot/script HTTP **não exigidos** |
+
+**Confirmação textual/operacional em produção:**
+
+- Painel ADM carregando; build v7; commit `7df540ce3bcc`
+- Governança Institucional — read-only disponível
+- Gestão de Projetos Fase 0; missões M-GOV-030, M-OPS-INC-001, M-VIS-031, M-VIS-032
+- Bloqueios e leis/ADRs exibidos; geração BLOQUEADA; purge PROTEGIDO; ML ASSISTIVO; Lei 15A SUSPENSA
+- Sem botões operacionais na área read-only
+
+**Veredicto:** `CONCLUIDA / VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY`
+
+**Veredicto institucional:** **M-VIS-032 ATIVA EM PRODUÇÃO — GOVERNANÇA READ-ONLY VALIDADA**
+
+**Veredicto de fechamento:** **M-VIS-032 FECHADA FORMALMENTE — GOVERNANÇA READ-ONLY VALIDADA EM PRODUÇÃO**
+
+**Emitido por:** `agent_governanca` + `agent_visual` + `agent_plataforma` — 2026-06-17
+
+**Próxima missão autorizável:** a definir após fechamento da política de checkpoint simplificado (M-GOV-031).
 
 **Cartão:** `cartoes/M-VIS-032_GOVERNANCA_READ_ONLY_PAINEL_ADM.md`
 
