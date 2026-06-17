@@ -104,6 +104,10 @@ from dashboard.institutional_simulation_backtesting import render_institutional_
 from dashboard.institutional_conference_audit import render_conference_governance_section
 from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
 from dashboard.institutional_controlled_cleanup import render_restricted_controlled_cleanup_page
+from dashboard.institutional_route_inventory import (
+    INSTITUTIONAL_ALLOWED_PAGES,
+    resolve_institutional_page_id,
+)
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -415,7 +419,8 @@ PAGE_TARGETS = {
     "Evolução 13 -> 14": "audit_monitoring_13_to_14",
     "Evolução 14 -> 15": "audit_monitoring_14_to_15",
     "Hipóteses para teste offline": "audit_monitoring_offline_hypotheses",
-    "Gerar Jogos": "generation",
+    "Gerar Jogos": "clean_law15_generation",
+    "Conferir Resultados — Auditoria de Lotes Persistidos": "conference",
     "Conferir Resultados": "conference",
     "Simular Resultados": "simulation",
     "Histórico Analítico": "history_analytical",
@@ -445,7 +450,7 @@ INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
     {"icon": "🧬", "label": "Núcleo Lei 15 — CORE_002", "page_id": "core_002_read_only"},
     {"icon": "🎯", "label": "Gerador ADM CORE_002 — BLOQUEADO", "page_id": "clean_law15_generation"},
-    {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
+    {"icon": "✅", "label": "Conferir Resultados — Auditoria de Lotes Persistidos", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
     {"icon": "🔎", "label": "Auditoria Runtime", "page_id": "audit"},
@@ -627,16 +632,19 @@ def _canonical_page_id(value: str | None) -> str:
     text_value = str(value or "").strip()
     if not text_value:
         return "home"
+    aliased = resolve_institutional_page_id(text_value)
+    if aliased != text_value:
+        return aliased
     if text_value in PAGE_TARGETS:
-        return PAGE_TARGETS[text_value]
+        return resolve_institutional_page_id(PAGE_TARGETS[text_value])
     if text_value in PAGE_LABELS:
-        return text_value
+        return resolve_institutional_page_id(text_value)
     normalized = unicodedata.normalize("NFKD", text_value).encode("ascii", "ignore").decode("ascii").casefold()
     for label, page_id in PAGE_TARGETS.items():
         normalized_label = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode("ascii").casefold()
         if normalized_label == normalized:
-            return page_id
-    return "fallback"
+            return resolve_institutional_page_id(page_id)
+    return resolve_institutional_page_id("fallback")
 
 
 def _canonical_page_label(value: str | None) -> str:
@@ -9683,7 +9691,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
         ("Gerador ADM CORE_002 — BLOQUEADO", "clean_law15_generation"),
-        ("Conferir Resultados", "conference"),
+        ("Conferir Resultados — Auditoria de Lotes Persistidos", "conference"),
         ("Simular Resultados", "simulation"),
     ]:
         _nav_entry(label, page_id)
@@ -9737,37 +9745,12 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         _nav_entry(label, page_id)
     st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
 
-    choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
-    allowed_pages = {
-        "home",
-        "fallback",
-        "governance_read_only",
-        "core_002_read_only",
-        "clean_law15_generation",
-        "conference",
-        "simulation",
-        "history_analytical",
-        "history_institutional",
-        "comparative_history",
-        "audit",
-        "audit_monitoring_conference",
-        "audit_monitoring_missing_numbers",
-        "audit_monitoring_extra_numbers",
-        "summary_benchmark",
-        "hb_metrics",
-        "structural_coverage",
-        "institutional_simulation_backtesting",
-        "audit_monitoring_side_leak",
-        "audit_monitoring_13_to_14",
-        "audit_monitoring_14_to_15",
-        "central_ml_diagnostics",
-        "restricted_controlled_cleanup",
-        "clear_histories",
-        "delete_history",
-    }
-    if choice not in allowed_pages:
-        choice = _canonical_page_id(page)
-    if choice not in allowed_pages:
+    choice = resolve_institutional_page_id(
+        _canonical_page_id(st.session_state.get("institutional_page_id") or page)
+    )
+    if choice not in INSTITUTIONAL_ALLOWED_PAGES:
+        choice = resolve_institutional_page_id(_canonical_page_id(page))
+    if choice not in INSTITUTIONAL_ALLOWED_PAGES:
         choice = "fallback"
     st.session_state["institutional_page_id"] = choice
     st.sidebar.divider()
@@ -13521,14 +13504,16 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_fallback_page(snapshot: dict[str, Any]) -> None:
-    st.subheader("Página não encontrada")
-    st.info("Rota ainda não institucionalizada ou indisponível no momento. Use a navegação lateral para acessar uma página suportada.")
-    cols = st.columns(3)
-    cols[0].metric("Home", "disponível")
-    cols[1].metric("Históricos", "acessíveis")
-    cols[2].metric("Gerador", "fora do fallback")
-    with st.expander("Detalhes técnicos avançados", expanded=False):
-        st.caption("Fallback leve e não operacional.")
+    _ = snapshot
+    st.subheader("Rota legada ou não institucionalizada — fallback")
+    st.warning(
+        "Esta rota foi removida do menu, redirecionada ou permanece bloqueada (M-PLAT-040). "
+        "Use a navegação lateral para páginas constitucionais ativas."
+    )
+    st.info(
+        "Aliases legados (`generation`, `clear_histories`, `delete_history`) redirecionam "
+        "para destinos seguros. Rotas órfãs não executam geração, purge ou alteração de banco."
+    )
 
 
 def main() -> None:
@@ -13589,8 +13574,6 @@ def main() -> None:
         _render_audit_monitoring_page(snapshot, "14_to_15")
     elif page == "audit_monitoring_offline_hypotheses":
         _render_audit_monitoring_page(snapshot, "offline_hypotheses")
-    elif page == "generation":
-        _render_orphan_generation_blocked_page(snapshot)
     elif page == "clean_law15_generation":
         _render_clean_law15_generation_page(snapshot)
     elif page == "conference":

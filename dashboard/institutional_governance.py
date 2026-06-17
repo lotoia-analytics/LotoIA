@@ -11,6 +11,7 @@ import streamlit as st
 
 from dashboard.institutional_build import LOTOIA_PANEL_PRODUCTION_URL
 from dashboard.institutional_lei15a_governance import render_lei15a_governance_section
+from dashboard.institutional_route_inventory import render_route_inventory_section
 
 GOVERNANCE_READ_ONLY_ALERT = (
     "Governança read-only — nenhuma ação operacional é executada nesta tela."
@@ -21,6 +22,13 @@ GOVERNANCE_DOCS = REPO_ROOT / "docs" / "governance"
 GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "id": "M-PLAT-040",
+        "titulo": "Limpeza de órfãs e rotas legadas do Painel ADM",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_visual + agent_governanca + agent_qualidade",
+        "evidencia": "branch cursor/m-plat-040-rotas-legadas-cae6",
+    },
     {
         "id": "M-DADOS-039",
         "titulo": "Área Restrita / Limpeza Controlada protegida pela Lei 001",
@@ -109,6 +117,11 @@ MISSION_ROWS: tuple[dict[str, str], ...] = (
 
 BLOCK_ROWS: tuple[dict[str, str], ...] = (
     {
+        "codigo": "BLK-LEGACY-ROUTES-001",
+        "descricao": "Rotas legadas ADM — aliases redirecionados, órfãs bloqueadas (M-PLAT-040)",
+        "estado": "ATIVO",
+    },
+    {
         "codigo": "BLK-LEI001-001",
         "descricao": "Lei 001 — PostgreSQL fonte soberana; purge UI bloqueado",
         "estado": "ATIVO — M-DADOS-039",
@@ -151,6 +164,11 @@ BLOCK_ROWS: tuple[dict[str, str], ...] = (
 )
 
 LAW_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "nome": "Inventário Rotas ADM",
+        "referencia": "Órfãs, aliases e rotas legadas — M-PLAT-040",
+        "path": "docs/governance/INVENTARIO_ROTAS_PAINEL_ADM_M_PLAT_040.md",
+    },
     {
         "nome": "Lei 15A",
         "referencia": "Camada futura subordinada ao CORE_002 — inoperante (M-GOV-038)",
@@ -384,6 +402,8 @@ def render_governance_read_only_page(
         )
         st.caption("Sem chamada de API externa destrutiva e sem execução de deploy.")
 
+    st.markdown("---")
+    render_route_inventory_section(app_build=app_build)
     st.markdown("---")
     render_lei15a_governance_section(generation_blocked=generation_blocked)
     st.markdown("---")

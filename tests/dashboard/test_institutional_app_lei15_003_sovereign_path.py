@@ -9,7 +9,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v15"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v16"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 
@@ -131,7 +131,7 @@ def test_orphan_generation_page_not_allowed(monkeypatch: pytest.MonkeyPatch) -> 
 
     page = institutional_app._render_sidebar("generation", {"counts": {}, "latest": {}})
 
-    assert page == "fallback"
+    assert page == "clean_law15_generation"
 
 
 def test_run_clean_law15_generation_source_uses_sovereign_helper() -> None:
