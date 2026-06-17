@@ -96,6 +96,10 @@ from dashboard.institutional_governance import (
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
+from dashboard.institutional_ml_assistive import (
+    render_constitutional_side_leak_section,
+    render_ml_assistive_governance_section,
+)
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -7891,6 +7895,9 @@ def _render_structural_coverage_ranking_tables(
 def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Central ML Assistiva")
+    render_ml_assistive_governance_section()
+    st.divider()
+    st.markdown("### Diagnóstico ML observacional")
     _render_diagnostic_observational_caption()
     st.info(
         "Princípio institucional: tudo o que o ML vê, o ADM vê. "
@@ -7935,8 +7942,8 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
             detail_cols[1].write(f"Threshold: `{alert.get('threshold_usado')}`")
             guard_cols = st.columns(3)
             guard_cols[0].write(f"Fonte: `{alert.get('fonte')}`")
-            guard_cols[1].write(f"generation_cmd: `{alert.get('generation_cmd')}`")
-            guard_cols[2].write(f"recalibration_cmd: `{alert.get('recalibration_cmd')}`")
+            guard_cols[1].write("generation_cmd: `False` — bloqueado, não executável (diagnóstico)")
+            guard_cols[2].write("recalibration_cmd: `False` — bloqueado, não executável (diagnóstico)")
             if alert.get("evidence_gaps"):
                 st.caption(f"Lacunas detectadas: {', '.join(alert.get('evidence_gaps') or [])}")
             adm_guide = dict(alert.get("adm_guide") or {})
@@ -11155,7 +11162,10 @@ def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> Non
         else:
             st.info("Nenhum dado pós-conferência disponível para esta visão. Execute ou consulte uma conferência operacional para alimentar o monitoramento.")
     elif section == "side_leak":
-        st.markdown("##### Vazamento lateral")
+        st.subheader("Vazamento Lateral Constitucional")
+        render_constitutional_side_leak_section()
+        st.divider()
+        st.markdown("### Camada observacional auditada")
         st.info("Camada observacional/auditada. Não gera jogos. Não recalibra Lei 15. Não altera histórico.")
         st.caption(
             "quarantine_status=LIBERADO | operational_role=OBSERVACIONAL_AUDITADO | "
