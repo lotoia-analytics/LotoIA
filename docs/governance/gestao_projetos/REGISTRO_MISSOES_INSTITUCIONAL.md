@@ -11,7 +11,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
-| [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `AGUARDANDO_EVIDENCIA` | pendente |
+| [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `CONCLUIDA` | `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA` |
 | [M-GOV-027](#m-gov-027--auditoria-constitucional) | Auditoria constitucional | `AGUARDANDO_VEREDICTO` | `LOTOIA CONFLITANTE` |
 | [M-LEI15-002](#m-lei15-002--implantação-lei15_core_002) | Implantação LEI15_CORE_002 | `CONCLUIDA` | `NÚCLEO SOBERANO IMPLANTADO` |
 | [M-GOV-028](#m-gov-028--manutenção-institucional-contínua) | Mission 28 manutenção | `CONCLUIDA` | `APROVADO` |
@@ -69,23 +69,61 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Campo | Valor |
 |-------|-------|
 | Data abertura | 2026-06-17 (retroativa — registro Fase 0) |
+| Data encerramento | 2026-06-17 |
 | Projeto | `P-OPS-001` |
-| Agente | `agent_plataforma` |
-| Status | `AGUARDANDO_EVIDENCIA` |
+| Agentes | `agent_plataforma` (primário), `agent_governanca` (fechamento) |
+| Status | `CONCLUIDA` |
+| Tipo | Incidente operacional — Painel ADM |
 
-**Descrição:** Deploy afetado por artefato ou configuração não rastreada no Git. Motivador da Política de Gestão de Projetos Fase 0.
+**Descrição:** Após merge constitucional em `main`, Railway executou código novo, mas o Painel ADM
+quebrou em produção por módulo ausente no Git.
 
-**Evidência faltante:**
+**Causa raiz:** `dashboard/institutional_app.py` importava `dashboard.institutional_light_mode`,
+porém `dashboard/institutional_light_mode.py` existia apenas localmente e ficou fora do
+commit/deploy.
 
-- inventário formal do artefato não versionado;
-- commit ou ADR de correção;
-- validação pós-deploy com SHA documentado.
+**Erro em produção:**
 
-**Bloqueio ativo:** `BLK-GIT-001`, `BLK-DEPLOY-001`
+```text
+ModuleNotFoundError: Nenhum módulo chamado 'dashboard.institutional_light_mode'
+```
 
-**Veredicto:** pendente — missão permanece aberta até fechamento com evidência.
+**Impacto:** Painel ADM inoperante em produção até aplicação de hotfix.
 
-**Lição institucional:** Tarefa não existe como concluída sem prova versionada no repositório.
+**Correção aplicada:**
+
+| Campo | Valor |
+|-------|-------|
+| Commit hotfix | `f0c1261e927d2a33c50f7b9b04bc925aa43213d0` |
+| Mensagem | `fix(dashboard): add missing institutional_light_mode module for ADM panel boot` |
+| Arquivo | `dashboard/institutional_light_mode.py` (+121 linhas) |
+
+**Confirmação de produção:**
+
+| Campo | Valor |
+|-------|-------|
+| Build marker | `build=institutional-adm-runtime-v6` |
+| Commit em produção | `f0c1261e927d` |
+| Estado | Painel ADM operacional pós-hotfix |
+
+**Ação preventiva:** M-GOV-030 — Gestão de Projetos Fase 0 (`CONCLUIDA`) — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121), [PR #122](https://github.com/lotoia-analytics/LotoIA/pull/122).
+
+**Bloqueios removidos:** `BLK-GIT-001`, `BLK-DEPLOY-001`
+
+**Veredicto:** `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA`
+
+**Veredicto institucional:** **M-OPS-INC-001 ENCERRADO FORMALMENTE — INCIDENTE RESOLVIDO COM PREVENÇÃO IMPLANTADA**
+
+**Emitido por:** `agent_governanca` + `agent_plataforma` — 2026-06-17
+
+**Lições institucionais:**
+
+1. Todo import do Painel ADM deve ter arquivo correspondente versionado antes do merge em `main`.
+2. Incidentes exigem registro com causa raiz, commit e validação de produção (Regra 8).
+3. M-GOV-030 institui gates Git/teste/deploy/veredicto para evitar recorrência.
+4. Build marker (`institutional-adm-runtime-v6`) serve como evidência de runtime correto.
+
+**Cartão:** `cartoes/M-OPS-INC-001_INCIDENTE_DEPLOY_ARTEFATO_NAO_VERSIONADO.md`
 
 ---
 
