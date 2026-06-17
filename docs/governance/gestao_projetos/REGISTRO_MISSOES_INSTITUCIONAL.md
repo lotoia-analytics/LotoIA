@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-PLAT-040](#m-plat-040--limpeza-de-órfãs-e-rotas-legadas-do-painel-adm) | Limpeza órfãs/rotas legadas ADM | `CONCLUIDA` | `ROTAS LEGADAS BLOQUEADAS / ALIASES SEGUROS` |
 | [M-DADOS-039](#m-dados-039--área-restrita--limpeza-controlada-protegida-pela-lei-001) | Área Restrita / Limpeza Controlada | `CONCLUIDA` | `PURGE BLOQUEADO / LEI 001 SOBERANA` |
 | [M-GOV-038](#m-gov-038--lei-15a-redefinida-como-camada-futura-subordinada-ao-core_002) | Lei 15A redefinida / inoperante | `CONCLUIDA` | `LEI 15A FUTURA / SUBORDINADA / INOPERANTE` |
 | [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -32,6 +33,43 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-PLAT-040 — Limpeza de Órfãs e Rotas Legadas do Painel ADM
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-OPS-001` |
+| Agentes | `agent_plataforma` + `agent_visual` + `agent_governanca` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Plataforma / Visual / Governança / Defensiva |
+| Risco | Médio (defensivo/read-only) |
+
+**Objetivo:** Auditar, mapear, bloquear, redirecionar ou remover com segurança páginas órfãs,
+aliases antigos e rotas legadas do Painel ADM.
+
+**Entregáveis:**
+
+- `dashboard/institutional_route_inventory.py`
+- `docs/governance/INVENTARIO_ROTAS_PAINEL_ADM_M_PLAT_040.md`
+- Aliases: `generation` → gerador bloqueado; `clear_histories`/`delete_history` → Área Restrita
+- Build `institutional-adm-runtime-v16`
+
+**Bloqueios relacionados:** `BLK-LEGACY-ROUTES-001`, `BLK-GERACAO-001`, `BLK-PURGE-001`,
+`BLK-LEI001-001`, `BLK-CORE002-001`, `BLK-LEI15A-001`, `BLK-ML-OPERACIONAL-001`, `BLK-PUBLIC-APP-001`.
+
+**Confirmações:**
+
+- Rotas legadas não geram, não executam purge, não alteram banco
+- `public_app` não alterado
+- Labels constitucionais padronizados no menu
+
+**Veredicto:** **M-PLAT-040 CONCLUÍDA E ATIVA EM PRODUÇÃO — ÓRFÃS E ROTAS LEGADAS DO ADM LIMPAS/BLOQUEADAS COM SEGURANÇA**
+
+**Cartão:** `cartoes/M-PLAT-040_LIMPEZA_ORFAS_ROTAS_LEGADAS_ADM.md`
+
+---
 
 ### M-DADOS-039 — Área Restrita / Limpeza Controlada protegida pela Lei 001
 

@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-DADOS-039 Área Restrita / Limpeza Controlada) |
+| Atualização | 2026-06-17 (M-PLAT-040 Limpeza órfãs e rotas legadas ADM) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -37,6 +37,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 |-----------|--------|-----------------|--------|----------------------|
 | M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
+| M-PLAT-040 | Limpeza de órfãs e rotas legadas do Painel ADM | `agent_plataforma` + `agent_visual` | `CONCLUIDA` | branch `cursor/m-plat-040-rotas-legadas-cae6` — build `institutional-adm-runtime-v16` |
 | M-DADOS-039 | Área Restrita / Limpeza Controlada protegida pela Lei 001 | `agent_dados` + `agent_governanca` | `CONCLUIDA` | merge `ae15edf` — [PR #144](https://github.com/lotoia-analytics/LotoIA/pull/144) — build `institutional-adm-runtime-v15` |
 | M-GOV-038 | Lei 15A redefinida — camada futura subordinada ao CORE_002 | `agent_governanca` + `agent_geracao` | `CONCLUIDA` | merge `0c2dadb` — [PR #142](https://github.com/lotoia-analytics/LotoIA/pull/142) — build `institutional-adm-runtime-v14` |
 | M-VIS-037 | Conferir Resultados / Auditoria de Lotes Persistidos | `agent_visual` + `agent_dados` | `CONCLUIDA` | merge `539f256` — produção `institutional-adm-runtime-v13` |
