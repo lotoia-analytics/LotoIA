@@ -21,11 +21,11 @@ from lotoia.statistics.historical_intelligence import (
     profile_quota,
     profile_score,
 )
+from lotoia.generation.lei15_core_structural_payload import apply_core_traceability_payload
 from lotoia.statistics.generation_trace import persist_stage_snapshot, record_discarded_game, stage_snapshot
 from lotoia.governance.law15_structural_realignment_v1 import (
     get_realignment_config,
     realignment_is_observable,
-    should_apply_gp_realignment,
 )
 from lotoia.governance.lei15_15a_core_realignment_v2 import (
     get_v2_config,
@@ -34,6 +34,28 @@ from lotoia.governance.lei15_15a_core_realignment_v2 import (
 from lotoia.governance.lei15_15a_core_realignment_v3 import (
     get_v3_config,
     should_apply_v3,
+)
+from lotoia.governance.lei15_core_realignment_v3_1 import (
+    get_v3_1_config,
+    should_apply_v3_1,
+)
+from lotoia.governance.lei15_core_candidate_001 import (
+    get_candidate_config,
+    should_apply_core_candidate_001,
+)
+from lotoia.governance.lei15_core_realignment_v4 import (
+    get_v4_config,
+    should_apply_v4,
+)
+from lotoia.governance.lei15_core_002_sovereign import (
+    get_core_002_config,
+    should_apply_core_002,
+)
+from lotoia.governance.lei15_generation_routing_policy import (
+    attach_routing_payload_to_games,
+    effective_should_apply_gp_realignment,
+    enforce_legacy_lei15_entry_blocked,
+    enforce_lei15_generation_routing,
 )
 
 logger = logging.getLogger(__name__)
@@ -258,6 +280,7 @@ def _attach_scores(
 
 
 def generate_filtered_game() -> dict[str, object]:
+    enforce_legacy_lei15_entry_blocked(source="generate_filtered_game")
     while True:
         game = _build_game(sample(range(1, 26), 15))
         if _is_valid_game(game):
@@ -315,7 +338,12 @@ def _rank_profile(games: list[dict[str, object]]) -> list[dict[str, object]]:
     )
 
 
-def _compose_profiled_games(scored_games: list[dict[str, object]], count: int) -> list[dict[str, object]]:
+def _compose_profiled_games(
+    scored_games: list[dict[str, object]],
+    count: int,
+    *,
+    allow_profile_relabeling: bool = True,
+) -> list[dict[str, object]]:
     quotas = profile_quota(count)
     by_profile = {profile: [] for profile in GENERATION_PROFILE_RATIOS}
     for game in scored_games:
@@ -355,6 +383,8 @@ def _compose_profiled_games(scored_games: list[dict[str, object]], count: int) -
             selected.append(game)
             selected_keys.add(key)
             profile_selected += 1
+            if not game.get("perfil_origem_real"):
+                apply_core_traceability_payload(game, profile_origin=str(game.get("profile_type") or profile))
 
     if len(selected) < count:
         for game in _rank_profile(scored_games):
@@ -374,10 +404,12 @@ def _compose_profiled_games(scored_games: list[dict[str, object]], count: int) -
                 continue
             selected.append(game)
             selected_keys.add(key)
+            if not game.get("perfil_origem_real"):
+                apply_core_traceability_payload(game, profile_origin=str(game.get("profile_type") or ""))
             if len(selected) >= count:
                 break
 
-    if selected:
+    if allow_profile_relabeling and selected:
         profile_counts = {
             profile: sum(1 for game in selected if game.get("profile_type") == profile)
             for profile in GENERATION_PROFILE_RATIOS
@@ -395,6 +427,12 @@ def _compose_profiled_games(scored_games: list[dict[str, object]], count: int) -
                 )
                 if candidate is None:
                     break
+                apply_core_traceability_payload(
+                    candidate,
+                    profile_origin=str(candidate.get("perfil_origem_real") or surplus_profile),
+                    relabeling_applied=True,
+                    relabeling_reason=f"quota_deficit:{deficit_profile}<=from:{surplus_profile}",
+                )
                 candidate["profile_type"] = deficit_profile
                 intelligence = candidate.get("historical_intelligence")
                 if isinstance(intelligence, dict):
@@ -403,6 +441,14 @@ def _compose_profiled_games(scored_games: list[dict[str, object]], count: int) -
                 profile_counts[surplus_profile] -= 1
                 profile_counts[deficit_profile] += 1
                 missing -= 1
+    else:
+        for game in selected:
+            apply_core_traceability_payload(
+                game,
+                profile_origin=str(game.get("perfil_origem_real") or game.get("profile_type") or ""),
+                relabeling_applied=False,
+                relabeling_reason=None,
+            )
     return selected[:count]
 
 
@@ -430,6 +476,7 @@ def _repeated_count(first_game: dict[str, object], second_game: dict[str, object
 
 
 def generate_multiple_games(count: int = 10, max_repeated: int = 9) -> list[dict[str, object]]:
+    enforce_legacy_lei15_entry_blocked(source="generate_multiple_games")
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
     if max_repeated < 0 or max_repeated > 15:
@@ -496,6 +543,12 @@ def generate_best_games(
     if pool_size < count:
         raise ValueError("O pool de jogos deve ser maior ou igual a quantidade solicitada.")
 
+    _routing = enforce_lei15_generation_routing(
+        batch_label,
+        source="generate_best_games",
+        new_legacy_events=1,
+    )
+
     history = load_draws_csv()
     games: list[dict[str, object]] = []
     seen_games: set[tuple[int, ...]] = set()
@@ -504,45 +557,61 @@ def generate_best_games(
     profiles = list(GENERATION_PROFILE_RATIOS)
     seed_offset = 0 if seed is None else abs(int(seed)) % 1000003
 
-    while len(games) < pool_size and attempts < max_attempts:
-        attempts += 1
-        profile_type = profiles[attempts % len(profiles)]
-        candidate = _generate_profile_candidate(
-            Random((attempts * 7919) + pool_size + seed_offset),
-            profile_type,
-            history,
+    _sovereign_cfg = get_core_002_config(batch_label)
+    _apply_sovereign = should_apply_core_002(batch_label)
+    _candidate_cfg = get_candidate_config(batch_label)
+    _apply_candidate = should_apply_core_candidate_001(batch_label) and not _apply_sovereign
+
+    if _apply_sovereign:
+        from lotoia.generation.lei15_core_002 import build_sovereign_pool
+
+        games = build_sovereign_pool(
+            pool_size, seed=seed_offset, history=history, config=_sovereign_cfg
         )
-        if not _is_valid_game(candidate, profile_type=profile_type):
-            record_discarded_game(
-                "normalize_distribution",
-                candidate["numbers"],
-                reason="candidate rejected by normalization filter",
-                metrics={
-                    "pressure_level": _normalization_pressure_level(),
-                    "odd": candidate.get("odd"),
-                    "sum": candidate.get("sum"),
-                    "frame": candidate.get("frame"),
-                    "center": candidate.get("center"),
-                },
+    elif _apply_candidate:
+        from lotoia.generation.lei15_core_candidate_001 import build_candidate_pool
+
+        games = build_candidate_pool(pool_size, seed=seed_offset, history=history, config=_candidate_cfg)
+    else:
+        while len(games) < pool_size and attempts < max_attempts:
+            attempts += 1
+            profile_type = profiles[attempts % len(profiles)]
+            candidate = _generate_profile_candidate(
+                Random((attempts * 7919) + pool_size + seed_offset),
+                profile_type,
+                history,
+            )
+            if not _is_valid_game(candidate, profile_type=profile_type):
+                record_discarded_game(
+                    "normalize_distribution",
+                    candidate["numbers"],
+                    reason="candidate rejected by normalization filter",
+                    metrics={
+                        "pressure_level": _normalization_pressure_level(),
+                        "odd": candidate.get("odd"),
+                        "sum": candidate.get("sum"),
+                        "frame": candidate.get("frame"),
+                        "center": candidate.get("center"),
+                    },
+                    history=history,
+                    profile_type=profile_type,
+                )
+                continue
+            game = _attach_scores(
+                candidate,
                 history=history,
                 profile_type=profile_type,
             )
-            continue
-        game = _attach_scores(
-            candidate,
-            history=history,
-            profile_type=profile_type,
-        )
-        game_key = tuple(game["numbers"])
+            game_key = tuple(game["numbers"])
 
-        if game_key in seen_games:
-            continue
+            if game_key in seen_games:
+                continue
 
-        games.append(game)
-        seen_games.add(game_key)
+            games.append(game)
+            seen_games.add(game_key)
 
-    if len(games) < pool_size:
-        raise RuntimeError("Nao foi possivel gerar o pool de jogos com os filtros informados.")
+        if len(games) < pool_size:
+            raise RuntimeError("Nao foi possivel gerar o pool de jogos com os filtros informados.")
 
     raw_profile_distribution = {
         profile: sum(1 for game in games if game.get("profile_type") == profile)
@@ -567,17 +636,43 @@ def generate_best_games(
     #   mode=shadow_test  → metadata=yes  compose_diverse_gp=only for REALIGN labels
     #   mode=active       → metadata=yes  compose_diverse_gp=always
     _realign_cfg = get_realignment_config()
-    _apply_realign = should_apply_gp_realignment(batch_label)
+    _apply_realign = effective_should_apply_gp_realignment(
+        batch_label,
+        apply_sovereign=_apply_sovereign,
+    )
 
-    # --- Core Realignment V2 hook (ADR-044) ----------------------------------
-    _v2_cfg = get_v2_config()
-    _apply_v2 = should_apply_v2(batch_label) and not should_apply_v3(batch_label)
+    # --- Core Realignment V4 PATTERN PROTECTED hook (pre-ADR) ------------------
+    _v4_cfg = get_v4_config()
+    _apply_v4 = should_apply_v4(batch_label) and not _apply_candidate and not _apply_sovereign
+
+    # --- Core Realignment V3.1 PROTECTED hook (pre-ADR) ------------------------
+    _v3_1_cfg = get_v3_1_config(batch_label)
+    _apply_v3_1 = (
+        should_apply_v3_1(batch_label) and not _apply_v4 and not _apply_candidate and not _apply_sovereign
+    )
 
     # --- Core Realignment V3 BALANCED hook (ADR-045) ---------------------------
     _v3_cfg = get_v3_config()
-    _apply_v3 = should_apply_v3(batch_label)
+    _apply_v3 = (
+        should_apply_v3(batch_label)
+        and not _apply_v3_1
+        and not _apply_v4
+        and not _apply_candidate
+        and not _apply_sovereign
+    )
 
-    if realignment_is_observable():
+    # --- Core Realignment V2 hook (ADR-044) ----------------------------------
+    _v2_cfg = get_v2_config()
+    _apply_v2 = (
+        should_apply_v2(batch_label)
+        and not _apply_v3
+        and not _apply_v3_1
+        and not _apply_v4
+        and not _apply_candidate
+        and not _apply_sovereign
+    )
+
+    if realignment_is_observable() and not _apply_sovereign:
         from lotoia.generation.structural_realignment_v1 import apply_gp_realignment_scoring
         games = apply_gp_realignment_scoring(games, _realign_cfg, game_size=count)
         logger.info(
@@ -587,7 +682,64 @@ def generate_best_games(
 
     _v2_fallback_to_v1 = False
     _v3_fallback_to_v1 = False
-    if _apply_v3:
+    if _apply_sovereign:
+        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
+
+        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=count)
+        if len(best_games) < count:
+            raise RuntimeError(
+                f"[LEI15_CORE_002] compose_sovereign_gp retornou {len(best_games)}/{count} "
+                "após anti-clone — lote inválido."
+            )
+        logger.info(
+            "[LEI15_CORE_002] sovereign batch_label=%r total=%d status=%s",
+            batch_label,
+            len(best_games),
+            _sovereign_cfg.sovereign_core_status,
+        )
+    elif _apply_v4:
+        from lotoia.generation.core_realignment_v4 import compose_gp_v4
+
+        best_games, _ = compose_gp_v4(games, count, _v4_cfg, game_size=count)
+        if len(best_games) < count:
+            raise RuntimeError(
+                f"[CoreRealignV4] compose_gp_v4 retornou {len(best_games)}/{count} "
+                "após completion pass — lote inválido para shadow_test oficial."
+            )
+        logger.info(
+            "[CoreRealignV4] mode=%s batch_label=%r apply_v4=%s total=%d faixa_a=%d",
+            _v4_cfg.mode,
+            batch_label,
+            _apply_v4,
+            len(best_games),
+            sum(
+                1
+                for g in best_games
+                if (g.get("realignment_metadata") or {}).get("protected_v1_pattern") is True
+            ),
+        )
+    elif _apply_v3_1:
+        from lotoia.generation.core_realignment_v3_1 import compose_gp_v3_1
+
+        best_games, _ = compose_gp_v3_1(games, count, _v3_1_cfg, game_size=count)
+        if len(best_games) < count:
+            raise RuntimeError(
+                f"[CoreRealignV3_1] compose_gp_v3_1 retornou {len(best_games)}/{count} "
+                "após completion pass — lote inválido para shadow_test oficial."
+            )
+        logger.info(
+            "[CoreRealignV3_1] mode=%s batch_label=%r apply_v3_1=%s total=%d protected=%d",
+            _v3_1_cfg.mode,
+            batch_label,
+            _apply_v3_1,
+            len(best_games),
+            sum(
+                1
+                for g in best_games
+                if (g.get("realignment_metadata") or {}).get("protected_top_score") is True
+            ),
+        )
+    elif _apply_v3:
         from lotoia.generation.core_realignment_v3 import compose_gp_v3
 
         best_games, _ = compose_gp_v3(games, count, _v3_cfg, game_size=count)
@@ -631,17 +783,35 @@ def generate_best_games(
     elif _apply_realign:
         from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
         best_games = compose_diverse_gp(games, count, _realign_cfg, game_size=count)
+    elif _apply_candidate:
+        best_games = _compose_profiled_games(
+            games,
+            count,
+            allow_profile_relabeling=not _candidate_cfg.disable_profile_relabeling,
+        )
+        from lotoia.generation.lei15_core_candidate_001 import tag_gp_candidate_metadata
+
+        tag_gp_candidate_metadata(best_games, config=_candidate_cfg)
+        logger.info(
+            "[CoreCandidate001] variant=%s batch_label=%r total=%d no_relabel=%s",
+            _candidate_cfg.variant,
+            batch_label,
+            len(best_games),
+            _candidate_cfg.disable_profile_relabeling,
+        )
     else:
         best_games = _compose_profiled_games(games, count)
 
     if realignment_is_observable() and best_games:
         from lotoia.generation.structural_realignment_v1 import compute_gp_realignment_metrics
         _rm = compute_gp_realignment_metrics(best_games, game_size=count)
-        _rm["realignment_applied"] = _apply_realign or _apply_v2 or _apply_v3
+        _rm["realignment_applied"] = (
+            _apply_realign or _apply_v2 or _apply_v3 or _apply_v3_1 or _apply_v4 or _apply_sovereign
+        )
         _rm["batch_label"] = batch_label
         logger.info(
             "[RealignmentV1] realignment_applied=%s top_p3=%s(%.0f%%) top_s3=%s(%.0f%%) near_dups=%d",
-            _apply_realign or _apply_v2 or _apply_v3,
+            _apply_realign or _apply_v2 or _apply_v3 or _apply_v3_1 or _apply_v4 or _apply_sovereign,
             _rm.get("top_prefix3"), _rm.get("top_prefix3_ratio", 0) * 100,
             _rm.get("top_suffix3"), _rm.get("top_suffix3_ratio", 0) * 100,
             _rm.get("near_duplicate_pairs", 0),
@@ -651,10 +821,39 @@ def generate_best_games(
             if "realignment_metadata" not in _g:
                 _g["realignment_metadata"] = {}
             meta = _g["realignment_metadata"]
-            meta["realignment_applied"] = _apply_realign or (_apply_v2 and not _v2_fallback_to_v1) or (_apply_v3 and not _v3_fallback_to_v1)
+            meta["realignment_applied"] = (
+                _apply_realign
+                or (_apply_v2 and not _v2_fallback_to_v1)
+                or (_apply_v3 and not _v3_fallback_to_v1)
+                or _apply_v3_1
+                or _apply_v4
+                or _apply_sovereign
+            )
+            if _apply_sovereign:
+                meta.setdefault("lei15_core_002_applied", True)
+                meta.setdefault("sovereign_core_status", _sovereign_cfg.sovereign_core_status)
+                meta.setdefault("v1_selection_compose_applied", True)
+                meta.setdefault("generation_cand_d_applied", True)
+                meta.setdefault("anti_clone_gp_applied", True)
+                _g["lei15_core_002_applied"] = True
             meta["v2_fallback_to_v1"] = _v2_fallback_to_v1
             meta["v3_fallback_to_v1"] = _v3_fallback_to_v1
-            if _apply_v3 and not _v3_fallback_to_v1:
+            if _apply_v4:
+                meta.setdefault("v1_applied", True)
+                meta.setdefault("v4_applied", True)
+                meta.setdefault("v2_applied", False)
+                meta.setdefault("v3_applied", False)
+                meta.setdefault("v3_1_applied", False)
+                if "pool_pre_filter_applied" not in meta:
+                    meta["pool_pre_filter_applied"] = True
+            elif _apply_v3_1:
+                meta.setdefault("v1_applied", True)
+                meta.setdefault("v3_1_applied", True)
+                meta.setdefault("v2_applied", False)
+                meta.setdefault("v3_applied", False)
+                if "pool_pre_filter_applied" not in meta:
+                    meta["pool_pre_filter_applied"] = True
+            elif _apply_v3 and not _v3_fallback_to_v1:
                 if meta.get("v3_fallback_to_v1") is not True:
                     meta.setdefault("v1_applied", True)
                     meta.setdefault("v3_applied", True)
@@ -674,8 +873,16 @@ def generate_best_games(
             _g["core_realignment_v3_applied"] = bool(
                 _apply_v3 and not _v3_fallback_to_v1 and meta.get("v3_applied") is True
             )
+            _g["core_realignment_v3_1_applied"] = bool(
+                _apply_v3_1 and meta.get("v3_1_applied") is True
+            )
+            _g["core_realignment_v4_applied"] = bool(
+                _apply_v4 and meta.get("v4_applied") is True
+            )
             meta["core_realignment_v2_applied"] = _g["core_realignment_v2_applied"]
             meta["core_realignment_v3_applied"] = _g["core_realignment_v3_applied"]
+            meta["core_realignment_v3_1_applied"] = _g["core_realignment_v3_1_applied"]
+            meta["core_realignment_v4_applied"] = _g["core_realignment_v4_applied"]
             meta["gp_metrics"] = _rm
     # -------------------------------------------------------------------------
 
@@ -688,7 +895,9 @@ def generate_best_games(
         profile: sum(1 for game in best_games if game.get("profile_type") == profile)
         for profile in GENERATION_PROFILE_RATIOS
     }
-    return {
+    if best_games and _apply_sovereign:
+        attach_routing_payload_to_games(best_games, _routing)
+    payload = {
         "count": len(best_games),
         "games": best_games,
         "profile_counts": profile_counts,
@@ -696,4 +905,6 @@ def generate_best_games(
             profile: round((amount / len(best_games)) * 100, 2) if best_games else 0.0
             for profile, amount in profile_counts.items()
         },
+        "generation_routing": _routing.to_dict(),
     }
+    return payload
