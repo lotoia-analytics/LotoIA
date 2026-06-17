@@ -32,6 +32,15 @@
 - `BLK-ML-OPERACIONAL-001`
 - `BLK-PUBLIC-APP-001`
 
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#146](https://github.com/lotoia-analytics/LotoIA/pull/146) |
+| Merge commit | `8cc1568` |
+| Commit entrega | `3cdb295` |
+| Build marker | `institutional-adm-runtime-v16` |
+
 ## Veredicto
 
 | Campo | Valor |
