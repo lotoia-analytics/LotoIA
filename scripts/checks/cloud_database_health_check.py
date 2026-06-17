@@ -12,10 +12,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text  # noqa: E402
 
-from lotoia.database.adapter import InstitutionalDatabaseAdapter
-from lotoia.database.database import get_engine
+from lotoia.database.adapter import InstitutionalDatabaseAdapter  # noqa: E402
+from lotoia.database.database import get_engine  # noqa: E402
 
 
 def _load_url_from_env() -> str:
