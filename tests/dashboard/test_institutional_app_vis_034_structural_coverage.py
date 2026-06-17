@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v23"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v24"
 
 
 def test_structural_coverage_module_imports() -> None:

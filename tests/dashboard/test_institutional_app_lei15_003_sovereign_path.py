@@ -9,7 +9,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v23"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v24"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 

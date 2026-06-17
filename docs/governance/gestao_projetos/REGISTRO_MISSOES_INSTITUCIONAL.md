@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-DADOS-048](#m-dados-048--card-último-concurso-monitorado--postgresql-imported_contests) | Último concurso monitorado | `CONCLUIDA` | `POSTGRESQL imported_contests / SEM RESÍDUO 5000` |
 | [M-VIS-047](#m-vis-047--simplificação-operacional-da-página-de-geração-adm-core_002) | Geração ADM — simplificação operacional | `CONCLUIDA` | `PÁGINA LIMPA / JOGOS 1–100 / DEZENAS 15–23` |
 | [M-VIS-046](#m-vis-046--corrigir-resíduo-visual-lei-15a-operacional-no-runtime-limpo-adm-15) | Runtime Limpo — resíduo Lei 15A | `CONCLUIDA` | `VISUAL CORRIGIDO / CORE_002 15D PRESERVADO` |
 | [M-ML-045](#m-ml-045--ativação-definitiva-do-ml-operacional-supervisionado) | ML Operacional Supervisionado CORE_002 | `CONCLUIDA` | `ML SUPERVISIONADO ATIVO / POSTGRESQL + TRACE` |
@@ -39,6 +40,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-DADOS-048 — Card Último concurso monitorado — PostgreSQL imported_contests
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Agentes | `agent_dados` + `agent_visual` + `agent_governanca` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Correção de dados / card operacional |
+
+**Correção:** Home e Conferência usam `imported_contests` (PostgreSQL) como fonte soberana. Artefatos/outliers (ex. concurso 5000) filtrados. Divergência vs `lotofacil_official_history` reportada quando aplicável.
+
+**Build:** `institutional-adm-runtime-v24`
+
+**Veredicto:** **M-DADOS-048 CONCLUÍDA — CARD ÚLTIMO CONCURSO CORRIGIDO — POSTGRESQL EXIBE 3712 OU DIVERGÊNCIA DE SYNC REPORTADA**
+
+**Cartão:** `cartoes/M-DADOS-048_ULTIMO_CONCURSO_MONITORADO.md`
+
+---
 
 ### M-VIS-047 — Simplificação Operacional da Página de Geração ADM CORE_002
 

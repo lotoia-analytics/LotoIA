@@ -104,6 +104,13 @@ from dashboard.institutional_simulation_backtesting import render_institutional_
 from dashboard.institutional_conference_audit import render_conference_governance_section
 from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
 from dashboard.institutional_controlled_cleanup import render_restricted_controlled_cleanup_page
+from dashboard.institutional_monitored_contest import (
+    SOVEREIGN_SOURCE_LABEL as MONITORED_CONTEST_SOURCE_LABEL,
+    build_imported_contests_selection_context,
+    sanitize_conference_session_contest,
+    to_conference_contest_payload,
+    validate_expected_contest_numbers,
+)
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
     resolve_institutional_page_id,
@@ -1615,6 +1622,32 @@ def _load_imported_contest(contest_number: int | None = None) -> dict[str, Any] 
             "dezenas": dezenas,
             "metadata_json": str(row.metadata_json or "{}"),
         }
+
+
+def _list_all_imported_contest_records() -> list[dict[str, Any]]:
+    with get_session(DB_PATH) as session:
+        rows = session.query(ImportedContest).order_by(ImportedContest.contest_number.asc()).all()
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        contest_number = int(getattr(row, "contest_number", 0) or 0)
+        if contest_number <= 0:
+            continue
+        records.append(
+            {
+                "contest_number": contest_number,
+                "data": str(getattr(row, "data", "") or ""),
+                "dezenas": _extract_int_numbers(str(getattr(row, "dezenas", "") or "")),
+                "metadata_json": str(getattr(row, "metadata_json", "{}") or ""),
+            }
+        )
+    return records
+
+
+def _get_conference_contest_from_imported(contest_number: int | None) -> dict[str, Any] | None:
+    selected = _safe_int(contest_number, default=None)
+    if selected is None:
+        return None
+    return to_conference_contest_payload(_load_imported_contest(selected))
 
 
 def _normalize_contest_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -5962,10 +5995,12 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
         st.session_state.get("active_reconciliation_generation_event_id"),
         default=None,
     )
-    official_contest = _load_official_history_contest(selected_contest)
+    official_contest = _get_conference_contest_from_imported(selected_contest)
+    if official_contest is None:
+        official_contest = _load_official_history_contest(selected_contest)
     if official_contest is None:
         imported_fallback = _load_imported_contest(selected_contest)
-        fallback_contest = _normalize_contest_record(imported_fallback)
+        fallback_contest = to_conference_contest_payload(imported_fallback) or _normalize_contest_record(imported_fallback)
         if fallback_contest is not None and not fallback_contest.get("dezenas"):
             fallback_contest["dezenas"] = _extract_int_numbers(
                 imported_fallback.get("numbers", imported_fallback.get("dezenas", [])) if isinstance(imported_fallback, dict) else []
@@ -5974,13 +6009,13 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             official_contest = fallback_contest
             st.session_state["institutional_check_result"] = {
                 "status": "fallback_imported_contest",
-                "warning": "Concurso não encontrado na base oficial. Usando o concurso importado disponível no banco.",
+                "warning": "Concurso inválido ou incompleto em imported_contests.",
                 "selected_contest": int(selected_contest or 0),
             }
         else:
             st.session_state["institutional_check_result"] = {
                 "status": "waiting_contest",
-                "warning": "Concurso não encontrado na base oficial. Escolha um concurso disponível no banco.",
+                "warning": "Concurso não encontrado em imported_contests. Escolha um concurso válido persistido.",
             }
             return
     grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
@@ -6019,7 +6054,9 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     for group in selected_generation_groups:
         group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
         contest_to_use = selected_contest or group_target_contest or _safe_int(_safe_get(official_contest, "concurso"), default=None)
-        contest_payload = _load_official_history_contest(contest_to_use) if contest_to_use is not None else official_contest
+        contest_payload = _get_conference_contest_from_imported(contest_to_use) or (
+            _load_official_history_contest(contest_to_use) if contest_to_use is not None else official_contest
+        )
         if contest_payload is None:
             contest_payload = official_contest
         comparison = _compare_games_against_contest(
@@ -11861,41 +11898,56 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         runtime_query_imported_contests = None
         runtime_query_error = str(exc)
 
-    latest_contest = get_latest_official_contest()
     latest_generation = _load_latest_generated_games() or {}
     official_diagnostics = _load_official_history_diagnostics()
-    min_official_contest = int(official_diagnostics.get("contest_number_min", 0) or 0)
-    max_official_contest = int(official_diagnostics.get("contest_number_max", 0) or 0)
-    default_contest = max_official_contest or (
-        int(latest_contest["contest_number"])
-        if latest_contest
-        else int(latest_generation.get("target_contest") or 0)
-        if str(latest_generation.get("target_contest") or "").isdigit()
-        else 0
+    official_history_max = int(official_diagnostics.get("contest_number_max", 0) or 0)
+    contest_selection = build_imported_contests_selection_context(
+        list_imported_contest_records=_list_all_imported_contest_records,
+        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+        official_history_max=official_history_max or None,
     )
-    if min_official_contest and max_official_contest and max_official_contest >= min_official_contest:
+    valid_contest_numbers = list(contest_selection.get("valid_contest_numbers") or [])
+    min_contest = int(contest_selection.get("min_contest", 0) or 0)
+    max_contest = int(contest_selection.get("max_contest", 0) or 0)
+    default_contest = int(contest_selection.get("default_contest", 0) or 0)
+    session_contest = _safe_int(st.session_state.get("conference_selected_contest"), default=None)
+    selected_contest, session_reset_message = sanitize_conference_session_contest(
+        session_contest=session_contest,
+        valid_contest_numbers=valid_contest_numbers,
+        default_contest=default_contest,
+    )
+    if session_reset_message:
+        st.warning(session_reset_message)
+    if contest_selection.get("sync_status") == "SYNC_DIVERGENCE":
+        st.warning(str(contest_selection.get("sync_message") or ""))
+    if contest_selection.get("history_divergence_message"):
+        st.warning(str(contest_selection.get("history_divergence_message") or ""))
+    if contest_selection.get("outlier_message"):
+        st.warning(str(contest_selection.get("outlier_message") or ""))
+    if valid_contest_numbers:
         selected_contest = int(
-            st.number_input(
+            st.selectbox(
                 "Escolha o Concurso",
-                min_value=min_official_contest,
-                max_value=max_official_contest,
-                value=default_contest if min_official_contest <= default_contest <= max_official_contest else max_official_contest,
-                step=1,
+                options=valid_contest_numbers,
+                index=valid_contest_numbers.index(selected_contest) if selected_contest in valid_contest_numbers else len(valid_contest_numbers) - 1,
                 key="conference_selected_contest",
+                help=f"Fonte: {MONITORED_CONTEST_SOURCE_LABEL}",
             )
         )
     else:
-        selected_contest = int(default_contest or 0)
-        st.caption("Escolha o Concurso: aguardando base oficial disponível.")
-    selected_official = get_official_contest(selected_contest) if selected_contest else None
+        selected_contest = 0
+        st.caption("Escolha o Concurso: aguardando concursos válidos (15 dezenas) em imported_contests.")
+    selected_official = _get_conference_contest_from_imported(selected_contest) if selected_contest else None
     if selected_official:
         st.caption(
-            f"Concurso escolhido: {selected_official.get('concurso', '-')} | dezenas oficiais: {' '.join(f'{number:02d}' for number in selected_official.get('dezenas', []) or []) or '-'}"
+            f"Concurso escolhido: {selected_official.get('concurso', '-')} | "
+            f"dezenas oficiais: {' '.join(f'{number:02d}' for number in selected_official.get('dezenas', []) or []) or '-'} | "
+            f"origem: {MONITORED_CONTEST_SOURCE_LABEL}"
         )
     elif selected_contest:
-        st.warning("Concurso não encontrado na base oficial. Escolha um concurso disponível no banco.")
-    if max_official_contest:
-        st.caption(f"Último concurso disponível no banco: {max_official_contest}")
+        st.warning("Concurso não encontrado ou inválido em imported_contests (requer 15 dezenas).")
+    if max_contest:
+        st.caption(f"Último concurso disponível no banco: {max_contest} ({MONITORED_CONTEST_SOURCE_LABEL})")
     st.caption(
         " | ".join(
             [
@@ -11997,9 +12049,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
         time.sleep(1.3)
         st.rerun()
-    if latest_contest:
+    latest_contest_record = contest_selection.get("latest_record") or {}
+    if latest_contest_record:
         contest_buttons[0].caption(
-            f"Último concurso: {int(latest_contest['contest_number'])} | dezenas: {' '.join(f'{number:02d}' for number in latest_contest.get('dezenas', [])) or '-'}"
+            f"Último concurso: {int(latest_contest_record.get('contest_number', 0) or 0)} | "
+            f"dezenas: {' '.join(f'{number:02d}' for number in latest_contest_record.get('dezenas', []) or []) or '-'} | "
+            f"origem: {MONITORED_CONTEST_SOURCE_LABEL}"
         )
     elif latest_generation.get("target_contest"):
         contest_buttons[0].caption(f"Último concurso: {latest_generation.get('target_contest')}")
@@ -13360,10 +13415,19 @@ def _render_home_quick_access() -> None:
 def _render_home_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = dict(snapshot.get("counts") or {})
-    latest_contest = _load_hai_latest_contest_summary() or _load_latest_contest_summary() or {}
+    monitored_contest = build_imported_contests_selection_context(
+        list_imported_contest_records=_list_all_imported_contest_records,
+        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+        official_history_max=int(
+            (_load_official_history_diagnostics().get("contest_number_max", 0) or 0)
+        )
+        or None,
+    )
+    contest_number = monitored_contest.get("contest_number")
+    contest_display = str(monitored_contest.get("display_contest_number") or "—")
+    contest_source = str(monitored_contest.get("source") or MONITORED_CONTEST_SOURCE_LABEL)
     latest_reconciliation = _load_latest_reconciliation_summary() or {}
     latest_generation = (_load_generation_history_light(limit=1) or [{}])[0]
-    contest_number = int(latest_contest.get("contest_number", 0) or 0)
     generated_games = int(live_counts.get("generated_games", 0) or 0)
     generation_events = int(live_counts.get("generation_events", 0) or 0)
     reconciliation_runs = int(live_counts.get("reconciliation_runs", 0) or 0)
@@ -13413,7 +13477,8 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
             f"""
             <div>
                 <div class="lotoia-home-contest-label">Último concurso monitorado</div>
-                <div class="lotoia-home-contest-value">{contest_number or "—"}</div>
+                <div class="lotoia-home-contest-value">{contest_display}</div>
+                <div style="font-size:0.72rem; opacity:0.85; margin-top:0.25rem;">Origem: {contest_source}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -13429,12 +13494,22 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
+    if monitored_contest.get("sync_status") == "SYNC_DIVERGENCE":
+        st.warning(str(monitored_contest.get("sync_message") or ""))
+    elif monitored_contest.get("sync_status") == "EMPTY":
+        st.error(str(monitored_contest.get("sync_message") or ""))
+    if monitored_contest.get("history_divergence_message"):
+        st.warning(str(monitored_contest.get("history_divergence_message") or ""))
+    if monitored_contest.get("outlier_message"):
+        st.warning(str(monitored_contest.get("outlier_message") or ""))
+
     metric_cols = st.columns(5)
     with metric_cols[0]:
         _render_home_metric_card(
             "Último Concurso",
-            str(contest_number or "—"),
+            contest_display,
             value_class="lotoia-metric-value-accent",
+            caption=f"Origem: {contest_source}",
         )
     with metric_cols[1]:
         _render_home_metric_card(
