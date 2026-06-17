@@ -13,7 +13,7 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v13"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v14"
 
 
 def test_institutional_light_mode_imports() -> None:
@@ -38,6 +38,8 @@ def test_governance_read_only_snapshot_contains_required_fields(
     assert "M-OPS-INC-001" in text_blob
     assert "M-VIS-031" in text_blob
     assert "M-VIS-032" in text_blob
+    assert "M-GOV-038" in text_blob
+    assert "Lei 15A" in text_blob
     assert "Lei 001" in text_blob
     assert "Lei 15" in text_blob
     assert "ADR-047" in text_blob

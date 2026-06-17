@@ -8,7 +8,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 
 def test_institutional_app_imports() -> None:
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v13"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v14"
     assert institutional_app.SOVEREIGN_BATCH_LABEL == BATCH_LABEL
 
 
@@ -68,7 +68,8 @@ def test_constitutional_status_lines_include_required_fields(
     assert lines["core_id"] == "LEI15_CORE_002"
     assert lines["batch_label"] == BATCH_LABEL
     assert lines["generation_status"] == "BLOQUEADA"
-    assert "SUSPENSA" in lines["lei15a_status"]
+    assert "REDEFINIDA" in lines["lei15a_status"]
+    assert "INOPERANTE" in lines["lei15a_status"]
     assert "ASSISTIVO" in lines["ml_status"]
     assert lines["history_status"] == "PROTEGIDO"
     assert "M-GOV-030" in lines["gestao_projetos"]

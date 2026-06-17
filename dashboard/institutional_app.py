@@ -102,6 +102,7 @@ from dashboard.institutional_ml_assistive import (
 )
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
 from dashboard.institutional_conference_audit import render_conference_governance_section
+from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -470,7 +471,7 @@ def _constitutional_status_lines() -> dict[str, str]:
         "core_id": str(report.get("core_id") or SOVEREIGN_CORE_ID),
         "batch_label": str(report.get("batch_label") or SOVEREIGN_BATCH_LABEL),
         "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
-        "lei15a_status": "SUSPENSA / aguardando redefinição",
+        "lei15a_status": LEI15A_FORMAL_STATUS,
         "ml_status": "ASSISTIVO — diagnóstico — sem efeito operacional automático",
         "history_status": "PROTEGIDO",
         "gestao_projetos": "Fase 0 implantada (M-GOV-030)",

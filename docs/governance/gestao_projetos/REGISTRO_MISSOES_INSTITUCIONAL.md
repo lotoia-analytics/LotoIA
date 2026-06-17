@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-GOV-038](#m-gov-038--lei-15a-redefinida-como-camada-futura-subordinada-ao-core_002) | Lei 15A redefinida / inoperante | `CONCLUIDA` | `LEI 15A FUTURA / SUBORDINADA / INOPERANTE` |
 | [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-036](#m-vis-036--simulação-institucional--backtesting) | Simulação Institucional / Backtesting | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-035](#m-vis-035--ml-assistivo--vazamento-lateral-constitucional) | ML Assistivo + Vazamento Lateral | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -30,6 +31,48 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-GOV-038 — Lei 15A Redefinida como Camada Futura Subordinada ao CORE_002
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Data encerramento | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-LEI15-001` |
+| Agentes | `agent_governanca` + `agent_geracao` + `agent_estatistico` + `agent_qualidade` |
+| Status | `CONCLUIDA` |
+| Tipo | Governança / Constitucional / Read-only |
+| Risco | Médio (documental/read-only) |
+
+**Objetivo:** Redefinir constitucionalmente a Lei 15A como camada futura subordinada ao
+`LEI15_CORE_002`, mantendo-a totalmente inoperante.
+
+**Frase obrigatória:** A Lei 15A é uma camada futura subordinada ao LEI15_CORE_002. No estado
+atual, está redefinida e inoperante: não gera, não expande, não altera Núcleo, não ativa
+mecânica 15+1/15+2 e não possui efeito operacional.
+
+**Entregáveis:**
+
+- `docs/governance/LEI_15A_CAMADA_FUTURA_SUBORDINADA_CORE_002.md`
+- `dashboard/institutional_lei15a_governance.py`
+- Status Constitucional e Governança read-only atualizados
+- Build `institutional-adm-runtime-v14`
+
+**Bloqueios relacionados:** `BLK-GERACAO-001`, `BLK-CORE002-001`, `BLK-LEI15A-001`,
+`BLK-ML-OPERACIONAL-001`, `BLK-PUBLIC-APP-001`.
+
+**Confirmações:**
+
+- LEI15_CORE_002 permanece soberano
+- Lei 15A não liberou geração
+- Mecânica 15+1/15+2 não reativada
+- Sem alteração de banco/schema, purge, ML operacional ou `public_app`
+
+**Veredicto:** **M-GOV-038 CONCLUÍDA — LEI 15A REDEFINIDA COMO CAMADA FUTURA SUBORDINADA AO CORE_002 E INOPERANTE**
+
+**Cartão:** `cartoes/M-GOV-038_LEI15A_REDEFINIDA_CAMADA_FUTURA.md`
+
+---
 
 ### M-VIS-037 — Conferir Resultados / Auditoria de Lotes Reais Persistidos
 
