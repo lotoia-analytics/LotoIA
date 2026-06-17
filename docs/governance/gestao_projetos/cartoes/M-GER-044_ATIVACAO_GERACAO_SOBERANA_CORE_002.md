@@ -36,3 +36,12 @@ generate_best_games(
 | Campo | Valor |
 |-------|-------|
 | **Veredicto institucional** | **M-GER-044 CONCLUÍDA E ATIVA EM PRODUÇÃO — GERAÇÃO SOBERANA CONTROLADA CORE_002 VALIDADA COM PERSISTÊNCIA POSTGRESQL** |
+
+## Evidência Git
+
+| Campo | Valor |
+|-------|-------|
+| PR implantação | [#152](https://github.com/lotoia-analytics/LotoIA/pull/152) |
+| Merge commit | `167d46e` |
+| Commit entrega | `c05e135` |
+| Build ADM | `institutional-adm-runtime-v18` |
