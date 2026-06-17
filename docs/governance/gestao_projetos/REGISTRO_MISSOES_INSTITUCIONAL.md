@@ -10,7 +10,8 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-LEI15-003](#m-lei15-003--unificar-path-de-geração-adm) | Unificar path geração ADM | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-RODADA-001](#m-rodada-001--rodada-multiagente-painel--core_002) | Rodada multiagente Painel / CORE_002 | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-GOV-031](#m-gov-031--checkpoint-de-produção-simplificado) | Checkpoint produção simplificado | `CONCLUIDA` | `INCORPORADA À MAIN` |
 | [M-VIS-032](#m-vis-032--governança-read-only-no-painel-adm) | Governança read-only Painel ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -25,6 +26,29 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 ## Entradas
 
+### M-LEI15-003 — Unificar path de geração ADM para generate_best_games
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-LEI15-001` |
+| Agentes | `agent_geracao` + `agent_plataforma` + `agent_qualidade` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco | Crítico |
+| Branch | `cursor/m-lei15-003-unificar-path-geracao-cae6` |
+
+**Objetivo:** Unificar Painel ADM para path único `generate_best_games` com label soberano
+`STRUCT_LEI15_CORE_CANDIDATE_002_15D_001`; bloquear `_generate_direct_15_games`; manter
+geração bloqueada com flag `0`.
+
+**Bloqueios tratados:** `BLK-GERACAO-001`, `BLK-ADM-001`, `BLK-CORE002-001`, `BLK-LEGACY-GEN-001`.
+
+**Veredicto alvo:** **M-LEI15-003 CONCLUÍDA — PATH ÚNICO ADM → generate_best_games AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-LEI15-003_UNIFICAR_PATH_GERACAO_ADM.md`
+
+---
+
 ### M-RODADA-001 — Rodada Multiagente Painel / CORE_002
 
 | Campo | Valor |
@@ -32,9 +56,10 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 | Data abertura | 2026-06-17 |
 | Projeto | `P-GOV-001` |
 | Agentes | 8 agentes institucionais |
-| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Status | `CONCLUIDA` |
 | Risco pacote | Baixo (documental/planejamento) |
 | Branch | `cursor/rodada-multiagente-painel-core002-cae6` |
+| Merge | PR [#130](https://github.com/lotoia-analytics/LotoIA/pull/130) — `295f1c0` |
 
 **Objetivo:** Auditoria e organização multiagente; relatórios por domínio; política de pacotes;
 fila de missões propostas — sem geração, purge ou alteração de Núcleo.
@@ -44,7 +69,7 @@ fila de missões propostas — sem geração, purge ou alteração de Núcleo.
 
 **Bloqueios identificados:** bypass `_generate_direct_15_games`; segregação public_app; órfãs page_keys.
 
-**Veredicto alvo:** **RODADA MULTIAGENTE PARCIAL — PR DE PACOTE AGUARDANDO REVIEW**
+**Veredicto:** **RODADA MULTIAGENTE INCORPORADA À MAIN** — M-LEI15-003 priorizada
 
 **Cartão:** `cartoes/M-RODADA-001_RODADA_MULTIAGENTE_PAINEL_CORE002.md`
 

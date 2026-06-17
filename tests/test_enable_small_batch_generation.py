@@ -42,39 +42,34 @@ def test_generation_quantity_invalid_rejected() -> None:
 
 
 @pytest.mark.parametrize("quantity", [1, 9])
-def test_generation_quantity_small_batches(monkeypatch: pytest.MonkeyPatch, quantity: int) -> None:
-    _approve_rfe(monkeypatch)
-    monkeypatch.setattr(admin_app, "generate_ranked_games", lambda **kwargs: _direct_generation_candidates(quantity))
-
-    games = admin_app._generate_direct_15_games(
-        total_games=quantity,
-        seed=123,
-        history_frequency={},
-        latest_numbers=set(),
-        batch_number_usage={},
-        batch_profile_usage={},
-        batch_total_games=quantity,
-        core_numbers=[],
-        discouraged_numbers=[],
-        max_frequency_ratio=1.0,
-        min_frequency_ratio=0.0,
-        preferred_profile_ratios={},
-        odd_min=5,
-        odd_max=10,
-        even_min=5,
-        even_max=10,
-        sequence_max=15,
-        coverage_min=0.0,
-        entropy_min=0.0,
-        repeat_min=0,
-        repeat_max=15,
-        preferred_parity_pairs=[],
-        allowed_parity_pairs=[],
-        previous_contest_numbers=list(range(1, 16)),
-    )
-
-    assert len(games) == quantity
-    assert admin_app._validate_generation_quantity(quantity) == quantity
+def test_generation_quantity_small_batches_legacy_blocked(quantity: int) -> None:
+    with pytest.raises(RuntimeError, match="BLK-LEGACY-GEN-001"):
+        admin_app._generate_direct_15_games(
+            total_games=quantity,
+            seed=123,
+            history_frequency={},
+            latest_numbers=set(),
+            batch_number_usage={},
+            batch_profile_usage={},
+            batch_total_games=quantity,
+            core_numbers=[],
+            discouraged_numbers=[],
+            max_frequency_ratio=1.0,
+            min_frequency_ratio=0.0,
+            preferred_profile_ratios={},
+            odd_min=5,
+            odd_max=10,
+            even_min=5,
+            even_max=10,
+            sequence_max=15,
+            coverage_min=0.0,
+            entropy_min=0.0,
+            repeat_min=0,
+            repeat_max=15,
+            preferred_parity_pairs=[],
+            allowed_parity_pairs=[],
+            previous_contest_numbers=list(range(1, 16)),
+        )
 
 
 def test_generation_quantity_1(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,11 +145,17 @@ def test_run_institutional_generation_rejects_invalid_quantity(monkeypatch: pyte
     assert "Quantidade de jogos inválida" in errors[0]
 
 
-def test_run_institutional_generation_accepts_quantity_one(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_institutional_generation_accepts_quantity_one(
+    monkeypatch: pytest.MonkeyPatch,
+    sovereign_generation_enabled,
+) -> None:
     monkeypatch.setattr(
         admin_app,
-        "_generate_direct_15_games",
-        lambda **kwargs: [{"numbers": list(range(1, 16)), "game_index": 1}],
+        "_invoke_sovereign_adm_generate_best_games",
+        lambda **kwargs: {
+            "games": [{"numbers": list(range(1, 16)), "game_index": 1}],
+            "generation_path": "LEI15_CORE_002",
+        },
     )
     monkeypatch.setattr(
         admin_app,

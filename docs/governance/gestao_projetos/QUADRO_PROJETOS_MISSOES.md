@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (M-RODADA-001 rodada multiagente) |
+| Atualização | 2026-06-17 (M-LEI15-003 path geração ADM) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,7 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
-| M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `EM EXECUCAO / AGUARDANDO REVIEW` | branch `cursor/rodada-multiagente-painel-core002-cae6` |
+| M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
 | M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
 | M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — [PR #127](https://github.com/lotoia-analytics/LotoIA/pull/127) — produção `7df540ce3bcc` / `institutional-adm-runtime-v7` |
 | M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
@@ -48,6 +48,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Bloqueio |
 |-----------|--------|-----------------|--------|----------|
+| M-LEI15-003 | Unificar path geração ADM → generate_best_games | `agent_geracao` + `agent_plataforma` | `EM EXECUCAO / AGUARDANDO REVIEW` | Geração bloqueada (`GENERATION_ENABLED=0`) |
 | M-LEI15-002 | Implantação LEI15_CORE_002 | `agent_geracao` | `CONCLUIDA` | Geração bloqueada (`GENERATION_ENABLED=0`) |
 | M-LEI15-001 | Alinhamento constitucional doc/painel/ADM | `agent_governanca` | `BLOQUEADA` | Painel ADM conflitante — ver auditoria |
 
@@ -79,8 +80,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | Prioridade | Título sugerido | Agente | Motivo |
 |------------|-----------------|--------|--------|
-| Alta | Correção roteamento geração ADM → LEI15_CORE_002 | `agent_geracao` + `agent_visual` | Auditoria constitucional |
-| Alta | Proteção de evidência institucional no purge | `agent_dados` | Gap Lei 001 |
+| Alta | Segregação public_app vs institutional_app | `agent_plataforma` | Rodada multiagente |
 | Média | Consolidação corpus ADR (`ADRs/` vs `docs/adr/`) | `agent_governanca` | Duplicidade documental |
 | Baixa | Fase 1 — gestão de projetos com painel | `agent_governanca` | Fora do escopo Fase 0 |
 
