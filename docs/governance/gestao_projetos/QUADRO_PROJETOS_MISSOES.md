@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-17 (fechamento M-GOV-030) |
+| Atualização | 2026-06-17 (fechamento M-OPS-INC-001) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -52,7 +52,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 | ID missão | Título | Agente primário | Status | Última evidência deploy |
 |-----------|--------|-----------------|--------|-------------------------|
 | M-OPS-015 | Cloud-only Railway (Lei 001) | `agent_plataforma` | `CONCLUIDA` | `RAILWAY_CLOUD_ONLY_DEPLOYMENT_2026_06_15.md` |
-| M-OPS-INC-001 | Incidente deploy — artefato não versionado | `agent_plataforma` | `AGUARDANDO_EVIDENCIA` | Motivador da Fase 0 |
+| M-OPS-INC-001 | Incidente deploy — artefato não versionado | `agent_plataforma` + `agent_governanca` | `CONCLUIDA` | hotfix `f0c1261` — `build=institutional-adm-runtime-v6` |
 
 ### P-ML-001 — ML assistivo e experimentos
 
