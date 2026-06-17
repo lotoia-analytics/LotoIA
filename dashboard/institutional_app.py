@@ -112,6 +112,12 @@ from dashboard.institutional_light_mode import (
 )
 from lotoia.governance.law15_structural_realignment_v1 import get_realignment_mode
 from lotoia.governance.lei15_15a_core_realignment_v2 import get_v2_mode
+from lotoia.governance.lei15_core_002_sovereign import (
+    BATCH_LABEL as SOVEREIGN_BATCH_LABEL,
+    REALIGNMENT_NAME as SOVEREIGN_CORE_ID,
+    institutional_status_report,
+    is_generation_enabled,
+)
 from lotoia.governance.cloud_runtime_policy import (
     cloud_runtime_policy_snapshot,
     enforce_cloud_runtime_policy,
@@ -412,11 +418,12 @@ PAGE_TARGETS = {
     "Benchmark resumido": "summary_benchmark",
     "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
+    "Gerador ADM CORE_002 — BLOQUEADO": "clean_law15_generation",
     "Gerador ADM - Lei 15 Limpo": "clean_law15_generation",
 }
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
-    {"icon": "🎯", "label": "Gerador ADM - Lei 15 Limpo", "page_id": "clean_law15_generation"},
+    {"icon": "🎯", "label": "Gerador ADM CORE_002 — BLOQUEADO", "page_id": "clean_law15_generation"},
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
@@ -425,6 +432,111 @@ INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
 ]
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
+
+CONSTITUTIONAL_DIAGNOSTIC_CAPTION = (
+    "Diagnóstico observacional — sem efeito operacional automático."
+)
+RESTRICTED_PURGE_BLOCK_MESSAGE = (
+    "Operação bloqueada por Lei 001, ADR-047 e Política de Preservação de Histórico."
+)
+INVENTORY_REPORT_REFERENCE = "PR #124 — merge 328d26f"
+
+
+def _is_sovereign_generation_blocked() -> bool:
+    return not is_generation_enabled()
+
+
+def _constitutional_status_lines() -> dict[str, str]:
+    report = institutional_status_report()
+    generation_blocked = _is_sovereign_generation_blocked()
+    return {
+        "core_id": str(report.get("core_id") or SOVEREIGN_CORE_ID),
+        "batch_label": str(report.get("batch_label") or SOVEREIGN_BATCH_LABEL),
+        "generation_status": "BLOQUEADA" if generation_blocked else "HABILITADA",
+        "lei15a_status": "SUSPENSA / aguardando redefinição",
+        "ml_status": "ASSISTIVO — diagnóstico — sem efeito operacional automático",
+        "history_status": "PROTEGIDO",
+        "gestao_projetos": "Fase 0 implantada (M-GOV-030)",
+        "inventario_painel": f"Aprovado — {INVENTORY_REPORT_REFERENCE}",
+    }
+
+
+def _render_constitutional_status_panel(*, compact: bool = False) -> None:
+    lines = _constitutional_status_lines()
+    rows = [
+        ("Núcleo soberano", lines["core_id"]),
+        ("Label soberano", lines["batch_label"]),
+        ("Geração", lines["generation_status"]),
+        ("Lei 15A", lines["lei15a_status"]),
+        ("ML", lines["ml_status"]),
+        ("Histórico / purge", lines["history_status"]),
+        ("Gestão de Projetos", lines["gestao_projetos"]),
+        ("Inventário Painel ADM", lines["inventario_painel"]),
+    ]
+
+    def _render_rows() -> None:
+        for label, value in rows:
+            st.markdown(f"**{label}:** `{value}`")
+
+    if compact:
+        with st.sidebar.expander("Status Constitucional", expanded=False):
+            _render_rows()
+            st.caption(CONSTITUTIONAL_DIAGNOSTIC_CAPTION)
+        return
+
+    st.markdown("##### Status Constitucional LotoIA")
+    status_cols = st.columns(2)
+    midpoint = (len(rows) + 1) // 2
+    with status_cols[0]:
+        for label, value in rows[:midpoint]:
+            st.markdown(f"**{label}:** `{value}`")
+    with status_cols[1]:
+        for label, value in rows[midpoint:]:
+            st.markdown(f"**{label}:** `{value}`")
+    if _is_sovereign_generation_blocked():
+        st.warning(
+            "Geração soberana bloqueada (`LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`). "
+            "Fase 1 ADM — bloqueios constitucionais ativos (M-VIS-031)."
+        )
+    st.caption(CONSTITUTIONAL_DIAGNOSTIC_CAPTION)
+
+
+def _render_diagnostic_observational_caption() -> None:
+    st.caption(CONSTITUTIONAL_DIAGNOSTIC_CAPTION)
+
+
+def _sovereign_generation_blocked_result(*, requested_count: int) -> dict[str, Any]:
+    return {
+        "seed": 0,
+        "batch_id": "sovereign-generation-blocked",
+        "requested_count": int(requested_count),
+        "games": [],
+        "blocked": True,
+        "block_reason": "LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0",
+        "commander_report": {
+            "status_comandante_saida": "BLOQUEADO",
+            "motivo_bloqueio": "SOVEREIGN_GENERATION_BLOCKED",
+            "error_message": "SOVEREIGN_GENERATION_BLOCKED",
+        },
+        "fill_diagnostics": {
+            "insufficient_reason": "SOVEREIGN_GENERATION_BLOCKED",
+            "fill_completed": False,
+        },
+        "generation_mode": "SOVEREIGN_GENERATION_BLOCKED",
+        "policy_mode": "ADR_047_CONSTITUTIONAL_BLOCK",
+        "dezenas_por_jogo": 15,
+        "analysis_batch_label": SOVEREIGN_BATCH_LABEL,
+    }
+
+
+def _render_orphan_generation_blocked_page(snapshot: dict[str, Any]) -> None:
+    _ = snapshot
+    st.subheader("Gerador legado — BLOQUEADO")
+    st.error(
+        "A rota órfã `generation` está bloqueada. Geração só será permitida via "
+        "Gerador ADM CORE_002 quando a flag soberana estiver habilitada."
+    )
+    _render_constitutional_status_panel(compact=False)
 
 
 def _canonical_page_id(value: str | None) -> str:
@@ -4736,6 +4848,12 @@ def _run_institutional_generation(
     batch_total_games: int | None = None,
     seen_signatures: set[str] | None = None,
 ) -> None:
+    if _is_sovereign_generation_blocked():
+        st.session_state["institutional_generation_result"] = _sovereign_generation_blocked_result(
+            requested_count=total_games,
+        )
+        st.warning("Geração legada bloqueada — rota órfã indisponível (M-VIS-031).")
+        return
     st.session_state["institutional_last_ui_event"] = "operacional:gerar_jogos"
     st.session_state.pop("institutional_generation_batch_result", None)
     started = time.monotonic()
@@ -7349,8 +7467,9 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
 
 def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Limpar Histories")
-    st.write("Limpa apenas os estados visuais e operacionais desta sessao. Nao apaga o banco.")
+    st.subheader("Limpeza de Sessão")
+    st.write("Limpa apenas os estados visuais e operacionais desta sessão. Não apaga o banco.")
+    _render_diagnostic_observational_caption()
     state_keys = sorted([key for key in st.session_state.keys() if str(key).startswith("institutional_")])
     st.caption(f"Chaves institucionais ativas: {len(state_keys)}")
     st.code("\n".join(state_keys) if state_keys else "-", language="text")
@@ -7363,13 +7482,14 @@ def _render_clear_histories_page(snapshot: dict[str, Any]) -> None:
 
 def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Apagar Historico")
-    st.write("Remove os registros operacionais institucionais persistidos no banco atual.")
-    st.warning(
-        "Esta acao remove geracoes, reconciliacoes, logs e eventos de reset do runtime. "
-        "Nao afeta imported_contests."
+    st.subheader("Limpeza Controlada — BLOQUEADA")
+    st.error(RESTRICTED_PURGE_BLOCK_MESSAGE)
+    st.write(
+        "Purge de histórico institucional permanece bloqueado na Fase 1 ADM (M-VIS-031). "
+        "Operação destrutiva exige missão específica, backup, dry-run e autorização "
+        "`agent_dados` + `agent_governanca`."
     )
-    st.caption("Acao irreversivel no runtime atual. Preserva imported_contests.")
+    _render_constitutional_status_panel(compact=False)
     before_rows = [
         {
             "tabela": table,
@@ -7378,30 +7498,12 @@ def _render_delete_history_page(snapshot: dict[str, Any]) -> None:
         }
         for table in HISTORICAL_TEST_TABLES
     ]
-    st.markdown("##### Diagnostico antes da limpeza")
+    st.markdown("##### Diagnóstico read-only (sem purge)")
     st.dataframe(_make_arrow_safe(pd.DataFrame(before_rows)), hide_index=True, use_container_width=True)
-    if st.button("Apagar historico persistido", type="primary"):
-        result = _purge_institutional_history_tables()
-        refreshed_snapshot = _database_snapshot()
-        after_rows = [
-            {
-                "tabela": table,
-                "contagem": int(refreshed_snapshot["counts"].get(table, 0) or 0),
-                "ultima_persistencia": str(refreshed_snapshot["latest"].get(table, "-") or "-"),
-            }
-            for table in HISTORICAL_TEST_TABLES
-        ]
-        preserved_row = {
-            "tabela": "imported_contests",
-            "contagem": int(refreshed_snapshot["counts"].get("imported_contests", 0) or 0),
-            "ultima_persistencia": str(refreshed_snapshot["latest"].get("imported_contests", "-") or "-"),
-        }
-        st.success("Historico institucional apagado.")
-        st.markdown("##### Resultado da limpeza")
-        st.json(result)
-        st.markdown("##### Diagnostico depois da limpeza")
-        st.dataframe(_make_arrow_safe(pd.DataFrame(after_rows + [preserved_row])), hide_index=True, use_container_width=True)
-
+    st.info(
+        "Botão de purge desabilitado. Evidências protegidas por Lei 001, ADR-047 e "
+        "Política de Preservação de Histórico."
+    )
 
 
 def _render_comparative_history_page(snapshot: dict[str, Any]) -> None:
@@ -7728,7 +7830,8 @@ def _render_structural_coverage_ranking_tables(
 
 def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Central de Diagnósticos ML")
+    st.subheader("Central ML Assistiva")
+    _render_diagnostic_observational_caption()
     st.info(
         "Princípio institucional: tudo o que o ML vê, o ADM vê. "
         "O ML propõe; o ADM emite veredito (ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT). "
@@ -8017,6 +8120,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
+    _render_diagnostic_observational_caption()
     st.write(
         "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
         "sequências, ausências, redundância GP e travamento em 13/14."
@@ -9482,6 +9586,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption(f"commit={_resolve_active_commit()}")
+    _render_constitutional_status_panel(compact=True)
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
         resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
@@ -9492,7 +9597,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
     for label, page_id in [
         ("Painel Inicial Institucional", "home"),
-        ("Gerador ADM - Lei 15 Limpo", "clean_law15_generation"),
+        ("Gerador ADM CORE_002 — BLOQUEADO", "clean_law15_generation"),
         ("Conferir Resultados", "conference"),
         ("Simular Resultados", "simulation"),
     ]:
@@ -9528,8 +9633,8 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-group">Diagnósticos ML</div>', unsafe_allow_html=True)
     for label, page_id in [
-        ("Central de Diagnósticos ML", "central_ml_diagnostics"),
-        ("Vazamento lateral", "audit_monitoring_side_leak"),
+        ("Central ML Assistiva", "central_ml_diagnostics"),
+        ("Vazamento Lateral Constitucional", "audit_monitoring_side_leak"),
         ("Evolução 13 -> 14", "audit_monitoring_13_to_14"),
         ("Evolução 14 -> 15", "audit_monitoring_14_to_15"),
     ]:
@@ -9540,15 +9645,17 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
 
     st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Área bloqueada / restrita</div>', unsafe_allow_html=True)
-    for label, page_id in [("Limpar Históricos", "clear_histories"), ("Apagar Histórico", "delete_history")]:
+    for label, page_id in [
+        ("Limpeza de Sessão", "clear_histories"),
+        ("Limpeza Controlada — BLOQUEADA", "delete_history"),
+    ]:
         _nav_entry(label, page_id)
-    st.sidebar.caption("Ações destrutivas continuam protegidas pela confirmação interna da tela.")
+    st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
 
     choice = _canonical_page_id(st.session_state.get("institutional_page_id") or page)
     allowed_pages = {
         "home",
         "fallback",
-        "generation",
         "clean_law15_generation",
         "conference",
         "simulation",
@@ -10717,6 +10824,7 @@ def _render_lei_16_governance_panel() -> None:
 def _render_audit_monitoring_page(snapshot: dict[str, Any], section: str) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Auditoria e Monitoramento")
+    _render_diagnostic_observational_caption()
     st.write("Camada institucional de observação pós-conferência, sem recalibrar a Lei.")
     st.caption("Lei Científica LotoIA = COMMANDER | Gerador ADM = EXECUTOR | OutputCommander = AUDITOR | Memória institucional = REGISTRY")
     st.info("Sem recalibrar a Lei. Sem mutação automática. Sem comando de geração nesta camada.")
@@ -11867,6 +11975,11 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
+    if _is_sovereign_generation_blocked():
+        return _sovereign_generation_blocked_result(requested_count=requested_count)
+    analysis_batch_label = str(
+        st.session_state.get("clean_law15_analysis_batch_label") or SOVEREIGN_BATCH_LABEL
+    )
     fill_diagnostics: dict[str, Any] = {}
     total_games = int(requested_count)
     seed = int(time.time()) % 1_000_000
@@ -11983,7 +12096,19 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
 
 def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Gerador ADM - Lei 15 Limpo")
+    st.subheader("Gerador ADM CORE_002 — BLOQUEADO")
+    _render_constitutional_status_panel(compact=False)
+    if _is_sovereign_generation_blocked():
+        st.error(
+            "Geração bloqueada enquanto `LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`. "
+            "Nenhum jogo será gerado nesta fase constitucional."
+        )
+        st.caption(
+            "Lei 15A permanece suspensa. Expansão mecânica 16–23D não está autorizada nesta fase."
+        )
+        _render_diagnostic_observational_caption()
+        return
+
     st.caption("Página isolada para a Lei 15 com saída auditada pelo OutputCommander.")
     st.markdown("##### Runtime Limpo ADM 15")
     requested_count = int(st.selectbox("Quantidade de jogos", [10, 20, 30, 50], index=1, key="clean_law15_requested_count"))
@@ -12254,6 +12379,9 @@ def _render_history_page(snapshot: dict[str, Any]) -> None:
 
 def _render_generator_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    if _is_sovereign_generation_blocked():
+        _render_orphan_generation_blocked_page(snapshot)
+        return
     _ensure_official_history_seeded()
     live_counts = _database_snapshot()["counts"]
     st.subheader("Gerador LotoIA")
@@ -13279,32 +13407,37 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
 
     governance_cols = st.columns(2)
     governance_cols[0].metric(CORE_REALIGN_V3_ENV_VAR, v3_mode)
-    governance_cols[1].metric("lote V3 shadow_test", CORE_REALIGN_V3_BATCH_LABEL)
+    governance_cols[1].metric("Evidência histórica V3", CORE_REALIGN_V3_BATCH_LABEL)
+    governance_cols[1].caption("Não é o Núcleo soberano — ver Status Constitucional abaixo.")
+
+    _render_constitutional_status_panel(compact=False)
 
     st.markdown(
         '<div class="lotoia-status-panel"><div class="lotoia-section-heading">Estado do sistema</div>',
         unsafe_allow_html=True,
     )
     status_cols = st.columns(5)
+    generation_status = (
+        "BLOQUEADA"
+        if _is_sovereign_generation_blocked()
+        else ("ATIVO" if generation_loaded else "DISPONÍVEL")
+    )
+    generation_tone = "danger" if _is_sovereign_generation_blocked() else ("success" if generation_loaded else "warning")
     with status_cols[0]:
-        _render_home_status_pill("Lei 15", "SOBERANA", "success")
+        _render_home_status_pill("Lei 15", SOVEREIGN_CORE_ID, "success")
     with status_cols[1]:
-        _render_home_status_pill(
-            "Geração",
-            "ATIVO" if generation_loaded else "DISPONÍVEL",
-            "success" if generation_loaded else "warning",
-        )
+        _render_home_status_pill("Geração", generation_status, generation_tone)
     with status_cols[2]:
         _render_home_status_pill("Recalibração", "BLOQUEADA", "danger")
     with status_cols[3]:
-        _render_home_status_pill("ML", "OBSERVACIONAL", "info")
+        _render_home_status_pill("ML", "ASSISTIVO", "info")
     with status_cols[4]:
-        _render_home_status_pill("Destrutivas", "BLOQUEADAS", "danger")
+        _render_home_status_pill("Purge", "PROTEGIDO", "danger")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
-        "Lei 15 é comando soberano | Lei 17/18 são validação/referência | "
-        "quarentena e ações destrutivas permanecem restritas."
+        "Lei 15A suspensa | Geração soberana bloqueada por ADR-047 | "
+        "Gestão de Projetos Fase 0 ativa | Inventário PR #124 aprovado."
     )
     _render_home_quick_access()
 
@@ -13363,7 +13496,7 @@ def main() -> None:
     elif page == "audit_monitoring_offline_hypotheses":
         _render_audit_monitoring_page(snapshot, "offline_hypotheses")
     elif page == "generation":
-        _render_generator_page(snapshot)
+        _render_orphan_generation_blocked_page(snapshot)
     elif page == "clean_law15_generation":
         _render_clean_law15_generation_page(snapshot)
     elif page == "conference":

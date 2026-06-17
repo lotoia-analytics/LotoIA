@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-031](#m-vis-031--painel-adm-fase-1) | Painel ADM Fase 1 bloqueios | `AGUARDANDO_REVIEW` | pendente |
 | [M-GOV-030](#m-gov-030--gestão-de-projetos-fase-0) | Gestão de Projetos Fase 0 | `CONCLUIDA` | `APROVADA / MERGED / INCORPORADA À MAIN` |
 | [M-OPS-INC-001](#m-ops-inc-001--incidente-deploy-artefato-não-versionado) | Incidente deploy artefato não versionado | `CONCLUIDA` | `RESOLVIDO / ENCERRADO / COM PREVENÇÃO IMPLANTADA` |
 | [M-GOV-027](#m-gov-027--auditoria-constitucional) | Auditoria constitucional | `AGUARDANDO_VEREDICTO` | `LOTOIA CONFLITANTE` |
@@ -20,6 +21,30 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-031 — Painel ADM Fase 1: Bloqueios Constitucionais e Status mínimo
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` |
+| Agentes | `agent_visual` (primário), `agent_plataforma` |
+| Status | `AGUARDANDO_REVIEW` |
+| Tipo | Correção constitucional defensiva |
+| Base | Inventário PR #124 (`328d26f`) |
+
+**Objetivo:** Bloqueios defensivos no Painel ADM — status constitucional, gerador bloqueado, purge
+bloqueado, órfã `generation` removida, NameError corrigido.
+
+**Entregáveis:** `dashboard/institutional_app.py`, testes Fase 1, cartão M-VIS-031.
+
+**Bloqueios:** `BLK-GERACAO-001`, `BLK-PURGE-001`, `BLK-ADM-001`
+
+**Veredicto:** pendente — aguardando review institucional da PR.
+
+**Cartão:** `cartoes/M-VIS-031_PAINEL_ADM_FASE_1_BLOQUEIOS_CONSTITUCIONAIS.md`
+
+---
 
 ### M-GOV-030 — Gestão de Projetos Fase 0
 
