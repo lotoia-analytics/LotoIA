@@ -101,6 +101,7 @@ from dashboard.institutional_ml_assistive import (
     render_ml_assistive_governance_section,
 )
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
+from dashboard.institutional_conference_audit import render_conference_governance_section
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -5905,7 +5906,10 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
     if not grouped_generations:
         st.session_state["institutional_check_result"] = {
-            "warning": "Gere jogos em uma geração ativa antes de conferir."
+            "warning": (
+                "Sem lote persistido para conferir. Ação bloqueada por Lei 001. "
+                "Use Simulação Institucional para laboratório histórico."
+            )
         }
         return
     if selected_generation_event_id is None:
@@ -11708,11 +11712,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
     st.subheader("Conferir Resultados")
-    st.write("Compare os jogos gerados com o concurso selecionado no banco.")
-    status_cols = st.columns([1, 1, 1, 1])
-    status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
-    status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
-    status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
     active_generation_groups = _load_persisted_generation_event_groups(batch_id=None)
     active_generation_event_ids = sorted(
@@ -11723,15 +11722,27 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         },
         reverse=True,
     )
+    render_conference_governance_section(
+        generation_blocked=_is_sovereign_generation_blocked(),
+        has_persisted_batches=bool(active_generation_event_ids),
+        persisted_generation_events=len(active_generation_event_ids),
+        persisted_games=int(live_counts.get("generated_games", 0) or 0),
+        reconciliation_runs=int(live_counts.get("reconciliation_runs", 0) or 0),
+    )
+    st.divider()
+    st.markdown("### Auditoria de lote persistido")
+    st.write("Compare jogos persistidos no PostgreSQL com o concurso oficial selecionado.")
+    status_cols = st.columns([1, 1, 1, 1])
+    status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
+    status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
+    status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
+
     generation_group_by_id = {
         int(group.get("generation_event_id", 0) or 0): group
         for group in active_generation_groups
         if int(group.get("generation_event_id", 0) or 0) > 0
     }
-    selectable_generation_ids = [
-        generation_id
-        for generation_id in active_generation_event_ids
-    ]
+    selectable_generation_ids = list(active_generation_event_ids)
     latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=None)
     if "active_reconciliation_generation_event_id" not in st.session_state:
         st.session_state["active_reconciliation_generation_event_id"] = (
