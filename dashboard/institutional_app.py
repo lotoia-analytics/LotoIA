@@ -100,6 +100,7 @@ from dashboard.institutional_ml_assistive import (
     render_constitutional_side_leak_section,
     render_ml_assistive_governance_section,
 )
+from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
 from dashboard.institutional_auth import require_institutional_login
 from dashboard.institutional_build import (
     APP_BUILD,
@@ -426,6 +427,7 @@ PAGE_TARGETS = {
     "Simular Estratégias": "strategies_simulation",
     "Métricas HB": "hb_metrics",
     "Cobertura estrutural": "structural_coverage",
+    "Simulação Institucional / Backtesting": "institutional_simulation_backtesting",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
     "Estatísticas operacionais": "operational_statistics",
@@ -9712,6 +9714,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         ("Benchmark resumido", "summary_benchmark"),
         ("Métricas HB", "hb_metrics"),
         ("Cobertura estrutural", "structural_coverage"),
+        ("Simulação Institucional / Backtesting", "institutional_simulation_backtesting"),
     ]:
         _nav_entry(label, page_id)
 
@@ -9756,6 +9759,7 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         "summary_benchmark",
         "hb_metrics",
         "structural_coverage",
+        "institutional_simulation_backtesting",
         "audit_monitoring_side_leak",
         "audit_monitoring_13_to_14",
         "audit_monitoring_14_to_15",
@@ -12345,6 +12349,11 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
 def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
+    st.info(
+        "Session-only — cenário hipotético. Para governança walk-forward e backtesting "
+        "institucional read-only, use **Simulação Institucional / Backtesting**. "
+        "Para confronto oficial persistido, use **Conferir Resultados**."
+    )
     st.write("Digite as dezenas sorteadas para comparar com os jogos persistidos.")
     status_cols = st.columns([1, 1, 1, 1])
     status_cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
@@ -13605,6 +13614,11 @@ def main() -> None:
         _render_central_ml_diagnostics_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
+    elif page == "institutional_simulation_backtesting":
+        st.subheader("Simulação Institucional / Backtesting")
+        render_institutional_simulation_backtesting_page(
+            generation_blocked=_is_sovereign_generation_blocked(),
+        )
     elif page == "institutional_replay":
         _render_replay_institutional_page(snapshot)
     elif page == "summary_benchmark":

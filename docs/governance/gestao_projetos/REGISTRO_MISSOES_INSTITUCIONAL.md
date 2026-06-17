@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-VIS-036](#m-vis-036--simulação-institucional--backtesting) | Simulação Institucional / Backtesting | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
 | [M-VIS-035](#m-vis-035--ml-assistivo--vazamento-lateral-constitucional) | ML Assistivo + Vazamento Lateral | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-034](#m-vis-034--cobertura-estrutural--6-bases-refinadas-no-painel-adm) | Cobertura Estrutural + 6 Bases ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-033](#m-vis-033--pacote-núcleo-lei-15-no-painel-adm) | Pacote Núcleo Lei 15 ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
@@ -28,6 +29,28 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-VIS-036 — Simulação Institucional / Backtesting
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Projeto | `P-GOV-001` / `P-LEI15-001` |
+| Agentes | `agent_estatistico` + `agent_ml` + `agent_visual` + `agent_governanca` + `agent_qualidade` |
+| Status | `EM EXECUCAO / AGUARDANDO REVIEW` |
+| Risco | Médio (read-only) |
+| Branch | `cursor/m-vis-036-simulacao-backtesting-cae6` |
+
+**Objetivo:** Simulação Institucional / Backtesting read-only — walk-forward, corte temporal X-1,
+separação de Conferir Resultados e geração operacional.
+
+**Pré-requisito:** M-VIS-035 em `main` (PR #136 — merge `76031cb`).
+
+**Veredicto alvo:** **M-VIS-036 CONCLUÍDA — SIMULAÇÃO INSTITUCIONAL / BACKTESTING READ-ONLY AGUARDANDO REVIEW**
+
+**Cartão:** `cartoes/M-VIS-036_SIMULACAO_INSTITUCIONAL_BACKTESTING.md`
+
+---
 
 ### M-VIS-035 — ML Assistivo + Vazamento Lateral Constitucional
 
