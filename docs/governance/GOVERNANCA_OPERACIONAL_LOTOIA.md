@@ -209,6 +209,20 @@ A futura integracao WhatsApp deve consumir apenas dados ja persistidos no Postgr
 
 O WhatsApp sera canal de entrega, nao fonte da verdade.
 
+## Gestao de Projetos (Fase 0)
+
+Missões institucionais seguem a camada documental de Gestão de Projetos — controle de
+escopo, agente responsável, evidência Git, testes, deploy e veredicto formal.
+
+| Documento | Caminho |
+|-----------|---------|
+| Política | `docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
+| Quadro ativo | `docs/governance/gestao_projetos/QUADRO_MISSOES.md` |
+| Checklist | `docs/governance/gestao_projetos/CHECKLIST_MISSAO_OBRIGATORIO.md` |
+
+**Regra:** nenhuma missão encerra sem veredicto da matriz oficial e evidência Git quando
+houver alteração de repositório. Ver incidente `institutional_light_mode` (2026-06-17).
+
 ## Checklist de conformidade
 
 - [ ] O modulo le do PostgreSQL Institucional?
