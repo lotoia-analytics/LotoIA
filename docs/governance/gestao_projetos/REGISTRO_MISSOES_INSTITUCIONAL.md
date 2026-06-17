@@ -10,7 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
-| [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `EM EXECUCAO / AGUARDANDO REVIEW` | pendente |
+| [M-VIS-037](#m-vis-037--conferir-resultados--auditoria-de-lotes-reais-persistidos) | Conferir Resultados / Auditoria Lotes | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-036](#m-vis-036--simulação-institucional--backtesting) | Simulação Institucional / Backtesting | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-035](#m-vis-035--ml-assistivo--vazamento-lateral-constitucional) | ML Assistivo + Vazamento Lateral | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
 | [M-VIS-034](#m-vis-034--cobertura-estrutural--6-bases-refinadas-no-painel-adm) | Cobertura Estrutural + 6 Bases ADM | `CONCLUIDA` | `VALIDADA EM PRODUÇÃO / SEM PENDÊNCIA DE DEPLOY` |
