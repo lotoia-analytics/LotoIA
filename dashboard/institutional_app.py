@@ -8493,10 +8493,10 @@ def _render_central_ml_observational_alerts(snapshot: dict[str, Any]) -> None:
     excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
         st.warning(str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
-        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
-            audit_rows = list(payload.get("excluded_batches_audit") or [])
-            if audit_rows:
-                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+        st.markdown("#### Lotes excluídos da leitura ativa — auditoria técnica")
+        audit_rows = list(payload.get("excluded_batches_audit") or [])
+        if audit_rows:
+            st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
     header_cols = st.columns(3)
     header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
     header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
