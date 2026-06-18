@@ -18,7 +18,7 @@ from lotoia.operations.lot_operational_status import (
 
 
 def test_build_marker_v44() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v47"
+    assert BUILD_MARKER == "institutional-adm-runtime-v48"
 
 
 def test_mission_id() -> None:

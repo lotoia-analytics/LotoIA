@@ -423,7 +423,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
     lot_details = list(snapshot.get("lot_details") or [])
     coverage = dict(snapshot.get("coverage_evidence") or {})
 
-    with st.expander("Memória ML — limiares 15D a 23D", expanded=False):
+    with st.expander("Memória ML — Limiares por Formato 15D a 23D", expanded=False):
         memory = dict(snapshot.get("overlap_format_memory") or {})
         thresholds = list(memory.get("thresholds") or [])
         if thresholds:
@@ -438,27 +438,27 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         else:
             st.caption(EMPTY_ML_EVENTS_MESSAGE)
 
-    with st.expander("Snapshot Cobertura Estrutural (técnico)", expanded=False):
+    with st.expander("Leitura usada da Cobertura Estrutural", expanded=False):
         if coverage.get("available"):
             st.json(dict(coverage.get("coverage_evidence_snapshot") or {}))
         else:
             st.caption("Snapshot indisponível.")
 
-    with st.expander("Blocos decisórios completos", expanded=False):
+    with st.expander("Registro completo da decisão ML", expanded=False):
         blocks = list(snapshot.get("decision_blocks") or [])
         if blocks:
             st.dataframe(pd.DataFrame(blocks), hide_index=True, use_container_width=True)
         else:
             st.caption("Nenhum bloco decisório gerado.")
 
-    with st.expander("Bloqueios constitucionais", expanded=False):
+    with st.expander("Proteções constitucionais ativas", expanded=False):
         st.dataframe(
             pd.DataFrame([{"bloqueio": code} for code in panel.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS]),
             hide_index=True,
             use_container_width=True,
         )
 
-    with st.expander("Decision trace", expanded=False):
+    with st.expander("Rastreamento da decisão", expanded=False):
         trace = dict(latest_event.get("decision_trace") or {})
         persist = dict(st.session_state.get(SESSION_PERSIST) or {})
         if persist.get("trace"):
@@ -469,7 +469,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         else:
             st.caption("Decision trace ausente nas gerações recentes.")
 
-    with st.expander("Feature attribution", expanded=False):
+    with st.expander("Pesos e fatores considerados", expanded=False):
         attribution = dict(latest_event.get("feature_attribution") or {})
         if attribution.get("status") == "persistido":
             st.caption("Amostra da geração mais recente — visão geral acima.")
@@ -481,11 +481,11 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         else:
             st.caption("Feature attribution ausente nas gerações recentes.")
 
-    with st.expander("ML × 6 Bases (detalhado)", expanded=False):
+    with st.expander("Leitura ML pelas 6 Bases", expanded=False):
         six_bases = list(latest_event.get("ml_six_bases_reading") or build_ml_six_bases_operational_summary())
         st.dataframe(pd.DataFrame(six_bases), hide_index=True, use_container_width=True)
 
-    with st.expander("Histórico de decisões / auditoria PostgreSQL", expanded=False):
+    with st.expander("Histórico e auditoria PostgreSQL", expanded=False):
         events = list(snapshot.get("events") or [])
         if events:
             st.dataframe(
