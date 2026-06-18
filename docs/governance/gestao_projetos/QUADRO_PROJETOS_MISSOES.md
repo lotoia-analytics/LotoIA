@@ -35,7 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
-| M-GER-DADOS-051 | Persistência 16D–23D + Histórico Analítico + remoção GEs | `agent_geracao` + `agent_dados` | `CONCLUIDA` | [PR TBD] — build `institutional-adm-runtime-v27` |
+| M-GER-DADOS-051 | Persistência 16D–23D + Histórico Analítico + remoção GEs | `agent_geracao` + `agent_dados` | `CONCLUIDA` | [PR #162](https://github.com/lotoia-analytics/LotoIA/pull/162) — build `institutional-adm-runtime-v27` |
 | M-PLAT-050 | Corrigir saturação pool PostgreSQL Streamlit | `agent_plataforma` + `agent_dados` | `CONCLUIDA` | [PR #161](https://github.com/lotoia-analytics/LotoIA/pull/161) — build `institutional-adm-runtime-v26` |
 | M-DADOS-049 | Reset controlado gerações antigas | `agent_dados` + `agent_geracao` | `CONCLUIDA` | merge — build `institutional-adm-runtime-v25` |
 | M-GOV-042 | Auditoria Constitucional Final — Painel ADM e public_app | `agent_governanca` + multiagente | `CONCLUIDA` | merge `5346d0f` — [PR #150](https://github.com/lotoia-analytics/LotoIA/pull/150) — 30/30 itens — build `institutional-adm-runtime-v17` |
