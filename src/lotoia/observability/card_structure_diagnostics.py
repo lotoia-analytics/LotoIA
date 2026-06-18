@@ -117,12 +117,18 @@ def load_operational_card_structure_diagnostics_from_db(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
     generation_event_id: int | None = None,
+    generation_event_ids: Sequence[int] | None = None,
     game_size: int | None = None,
     official_window: int = DEFAULT_OFFICIAL_WINDOW,
 ) -> dict[str, Any]:
     """Carrega diagnóstico estrutural a partir de generation_events + generated_games (CORE_002)."""
     selected_ge_id = int(generation_event_id or 0)
     effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else None
+    allowed_event_ids = {
+        int(value)
+        for value in (generation_event_ids or [])
+        if int(value) > 0
+    }
 
     with get_session(db_path) as session:
         event_query = session.query(GenerationEvent).order_by(
@@ -131,6 +137,8 @@ def load_operational_card_structure_diagnostics_from_db(
         )
         if selected_ge_id > 0:
             event_query = event_query.filter(GenerationEvent.id == selected_ge_id)
+        elif allowed_event_ids:
+            event_query = event_query.filter(GenerationEvent.id.in_(sorted(allowed_event_ids)))
         events = event_query.all()
 
         sovereign_events = [

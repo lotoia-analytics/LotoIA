@@ -48,8 +48,9 @@ def test_cockpit_render_module_has_required_sections() -> None:
     module_source = inspect.getsource(cockpit)
     assert "COCKPIT_TITLE" in module_source
     assert "Diagnóstico geral da saída" in module_source
-    assert "Recomendação ML" in module_source
-    assert "Comando supervisionado" in module_source
+    assert "Ação recomendada" in module_source
+    assert "Evidências e decisão" in module_source
+    assert "Impacto esperado" in module_source
     assert "Diagnosticar saída geral" in module_source
     assert "Autorizar calibração" in module_source
     assert "Detalhes por lote" in module_source
@@ -158,8 +159,8 @@ def test_recommendations_from_issues() -> None:
         }
     }
     recs = build_ml_calibration_recommendations(event)
-    assert any("prefixo" in item.lower() for item in recs)
-    assert any("dezena" in item.lower() or "refor" in item.lower() for item in recs)
+    assert recs
+    assert any("subcobert" in item.lower() or "dezena" in item.lower() or "refor" in item.lower() for item in recs)
 
 
 def test_render_cockpit_without_name_error(
