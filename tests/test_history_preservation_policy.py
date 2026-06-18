@@ -54,9 +54,8 @@ def test_unknown_label_fail_closed() -> None:
     assert empty.protected is True
 
 
-def test_protected_ge_ids() -> None:
-    assert 114 in PROTECTED_GENERATION_EVENT_IDS
-    assert 115 in PROTECTED_GENERATION_EVENT_IDS
+def test_protected_ge_ids_cleared_after_operator_cancel() -> None:
+    assert PROTECTED_GENERATION_EVENT_IDS == frozenset()
 
 
 def test_generic_purge_blocked() -> None:

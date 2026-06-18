@@ -29,6 +29,7 @@ if str(_OPS) not in sys.path:
     sys.path.insert(0, str(_OPS))
 
 from lotoia.governance.m_ger_dados_051_controlled_ge_removal import (  # noqa: E402
+    CANCEL_CONFIRMATION_TOKEN,
     CONFIRMATION_TOKEN,
     MISSION_ID,
     REQUESTED_TARGET_IDS,
@@ -39,6 +40,7 @@ from lotoia.governance.m_ger_dados_051_controlled_ge_removal import (  # noqa: E
     build_post_removal_report,
     delete_operational_rows_for_generation_events,
     resolve_authorized_target_ids,
+    resolve_explicit_target_ids,
 )
 
 PRESERVED_COUNT_TABLES = (
@@ -146,14 +148,23 @@ def _record_reset_event(cur, *, dry_run: dict[str, Any], deleted_counts: dict[st
         return None
 
 
-def run(*, execute: bool, json_out: Path, skip_backup: bool) -> dict[str, Any]:
+def run(
+    *,
+    execute: bool,
+    json_out: Path,
+    skip_backup: bool,
+    ge_ids: list[int] | None = None,
+    confirmation_token: str = CONFIRMATION_TOKEN,
+) -> dict[str, Any]:
     import psycopg
 
     assert_m_ger_dados_051_confirmation(
         confirmation=os.getenv("LOTOIA_M_GER_DADOS_051_RESET_CONFIRM"),
         execute=execute,
+        token=confirmation_token,
     )
 
+    target_ids = sorted({int(value) for value in (ge_ids or sorted(REQUESTED_TARGET_IDS)) if int(value) > 0})
     url = _resolve_url()
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
@@ -164,26 +175,30 @@ def run(*, execute: bool, json_out: Path, skip_backup: bool) -> dict[str, Any]:
 
             audits: list[GenerationEventAuditRow] = []
             existing_ids: list[int] = []
-            for ge_id in sorted(REQUESTED_TARGET_IDS):
+            for ge_id in target_ids:
                 audit = _fetch_target_audit(cur, ge_id)
                 if audit is not None:
                     audits.append(audit)
                     existing_ids.append(ge_id)
 
-            cur.execute("SELECT id FROM generation_events WHERE id = %s", (115,))
-            ge115_exists = cur.fetchone() is not None
-
-            authorized_ids, interpretation = resolve_authorized_target_ids(
-                existing_ids,
-                ge_115_exists=ge115_exists,
-            )
-            interpretation["ge_115_exists_confirmed"] = ge115_exists
+            if ge_ids is not None:
+                authorized_ids, interpretation = resolve_explicit_target_ids(target_ids, existing_ids)
+            else:
+                cur.execute("SELECT id FROM generation_events WHERE id = %s", (115,))
+                ge115_exists = cur.fetchone() is not None
+                authorized_ids, interpretation = resolve_authorized_target_ids(
+                    existing_ids,
+                    ge_115_exists=ge115_exists,
+                )
+                interpretation["ge_115_exists_confirmed"] = ge115_exists
             dry_run = build_dry_run_report(
                 target_audits=audits,
                 table_counts_before=table_counts_before,
                 preserved_table_counts=preserved_counts,
                 authorized_ids=authorized_ids,
                 interpretation=interpretation,
+                requested_ids=target_ids,
+                confirmation_token=confirmation_token,
             )
 
         json_out.parent.mkdir(parents=True, exist_ok=True)
@@ -220,12 +235,26 @@ def main() -> int:
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--skip-backup-confirm", action="store_true")
     parser.add_argument(
+        "--ge-ids",
+        type=str,
+        default="",
+        help="IDs explícitos separados por vírgula (ex.: 115,120)",
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=ROOT / "reports" / "m_ger_dados_051_dry_run.json",
     )
     args = parser.parse_args()
-    result = run(execute=args.execute, json_out=args.json_out, skip_backup=args.skip_backup_confirm)
+    ge_ids = [int(value.strip()) for value in args.ge_ids.split(",") if value.strip().isdigit()] or None
+    confirmation_token = CANCEL_CONFIRMATION_TOKEN if ge_ids is not None else CONFIRMATION_TOKEN
+    result = run(
+        execute=args.execute,
+        json_out=args.json_out,
+        skip_backup=args.skip_backup_confirm,
+        ge_ids=ge_ids,
+        confirmation_token=confirmation_token,
+    )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

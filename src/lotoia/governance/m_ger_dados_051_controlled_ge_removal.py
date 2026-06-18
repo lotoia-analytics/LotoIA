@@ -14,6 +14,7 @@ from lotoia.governance.m_dados_049_controlled_reset import (
 
 MISSION_ID: Final = "M-GER-DADOS-051"
 CONFIRMATION_TOKEN: Final = "M_GER_DADOS_051_CONTROLLED_GE_REMOVAL"
+CANCEL_CONFIRMATION_TOKEN: Final = "M_GER_DADOS_051_CANCEL_GE115_GE120"
 REQUESTED_TARGET_IDS: Final = frozenset({114, 1115})
 DIVERGENCE_CANDIDATE_ID: Final = 115
 
@@ -33,15 +34,32 @@ class GenerationEventAuditRow:
     report_events_count: int = 0
 
 
-def assert_m_ger_dados_051_confirmation(*, confirmation: str | None, execute: bool) -> None:
+def assert_m_ger_dados_051_confirmation(*, confirmation: str | None, execute: bool, token: str = CONFIRMATION_TOKEN) -> None:
     if not execute:
         return
-    token = str(confirmation or "").strip()
-    if token != CONFIRMATION_TOKEN:
+    provided = str(confirmation or "").strip()
+    if provided != token:
         raise RuntimeError(
             f"[{MISSION_ID}] Execução bloqueada. Defina "
-            f"LOTOIA_M_GER_DADOS_051_RESET_CONFIRM={CONFIRMATION_TOKEN!r}."
+            f"LOTOIA_M_GER_DADOS_051_RESET_CONFIRM={token!r}."
         )
+
+
+def resolve_explicit_target_ids(
+    requested_ids: Sequence[int],
+    existing_ids: Sequence[int],
+) -> tuple[list[int], dict[str, Any]]:
+    """Remove somente IDs explicitamente solicitados que existem no banco."""
+    requested = sorted({int(value) for value in requested_ids if int(value) > 0})
+    existing = {int(value) for value in existing_ids if int(value) > 0}
+    authorized = [ge_id for ge_id in requested if ge_id in existing]
+    missing = [ge_id for ge_id in requested if ge_id not in existing]
+    return authorized, {
+        "requested_ids": requested,
+        "existing_ids": sorted(existing),
+        "authorized_ids": authorized,
+        "missing_requested_ids": missing,
+    }
 
 
 def resolve_authorized_target_ids(
@@ -81,14 +99,18 @@ def build_dry_run_report(
     preserved_table_counts: dict[str, int | str],
     authorized_ids: Sequence[int],
     interpretation: dict[str, Any],
+    requested_ids: Sequence[int] | None = None,
+    confirmation_token: str = CONFIRMATION_TOKEN,
 ) -> dict[str, Any]:
+    requested = sorted({int(value) for value in (requested_ids or REQUESTED_TARGET_IDS)})
     return {
         "mission_id": MISSION_ID,
         "mode": "dry_run",
         "generated_at": datetime.now(UTC).isoformat(),
-        "requested_generation_event_ids": sorted(REQUESTED_TARGET_IDS),
+        "requested_generation_event_ids": requested,
         "authorized_generation_event_ids": list(authorized_ids),
         "interpretation": interpretation,
+        "confirmation_token": confirmation_token,
         "target_audits": [
             {
                 "id": row.id,
@@ -108,7 +130,7 @@ def build_dry_run_report(
         ],
         "missing_requested_ids": [
             ge_id
-            for ge_id in sorted(REQUESTED_TARGET_IDS)
+            for ge_id in requested
             if ge_id not in {row.id for row in target_audits}
         ],
         "table_counts_before": table_counts_before,
@@ -116,9 +138,9 @@ def build_dry_run_report(
         "tables_in_scope": list(OPERATIONAL_DELETE_ORDER),
         "tables_preserved": sorted(PRESERVED_TABLES),
         "verdict": (
-            "DRY-RUN APROVADO — aguardando confirmação M_GER_DADOS_051_CONTROLLED_GE_REMOVAL"
+            f"DRY-RUN APROVADO — aguardando confirmação {confirmation_token}"
             if authorized_ids
-            else "DRY-RUN SEM REMOÇÃO — nenhum ID autorizado encontrado ou divergência 1115/115"
+            else "DRY-RUN SEM REMOÇÃO — nenhum ID autorizado encontrado"
         ),
     }
 

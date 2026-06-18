@@ -15,8 +15,10 @@ def test_both_targets_when_1115_exists() -> None:
     assert authorized == [114, 1115]
 
 
-def test_no_auto_remove_115_when_1115_missing() -> None:
-    authorized, notes = resolve_authorized_target_ids([114], ge_115_exists=True)
-    assert authorized == [114]
-    assert 115 not in authorized
-    assert notes.get("ge_115_preserved_pending_confirmation") is True
+from lotoia.governance.m_ger_dados_051_controlled_ge_removal import resolve_explicit_target_ids
+
+
+def test_explicit_cancel_ge115_ge120() -> None:
+    authorized, notes = resolve_explicit_target_ids([115, 120], [115])
+    assert authorized == [115]
+    assert notes["missing_requested_ids"] == [120]
