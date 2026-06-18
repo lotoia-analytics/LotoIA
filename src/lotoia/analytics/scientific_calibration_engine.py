@@ -26,6 +26,7 @@ from lotoia.database.database import (
     ScientificInstitutionalMemory,
     get_session,
 )
+from lotoia.governance.batch_operational_scope import mark_batch_superseded_by_calibration
 from lotoia.governance.output_commander import (
     load_batch_output_signatures,
     output_commander_validate_games,
@@ -888,6 +889,22 @@ def register_calibration_decision(
             memory_row.source = "scientific_calibration_engine"
         session.commit()
         session.refresh(memory_row)
+    superseded_payload: dict[str, Any] | None = None
+    if batch_id:
+        superseded_payload = mark_batch_superseded_by_calibration(
+            batch_id,
+            db_path=db_path,
+            reason=_safe_str(payload.get("main_reason"), "lote usado como base de calibração científica"),
+            evidence={
+                "scientific_report": dict(scientific_report),
+                "structural_report": dict(structural_report),
+                "classification": _safe_str(payload.get("classification"), ""),
+                "recommended_action": _safe_str(payload.get("recommended_action"), ""),
+            },
+            authorized_plan=dict(payload.get("policy_after") or context.get("policy_after") or {}),
+            operator=_safe_str(payload.get("approved_by"), ""),
+            calibration_source_only=not bool(payload.get("applied")),
+        )
     return {
         "id": int(row.id),
         "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
@@ -906,6 +923,7 @@ def register_calibration_decision(
         "applied": bool(row.applied),
         "approved_by": row.approved_by,
         "notes": row.notes,
+        "batch_operational_scope": superseded_payload or {},
         "scientific_memory": {
             "id": int(memory_row.id),
             "created_at": memory_row.created_at.isoformat() if getattr(memory_row, "created_at", None) else "",

@@ -63,6 +63,21 @@ from lotoia.governance.output_commander import (
 )
 from lotoia.governance.lei15_15a_core_realignment_v3 import get_v3_mode
 from lotoia.governance.analysis_batch_labels import BATCH_LABEL_UI_OPTIONS
+from lotoia.governance.batch_operational_scope import (
+    CONFERENCE_ELIGIBLE_OPERATIONAL_STATUSES,
+    INACTIVE_READING_OPERATIONAL_STATUSES,
+    OPERATIONAL_STATUS_APPROVED,
+    OPERATIONAL_STATUS_NOT_OFFICIALIZED,
+    OPERATIONAL_STATUS_OFFICIALIZED,
+    OPERATIONAL_STATUS_PENDING,
+    is_active_reading_scope,
+    is_analytical_official_scope,
+    is_conference_eligible_scope,
+    list_excluded_batches_audit,
+    mark_batch_superseded_by_calibration,
+    resolve_batch_operational_fields,
+    summarize_active_reading_exclusions,
+)
 from lotoia.observability.card_structure_diagnostics import load_card_structure_diagnostics_from_db
 from lotoia.observability.ml_diagnostic_panels import (
     ACTIVE_ALERT_STATUSES,
@@ -2318,6 +2333,9 @@ def _classify_generation_visibility(
 ) -> dict[str, Any]:
     decision = dict(scientific_decision or {})
     memory = dict(scientific_memory or {})
+    generation_context = dict(generation.get("generation_context") or generation.get("context_json") or {})
+    operational_fields = resolve_batch_operational_fields({**generation_context, **generation})
+    operational_status = operational_fields["operational_status"]
     commander_status = str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO").strip().upper()
     total_duplicates = int(generation.get("total_jogos_duplicados", 0) or 0)
     structural_status = "APROVADO" if commander_status == "APROVADO" and total_duplicates == 0 else "REPROVADO"
@@ -2332,8 +2350,23 @@ def _classify_generation_visibility(
     source_batch_id = str(decision.get("source_batch_id") or memory.get("batch_id") or generation.get("batch_id", "") or "").strip()
     is_guardian_rejected = commander_status != "APROVADO" or total_duplicates > 0
     is_scientific_rejected = bool(scientific_status) and scientific_status != "APROVADO" and not approved_for_use
-    is_calibration_only = bool(decision_mode) and decision_mode == "OBSERVACAO" and bool(scientific_status) and not approved_for_use
-    if is_guardian_rejected:
+    is_calibration_only = operational_status in INACTIVE_READING_OPERATIONAL_STATUSES or (
+        bool(decision_mode) and decision_mode == "OBSERVACAO" and bool(scientific_status) and not approved_for_use
+    )
+    is_active_reading = is_active_reading_scope({**generation_context, **generation, **operational_fields})
+    is_conferible = is_conference_eligible_scope({**generation_context, **generation, **operational_fields})
+    is_analytical_official = is_analytical_official_scope({**generation_context, **generation, **operational_fields})
+    if not is_active_reading:
+        visibility_label = "Fora do escopo ativo"
+        visibility_kind = operational_status
+        visibility_reason = str(
+            generation_context.get("excluded_from_active_reading_reason")
+            or generation.get("excluded_from_active_reading_reason")
+            or recommended_action
+            or f"lote marcado como {operational_status}"
+        )
+        is_conferible = False
+    elif is_guardian_rejected:
         visibility_label = "Rejeitado pelo Guardião"
         visibility_kind = "rejected_guardian"
         visibility_reason = "bateria bloqueada pelo comandante ou com duplicidade"
@@ -2348,11 +2381,15 @@ def _classify_generation_visibility(
         visibility_kind = "calibration"
         visibility_reason = recommended_action if recommended_action != "-" else "bateria de calibração científica"
         is_conferible = False
-    else:
+    elif is_conferible:
         visibility_label = "Conferível"
         visibility_kind = "conferible"
         visibility_reason = "bateria apta para conferência"
-        is_conferible = True
+    else:
+        visibility_label = "Aguardando oficialização"
+        visibility_kind = "pending_officialization"
+        visibility_reason = "bateria ativa, mas ainda não apta para conferência oficial"
+        is_conferible = False
     if commander_status == "APROVADO" and is_scientific_rejected:
         visibility_reason = "Bateria estruturalmente aprovada, mas cientificamente reprovada. Disponível para diagnóstico/conferência supervisionada."
     if is_guardian_rejected and total_duplicates > 0 and not str(visibility_reason).strip():
@@ -2368,6 +2405,12 @@ def _classify_generation_visibility(
         "recommended_action": recommended_action,
         "decision_mode": decision_mode or "-",
         "approved_for_use": approved_for_use,
+        "operational_status": operational_status,
+        "ml_validation_status": operational_fields["ml_validation_status"],
+        "officialization_status": operational_fields["officialization_status"],
+        "calibration_state": operational_fields["calibration_state"],
+        "is_active_reading": is_active_reading,
+        "is_analytical_official": is_analytical_official,
         "visibility_label": visibility_label,
         "visibility_kind": visibility_kind,
         "visibility_reason": visibility_reason,
@@ -5600,7 +5643,12 @@ def _store_active_batch_state(*, batch_id: str | None = None, generation_event_i
         st.session_state["institutional_active_total_games"] = int(total_games)
 
 
-def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list[dict[str, Any]]:
+def _load_persisted_generation_event_groups(
+    batch_id: str | None = None,
+    *,
+    active_reading_only: bool = False,
+    conference_eligible_only: bool = False,
+) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     resolved_batch_id = str(batch_id or "").strip()
     with get_session(DB_PATH) as session:
@@ -5610,6 +5658,11 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
             .all()
         )
         for event in events:
+            event_context = dict(getattr(event, "context_json", {}) or {})
+            if active_reading_only and not is_active_reading_scope(event_context):
+                continue
+            if conference_eligible_only and not is_conference_eligible_scope(event_context):
+                continue
             rows = (
                 session.query(GeneratedGame)
                 .filter(GeneratedGame.generation_event_id == event.id)
@@ -5677,7 +5730,8 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
-                    "batch_id": str(context_json.get("batch_id", "") or ""),
+                    "batch_id": str(context_json.get("batch_id", "") or event_context.get("batch_id", "") or ""),
+                    "context_json": event_context,
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
                     "reconciliation": reconciliation_summary or {},
@@ -6248,14 +6302,18 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
             top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
             first_context = dict(games[0].get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
+            event_context = dict(getattr(event, "context_json", {}) or {})
+            merged_context = {**event_context, **first_context}
             visibility_context = _classify_generation_visibility(
                 generation={
-                    "batch_id": str(first_context.get("batch_id", "") or ""),
-                    "status_comandante_saida": str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
-                    "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
+                    "batch_id": str(merged_context.get("batch_id", "") or ""),
+                    "status_comandante_saida": str(merged_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+                    "total_jogos_duplicados": int(merged_context.get("total_jogos_duplicados", 0) or 0),
+                    "generation_context": merged_context,
+                    "context_json": event_context,
                 },
-                scientific_decision=scientific_decisions.get(str(first_context.get("batch_id", "") or "").strip(), {}),
-                scientific_memory=scientific_memories.get(str(first_context.get("batch_id", "") or "").strip(), {}),
+                scientific_decision=scientific_decisions.get(str(merged_context.get("batch_id", "") or "").strip(), {}),
+                scientific_memory=scientific_memories.get(str(merged_context.get("batch_id", "") or "").strip(), {}),
             )
             history.append(
                 {
@@ -6273,7 +6331,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "avg_coverage": _mean_or_zero(coverages),
                     "average_overlap": float(structural_summary.get("average_overlap", 0.0) or 0.0),
                     "dominant_numbers": list(structural_summary.get("dominant_numbers", [])),
-                    "batch_id": str(first_context.get("batch_id", "") or ""),
+                    "batch_id": str(merged_context.get("batch_id", "") or ""),
                     "status_comandante_saida": str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
                     "total_jogos_unicos": int(first_context.get("total_jogos_unicos", len(games)) or len(games)),
                     "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
@@ -6574,6 +6632,9 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
                     "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
                     "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
                     "is_calibration_only": bool(generation.get("is_calibration_only", False)),
+                    "is_analytical_official": bool(generation.get("is_analytical_official", False)),
+                    "is_active_reading": bool(generation.get("is_active_reading", True)),
+                    "operational_status": str(generation.get("operational_status", OPERATIONAL_STATUS_PENDING) or OPERATIONAL_STATUS_PENDING),
                 }
             )
     return rows
@@ -6633,6 +6694,9 @@ def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, A
                     "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
                     "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
                     "is_calibration_only": bool(generation.get("is_calibration_only", False)),
+                    "is_analytical_official": bool(generation.get("is_analytical_official", False)),
+                    "is_active_reading": bool(generation.get("is_active_reading", True)),
+                    "operational_status": str(generation.get("operational_status", OPERATIONAL_STATUS_PENDING) or OPERATIONAL_STATUS_PENDING),
                 }
             )
     return rows
@@ -6681,6 +6745,9 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
                 "is_guardian_rejected",
                 "is_scientific_rejected",
                 "is_calibration_only",
+                "is_analytical_official",
+                "is_active_reading",
+                "operational_status",
             ]
         )
 
@@ -6752,9 +6819,13 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
                 }
             )
         )
-    for column in ("is_conferible", "is_rejected_policy", "is_candidate", "is_guardian_rejected", "is_scientific_rejected", "is_calibration_only"):
+    for column in ("is_conferible", "is_rejected_policy", "is_candidate", "is_guardian_rejected", "is_scientific_rejected", "is_calibration_only", "is_analytical_official", "is_active_reading"):
         if column in df.columns:
-            df[column] = df[column].fillna(False).astype(bool)
+            df[column] = df[column].fillna(False if column != "is_active_reading" else True).astype(bool)
+        else:
+            df[column] = False if column != "is_active_reading" else True
+    if "operational_status" not in df.columns:
+        df["operational_status"] = OPERATIONAL_STATUS_PENDING
     return df
 
 
@@ -7736,6 +7807,13 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     )
     payload = build_central_ml_diagnostics_payload(DB_PATH)
     _render_ml_diagnostic_source_caption(payload)
+    excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
+    if excluded_count > 0:
+        st.warning(str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
+        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
+            audit_rows = list(payload.get("excluded_batches_audit") or [])
+            if audit_rows:
+                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
     header_cols = st.columns(3)
     header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
     header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
@@ -8094,8 +8172,15 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
         f"operational_effect=`{payload.get('operational_effect', False)}`"
     )
+    excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
+    if excluded_count > 0:
+        st.info(str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
+        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
+            audit_rows = list(payload.get("excluded_batches_audit") or [])
+            if audit_rows:
+                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
     if not payload.get("available"):
-        st.warning("Nenhuma reconciliation persistida com jogos encontrada no PostgreSQL.")
+        st.warning("Nenhuma reconciliation persistida com jogos encontrada no PostgreSQL para o escopo ativo.")
         return
 
     summary = dict(payload.get("summary") or {})
@@ -8578,6 +8663,11 @@ def _persist_generation_snapshot(
             "promote_numbers_for_12_plus": promote_numbers_for_12_plus,
             "reduce_priority_numbers": reduce_priority_numbers,
             "real_gap_number": real_gap_number,
+            "operational_status": OPERATIONAL_STATUS_PENDING,
+            "officialization_status": OPERATIONAL_STATUS_NOT_OFFICIALIZED,
+            "ml_validation_status": OPERATIONAL_STATUS_PENDING,
+            "calibration_state": "none",
+            "active_reading_scope": True,
         }
         event = GenerationEvent(
             lead_id=None,
@@ -11337,10 +11427,11 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         scientific_calibration_policy = generate_recalibration_policy(scientific_calibration_context)
         scientific_calibration_recommendation = recommend_next_strategy(scientific_calibration_context)
         st.caption("Ajuste supervisionado da ?ltima bateria.")
-        if st.button(
+        calibration_action_cols = st.columns(2)
+        if calibration_action_cols[0].button(
             "Registrar decisão científica",
             key=f"register_scientific_calibration_{scientific_batch_id}",
-            use_container_width=False,
+            use_container_width=True,
         ):
             calibration_decision = apply_supervised_calibration(
                 scientific_calibration_context,
@@ -11351,12 +11442,40 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 decision=calibration_decision,
                 db_path=DB_PATH,
             )
+            scope_payload = dict(registered_decision.get("batch_operational_scope") or {})
             st.success(
                 f"Decisão científica registrada. classification={registered_decision.get('classification', '-')} | "
-                f"mode={registered_decision.get('mode', '-')} | applied={registered_decision.get('applied', False)}"
+                f"mode={registered_decision.get('mode', '-')} | applied={registered_decision.get('applied', False)} | "
+                f"lote_removido_escopo_ativo={not scope_payload.get('active_reading_scope', True)}"
             )
             with st.expander("Memória científica registrada", expanded=False):
                 st.json(registered_decision)
+            st.rerun()
+        if calibration_action_cols[1].button(
+            "Aplicar na próxima geração",
+            key=f"apply_scientific_calibration_{scientific_batch_id}",
+            use_container_width=True,
+        ):
+            scope_payload = mark_batch_superseded_by_calibration(
+                scientific_batch_id,
+                db_path=DB_PATH,
+                reason=str(scientific_calibration_recommendation.get("main_reason") or scientific_calibration_context.get("main_reason") or "calibração autorizada para próxima geração"),
+                evidence={
+                    "scientific_report": dict(scientific_calibration_context.get("scientific_report") or {}),
+                    "structural_report": dict(scientific_calibration_context.get("structural_report") or {}),
+                    "recommended_policy": dict(scientific_calibration_recommendation.get("recommended_policy") or {}),
+                },
+                authorized_plan=dict(scientific_calibration_recommendation.get("recommended_policy") or {}),
+                operator="institutional_operator",
+                calibration_source_only=False,
+            )
+            st.success(
+                f"Calibração aplicada. batch_id={scientific_batch_id} removido do escopo ativo | "
+                f"status={scope_payload.get('trace', {}).get('operational_status', '-')}"
+            )
+            with st.expander("Rastreabilidade operacional", expanded=False):
+                st.json(scope_payload)
+            st.rerun()
         latest_scientific_decisions = _load_latest_scientific_calibration_decision(limit=5)
         if latest_scientific_decisions:
             st.markdown("###### Últimas decisões científicas")
@@ -11512,7 +11631,10 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
     status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
 
-    active_generation_groups = _load_persisted_generation_event_groups(batch_id=None)
+    active_generation_groups = _load_persisted_generation_event_groups(
+        batch_id=None,
+        conference_eligible_only=True,
+    )
     active_generation_event_ids = sorted(
         {
             int(group.get("generation_event_id", 0) or 0)
@@ -12752,6 +12874,14 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     games_df["jogo n°"] = pd.to_numeric(games_df["jogo n°"], errors="coerce")
     games_df["concurso conferido"] = pd.to_numeric(games_df["concurso conferido"], errors="coerce")
     games_df["is_conferible"] = games_df["is_conferible"].fillna(False).astype(bool)
+    games_df["is_analytical_official"] = games_df["is_analytical_official"].fillna(False).astype(bool)
+    games_df["is_active_reading"] = games_df["is_active_reading"].fillna(True).astype(bool)
+
+    excluded_audit = list_excluded_batches_audit(DB_PATH)
+    if excluded_audit:
+        st.info(f"{len(excluded_audit)} lote(s) removido(s) da leitura ativa por calibração/reprovação.")
+        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
+            st.dataframe(pd.DataFrame(excluded_audit), hide_index=True, use_container_width=True)
 
     active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
     if active_generation_event_id and "generation_event_id" in games_df.columns:
@@ -12825,8 +12955,8 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             ascending=[False, False, True],
         )
 
-    conferiveis_df = filtered_df[filtered_df["is_conferible"].fillna(False)].copy()
-    diagnostic_df = filtered_df[~filtered_df["is_conferible"].fillna(False)].copy()
+    conferiveis_df = filtered_df[filtered_df["is_analytical_official"].fillna(False)].copy()
+    diagnostic_df = filtered_df[~filtered_df["is_analytical_official"].fillna(False)].copy()
 
     display_games = conferiveis_df.copy()
     if not display_games.empty:
@@ -12908,12 +13038,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     diagnostic_summary_rows: list[dict[str, Any]] = []
     for generation in generation_history:
-        if bool(generation.get("is_conferible", False)):
+        if bool(generation.get("is_analytical_official", False)):
             continue
         diagnostic_summary_rows.append(
             {
                 "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
                 "batch_id": str(generation.get("batch_id", "") or ""),
+                "operational_status": str(generation.get("operational_status", OPERATIONAL_STATUS_PENDING) or OPERATIONAL_STATUS_PENDING),
                 "policy_id": str(generation.get("policy_id", "") or ""),
                 "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
                 "status científico": str(generation.get("scientific_status", "-") or "-"),

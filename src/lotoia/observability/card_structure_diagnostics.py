@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
@@ -15,6 +15,10 @@ from lotoia.database.database import (
     get_session,
 )
 from lotoia.governance.analysis_batch_labels import batch_label_game_size
+from lotoia.governance.batch_operational_scope import (
+    is_generation_event_active_reading,
+    summarize_active_reading_exclusions,
+)
 from lotoia.observability.hb_metrics import resolve_official_numbers_for_contest, resolve_reconciliation_game_hits
 from lotoia.statistics.card_structure import (
     analyze_stuck_games,
@@ -71,6 +75,9 @@ def empty_card_structure_payload() -> dict[str, Any]:
             "evidence_level": EVIDENCE_LEVEL_LOCAL,
         },
         "evidence_level": EVIDENCE_LEVEL_LOCAL,
+        "excluded_batches_count": 0,
+        "excluded_batches_message": "Nenhum lote excluído da leitura ativa.",
+        "excluded_batches_audit": [],
     }
 
 
@@ -211,6 +218,7 @@ def build_card_structure_payload(
     contest_ids: Sequence[int],
     analysis_batch_labels: Sequence[str] | None = None,
     selected_analysis_batch_label: str | None = None,
+    excluded_batches_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not games:
         return empty_card_structure_payload()
@@ -272,7 +280,8 @@ def build_card_structure_payload(
     if selected_analysis_batch_label:
         summary_payload["analysis_batch_label"] = selected_analysis_batch_label
 
-    return {
+    exclusions = dict(excluded_batches_summary or {})
+    payload = {
         "available": True,
         "source": SOURCE_POSTGRESQL,
         "tables": RECONCILIATION_TABLES,
@@ -289,7 +298,11 @@ def build_card_structure_payload(
         "comparacao_oficial": comparacao,
         "evidence_base": evidence_base,
         "evidence_level": evidence_level,
+        "excluded_batches_count": int(exclusions.get("excluded_batches_count", 0) or 0),
+        "excluded_batches_message": str(exclusions.get("message", "") or ""),
+        "excluded_batches_audit": list(exclusions.get("excluded_batches") or []),
     }
+    return payload
 
 
 def load_card_structure_diagnostics_from_db(
@@ -302,9 +315,11 @@ def load_card_structure_diagnostics_from_db(
     generation_event_id: int | None = None,
     reconciliation_run_id: int | None = None,
     concurso_analisado: int | None = None,
+    active_reading_only: bool = True,
 ) -> dict[str, Any]:
     """Carrega diagnóstico estrutural a partir das reconciliations persistidas."""
     normalized_batch_label = str(analysis_batch_label or "").strip().upper() or None
+    exclusions_summary = summarize_active_reading_exclusions(db_path)
     with get_session(db_path) as session:
         query = session.query(ReconciliationRun)
         if reconciliation_run_id is not None and int(reconciliation_run_id) > 0:
@@ -355,8 +370,12 @@ def load_card_structure_diagnostics_from_db(
 
         for run in runs:
             run_id = int(run.id or 0)
-            reconciliation_run_ids.append(run_id)
             generation_event_id_value = int(getattr(run, "generation_event_id", 0) or 0)
+            if active_reading_only:
+                event = _load_generation_event(generation_event_id_value)
+                if event is not None and not is_generation_event_active_reading(event):
+                    continue
+            reconciliation_run_ids.append(run_id)
             if generation_event_id_value > 0:
                 generation_event_ids.append(generation_event_id_value)
                 event = _load_generation_event(generation_event_id_value)
@@ -390,6 +409,13 @@ def load_card_structure_diagnostics_from_db(
 
         official_cards, official_contests = _load_official_cards(session, limit=official_window)
 
+    if not games:
+        empty_payload = empty_card_structure_payload()
+        empty_payload["excluded_batches_count"] = int(exclusions_summary.get("excluded_batches_count", 0) or 0)
+        empty_payload["excluded_batches_message"] = str(exclusions_summary.get("message", "") or "")
+        empty_payload["excluded_batches_audit"] = list(exclusions_summary.get("excluded_batches") or [])
+        return empty_payload
+
     return build_card_structure_payload(
         games=games,
         official_cards=official_cards,
@@ -399,4 +425,5 @@ def load_card_structure_diagnostics_from_db(
         contest_ids=contest_ids,
         analysis_batch_labels=sorted(batch_labels_seen),
         selected_analysis_batch_label=normalized_batch_label,
+        excluded_batches_summary=exclusions_summary,
     )
