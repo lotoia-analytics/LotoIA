@@ -19,6 +19,10 @@ from lotoia.ml.overlap_format_thresholds import (
     build_per_format_overlap_analysis,
     resolve_primary_format_analysis,
 )
+from lotoia.ml.structural_concentration_audit import (
+    MISSION_ID as CONCENTRATION_MISSION_ID,
+    audit_structural_concentration_from_db,
+)
 from lotoia.observability.card_structure_diagnostics import (
     SCOPE_ALL_OPERATIONAL_CORE_002,
     SCOPE_LABEL_ALL_OPERATIONAL,
@@ -532,6 +536,19 @@ def get_structural_coverage_evidence(
     )
     reading = dict(snapshot.get("reading") or {})
 
+    structural_concentration_audit: dict[str, Any] = {"available": False}
+    ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
+    formatos = [int(value) for value in list(metrics.get("formatos_analisados") or []) if int(value) > 0]
+    if len(ge_ids) == 1 and formatos:
+        try:
+            structural_concentration_audit = audit_structural_concentration_from_db(
+                db_path,
+                generation_event_id=ge_ids[0],
+                game_size=formatos[0] if len(formatos) == 1 else None,
+            )
+        except Exception:
+            structural_concentration_audit = {"available": False, "mission_id": CONCENTRATION_MISSION_ID}
+
     return {
         "available": True,
         "mission_id": MISSION_ID,
@@ -577,4 +594,6 @@ def get_structural_coverage_evidence(
         "proxima_acao": str(ml_verdict_payload.get("proxima_acao") or ""),
         "ml_verdict_trace": dict(ml_verdict_payload.get("trace") or {}),
         "ml_verdict_payload": ml_verdict_payload,
+        "structural_concentration_mission_id": CONCENTRATION_MISSION_ID,
+        "structural_concentration_audit": structural_concentration_audit,
     }
