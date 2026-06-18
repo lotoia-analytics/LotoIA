@@ -56,7 +56,9 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 **Build:** `institutional-adm-runtime-v26`
 
-**Veredicto:** **M-PLAT-050 CONCLUÍDA — POOL POSTGRESQL CORRIGIDO, HOME ESTÁVEL, SEM QUEUEPOOL TIMEOUT**
+**PR:** [#161](https://github.com/lotoia-analytics/LotoIA/pull/161)
+
+**Veredicto:** **M-PLAT-050 CONCLUIDA — POOL POSTGRESQL CORRIGIDO, HOME ESTÁVEL, SEM QUEUEPOOL TIMEOUT**
 
 **Cartão:** `cartoes/M-PLAT-050_POSTGRES_POOL_STREAMLIT.md`
 
