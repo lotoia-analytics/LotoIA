@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
@@ -38,6 +41,10 @@ EVIDENCE_LEVEL_LOCAL = "LOCAL_DIAGNOSTIC"
 EVIDENCE_LEVEL_STRUCTURAL_RECURRENT = "STRUCTURAL_RECURRENT_DIAGNOSTIC"
 MIN_GENERATIONS_RECURRENT = 20
 MIN_CONTESTS_RECURRENT = 5
+MISSION_ID_STRUCTURAL_SNAPSHOT = "M-ML-VIS-059"
+SCOPE_ALL_OPERATIONAL_CORE_002 = "operational_core_002_all"
+SCOPE_LABEL_ALL_OPERATIONAL = "Todos — todas as gerações operacionais CORE_002"
+SOURCE_COBERTURA_ESTRUTURAL = "cobertura_estrutural"
 
 
 def empty_card_structure_payload() -> dict[str, Any]:
@@ -535,3 +542,222 @@ def load_card_structure_diagnostics_from_db(
         analysis_batch_labels=sorted(batch_labels_seen),
         selected_analysis_batch_label=normalized_batch_label,
     )
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _format_breakdown_from_payload(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    summary = dict(payload.get("summary") or {})
+    formats = list(summary.get("formatos_analisados") or [])
+    if not formats:
+        formats = list((payload.get("evidence_base") or {}).get("formatos_analisados") or [])
+    return [{"formato": f"{int(fmt)}D", "jogos": int(summary.get("total_jogos", 0) or 0)} for fmt in sorted(formats)]
+
+
+def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Extrai métricas canônicas do payload da Cobertura Estrutural (fonte única M-ML-VIS-059)."""
+    redundancy = dict(payload.get("redundancia_gp") or {})
+    abertura = dict(payload.get("abertura") or {})
+    fechamento = dict(payload.get("fechamento") or {})
+    travamento = dict(payload.get("travamento_13_14") or {})
+    summary = dict(payload.get("summary") or {})
+    evidence_base = dict(payload.get("evidence_base") or {})
+
+    similaridade = _safe_float(redundancy.get("similaridade_media_entre_jogos"))
+    sobreposicao_media = _safe_float(redundancy.get("sobreposicao_media"))
+    sobreposicao_maxima = _safe_int(redundancy.get("sobreposicao_maxima"))
+    quase_repetidos = _safe_int(redundancy.get("cartoes_quase_repetidos"))
+    diversity_score = round(max(0.0, 1.0 - similaridade), 4)
+
+    prefix_top = dict(abertura.get("prefixo_3_mais_gerado") or {})
+    suffix_top = dict(fechamento.get("sufixo_3_mais_gerado") or {})
+    prefix_freq = _safe_int(prefix_top.get("frequencia"))
+    suffix_freq = _safe_int(suffix_top.get("frequencia"))
+    total_jogos = _safe_int(summary.get("total_jogos"))
+
+    subcovered_rows = list(redundancy.get("dezenas_fora_em_muitos_jogos") or [])
+    subcovered_list = [
+        str(row.get("dezena") or "")
+        for row in subcovered_rows
+        if isinstance(row, Mapping) and row.get("dezena")
+    ]
+    prefix_viciado = prefix_freq >= max(3, int(max(1, total_jogos) * 0.14))
+    suffix_viciado = suffix_freq >= max(3, int(max(1, total_jogos) * 0.14))
+
+    hits_13 = len(list(travamento.get("jogos_com_13_hits") or []))
+    hits_14 = len(list(travamento.get("jogos_com_14_hits") or []))
+    hits_15 = len(list(travamento.get("jogos_com_15_hits") or []))
+
+    redundancia_geral = (
+        "alta"
+        if quase_repetidos >= 20 or similaridade >= 0.55
+        else "normal"
+    )
+
+    return {
+        "similaridade_media": similaridade,
+        "similaridade_media_entre_jogos": similaridade,
+        "sobreposicao_media": sobreposicao_media,
+        "sobreposicao_maxima": sobreposicao_maxima,
+        "quase_repetidos": quase_repetidos,
+        "cartoes_quase_repetidos": quase_repetidos,
+        "redundancia_geral": redundancia_geral,
+        "prefixos_sufixos_viciados": prefix_viciado or suffix_viciado,
+        "prefixo_viciado": prefix_viciado,
+        "sufixo_viciado": suffix_viciado,
+        "prefixo_mais_gerado": str(prefix_top.get("estrutura") or "—"),
+        "sufixo_mais_gerado": str(suffix_top.get("estrutura") or "—"),
+        "dezenas_subcobertas": len(subcovered_rows),
+        "dezenas_subcobertas_list": subcovered_list,
+        "diversidade_global": "baixa" if diversity_score < 0.55 else "adequada",
+        "diversity_score": diversity_score,
+        "desempenho_13_hits": hits_13,
+        "desempenho_14_hits": hits_14,
+        "desempenho_15_hits": hits_15,
+        "total_jogos": total_jogos,
+        "total_geracoes": _safe_int(summary.get("total_geracoes")),
+        "format_breakdown": _format_breakdown_from_payload(payload),
+        "generation_event_ids": [
+            int(value)
+            for value in list(evidence_base.get("generation_event_ids") or [])
+            if _safe_int(value) > 0
+        ],
+        "evidence_level": str(payload.get("evidence_level") or EVIDENCE_LEVEL_LOCAL),
+        "six_bases_risco": "alerta" if subcovered_rows or prefix_viciado or suffix_viciado else "estável",
+    }
+
+
+def compute_coverage_snapshot_checksum(payload: Mapping[str, Any]) -> str:
+    """Checksum estável do núcleo redundante do payload (rastreio de leitura)."""
+    core = {
+        "redundancia_gp": dict(payload.get("redundancia_gp") or {}),
+        "summary": dict(payload.get("summary") or {}),
+        "generation_event_ids": list((payload.get("evidence_base") or {}).get("generation_event_ids") or []),
+    }
+    encoded = json.dumps(core, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def build_structural_coverage_reading_metadata(
+    payload: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    *,
+    scope_id: str,
+    scope_label: str,
+    filters: Mapping[str, Any] | None = None,
+    read_at: str | None = None,
+) -> dict[str, Any]:
+    evidence_base = dict(payload.get("evidence_base") or {})
+    return {
+        "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+        "source": SOURCE_COBERTURA_ESTRUTURAL,
+        "tables": str(payload.get("tables") or OPERATIONAL_TABLES),
+        "coverage_layer": str(payload.get("coverage_layer") or "operational_core_002"),
+        "scope_id": scope_id,
+        "scope_label": scope_label,
+        "filters": dict(filters or {}),
+        "total_geracoes": _safe_int(metrics.get("total_geracoes")),
+        "total_jogos": _safe_int(metrics.get("total_jogos")),
+        "format_breakdown": list(metrics.get("format_breakdown") or []),
+        "generation_event_ids": list(metrics.get("generation_event_ids") or []),
+        "formatos_analisados": list(evidence_base.get("formatos_analisados") or []),
+        "read_at": read_at or datetime.now(UTC).isoformat(),
+        "coverage_snapshot_checksum": compute_coverage_snapshot_checksum(payload),
+    }
+
+
+def compare_structural_coverage_scopes(
+    sovereign_ids: Sequence[int],
+    alternate_ids: Sequence[int],
+) -> dict[str, Any]:
+    sovereign = sorted({int(value) for value in sovereign_ids if int(value) > 0})
+    alternate = sorted({int(value) for value in alternate_ids if int(value) > 0})
+    same_scope = sovereign == alternate
+    return {
+        "same_scope": same_scope,
+        "sovereign_generation_event_ids": sovereign,
+        "alternate_generation_event_ids": alternate,
+        "scope_mismatch": not same_scope,
+        "scope_mismatch_reason": (
+            ""
+            if same_scope
+            else "Central ML usa escopo diferente da Cobertura Estrutural atual"
+        ),
+    }
+
+
+def get_structural_coverage_snapshot(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    generation_event_ids: Sequence[int] | None = None,
+    game_size: int | None = None,
+    scope_id: str = SCOPE_ALL_OPERATIONAL_CORE_002,
+    scope_label: str = SCOPE_LABEL_ALL_OPERATIONAL,
+) -> dict[str, Any]:
+    """Fonte soberana compartilhada — Cobertura Estrutural e Central ML (M-ML-VIS-059)."""
+    selected_ge_id = int(generation_event_id or 0)
+    event_ids = [int(value) for value in (generation_event_ids or []) if int(value) > 0]
+    effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else None
+    filters: dict[str, Any] = {
+        "generation_event_id": selected_ge_id if selected_ge_id > 0 else None,
+        "generation_event_ids": event_ids,
+        "game_size": effective_game_size,
+    }
+    structural = load_operational_card_structure_diagnostics_from_db(
+        db_path,
+        generation_event_id=selected_ge_id if selected_ge_id > 0 else None,
+        generation_event_ids=event_ids or None,
+        game_size=effective_game_size,
+    )
+    if not structural.get("available"):
+        return {
+            "available": False,
+            "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+            "source": SOURCE_COBERTURA_ESTRUTURAL,
+            "scope_id": scope_id,
+            "scope_label": scope_label,
+            "filters": filters,
+            "metrics": {},
+            "payload": {},
+            "reading": {},
+        }
+
+    metrics = extract_operational_structural_metrics(structural)
+    read_at = datetime.now(UTC).isoformat()
+    reading = build_structural_coverage_reading_metadata(
+        structural,
+        metrics,
+        scope_id=scope_id,
+        scope_label=scope_label,
+        filters=filters,
+        read_at=read_at,
+    )
+    return {
+        "available": True,
+        "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+        "source": SOURCE_COBERTURA_ESTRUTURAL,
+        "scope_id": scope_id,
+        "scope_label": scope_label,
+        "filters": filters,
+        "tables": structural.get("tables"),
+        "coverage_layer": structural.get("coverage_layer"),
+        "payload": dict(structural),
+        "metrics": metrics,
+        "reading": reading,
+        "coverage_snapshot_checksum": reading.get("coverage_snapshot_checksum"),
+        "read_at": read_at,
+        "generation_event_ids": list(metrics.get("generation_event_ids") or []),
+    }

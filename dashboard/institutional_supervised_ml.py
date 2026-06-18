@@ -27,7 +27,13 @@ from lotoia.ml.supervised_output_calibration import (
     STATUS_ACTIVE as CALIBRATION_STATUS_ACTIVE,
     is_output_calibration_enabled,
 )
+from lotoia.observability.card_structure_diagnostics import (
+    SCOPE_ALL_OPERATIONAL_CORE_002,
+    SCOPE_LABEL_ALL_OPERATIONAL,
+    compare_structural_coverage_scopes,
+)
 from lotoia.observability.coverage_evidence_interpreter import (
+    SOVEREIGN_MISSION_ID,
     build_calibration_plan,
     get_structural_coverage_evidence,
     interpret_coverage_evidence,
@@ -39,6 +45,10 @@ VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
+VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
+SOVEREIGN_COVERAGE_SCOPE_LABEL = (
+    "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
+)
 AGGREGATE_SCOPE_LABEL = "Escopo analisado: visão geral das gerações oficiais recentes"
 AGGREGATE_DIAGNOSIS_HEADLINE = "Diagnóstico geral da saída CORE_002 + ML"
 DEFAULT_AGGREGATE_EVENTS_LIMIT = 10
@@ -965,6 +975,55 @@ def build_ml_calibration_aggregate_context(
     }
 
 
+def build_sovereign_coverage_diagnosis_card(
+    coverage_evidence: Mapping[str, Any],
+    *,
+    aggregate: Mapping[str, Any] | None = None,
+    scope_comparison: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Diagnóstico Central ML — métricas 100% herdadas da Cobertura Estrutural (M-ML-VIS-059)."""
+    if not coverage_evidence.get("available"):
+        return {
+            "available": False,
+            "headline": str(coverage_evidence.get("headline") or "Sem evidências estruturais"),
+            "scope_label": SOVEREIGN_COVERAGE_SCOPE_LABEL,
+            "metrics": {},
+            "issues_preview": [],
+        }
+    metrics = dict(coverage_evidence.get("metrics") or {})
+    reading = dict(coverage_evidence.get("reading") or {})
+    agg = dict(aggregate or {})
+    comparison = dict(scope_comparison or {})
+    issues_preview = list(coverage_evidence.get("problemas_detectados") or [])
+    return {
+        "available": True,
+        "scope_label": str(coverage_evidence.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL),
+        "headline": "Diagnóstico soberano — leitura idêntica à Cobertura Estrutural",
+        "coverage_source": "cobertura_estrutural",
+        "sovereign_mission_id": VIS_COVERAGE_SOVEREIGN_MISSION_ID,
+        "metrics": metrics,
+        "issues_preview": issues_preview[:8],
+        "total_events": int(metrics.get("total_geracoes", 0) or 0),
+        "total_games": int(metrics.get("total_jogos", 0) or 0),
+        "calibrated_events": int(metrics.get("calibrated_events", agg.get("calibrated_events", 0)) or 0),
+        "format_breakdown": list(metrics.get("format_breakdown") or reading.get("format_breakdown") or []),
+        "reading": reading,
+        "coverage_snapshot_checksum": str(
+            coverage_evidence.get("coverage_snapshot_checksum")
+            or reading.get("coverage_snapshot_checksum")
+            or ""
+        ),
+        "read_at": str(coverage_evidence.get("read_at") or reading.get("read_at") or ""),
+        "generation_event_ids": list(metrics.get("generation_event_ids") or []),
+        "filters": dict(coverage_evidence.get("filters") or reading.get("filters") or {}),
+        "scope_comparison": comparison,
+        "scope_mismatch": False,
+        "scope_mismatch_reason": "",
+        "ml_detail_scope_label": str(comparison.get("ml_detail_scope_label") or ""),
+        "ml_events_window": int(agg.get("total_events", 0) or 0),
+    }
+
+
 def build_ml_calibration_aggregate_diagnosis_card(aggregate: Mapping[str, Any]) -> dict[str, Any]:
     if not aggregate.get("available"):
         return {
@@ -1104,23 +1163,31 @@ def build_ml_calibration_cockpit_snapshot(
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
     aggregate = build_ml_calibration_aggregate_context(event_details)
-    event_ids = [
+    ml_event_ids = [
         int(row.get("generation_event_id", 0) or 0)
         for row in event_details
         if int(row.get("generation_event_id", 0) or 0) > 0
     ]
     coverage_evidence = get_structural_coverage_evidence(
         db_path,
-        generation_event_ids=event_ids,
+        scope=SCOPE_ALL_OPERATIONAL_CORE_002,
+        scope_label=SCOPE_LABEL_ALL_OPERATIONAL,
         events_limit=events_limit,
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
+    sovereign_ids = list(coverage_evidence.get("generation_event_ids") or [])
+    scope_comparison = compare_structural_coverage_scopes(sovereign_ids, ml_event_ids)
+    scope_comparison["metrics_scope_label"] = SCOPE_LABEL_ALL_OPERATIONAL
+    scope_comparison["ml_detail_scope_label"] = (
+        f"Últimas {len(ml_event_ids)} gerações ML — detalhe operacional (não altera métricas)"
+    )
+    scope_comparison["scope_mismatch"] = False
     recalibration = resolve_recalibration_display_status()
-    diagnosis = build_ml_calibration_aggregate_diagnosis_card(aggregate)
-    if coverage_evidence.get("available"):
-        cov_metrics = dict(coverage_evidence.get("metrics") or {})
-        diagnosis["metrics"] = {**dict(diagnosis.get("metrics") or {}), **cov_metrics}
-        diagnosis["coverage_source"] = "cobertura_estrutural"
+    diagnosis = build_sovereign_coverage_diagnosis_card(
+        coverage_evidence,
+        aggregate=aggregate if aggregate.get("available") else None,
+        scope_comparison=scope_comparison,
+    )
     recommendations = build_ml_calibration_recommendations(
         aggregate if aggregate.get("available") else None,
         coverage_evidence=coverage_evidence if coverage_evidence.get("available") else None,
@@ -1142,10 +1209,12 @@ def build_ml_calibration_cockpit_snapshot(
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
+        "coverage_sovereign_mission_id": VIS_COVERAGE_SOVEREIGN_MISSION_ID,
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
-        "scope_label": AGGREGATE_SCOPE_LABEL,
+        "scope_label": str(diagnosis.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL),
+        "scope_comparison": dict(scope_comparison or {}),
         "aggregate_mode": True,
         "constitutional_summary": {
             "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",

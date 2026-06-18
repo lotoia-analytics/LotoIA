@@ -96,7 +96,32 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
         return
     st.caption(str(diagnosis.get("headline") or ""))
     if diagnosis.get("coverage_source") == "cobertura_estrutural":
-        st.caption("Fonte decisória: Cobertura Estrutural (PostgreSQL)")
+        st.caption("Fonte decisória: Cobertura Estrutural / PostgreSQL")
+    reading = dict(diagnosis.get("reading") or {})
+    if reading:
+        st.caption(
+            f"Leitura @ `{reading.get('read_at', '—')}` | "
+            f"checksum `{reading.get('coverage_snapshot_checksum', '—')}` | "
+            f"GEs `{len(reading.get('generation_event_ids') or [])}`"
+        )
+        filters = dict(reading.get("filters") or diagnosis.get("filters") or {})
+        if filters:
+            st.caption(
+                "Filtros: "
+                + ", ".join(
+                    f"{key}={value}"
+                    for key, value in filters.items()
+                    if value not in (None, [], "")
+                )
+                or "nenhum"
+            )
+        ge_ids = list(reading.get("generation_event_ids") or diagnosis.get("generation_event_ids") or [])
+        if ge_ids:
+            preview = ", ".join(str(value) for value in ge_ids[:12])
+            suffix = "…" if len(ge_ids) > 12 else ""
+            st.caption(f"generation_event_ids: {preview}{suffix}")
+    if diagnosis.get("ml_detail_scope_label"):
+        st.caption(str(diagnosis.get("ml_detail_scope_label")))
     summary_cols = st.columns(3)
     summary_cols[0].metric("Gerações analisadas", int(diagnosis.get("total_events", 0) or 0))
     summary_cols[1].metric("Jogos agregados", int(diagnosis.get("total_games", 0) or 0))
@@ -110,6 +135,10 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     cols2[0].metric("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0))
     cols2[1].metric("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0))
     cols2[2].metric("Risco 6 Bases", str(metrics.get("six_bases_risco", "—")))
+    cols3 = st.columns(3)
+    cols3[0].metric("Jogos 13 hits", int(metrics.get("desempenho_13_hits", 0) or 0))
+    cols3[1].metric("Jogos 14 hits", int(metrics.get("desempenho_14_hits", 0) or 0))
+    cols3[2].metric("Jogos 15 hits", int(metrics.get("desempenho_15_hits", 0) or 0))
     format_breakdown = list(diagnosis.get("format_breakdown") or metrics.get("format_breakdown") or [])
     if format_breakdown:
         st.caption(

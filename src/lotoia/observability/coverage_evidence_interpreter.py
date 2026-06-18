@@ -7,13 +7,17 @@ from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.observability.card_structure_diagnostics import (
-    EVIDENCE_LEVEL_LOCAL,
-    load_operational_card_structure_diagnostics_from_db,
+    SCOPE_ALL_OPERATIONAL_CORE_002,
+    SCOPE_LABEL_ALL_OPERATIONAL,
+    SOURCE_COBERTURA_ESTRUTURAL,
+    extract_operational_structural_metrics,
+    get_structural_coverage_snapshot,
 )
 
 MISSION_ID = "M-ML-VIS-058"
 FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
-SCOPE_RECENT_OFFICIAL = "recent_official_generations"
+SOVEREIGN_MISSION_ID = "M-ML-VIS-059"
+SCOPE_RECENT_OFFICIAL = SCOPE_ALL_OPERATIONAL_CORE_002
 DEFAULT_EVENTS_LIMIT = 10
 
 SIMILARITY_HIGH_THRESHOLD = 0.55
@@ -36,109 +40,23 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _format_breakdown_from_structural(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
-    formats = list((payload.get("summary") or {}).get("formatos_analisados") or [])
-    if not formats:
-        formats = list((payload.get("evidence_base") or {}).get("formatos_analisados") or [])
-    return [{"formato": f"{int(fmt)}D", "jogos": 0} for fmt in sorted(formats)]
-
-
 def _extract_metrics_from_structural_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    redundancy = dict(payload.get("redundancia_gp") or {})
-    abertura = dict(payload.get("abertura") or {})
-    fechamento = dict(payload.get("fechamento") or {})
-    travamento = dict(payload.get("travamento_13_14") or {})
-    summary = dict(payload.get("summary") or {})
-    evidence_base = dict(payload.get("evidence_base") or {})
-
-    similaridade = _safe_float(redundancy.get("similaridade_media_entre_jogos"))
-    sobreposicao_media = _safe_float(redundancy.get("sobreposicao_media"))
-    sobreposicao_maxima = _safe_int(redundancy.get("sobreposicao_maxima"))
-    quase_repetidos = _safe_int(redundancy.get("cartoes_quase_repetidos"))
-    diversity_score = round(max(0.0, 1.0 - similaridade), 3)
-
-    prefix_top = dict(abertura.get("prefixo_3_mais_gerado") or {})
-    suffix_top = dict(fechamento.get("sufixo_3_mais_gerado") or {})
-    prefix_freq = _safe_int(prefix_top.get("frequencia"))
-    suffix_freq = _safe_int(suffix_top.get("frequencia"))
-    total_jogos = max(1, _safe_int(summary.get("total_jogos")))
-
-    subcovered_rows = list(redundancy.get("dezenas_fora_em_muitos_jogos") or [])
-    subcovered = len(subcovered_rows)
-    subcovered_list = [
-        str(row.get("dezena") or "")
-        for row in subcovered_rows
-        if isinstance(row, Mapping) and row.get("dezena")
-    ]
-    excessive = len(list(redundancy.get("ausencias_recorrentes_no_GP") or []))
-
-    prefix_viciado = prefix_freq >= max(3, int(total_jogos * 0.14))
-    suffix_viciado = suffix_freq >= max(3, int(total_jogos * 0.14))
-    prefix_suffix_viciados = prefix_viciado or suffix_viciado
-
-    hits_13 = len(list(travamento.get("jogos_com_13_hits") or []))
-    hits_14 = len(list(travamento.get("jogos_com_14_hits") or []))
-    hits_15 = len(list(travamento.get("jogos_com_15_hits") or []))
-
-    return {
-        "similaridade_media": round(similaridade, 3),
-        "sobreposicao_media": round(sobreposicao_media, 2),
-        "sobreposicao_maxima": sobreposicao_maxima,
-        "quase_repetidos": quase_repetidos,
-        "redundancia_geral": "alta" if quase_repetidos >= NEAR_DUP_HIGH_THRESHOLD or similaridade >= SIMILARITY_HIGH_THRESHOLD else "normal",
-        "prefixos_sufixos_viciados": prefix_suffix_viciados,
-        "prefixo_viciado": prefix_viciado,
-        "sufixo_viciado": suffix_viciado,
-        "prefixo_mais_gerado": str(prefix_top.get("estrutura") or "—"),
-        "sufixo_mais_gerado": str(suffix_top.get("estrutura") or "—"),
-        "dezenas_subcobertas": subcovered,
-        "dezenas_subcobertas_list": subcovered_list,
-        "dezenas_excessivas": excessive,
-        "diversidade_global": "baixa" if diversity_score < DIVERSITY_LOW_THRESHOLD else "adequada",
-        "diversity_score": diversity_score,
-        "desempenho_13_hits": hits_13,
-        "desempenho_14_hits": hits_14,
-        "desempenho_15_hits": hits_15,
-        "total_jogos": total_jogos,
-        "total_geracoes": _safe_int(summary.get("total_geracoes")),
-        "format_breakdown": _format_breakdown_from_structural(payload),
-        "generation_event_ids": list(evidence_base.get("generation_event_ids") or []),
-        "evidence_level": str(payload.get("evidence_level") or EVIDENCE_LEVEL_LOCAL),
-        "six_bases_risco": "alerta" if subcovered > 0 or prefix_suffix_viciados else "estável",
-    }
+    """Compat: delega para fonte única da Cobertura Estrutural (M-ML-VIS-059)."""
+    return extract_operational_structural_metrics(payload)
 
 
-def _merge_ml_aggregate_metrics(
+def _attach_ml_operational_metadata(
     metrics: dict[str, Any],
     aggregate: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    """Anexa metadados operacionais ML sem sobrescrever métricas estruturais soberanas."""
     if not isinstance(aggregate, Mapping) or not aggregate.get("available"):
         return metrics
-    ml_metrics = dict(aggregate.get("metrics") or {})
     merged = dict(metrics)
-    if ml_metrics.get("quase_repetidos") is not None:
-        merged["quase_repetidos"] = max(
-            _safe_int(merged.get("quase_repetidos")),
-            _safe_int(ml_metrics.get("quase_repetidos")),
-        )
-    if ml_metrics.get("similaridade_media") is not None:
-        ml_sim = _safe_float(ml_metrics.get("similaridade_media"))
-        if ml_sim > 1.0:
-            ml_sim = ml_sim / 15.0
-        merged["similaridade_media"] = max(_safe_float(merged.get("similaridade_media")), ml_sim)
-    if ml_metrics.get("diversity_score") is not None:
-        merged["diversity_score"] = min(
-            _safe_float(merged.get("diversity_score")),
-            _safe_float(ml_metrics.get("diversity_score")),
-        )
-    merged["diversidade_global"] = (
-        "baixa" if _safe_float(merged.get("diversity_score")) < DIVERSITY_LOW_THRESHOLD else "adequada"
-    )
     merged["calibrated_events"] = _safe_int(aggregate.get("calibrated_events"))
     merged["calibration_applied_any"] = bool(aggregate.get("calibration_applied"))
-    merged["issue_types"] = list(aggregate.get("issue_types") or [])
-    if aggregate.get("format_breakdown"):
-        merged["format_breakdown"] = list(aggregate.get("format_breakdown") or [])
+    merged["ml_events_analyzed"] = _safe_int(aggregate.get("total_events"))
+    merged["ml_lot_rows"] = list(aggregate.get("lot_rows") or [])
     return merged
 
 
@@ -495,47 +413,60 @@ def get_structural_coverage_evidence(
     *,
     scope: str = SCOPE_RECENT_OFFICIAL,
     events_limit: int = DEFAULT_EVENTS_LIMIT,
+    generation_event_id: int | None = None,
     generation_event_ids: Sequence[int] | None = None,
+    game_size: int | None = None,
+    scope_label: str = SCOPE_LABEL_ALL_OPERATIONAL,
     ml_aggregate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Carrega evidências da Cobertura Estrutural para a Central ML."""
-    event_ids = [int(value) for value in (generation_event_ids or []) if int(value) > 0]
-    structural = load_operational_card_structure_diagnostics_from_db(
+    """Carrega evidências da Cobertura Estrutural para a Central ML (leitura soberana M-ML-VIS-059)."""
+    snapshot = get_structural_coverage_snapshot(
         db_path,
-        generation_event_ids=event_ids or None,
+        generation_event_id=generation_event_id,
+        generation_event_ids=generation_event_ids,
+        game_size=game_size,
+        scope_id=scope,
+        scope_label=scope_label,
     )
-    if not structural.get("available") and event_ids:
-        structural = load_operational_card_structure_diagnostics_from_db(db_path)
-
-    if not structural.get("available"):
+    if not snapshot.get("available"):
         return {
             "available": False,
             "mission_id": MISSION_ID,
+            "sovereign_mission_id": SOVEREIGN_MISSION_ID,
             "scope": scope,
             "headline": "Sem evidências estruturais no PostgreSQL",
             "metrics": {},
             "coverage_evidence_snapshot": {},
-            "source": "cobertura_estrutural",
+            "source": SOURCE_COBERTURA_ESTRUTURAL,
+            "reading": {},
         }
 
-    metrics = _extract_metrics_from_structural_payload(structural)
-    metrics = _merge_ml_aggregate_metrics(metrics, ml_aggregate)
+    structural = dict(snapshot.get("payload") or {})
+    metrics = dict(snapshot.get("metrics") or {})
+    metrics = _attach_ml_operational_metadata(metrics, ml_aggregate)
     calibration_applied = bool((ml_aggregate or {}).get("calibration_applied"))
     interpretation = interpret_coverage_evidence(
         metrics,
         calibration_applied=calibration_applied,
         trace_persistido=calibration_applied,
     )
+    reading = dict(snapshot.get("reading") or {})
 
     return {
         "available": True,
         "mission_id": MISSION_ID,
+        "sovereign_mission_id": SOVEREIGN_MISSION_ID,
         "scope": scope,
-        "source": "cobertura_estrutural",
-        "tables": structural.get("tables"),
-        "coverage_layer": structural.get("coverage_layer"),
+        "scope_label": scope_label,
+        "source": SOURCE_COBERTURA_ESTRUTURAL,
+        "tables": snapshot.get("tables"),
+        "coverage_layer": snapshot.get("coverage_layer"),
         "metrics": metrics,
-        "coverage_evidence_snapshot": dict(structural),
+        "coverage_evidence_snapshot": structural,
+        "reading": reading,
+        "coverage_snapshot_checksum": snapshot.get("coverage_snapshot_checksum"),
+        "read_at": snapshot.get("read_at"),
+        "filters": dict(snapshot.get("filters") or {}),
         "interpretation": interpretation,
         "decision_blocks": list(interpretation.get("decision_blocks") or []),
         "primary_decision": dict(interpretation.get("primary_decision") or {}),
