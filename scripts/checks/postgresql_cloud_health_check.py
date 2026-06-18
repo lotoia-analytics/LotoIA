@@ -14,14 +14,6 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 
-DATABASE_ENV_VARS = (
-    "LOTOIA_DATABASE_POOLER_URL",
-    "STREAMLIT_DATABASE_POOLER_URL",
-    "DATABASE_URL",
-    "LOTOIA_DATABASE_URL",
-    "STREAMLIT_DATABASE_URL",
-)
-
 REQUIRED_TABLES = (
     "institutional_users",
     "generation_events",
@@ -44,22 +36,48 @@ def _mask_database_url(database_url: str) -> str:
     return f"{prefix}{username}:***@{host_part}"
 
 
-def _resolve_database_url() -> tuple[str, str]:
-    for env_name in DATABASE_ENV_VARS:
-        value = os.getenv(env_name, "").strip()
-        if value:
-            return value, env_name
-    return "", ""
-
-
 def run_health_check() -> dict[str, Any]:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    from lotoia.database.env_resolution import (
+        COMPAT_DATABASE_PUBLIC_URL_ENV,
+        database_url_resolution_issue,
+        is_invalid_database_url_literal,
+        promote_resolved_database_url_to_env,
+        resolve_institutional_database_url_from_env,
+    )
+
     errors: list[str] = []
     warnings: list[str] = []
     evidence: dict[str, Any] = {"checked_at": datetime.now(UTC).isoformat()}
 
-    database_url, database_source = _resolve_database_url()
+    raw_database_url = os.getenv("DATABASE_URL", "").strip()
+    if raw_database_url and is_invalid_database_url_literal(raw_database_url):
+        warnings.append(
+            "DATABASE_URL contém valor literal inválido — corrija para ${{Postgres.DATABASE_URL}}"
+        )
+
+    database_url, database_source = resolve_institutional_database_url_from_env()
     if not database_url:
         errors.append("DATABASE_URL ausente")
+        return {
+            "status": "FAIL",
+            "errors": errors,
+            "warnings": warnings,
+            "evidence": evidence,
+        }
+
+    if database_source == COMPAT_DATABASE_PUBLIC_URL_ENV:
+        warnings.append(
+            "Usando DATABASE_PUBLIC_URL como compatibilidade — DATABASE_URL deve ser a variável soberana"
+        )
+
+    promote_resolved_database_url_to_env()
+
+    issue = database_url_resolution_issue(database_url, source=database_source)
+    if issue:
+        errors.append(issue)
         return {
             "status": "FAIL",
             "errors": errors,
@@ -79,9 +97,6 @@ def run_health_check() -> dict[str, Any]:
     scheme = (parsed.scheme or "").lower()
     if not scheme.startswith("postgres"):
         errors.append(f"scheme inválido para PostgreSQL cloud: {scheme or 'unknown'}")
-
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
 
     from sqlalchemy import text
 

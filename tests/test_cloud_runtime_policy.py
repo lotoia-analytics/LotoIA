@@ -37,6 +37,7 @@ def test_cloud_policy_fails_without_database_url(monkeypatch, tmp_path: Path) ->
     monkeypatch.setenv("LOTOIA_CLOUD_ONLY", "1")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
 
     result = evaluate_cloud_runtime_policy(tmp_path / "lotoia.db")
     assert result.ok is False
@@ -69,6 +70,7 @@ def test_cloud_runtime_detected_from_railway_public_domain(monkeypatch) -> None:
 
 def test_cloud_policy_snapshot_reports_status(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     monkeypatch.delenv("LOTOIA_CLOUD_ONLY", raising=False)
 
     snapshot = cloud_runtime_policy_snapshot(tmp_path / "lotoia.db")
@@ -79,6 +81,7 @@ def test_cloud_policy_snapshot_reports_status(monkeypatch, tmp_path: Path) -> No
 def test_cloud_policy_fails_on_operational_path_without_database_url(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     monkeypatch.delenv("LOTOIA_CLOUD_ONLY", raising=False)
 
     result = evaluate_cloud_runtime_policy(Path("data/lotoia.db"))
@@ -89,6 +92,7 @@ def test_cloud_policy_fails_on_operational_path_without_database_url(monkeypatch
 def test_operational_adapter_requires_database_url(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
 
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         InstitutionalDatabaseAdapter(Path("data/lotoia.db")).database_url
@@ -97,6 +101,7 @@ def test_operational_adapter_requires_database_url(monkeypatch) -> None:
 def test_ephemeral_sqlite_still_allowed_without_database_url(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
 
     adapter = InstitutionalDatabaseAdapter(tmp_path / "lotoia.db")
     assert adapter.backend == "sqlite"

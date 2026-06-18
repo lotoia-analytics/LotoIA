@@ -57,6 +57,10 @@ def apply_migrations(*, dry_run: bool = False) -> dict:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
+    from lotoia.database.env_resolution import promote_resolved_database_url_to_env
+
+    promote_resolved_database_url_to_env()
+
     from sqlalchemy import text
 
     from lotoia.database.database import DEFAULT_DATABASE_PATH, get_engine

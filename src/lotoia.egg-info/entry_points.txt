@@ -1,0 +1,2 @@
+[console_scripts]
+lotoia = lotoia.__main__:main
