@@ -161,6 +161,7 @@ from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
     build_operational_generations_aggregate_summary,
     is_all_operational_generations_selection,
+    diagnose_operational_coverage_gap,
     load_operational_core_002_generations,
     sync_persisted_event_operational_status,
 )
@@ -211,6 +212,7 @@ from lotoia.operations.lot_operational_status import (
     GENERATION_ORIGIN_SIMULATION,
     MISSION_ID as LOT_STATUS_MISSION_ID,
     build_lot_status_context,
+    defer_lot_status_for_structural_coverage,
     extract_lot_operational_status,
     is_analytical_history_eligible,
     is_official_conference_eligible,
@@ -8963,7 +8965,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     if st.session_state.pop("_bust_operational_coverage_cache", False):
         _invalidate_operational_structural_cache()
 
-    operational_generations = _cached_operational_core_002_generations(str(DB_PATH))
+    operational_generations = load_operational_core_002_generations(DB_PATH)
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
     scope_summary = build_active_coverage_scope_summary(
         operational_generations,
@@ -8988,6 +8990,11 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                 use_container_width=True,
             )
     if not operational_generations:
+        coverage_gap = diagnose_operational_coverage_gap(DB_PATH)
+        if int(coverage_gap.get("generation_event_id", 0) or 0) > 0:
+            st.info(str(coverage_gap.get("user_message") or ""))
+            with st.expander("Diagnóstico — último lote CORE_002 persistido", expanded=True):
+                st.json(coverage_gap)
         st.warning(EMPTY_OPERATIONAL_MESSAGE)
         _render_historical_structural_coverage_section()
         return
@@ -11572,6 +11579,12 @@ def _persist_clean_law15_generation_history(
         calibration_applied=bool(ml_bundle.get("calibration_applied")),
         calibration_authorized=calibration_authorized,
         simulation_mode=simulation_mode,
+    )
+    lot_status_context = defer_lot_status_for_structural_coverage(
+        lot_status_context,
+        generation_origin=generation_origin,
+        simulation_mode=simulation_mode,
+        ml_verdict_payload=ml_verdict_payload,
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])

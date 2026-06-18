@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
 
 MISSION_ID = "M-OPS-062"
+DEFERRED_COVERAGE_MISSION_ID = "M-OPS-062-FIX-06"
 
 VERDICT_APROVADO = "APROVADO"
 VERDICT_APROVADO_COM_ALERTA = "APROVADO COM ALERTA"
@@ -25,6 +26,14 @@ STATUS_REJECTED = "rejected"
 STATUS_BLOCKED_FOR_OFFICIALIZATION = "blocked_for_officialization"
 STATUS_SUPERSEDED_BY_CALIBRATION = "superseded_by_calibration"
 STATUS_NOT_OFFICIALIZED = "not_officialized"
+
+PERSIST_TIME_INACTIVE_COVERAGE_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_REJECTED,
+        STATUS_BLOCKED_FOR_OFFICIALIZATION,
+        STATUS_CALIBRATION_APPLIED,
+    }
+)
 
 GENERATION_ORIGIN_GENERATOR = "generator"
 GENERATION_ORIGIN_SIMULATION = "simulation"
@@ -145,6 +154,60 @@ def is_analytical_history_eligible(context: Mapping[str, Any] | None) -> bool:
     if status:
         return status in ANALYTICAL_HISTORY_STATUSES
     return _legacy_ml_release_allowed(context)
+
+
+def should_defer_generator_persist_verdict_for_coverage(context: Mapping[str, Any] | None) -> bool:
+    """Lotes do Gerador com veredito ML na persistência ainda não revisados na Cobertura."""
+    if not isinstance(context, Mapping):
+        return False
+    origin = str(context.get("generation_origin") or GENERATION_ORIGIN_GENERATOR).strip().lower()
+    if origin != GENERATION_ORIGIN_GENERATOR:
+        return False
+    if context.get("simulation_mode"):
+        return False
+    if context.get("structural_coverage_review_completed"):
+        return False
+    if context.get("active_reading_scope") is False and str(
+        context.get("excluded_from_active_reading_reason") or ""
+    ).strip():
+        return False
+    lot_status = extract_lot_operational_status(context)
+    if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
+        return False
+    return bool(str(context.get("ml_verdict") or "").strip())
+
+
+def defer_lot_status_for_structural_coverage(
+    lot_status_context: Mapping[str, Any],
+    *,
+    generation_origin: str,
+    simulation_mode: bool,
+    ml_verdict_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Garante visibilidade na Cobertura antes da revisão Central ML (M-OPS-062)."""
+    merged = dict(lot_status_context)
+    if simulation_mode or str(generation_origin or "").strip().lower() == GENERATION_ORIGIN_SIMULATION:
+        return merged
+    lot_status = extract_lot_operational_status(merged)
+    if is_active_structural_reading_status(lot_status):
+        return merged
+    if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
+        return merged
+    verdict = str(ml_verdict_payload.get("ml_verdict") or "")
+    merged.update(
+        {
+            "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
+            "is_active_structural_reading": True,
+            "is_official_conference_eligible": False,
+            "is_analytical_history_eligible": False,
+            "official_release_allowed": False,
+            "ml_persist_verdict": verdict,
+            "ml_persist_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
+            "ml_persist_verdict_deferred_for_coverage": True,
+            "structural_coverage_defer_mission_id": DEFERRED_COVERAGE_MISSION_ID,
+        }
+    )
+    return merged
 
 
 def build_lot_status_context(
