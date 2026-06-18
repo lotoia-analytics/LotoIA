@@ -537,6 +537,7 @@ def generate_best_games(
     ml_enabled: bool = False,
     seed: int | None = None,
     batch_label: str | None = None,
+    calibration_plan: dict[str, object] | None = None,
 ) -> dict[str, object]:
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
@@ -690,6 +691,7 @@ def generate_best_games(
             games,
             game_size=count,
             ml_enabled=True,
+            calibration_plan=calibration_plan,
         )
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp

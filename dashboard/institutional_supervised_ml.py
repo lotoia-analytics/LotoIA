@@ -28,6 +28,7 @@ from lotoia.ml.supervised_output_calibration import (
     is_output_calibration_enabled,
 )
 from lotoia.observability.coverage_evidence_interpreter import (
+    build_calibration_plan,
     get_structural_coverage_evidence,
     interpret_coverage_evidence,
 )
@@ -37,6 +38,7 @@ VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
+VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 AGGREGATE_SCOPE_LABEL = "Escopo analisado: visão geral das gerações oficiais recentes"
 AGGREGATE_DIAGNOSIS_HEADLINE = "Diagnóstico geral da saída CORE_002 + ML"
 DEFAULT_AGGREGATE_EVENTS_LIMIT = 10
@@ -763,13 +765,23 @@ def build_ml_calibration_recommendations(
     coverage_evidence: Mapping[str, Any] | None = None,
 ) -> list[str]:
     if isinstance(coverage_evidence, Mapping) and coverage_evidence.get("available"):
+        plan_items = list(coverage_evidence.get("plan_items") or [])
+        if plan_items:
+            return plan_items[:12]
+        calibration_plan = dict(coverage_evidence.get("calibration_plan") or {})
+        plan_items = list(calibration_plan.get("plan_items") or [])
+        if plan_items:
+            return plan_items[:12]
         recs = list(coverage_evidence.get("acoes_recomendadas") or [])
         if recs:
-            return recs[:6]
+            return recs[:12]
         interpretation = dict(coverage_evidence.get("interpretation") or {})
+        plan_items = list(interpretation.get("plan_items") or [])
+        if plan_items:
+            return plan_items[:12]
         recs = list(interpretation.get("acoes_recomendadas") or [])
         if recs:
-            return recs[:6]
+            return recs[:12]
 
     if not isinstance(source, Mapping):
         return ["Gerar lote CORE_002 com ML ativo para obter diagnóstico estrutural."]
@@ -1122,10 +1134,14 @@ def build_ml_calibration_cockpit_snapshot(
     latest_event = dict(event_details[0]) if event_details else {}
     primary_decision = dict(coverage_evidence.get("primary_decision") or {})
     decision_blocks = list(coverage_evidence.get("decision_blocks") or [])
+    calibration_plan = dict(coverage_evidence.get("calibration_plan") or {})
+    if not calibration_plan.get("plan_items") and coverage_evidence.get("available"):
+        calibration_plan = build_calibration_plan(dict(coverage_evidence.get("metrics") or {}))
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
+        "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
@@ -1149,6 +1165,18 @@ def build_ml_calibration_cockpit_snapshot(
         "coverage_evidence": coverage_evidence,
         "primary_decision": primary_decision,
         "decision_blocks": decision_blocks,
+        "calibration_plan": calibration_plan,
+        "plan_items": list(calibration_plan.get("plan_items") or recommendations),
+        "impacto_detalhado": list(
+            calibration_plan.get("impact_items")
+            or coverage_evidence.get("impacto_detalhado")
+            or []
+        ),
+        "parametros_sugeridos": dict(
+            calibration_plan.get("parametros_sugeridos")
+            or coverage_evidence.get("parametros_sugeridos")
+            or {}
+        ),
         "aggregate": aggregate,
         "lot_details": list(aggregate.get("lot_rows") or []),
         "panel": panel,
@@ -1167,28 +1195,99 @@ def build_cockpit_persist_bundle(
     coverage_evidence: Mapping[str, Any] | None = None,
     primary_decision: Mapping[str, Any] | None = None,
     operator_decision: str = "",
+    calibration_plan: Mapping[str, Any] | None = None,
+    impacto_detalhado: list[str] | None = None,
+    parametros_sugeridos: Mapping[str, Any] | None = None,
+    operador: str = "operador_adm",
 ) -> dict[str, Any]:
     evidence = dict(coverage_evidence or {})
     decision = dict(primary_decision or evidence.get("primary_decision") or {})
+    plan = dict(calibration_plan or evidence.get("calibration_plan") or {})
+    plan_items = list(plan.get("plan_items") or recommendations)
+    impact_items = list(
+        impacto_detalhado
+        or plan.get("impact_items")
+        or evidence.get("impacto_detalhado")
+        or []
+    )
+    suggested_params = dict(
+        parametros_sugeridos
+        or plan.get("parametros_sugeridos")
+        or evidence.get("parametros_sugeridos")
+        or {}
+    )
     calibration_authorized = workflow_status == COCKPIT_WORKFLOW_AUTHORIZED
+    trace = {
+        "mission_id": VIS_COVERAGE_EVIDENCE_MISSION_ID,
+        "fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
+        "cockpit_mission_id": VIS_COCKPIT_MISSION_ID,
+        "workflow_status": workflow_status,
+        "operator_decision": operator_decision or workflow_status,
+        "operador": operador,
+        "decision_at": decision_at,
+        "calibration_authorized": calibration_authorized,
+        "apply_next_generation": bool(apply_next_generation),
+        "plan_items_count": len(plan_items),
+        "evidencias_count": len(evidence.get("evidencias") or []),
+    }
+    if decision.get("trace"):
+        trace.update(dict(decision.get("trace") or {}))
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
+        "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "cockpit_scope": scope,
         "cockpit_workflow_status": workflow_status,
         "cockpit_decision_at": decision_at,
         "cockpit_apply_next_generation": bool(apply_next_generation),
-        "cockpit_recommendations": list(recommendations),
+        "cockpit_recommendations": list(plan_items or recommendations),
+        "calibration_plan": plan,
+        "plan_items": list(plan_items),
+        "impacto_detalhado": impact_items,
+        "parametros_sugeridos": suggested_params,
+        "operador": operador,
         "supervised_calibration_active": is_supervised_output_calibration_active(),
         "coverage_evidence_snapshot": dict(evidence.get("coverage_evidence_snapshot") or {}),
         "problemas_detectados": list(evidence.get("problemas_detectados") or []),
         "evidencias": list(evidence.get("evidencias") or []),
-        "acoes_recomendadas": list(recommendations),
-        "impacto_esperado": str(decision.get("impacto_esperado") or evidence.get("impacto_esperado") or ""),
+        "acoes_recomendadas": list(plan_items or recommendations),
+        "impacto_esperado": "; ".join(impact_items) if impact_items else str(
+            decision.get("impacto_esperado") or evidence.get("impacto_esperado") or ""
+        ),
         "decisao_operador": operator_decision or workflow_status,
         "calibration_authorized": calibration_authorized,
         "calibration_applied": workflow_status == COCKPIT_WORKFLOW_APPLIED,
-        "trace": dict(decision.get("trace") or {"mission_id": VIS_COVERAGE_EVIDENCE_MISSION_ID}),
+        "trace": trace,
         "timestamp": decision_at,
+    }
+
+
+def resolve_authorized_calibration_plan(
+    cockpit_bundle: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Retorna plano autorizado quando operador aplicou calibração na próxima geração."""
+    if not isinstance(cockpit_bundle, Mapping):
+        return None
+    if not bool(cockpit_bundle.get("cockpit_apply_next_generation")):
+        return None
+    if not bool(cockpit_bundle.get("calibration_authorized")):
+        return None
+    plan = dict(cockpit_bundle.get("calibration_plan") or {})
+    plan_items = list(cockpit_bundle.get("plan_items") or plan.get("plan_items") or [])
+    if not plan_items:
+        return None
+    return {
+        "mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
+        "plan_items": plan_items,
+        "impact_items": list(cockpit_bundle.get("impacto_detalhado") or plan.get("impact_items") or []),
+        "parametros_sugeridos": dict(
+            cockpit_bundle.get("parametros_sugeridos") or plan.get("parametros_sugeridos") or {}
+        ),
+        "evidencias": list(cockpit_bundle.get("evidencias") or []),
+        "problemas_detectados": list(cockpit_bundle.get("problemas_detectados") or []),
+        "trace": dict(cockpit_bundle.get("trace") or {}),
+        "operador": str(cockpit_bundle.get("operador") or "operador_adm"),
+        "timestamp": str(cockpit_bundle.get("timestamp") or cockpit_bundle.get("cockpit_decision_at") or ""),
+        "authorized": True,
     }

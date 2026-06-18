@@ -70,13 +70,19 @@ def _build_persist_bundle(
     apply_next_generation: bool,
     operator_decision: str = "",
 ) -> dict[str, Any]:
+    coverage = dict(snapshot.get("coverage_evidence") or {})
     return build_cockpit_persist_bundle(
         workflow_status=workflow_status,
         decision_at=decision_at,
         apply_next_generation=apply_next_generation,
-        recommendations=list(snapshot.get("recommendations") or []),
-        coverage_evidence=dict(snapshot.get("coverage_evidence") or {}),
+        recommendations=list(snapshot.get("recommendations") or snapshot.get("plan_items") or []),
+        coverage_evidence=coverage,
         primary_decision=dict(snapshot.get("primary_decision") or {}),
+        calibration_plan=dict(snapshot.get("calibration_plan") or coverage.get("calibration_plan") or {}),
+        impacto_detalhado=list(snapshot.get("impacto_detalhado") or coverage.get("impacto_detalhado") or []),
+        parametros_sugeridos=dict(
+            snapshot.get("parametros_sugeridos") or coverage.get("parametros_sugeridos") or {}
+        ),
         operator_decision=operator_decision,
     )
 
@@ -147,25 +153,35 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
 
 
 def _render_recommendation_card(snapshot: dict[str, Any]) -> None:
-    st.markdown("#### 3. Ação recomendada")
-    primary = dict(snapshot.get("primary_decision") or {})
-    recommendations = list(snapshot.get("recommendations") or [])
-    if primary.get("acao_recomendada"):
-        st.markdown(primary["acao_recomendada"])
-    elif recommendations:
-        for item in recommendations:
-            st.markdown(f"- {item}")
+    st.markdown("#### 3. Plano de calibração recomendado")
+    plan_items = list(snapshot.get("plan_items") or [])
+    calibration_plan = dict(snapshot.get("calibration_plan") or {})
+    if not plan_items:
+        plan_items = list(calibration_plan.get("plan_items") or [])
+    if not plan_items:
+        plan_items = list(snapshot.get("recommendations") or [])
+    if plan_items:
+        for index, item in enumerate(plan_items, start=1):
+            st.markdown(f"{index}. {item}")
     else:
-        st.caption("Nenhuma recomendação pendente — aguardando evidências.")
+        st.caption("Nenhum plano pendente — aguardando evidências da Cobertura Estrutural.")
 
 
 def _render_impact_card(snapshot: dict[str, Any]) -> None:
     st.markdown("#### 4. Impacto esperado")
-    primary = dict(snapshot.get("primary_decision") or {})
+    impact_items = list(snapshot.get("impacto_detalhado") or [])
+    calibration_plan = dict(snapshot.get("calibration_plan") or {})
+    if not impact_items:
+        impact_items = list(calibration_plan.get("impact_items") or [])
     coverage = dict(snapshot.get("coverage_evidence") or {})
-    impact = str(primary.get("impacto_esperado") or coverage.get("impacto_esperado") or "")
-    if impact:
-        st.markdown(impact)
+    if not impact_items:
+        primary = dict(snapshot.get("primary_decision") or {})
+        fallback = str(primary.get("impacto_esperado") or coverage.get("impacto_esperado") or "")
+        if fallback:
+            impact_items = [fallback]
+    if impact_items:
+        for item in impact_items:
+            st.markdown(f"- {item}")
     else:
         st.caption("Impacto será estimado após diagnóstico com evidências estruturais.")
 
