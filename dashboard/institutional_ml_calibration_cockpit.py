@@ -180,6 +180,49 @@ def _render_overlap_format_verdict(snapshot: dict[str, Any]) -> None:
                 )
 
 
+def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("#### Veredito ML")
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    verdict = str(
+        snapshot.get("ml_verdict")
+        or coverage.get("ml_verdict")
+        or "APROVADO"
+    ).strip()
+    reason = str(
+        snapshot.get("motivo_principal")
+        or snapshot.get("ml_verdict_reason")
+        or coverage.get("motivo_principal")
+        or coverage.get("ml_verdict_reason")
+        or "—"
+    )
+    release_label = str(
+        snapshot.get("official_release_label")
+        or coverage.get("official_release_label")
+        or ("LIBERADA" if snapshot.get("official_release_allowed", True) else "NÃO LIBERADA")
+    )
+    next_action = str(
+        snapshot.get("proxima_acao")
+        or snapshot.get("next_action")
+        or coverage.get("proxima_acao")
+        or coverage.get("next_action")
+        or "—"
+    )
+    if verdict in {"REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
+        st.error(f"**{verdict}**")
+    elif verdict in {"PRECISA CALIBRAR", "APROVADO COM ALERTA"}:
+        st.warning(f"**{verdict}**")
+    else:
+        st.success(f"**{verdict}**")
+    st.markdown(f"**Motivo principal:**  \n{reason}")
+    st.markdown(f"**Liberação oficial:**  \n{release_label}")
+    st.markdown(f"**Próxima ação:**  \n{next_action}")
+    plan_items = list(snapshot.get("plan_items") or [])
+    if plan_items:
+        st.markdown("**Plano recomendado:**")
+        for index, item in enumerate(plan_items[:5], start=1):
+            st.markdown(f"{index}. {item}")
+
+
 def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
     st.markdown("#### 2. Evidências e decisão")
     coverage = dict(snapshot.get("coverage_evidence") or {})
@@ -190,6 +233,8 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
     if not coverage.get("available"):
         st.info("Aguardando evidências da Cobertura Estrutural no PostgreSQL.")
         return
+
+    _render_ml_verdict_card(snapshot)
 
     if primary:
         st.markdown(f"**Problema detectado:**  \n{primary.get('problema_detectado', '—')}")
@@ -208,7 +253,12 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
                 row = dict(block)
                 st.markdown(f"- **{row.get('problema_detectado', '—')}** — {row.get('evidencia', '—')}")
 
-    st.markdown(f"**Decisão:**  \n{_decision_status_label(workflow)}")
+    st.markdown(f"**Decisão operador:**  \n{_decision_status_label(workflow)}")
+    verdict = str(snapshot.get("ml_verdict") or coverage.get("ml_verdict") or "")
+    if verdict in {"PRECISA CALIBRAR", "REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
+        st.caption(
+            "Veredito ML bloqueia oficialização — aguardando calibração supervisionada autorizada."
+        )
 
 
 def _render_recommendation_card(snapshot: dict[str, Any]) -> None:

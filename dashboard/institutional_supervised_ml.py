@@ -47,6 +47,7 @@ VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
 OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
+ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
 )
@@ -1168,6 +1169,8 @@ def build_ml_calibration_cockpit_snapshot(
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
     aggregate = build_ml_calibration_aggregate_context(event_details)
+    if workflow_status in {COCKPIT_WORKFLOW_AUTHORIZED, COCKPIT_WORKFLOW_APPLIED}:
+        aggregate = {**aggregate, "calibration_authorized": True}
     ml_event_ids = [
         int(row.get("generation_event_id", 0) or 0)
         for row in event_details
@@ -1219,6 +1222,17 @@ def build_ml_calibration_cockpit_snapshot(
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "coverage_sovereign_mission_id": VIS_COVERAGE_SOVEREIGN_MISSION_ID,
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
+        "ml_verdict": str(coverage_evidence.get("ml_verdict") or ""),
+        "ml_verdict_reason": str(coverage_evidence.get("ml_verdict_reason") or ""),
+        "motivo_principal": str(coverage_evidence.get("motivo_principal") or ""),
+        "official_release_allowed": bool(coverage_evidence.get("official_release_allowed", True)),
+        "official_release_label": str(coverage_evidence.get("official_release_label") or ""),
+        "officialization_status": str(coverage_evidence.get("officialization_status") or ""),
+        "next_action": str(coverage_evidence.get("next_action") or ""),
+        "proxima_acao": str(coverage_evidence.get("proxima_acao") or ""),
+        "ml_verdict_trace": dict(coverage_evidence.get("ml_verdict_trace") or {}),
+        "ml_verdict_payload": dict(coverage_evidence.get("ml_verdict_payload") or {}),
         "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
@@ -1302,6 +1316,7 @@ def build_cockpit_persist_bundle(
         "mission_id": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "cockpit_mission_id": VIS_COCKPIT_MISSION_ID,
+        "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
         "workflow_status": workflow_status,
         "operator_decision": operator_decision or workflow_status,
         "operador": operador,
@@ -1314,12 +1329,34 @@ def build_cockpit_persist_bundle(
     }
     if decision.get("trace"):
         trace.update(dict(decision.get("trace") or {}))
+    ml_verdict_payload = dict(evidence.get("ml_verdict_payload") or {})
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
+        "ml_verdict": str(evidence.get("ml_verdict") or ml_verdict_payload.get("ml_verdict") or ""),
+        "ml_verdict_reason": str(
+            evidence.get("ml_verdict_reason") or ml_verdict_payload.get("ml_verdict_reason") or ""
+        ),
+        "motivo_principal": str(
+            evidence.get("motivo_principal") or ml_verdict_payload.get("motivo_principal") or ""
+        ),
+        "official_release_allowed": bool(
+            evidence.get("official_release_allowed", ml_verdict_payload.get("official_release_allowed", True))
+        ),
+        "official_release_label": str(
+            evidence.get("official_release_label") or ml_verdict_payload.get("official_release_label") or ""
+        ),
+        "officialization_status": str(
+            evidence.get("officialization_status") or ml_verdict_payload.get("officialization_status") or ""
+        ),
+        "next_action": str(evidence.get("next_action") or ml_verdict_payload.get("next_action") or ""),
+        "proxima_acao": str(evidence.get("proxima_acao") or ml_verdict_payload.get("proxima_acao") or ""),
+        "ml_verdict_trace": dict(evidence.get("ml_verdict_trace") or ml_verdict_payload.get("trace") or {}),
+        "ml_verdict_payload": ml_verdict_payload,
         "overlap_format_memory": dict(evidence.get("overlap_format_memory") or {}),
         "format_analyses": list(evidence.get("format_analyses") or plan.get("format_analyses") or []),
         "primary_format_analysis": dict(

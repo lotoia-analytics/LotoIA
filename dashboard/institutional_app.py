@@ -171,6 +171,12 @@ from dashboard.institutional_ml_calibration_cockpit import (
     SESSION_PERSIST as COCKPIT_SESSION_PERSIST,
     render_ml_calibration_cockpit,
 )
+from lotoia.ml.ml_operational_verdict import (
+    MISSION_ID as ML_VERDICT_MISSION_ID,
+    evaluate_batch_ml_verdict_from_games,
+    is_ml_official_release_allowed,
+    is_ml_verdict_blocking,
+)
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
     is_multidezena_persistence_supported,
@@ -2747,7 +2753,20 @@ def _classify_generation_visibility(
     is_guardian_rejected = commander_status != "APROVADO" or total_duplicates > 0
     is_scientific_rejected = bool(scientific_status) and scientific_status != "APROVADO" and not approved_for_use
     is_calibration_only = bool(decision_mode) and decision_mode == "OBSERVACAO" and bool(scientific_status) and not approved_for_use
-    if is_guardian_rejected:
+    ml_verdict = str(generation.get("ml_verdict") or "").strip().upper()
+    ml_verdict_reason = str(generation.get("ml_verdict_reason") or generation.get("motivo_principal") or "").strip()
+    official_release_allowed = generation.get("official_release_allowed")
+    if official_release_allowed is None and ml_verdict:
+        official_release_allowed = is_ml_official_release_allowed({"ml_verdict": ml_verdict})
+    elif official_release_allowed is None:
+        official_release_allowed = True
+    is_ml_verdict_rejected = bool(ml_verdict) and not bool(official_release_allowed)
+    if is_ml_verdict_rejected:
+        visibility_label = "Bloqueado — Veredito ML"
+        visibility_kind = "ml_verdict_blocked"
+        visibility_reason = ml_verdict_reason or f"veredito ML: {ml_verdict}"
+        is_conferible = False
+    elif is_guardian_rejected:
         visibility_label = "Rejeitado pelo Guardião"
         visibility_kind = "rejected_guardian"
         visibility_reason = "bateria bloqueada pelo comandante ou com duplicidade"
@@ -2791,6 +2810,10 @@ def _classify_generation_visibility(
         "is_guardian_rejected": is_guardian_rejected,
         "is_scientific_rejected": is_scientific_rejected,
         "is_calibration_only": is_calibration_only,
+        "ml_verdict": ml_verdict or "-",
+        "ml_verdict_reason": ml_verdict_reason or "-",
+        "official_release_allowed": bool(official_release_allowed),
+        "is_ml_verdict_blocked": is_ml_verdict_rejected,
     }
 
 
@@ -6002,6 +6025,8 @@ def _load_generation_event_ids_for_batch(batch_id: str | None) -> list[int]:
 
 def _get_latest_unreconciled_generation_event_id(batch_id: str | None = None) -> int | None:
     for group in _load_persisted_generation_event_groups(batch_id=batch_id):
+        if not bool(group.get("official_release_allowed", True)):
+            continue
         if not bool(group.get("is_conferida", False)):
             return _safe_int(group.get("generation_event_id"), default=None)
     return None
@@ -6094,18 +6119,33 @@ def _load_persisted_generation_event_groups(batch_id: str | None = None) -> list
                 value = _safe_int(_safe_get(row, "target_contest"), default=None)
                 if value is not None and value > 0:
                     target_contests.append(value)
+            event_context = dict(getattr(event, "context_json", {}) or {})
+            first_row_context = dict(rows[0].context_json or {}) if rows else {}
+            batch_id_value = str(
+                event_context.get("batch_id") or first_row_context.get("batch_id", "") or ""
+            )
+            ml_verdict_payload = {
+                "ml_verdict": str(event_context.get("ml_verdict") or ""),
+                "official_release_allowed": event_context.get("official_release_allowed"),
+            }
+            official_release_allowed = is_ml_official_release_allowed(ml_verdict_payload)
             groups.append(
                 {
                     "generation_event_id": int(event.id or 0),
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
-                    "batch_id": str(context_json.get("batch_id", "") or ""),
+                    "batch_id": batch_id_value,
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
                     "reconciliation": reconciliation_summary or {},
                     "conference_status": "Conferido" if reconciliation_summary else "Nao conferido",
                     "is_conferida": bool(reconciliation_summary),
+                    "official_release_allowed": official_release_allowed,
+                    "ml_verdict": str(event_context.get("ml_verdict") or ""),
+                    "ml_verdict_reason": str(
+                        event_context.get("ml_verdict_reason") or event_context.get("motivo_principal") or ""
+                    ),
                     "games": games,
                     "structural_summary": _summarize_games_structurally([game["numbers"] for game in games]),
                 }
@@ -6143,12 +6183,25 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
                 "warning": "Concurso não encontrado em imported_contests. Escolha um concurso válido persistido.",
             }
             return
-    grouped_generations = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
-    if not grouped_generations:
+    all_persisted_groups = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
+    grouped_generations = [
+        group
+        for group in all_persisted_groups
+        if bool(group.get("official_release_allowed", True))
+    ]
+    if not all_persisted_groups:
         st.session_state["institutional_check_result"] = {
             "warning": (
                 "Sem lote persistido para conferir. Ação bloqueada por Lei 001. "
                 "Use Simulação Institucional para laboratório histórico."
+            )
+        }
+        return
+    if not grouped_generations:
+        st.session_state["institutional_check_result"] = {
+            "warning": (
+                "Sem lote oficial liberado para conferir. Lotes bloqueados pelo Veredito ML permanecem "
+                "pendentes de calibração. Autorize calibração supervisionada na Central ML."
             )
         }
         return
@@ -6678,11 +6731,28 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
             top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
             first_context = dict(games[0].get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
+            event_context = dict(getattr(event, "context_json", {}) or {})
             visibility_context = _classify_generation_visibility(
                 generation={
-                    "batch_id": str(first_context.get("batch_id", "") or ""),
-                    "status_comandante_saida": str(first_context.get("status_comandante_saida", "APROVADO") or "APROVADO"),
-                    "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
+                    "batch_id": str(first_context.get("batch_id") or event_context.get("batch_id", "") or ""),
+                    "status_comandante_saida": str(
+                        first_context.get("status_comandante_saida")
+                        or event_context.get("status_comandante_saida", "APROVADO")
+                        or "APROVADO"
+                    ),
+                    "total_jogos_duplicados": int(
+                        first_context.get("total_jogos_duplicados")
+                        or event_context.get("total_jogos_duplicados", 0)
+                        or 0
+                    ),
+                    "ml_verdict": str(event_context.get("ml_verdict") or first_context.get("ml_verdict") or ""),
+                    "ml_verdict_reason": str(
+                        event_context.get("ml_verdict_reason")
+                        or event_context.get("motivo_principal")
+                        or first_context.get("ml_verdict_reason")
+                        or ""
+                    ),
+                    "official_release_allowed": event_context.get("official_release_allowed"),
                 },
                 scientific_decision=scientific_decisions.get(str(first_context.get("batch_id", "") or "").strip(), {}),
                 scientific_memory=scientific_memories.get(str(first_context.get("batch_id", "") or "").strip(), {}),
@@ -6908,6 +6978,8 @@ def _load_institutional_timeline_light(limit: int = 25) -> list[dict[str, Any]]:
 def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for entry in _load_generation_history(limit=limit):
+        if not bool(entry.get("official_release_allowed", True)):
+            continue
         top_game = (entry.get("top_games") or [{}])[0] if entry.get("top_games") else {}
         top_numbers = " ".join(f"{number:02d}" for number in top_game.get("numbers", [])[:15]) if top_game else "-"
         items.append(
@@ -7023,6 +7095,8 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=25):
+        if not bool(generation.get("official_release_allowed", True)):
+            continue
         for game in generation.get("games", []) or []:
             rows.append(
                 _analytical_row_from_game(
@@ -7038,6 +7112,8 @@ def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, A
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=limit):
+        if not bool(generation.get("official_release_allowed", True)):
+            continue
         for game in generation.get("games", []) or []:
             rows.append(
                 _analytical_row_from_game(
@@ -11071,6 +11147,13 @@ def _persist_clean_law15_generation_history(
         ml_enabled=ml_enabled,
         calibration_bundle=dict(result.get("calibration_bundle") or {}),
     )
+    cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
+    calibration_authorized = bool(cockpit_bundle.get("calibration_authorized"))
+    ml_verdict_payload = evaluate_batch_ml_verdict_from_games(
+        formatted_games,
+        calibration_applied=bool(ml_bundle.get("calibration_applied")),
+        calibration_authorized=calibration_authorized,
+    )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])
     trace_lineages = list(ml_bundle.get("generation_lineage") or [])
@@ -11159,13 +11242,23 @@ def _persist_clean_law15_generation_history(
         "batch_status_counts": dict(ml_bundle.get("batch_status_counts") or {}),
         "action_taken": str(ml_bundle.get("action_taken") or ""),
         "cockpit_calibration_workflow": dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {}),
+        "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
+        "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
+        "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
+        "motivo_principal": str(ml_verdict_payload.get("motivo_principal") or ""),
+        "official_release_allowed": bool(ml_verdict_payload.get("official_release_allowed")),
+        "official_release_label": str(ml_verdict_payload.get("official_release_label") or ""),
+        "officialization_status": str(ml_verdict_payload.get("officialization_status") or ""),
+        "ml_verdict_trace": dict(ml_verdict_payload.get("trace") or {}),
+        "ml_verdict_next_action": str(ml_verdict_payload.get("next_action") or ""),
+        "is_evaluated_non_official": not bool(ml_verdict_payload.get("official_release_allowed")),
         "historical_deduplication_mode": str(result.get("historical_deduplication_mode", "AUDIT_ONLY") or "AUDIT_ONLY"),
         "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
         "card_format": int(selected_card_format),
     }
     try:
-        return _attach_operational_generation_label(
+        persisted = _attach_operational_generation_label(
             _persist_generation_snapshot(
                 games=payload_games,
                 seed=int(result.get("seed", 0) or 0),
@@ -11176,6 +11269,15 @@ def _persist_clean_law15_generation_history(
                 analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
             )
         )
+        return {
+            **persisted,
+            "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
+            "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
+            "official_release_allowed": bool(ml_verdict_payload.get("official_release_allowed")),
+            "official_release_label": str(ml_verdict_payload.get("official_release_label") or ""),
+            "ml_verdict_blocked": not bool(ml_verdict_payload.get("official_release_allowed")),
+            "ml_verdict_next_action": str(ml_verdict_payload.get("next_action") or ""),
+        }
     except RuntimeError as exc:
         return {
             "persistence_blocked": True,

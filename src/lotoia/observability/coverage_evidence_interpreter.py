@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.ml.ml_operational_verdict import (
+    MISSION_ID as ML_VERDICT_MISSION_ID,
+    evaluate_ml_operational_verdict,
+)
 from lotoia.ml.overlap_format_thresholds import (
     LEVEL_CRITICO,
     LEVEL_RUIM,
@@ -499,10 +503,17 @@ def get_structural_coverage_evidence(
     metrics["format_analyses"] = format_analyses
     metrics = _attach_ml_operational_metadata(metrics, ml_aggregate)
     calibration_applied = bool((ml_aggregate or {}).get("calibration_applied"))
+    calibration_authorized = bool((ml_aggregate or {}).get("calibration_authorized"))
     interpretation = interpret_coverage_evidence(
         metrics,
         calibration_applied=calibration_applied,
         trace_persistido=calibration_applied,
+    )
+    ml_verdict_payload = evaluate_ml_operational_verdict(
+        metrics,
+        format_analyses=format_analyses,
+        calibration_applied=calibration_applied,
+        calibration_authorized=calibration_authorized,
     )
     reading = dict(snapshot.get("reading") or {})
 
@@ -538,4 +549,15 @@ def get_structural_coverage_evidence(
         "overlap_format_memory": overlap_format_memory,
         "format_analyses": format_analyses,
         "primary_format_analysis": dict(primary_format or {}),
+        "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
+        "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
+        "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
+        "motivo_principal": str(ml_verdict_payload.get("motivo_principal") or ""),
+        "official_release_allowed": bool(ml_verdict_payload.get("official_release_allowed")),
+        "official_release_label": str(ml_verdict_payload.get("official_release_label") or ""),
+        "officialization_status": str(ml_verdict_payload.get("officialization_status") or ""),
+        "next_action": str(ml_verdict_payload.get("next_action") or ""),
+        "proxima_acao": str(ml_verdict_payload.get("proxima_acao") or ""),
+        "ml_verdict_trace": dict(ml_verdict_payload.get("trace") or {}),
+        "ml_verdict_payload": ml_verdict_payload,
     }
