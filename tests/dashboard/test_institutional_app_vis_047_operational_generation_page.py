@@ -15,7 +15,7 @@ def _page_source() -> str:
 
 
 def test_institutional_app_build_v23() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v26"
+    assert BUILD_MARKER == "institutional-adm-runtime-v27"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
@@ -48,10 +48,10 @@ def test_runtime_module_multidezena_options_15_to_23() -> None:
     assert "Lei 15A" not in clean_runtime.multidezena_format_label(18)
 
 
-def test_multidezena_persistence_only_15d_supported() -> None:
-    assert clean_runtime.is_multidezena_persistence_supported(15) is True
-    assert clean_runtime.is_multidezena_persistence_supported(16) is False
-    assert clean_runtime.is_multidezena_persistence_supported(23) is False
+def test_multidezena_persistence_supported_15_to_23() -> None:
+    for card_format in range(15, 24):
+        assert clean_runtime.is_multidezena_persistence_supported(card_format) is True
+    assert clean_runtime.is_multidezena_persistence_supported(24) is False
 
 
 def test_sovereign_generation_still_works(

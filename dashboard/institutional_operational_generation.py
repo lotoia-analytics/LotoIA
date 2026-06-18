@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL as SOVEREIGN_BATCH_LABEL
+from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL as SOVEREIGN_BATCH_LABEL, is_sovereign_core_label
 
 MISSION_ID = "M-DADOS-049"
 
@@ -26,15 +26,14 @@ def build_operational_generation_index(
     *,
     sovereign_batch_label: str = SOVEREIGN_BATCH_LABEL,
 ) -> dict[int, int]:
-    """Mapeia generation_event_id → índice operacional entre lotes soberanos CORE_002."""
-    sovereign_label = _normalize_batch_label(sovereign_batch_label)
+    """Mapeia generation_event_id → índice operacional entre lotes soberanos CORE_002 (15D–23D)."""
     eligible: list[tuple[int, str]] = []
     for row in events:
         ge_id = int(row.get("id") or row.get("generation_event_id") or 0)
         if ge_id <= 0:
             continue
         label = _normalize_batch_label(row.get("analysis_batch_label"))
-        if label != sovereign_label:
+        if not is_sovereign_core_label(label):
             continue
         created_at = str(row.get("created_at") or "")
         eligible.append((ge_id, created_at))
