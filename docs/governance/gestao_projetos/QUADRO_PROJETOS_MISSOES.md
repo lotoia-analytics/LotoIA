@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-18 (M-ML-VIS-053B rota Central ML) |
+| Atualização | 2026-06-18 (M-ML-054 calibração supervisionada saída) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,6 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
+| M-ML-054 | Central ML — calibração supervisionada da saída | `agent_ml` + multiagente | `CONCLUIDA` | build `institutional-adm-runtime-v34` |
 | M-ML-VIS-053B | Rota Central ML — sem fallback M-PLAT-040 | `agent_plataforma` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v33` |
 | M-ML-VIS-053 | Central ML Operacional Supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v32` |
 | M-GER-DADOS-051 | Persistência 16D–23D + Histórico Analítico + remoção GEs | `agent_geracao` + `agent_dados` | `CONCLUIDA` | [PR #162](https://github.com/lotoia-analytics/LotoIA/pull/162) — build `institutional-adm-runtime-v27` |

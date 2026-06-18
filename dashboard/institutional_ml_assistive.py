@@ -13,7 +13,6 @@ from dashboard.institutional_supervised_ml import (
     SUPERVISED_ML_DISCLAIMER,
     SUPERVISED_ML_GOVERNANCE_ALERT,
     SUPERVISED_ML_STATUS_ACTIVE,
-    VIS_MISSION_ID,
     build_ml_six_bases_operational_summary,
     build_supervised_ml_activation_snapshot,
     build_supervised_ml_operational_event_detail,
@@ -443,7 +442,11 @@ def render_supervised_ml_operational_panel(
     )
 
     if payload.get("ml_operational_active"):
-        st.success(str(payload.get("ml_operational_status") or SUPERVISED_ML_STATUS_ACTIVE))
+        status_label = str(payload.get("ml_operational_status") or SUPERVISED_ML_STATUS_ACTIVE)
+        if "CALIBRAÇÃO DE SAÍDA ATIVA" in status_label:
+            st.success(status_label)
+        else:
+            st.success(status_label)
     else:
         st.warning(str(payload.get("ml_operational_status") or "BLOQUEADO"))
 
@@ -509,9 +512,61 @@ def render_supervised_ml_operational_panel(
     meta_cols[4].metric("Formato", f"{int(selected_event.get('card_format', 15) or 15)}D")
     detail_cols = st.columns(4)
     detail_cols[0].write(f"ml_enabled: `{bool(selected_event.get('ml_enabled'))}`")
-    detail_cols[1].write(f"requested_count: `{int(selected_event.get('requested_count', 0) or 0)}`")
+    detail_cols[1].write(
+        f"calibration_applied: `{bool(selected_event.get('calibration_applied'))}`"
+    )
     detail_cols[2].write(f"missão: `{selected_event.get('supervised_ml_mission', '-')}`")
     detail_cols[3].write(f"created_at: `{selected_event.get('created_at', '-')}`")
+
+    if selected_event.get("calibration_applied"):
+        st.markdown("##### Calibração supervisionada de saída (M-ML-054)")
+        cal_cols = st.columns(4)
+        cal_cols[0].metric(
+            "calibration_engine_role",
+            str(selected_event.get("calibration_engine_role") or "-")[:24],
+        )
+        cal_cols[1].metric(
+            "Problemas detectados",
+            len(list(selected_event.get("issues_detected") or [])),
+        )
+        cal_cols[2].metric(
+            "Ações aplicadas",
+            len(list(selected_event.get("calibration_actions_applied") or [])),
+        )
+        cal_cols[3].metric(
+            "diversity_score",
+            f"{float(selected_event.get('diversity_score', 0.0) or 0.0):.3f}",
+        )
+        issues = list(selected_event.get("issues_detected") or [])
+        if issues:
+            st.markdown("**Diagnóstico estrutural**")
+            st.dataframe(
+                pd.DataFrame([{"problema": issue} for issue in issues]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        actions = list(selected_event.get("calibration_actions_applied") or [])
+        if actions:
+            st.markdown("**Ações aplicadas**")
+            st.dataframe(
+                pd.DataFrame([{"acao": action} for action in actions[:30]]),
+                hide_index=True,
+                use_container_width=True,
+            )
+        cal_trace = dict(selected_event.get("calibration_decision_trace") or {})
+        if cal_trace:
+            st.markdown("**Trace de calibração**")
+            st.json(cal_trace)
+        cal_attr = dict(selected_event.get("calibration_feature_attribution") or {})
+        if cal_attr:
+            st.markdown("**Feature attribution — calibração**")
+            st.json(cal_attr)
+        status_counts = dict(selected_event.get("batch_status_counts") or {})
+        if status_counts:
+            st.caption(
+                "Status por jogo: "
+                + ", ".join(f"{key}={value}" for key, value in status_counts.items())
+            )
 
     trace = dict(selected_event.get("decision_trace") or {})
     st.markdown("##### Decision Trace")

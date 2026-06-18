@@ -1,9 +1,9 @@
-"""ML operacional supervisionado CORE_002 — estado institucional (M-ML-045 / M-ML-VIS-053)."""
+"""ML operacional supervisionado CORE_002 — estado institucional (M-ML-045 / M-ML-054 / M-ML-VIS-053)."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
@@ -19,6 +19,12 @@ from lotoia.governance.lei15_core_002_sovereign import (
     is_sovereign_core_label,
 )
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
+from lotoia.ml.supervised_output_calibration import (
+    CALIBRATION_ENGINE_ROLE,
+    CALIBRATION_VERSION,
+    MISSION_ID as CALIBRATION_MISSION_ID,
+    STATUS_ACTIVE as CALIBRATION_STATUS_ACTIVE,
+)
 
 MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
@@ -133,8 +139,19 @@ def _final_score_value(game: dict[str, Any]) -> float:
 
 def build_game_decision_trace(game: dict[str, Any], *, ml_enabled: bool) -> dict[str, Any]:
     score_ml = float(game.get("score_ml", 0.0) or 0.0)
-    reranked_by = ["score_ml_supervised"] if ml_enabled and "score_ml" in game else []
-    return {
+    calibration_applied = bool(game.get("calibration_applied"))
+    reranked_by: list[str] = []
+    if ml_enabled and "score_ml" in game:
+        reranked_by.append("score_ml_supervised")
+    if calibration_applied:
+        reranked_by.append("supervised_output_calibration")
+    if ml_enabled and calibration_applied:
+        final_reason = "sovereign_core_002_supervised_ml_calibration"
+    elif ml_enabled:
+        final_reason = "sovereign_core_002_supervised_ml"
+    else:
+        final_reason = "sovereign_core_002"
+    trace = {
         "accepted_by": ["LEI15_CORE_002", "generate_best_games"],
         "promoted_by": ["compose_sovereign_gp"],
         "reranked_by": reranked_by or ["hybrid_final_score"],
@@ -142,10 +159,25 @@ def build_game_decision_trace(game: dict[str, Any], *, ml_enabled: bool) -> dict
         "rejected_by": [],
         "ml_enabled": bool(ml_enabled),
         "score_ml": round(score_ml, 6) if ml_enabled else None,
-        "final_selection_reason": "sovereign_core_002_supervised_ml" if ml_enabled else "sovereign_core_002",
+        "final_selection_reason": final_reason,
         "lei15_core_002_preserved": True,
         "lei15a_applied": False,
+        "calibration_applied": calibration_applied,
     }
+    if calibration_applied:
+        trace.update(
+            {
+                "calibrated_by": ["apply_supervised_output_calibration"],
+                "calibration_version": CALIBRATION_VERSION,
+                "calibration_mission": CALIBRATION_MISSION_ID,
+                "ml_calibration_status": str(game.get("ml_calibration_status") or ""),
+                "ml_calibration_net": float(game.get("ml_calibration_net", 0.0) or 0.0),
+                "ml_calibration_penalty": float(game.get("ml_calibration_penalty", 0.0) or 0.0),
+                "ml_calibration_boost": float(game.get("ml_calibration_boost", 0.0) or 0.0),
+                "ml_calibration_actions": list(game.get("ml_calibration_actions") or []),
+            }
+        )
+    return trace
 
 
 def build_game_feature_attribution(game: dict[str, Any]) -> dict[str, Any]:
@@ -173,16 +205,20 @@ def build_game_feature_attribution(game: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_game_generation_lineage(game: dict[str, Any], *, batch_label: str) -> dict[str, Any]:
+    origin_pipeline = [
+        "build_sovereign_pool",
+        "rerank_games" if game.get("ml_enabled") else "hybrid_ranking",
+    ]
+    if game.get("calibration_applied"):
+        origin_pipeline.append("apply_supervised_output_calibration")
+    origin_pipeline.append("compose_sovereign_gp")
     return {
-        "origin_pipeline": [
-            "build_sovereign_pool",
-            "rerank_games" if game.get("ml_enabled") else "hybrid_ranking",
-            "compose_sovereign_gp",
-        ],
+        "origin_pipeline": origin_pipeline,
         "batch_label": batch_label,
         "generation_path": str(game.get("generation_path") or "LEI15_CORE_002"),
         "profile_type": str(game.get("profile_type") or ""),
         "lei15_core_002_applied": bool(game.get("lei15_core_002_applied", True)),
+        "calibration_applied": bool(game.get("calibration_applied")),
         "legacy_path_blocked": True,
         "public_app_blocked": True,
     }
@@ -246,23 +282,144 @@ def build_supervised_ml_activation_snapshot() -> dict[str, object]:
     }
 
 
+def resolve_ml_operational_status_label(*, calibration_applied: bool, ml_enabled: bool) -> str:
+    if calibration_applied and ml_enabled:
+        return CALIBRATION_STATUS_ACTIVE
+    if ml_enabled:
+        return supervised_ml_status_label()
+    return SUPERVISED_ML_STATUS_BLOCKED
+
+
+def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+    bundle = dict(calibration_bundle or {})
+    if not bundle.get("calibration_applied"):
+        return {"calibration_applied": False, "calibration_engine_role": "DISABLED"}
+    diagnostics = dict(bundle.get("diagnostics") or {})
+    issues = list(diagnostics.get("issues") or [])
+    return {
+        "calibration_applied": True,
+        "calibration_version": str(bundle.get("calibration_version") or CALIBRATION_VERSION),
+        "calibration_engine_role": str(
+            bundle.get("calibration_engine_role") or CALIBRATION_ENGINE_ROLE
+        ),
+        "calibration_mission": str(bundle.get("mission_id") or CALIBRATION_MISSION_ID),
+        "ml_operational_status": str(
+            bundle.get("ml_operational_status") or CALIBRATION_STATUS_ACTIVE
+        ),
+        "action_taken": "supervised_output_calibration",
+        "redundancy_penalty": float(bundle.get("redundancy_penalty", 0.0) or 0.0),
+        "prefix_penalty": int(bundle.get("prefix_penalty", 0) or 0),
+        "suffix_penalty": int(bundle.get("suffix_penalty", 0) or 0),
+        "missing_numbers_boost": int(bundle.get("missing_numbers_boost", 0) or 0),
+        "critical_coverage_boost": int(bundle.get("critical_coverage_boost", 0) or 0),
+        "diversity_score": float(bundle.get("diversity_score", 0.0) or 0.0),
+        "final_ml_score_avg": float(bundle.get("final_ml_score_avg", 0.0) or 0.0),
+        "calibration_actions_applied": list(bundle.get("actions_applied") or []),
+        "calibration_diagnostics": diagnostics,
+        "batch_status_counts": dict(bundle.get("batch_status_counts") or {}),
+        "issue_count": int(diagnostics.get("issue_count", 0) or 0),
+        "issues_detected": [
+            str(row.get("descricao") or row.get("tipo") or "")
+            for row in issues
+            if isinstance(row, dict)
+        ][:20],
+        "calibration_decision_trace": {
+            "why": "Calibração supervisionada automática — problemas estruturais detectados no pool",
+            "issues_count": len(issues),
+            "actions_count": len(bundle.get("actions_applied") or []),
+            "lei15_core_002_preserved": bool(bundle.get("lei15_core_002_preserved", True)),
+            "lei15a_applied": bool(bundle.get("lei15a_applied", False)),
+        },
+        "calibration_feature_attribution": {
+            "calibration_version": str(bundle.get("calibration_version") or CALIBRATION_VERSION),
+            "redundancy_penalty_total": float(bundle.get("redundancy_penalty", 0.0) or 0.0),
+            "prefix_penalty_count": int(bundle.get("prefix_penalty", 0) or 0),
+            "suffix_penalty_count": int(bundle.get("suffix_penalty", 0) or 0),
+            "missing_numbers_boost_count": int(bundle.get("missing_numbers_boost", 0) or 0),
+            "critical_coverage_boost_count": int(bundle.get("critical_coverage_boost", 0) or 0),
+        },
+        "six_bases_summary": build_calibration_six_bases_summary(diagnostics),
+    }
+
+
+def build_calibration_six_bases_summary(diagnostics: Mapping[str, Any]) -> list[dict[str, str]]:
+    issues = list(diagnostics.get("issues") or [])
+    issue_types = {
+        str(row.get("tipo") or "")
+        for row in issues
+        if isinstance(row, dict)
+    }
+    redundancy = dict(diagnostics.get("redundancy") or {})
+    before_after = {
+        "forca_acerto": ("observado", "observado"),
+        "diversidade": (
+            "fraca" if "quase_repetidos_alto" in issue_types else "estável",
+            "ajustada_por_calibracao",
+        ),
+        "baixa_redundancia": (
+            "alerta" if redundancy.get("sobreposicao_maxima", 0) else "ok",
+            "penalizada_por_calibracao",
+        ),
+        "controle_prefixo_sufixo": (
+            "alerta"
+            if {"prefixo_excessivo", "sufixo_excessivo"} & issue_types
+            else "ok",
+            "limitada_por_calibracao",
+        ),
+        "cobertura_dezenas_criticas": (
+            "alerta" if "dezena_subcoberta" in issue_types else "ok",
+            "reforcada_por_calibracao",
+        ),
+        "estabilidade_multi_concurso": ("observado", "observado"),
+    }
+    return [
+        {
+            "base": BASE_LABELS_PT[name],
+            "status_antes": before_after[name][0],
+            "status_depois": before_after[name][1],
+            "avaliacao_final": "ML calibrou saída sem alterar CORE_002",
+        }
+        for name in BASE_NAMES
+    ]
+
+
 def build_supervised_ml_persistence_bundle(
     games: list[dict[str, Any]],
     *,
     batch_label: str,
     ml_enabled: bool,
+    calibration_bundle: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     trace = build_supervised_ml_trace_for_games(
         games,
         batch_label=batch_label,
         ml_enabled=ml_enabled,
     )
+    calibration_summary = build_calibration_event_summary(calibration_bundle)
+    calibration_applied = bool(calibration_summary.get("calibration_applied"))
+    if calibration_applied:
+        policy_mode = "M-ML-054_SUPERVISED_OUTPUT_CALIBRATION"
+        supervised_mission = CALIBRATION_MISSION_ID
+    elif ml_enabled:
+        policy_mode = "M-ML-045_SUPERVISED_OPERATIONAL"
+        supervised_mission = MISSION_ID
+    else:
+        policy_mode = "M-GER-044_SOVEREIGN_CONTROLLED"
+        supervised_mission = MISSION_ID
+    six_bases = list(trace.get("ml_six_bases_reading") or [])
+    if calibration_applied:
+        six_bases = list(calibration_summary.get("six_bases_summary") or six_bases)
     return {
         "ml_enabled": bool(ml_enabled),
-        "ml_operational_status": supervised_ml_status_label() if ml_enabled else SUPERVISED_ML_STATUS_BLOCKED,
-        "policy_mode": "M-ML-045_SUPERVISED_OPERATIONAL" if ml_enabled else "M-GER-044_SOVEREIGN_CONTROLLED",
-        "supervised_ml_mission": MISSION_ID,
+        "ml_operational_status": resolve_ml_operational_status_label(
+            calibration_applied=calibration_applied,
+            ml_enabled=ml_enabled,
+        ),
+        "policy_mode": policy_mode,
+        "supervised_ml_mission": supervised_mission,
         **trace,
+        **calibration_summary,
+        "ml_six_bases_reading": six_bases,
     }
 
 
@@ -393,6 +550,7 @@ def load_supervised_ml_operational_events_from_db(
                     "feature_attribution_status": _extract_attribution_status(context),
                     "ml_six_bases_status": _extract_six_bases_status(context),
                     "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
+                    "calibration_applied": bool(context.get("calibration_applied")),
                 }
             )
             if len(events) >= max(1, int(limit)):
@@ -443,6 +601,26 @@ def build_supervised_ml_operational_event_detail(
     six_bases = list(context.get("ml_six_bases_reading") or [])
     if not six_bases:
         six_bases = build_ml_six_bases_operational_summary()
+    calibration_summary = {
+        "calibration_applied": bool(context.get("calibration_applied")),
+        "calibration_version": str(context.get("calibration_version") or ""),
+        "calibration_engine_role": str(context.get("calibration_engine_role") or "DISABLED"),
+        "calibration_diagnostics": dict(context.get("calibration_diagnostics") or {}),
+        "calibration_actions_applied": list(context.get("calibration_actions_applied") or []),
+        "calibration_decision_trace": dict(context.get("calibration_decision_trace") or {}),
+        "calibration_feature_attribution": dict(
+            context.get("calibration_feature_attribution") or {}
+        ),
+        "redundancy_penalty": float(context.get("redundancy_penalty", 0.0) or 0.0),
+        "prefix_penalty": int(context.get("prefix_penalty", 0) or 0),
+        "suffix_penalty": int(context.get("suffix_penalty", 0) or 0),
+        "missing_numbers_boost": int(context.get("missing_numbers_boost", 0) or 0),
+        "critical_coverage_boost": int(context.get("critical_coverage_boost", 0) or 0),
+        "diversity_score": float(context.get("diversity_score", 0.0) or 0.0),
+        "final_ml_score_avg": float(context.get("final_ml_score_avg", 0.0) or 0.0),
+        "issues_detected": list(context.get("issues_detected") or []),
+        "batch_status_counts": dict(context.get("batch_status_counts") or {}),
+    }
     return {
         "generation_event_id": selected_id,
         "batch_label": batch_label,
@@ -452,12 +630,23 @@ def build_supervised_ml_operational_event_detail(
         "persisted_games": len(game_rows),
         "ml_scored_games": int(context.get("ml_scored_games", 0) or 0) or len(game_rows),
         "card_format": _resolve_event_card_format(event, context),
-        "ml_operational_status": str(context.get("ml_operational_status") or SUPERVISED_ML_STATUS_ACTIVE),
-        "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
+        "ml_operational_status": str(
+            context.get("ml_operational_status")
+            or (
+                CALIBRATION_STATUS_ACTIVE
+                if calibration_summary["calibration_applied"]
+                else SUPERVISED_ML_STATUS_ACTIVE
+            )
+        ),
+        "supervised_ml_mission": str(
+            context.get("supervised_ml_mission")
+            or (CALIBRATION_MISSION_ID if calibration_summary["calibration_applied"] else MISSION_ID)
+        ),
         "decision_trace": _summarize_decision_trace(traces),
         "feature_attribution": _summarize_feature_attribution(attributions),
         "ml_six_bases_reading": six_bases,
         "constitutional_blocks": list(CONSTITUTIONAL_BLOCKS),
+        **calibration_summary,
     }
 
 
