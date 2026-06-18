@@ -23,8 +23,8 @@ from lotoia.ml.overlap_format_thresholds import (
 from lotoia.observability.coverage_evidence_interpreter import build_calibration_plan, get_structural_coverage_evidence
 
 
-def test_build_marker_v42() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v42"
+def test_build_marker_v43() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v43"
 
 
 @pytest.mark.parametrize(

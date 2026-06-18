@@ -42,7 +42,7 @@ OFFICIAL_SIDEBAR_LABELS = (
 
 
 def test_build_marker_v38() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v42"
+    assert BUILD_MARKER == "institutional-adm-runtime-v43"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 

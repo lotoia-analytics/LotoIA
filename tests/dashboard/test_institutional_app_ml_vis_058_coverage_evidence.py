@@ -24,7 +24,7 @@ from lotoia.observability.coverage_evidence_interpreter import (
 
 
 def test_build_marker_v39() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v42"
+    assert BUILD_MARKER == "institutional-adm-runtime-v43"
 
 
 def test_interpret_diversidade_baixa_generates_coherent_recommendation() -> None:
