@@ -64,6 +64,8 @@ def test_cobertura_page_prioritizes_operational_core_002_source() -> None:
     assert "OPERATIONAL_COVERAGE_TITLE" in source
     assert "OPERATIONAL_SOURCE_CAPTION" in source
     assert "_cached_operational_core_002_generations" in source
+    assert "_invalidate_operational_structural_cache" in source
+    assert "_bust_operational_coverage_cache" in source
     assert "_cached_operational_card_structure_diagnostics_from_db" in source
     assert "structural_coverage_operational_generation" in source
     assert "build_operational_generation_dropdown_options" in source
