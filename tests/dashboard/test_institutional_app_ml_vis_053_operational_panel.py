@@ -23,14 +23,13 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, resolve_core
 
 
 def test_build_marker_v32() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v34"
+    assert BUILD_MARKER == "institutional-adm-runtime-v35"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
-def test_central_ml_page_integrates_operational_panel() -> None:
+def test_central_ml_page_integrates_cockpit() -> None:
     source = inspect.getsource(institutional_app._render_central_ml_diagnostics_page)
-    assert "Central ML — Operacional Supervisionada" in source
-    assert "render_supervised_ml_operational_panel" in source
+    assert "render_ml_calibration_cockpit" in source
     assert "render_ml_assistive_governance_section" in source
 
 

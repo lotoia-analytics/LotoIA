@@ -68,7 +68,7 @@ ACTIVE_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "label": "Simulação Institucional / Backtesting",
         "grupo": "Analítico observacional",
     },
-    {"page_id": "central_ml_diagnostics", "label": "Central ML Assistiva", "grupo": "Diagnósticos ML"},
+    {"page_id": "central_ml_diagnostics", "label": "Central ML — Calibração Supervisionada", "grupo": "Diagnósticos ML"},
     {
         "page_id": "audit_monitoring_side_leak",
         "label": "Vazamento Lateral Constitucional",

@@ -103,7 +103,6 @@ from dashboard.institutional_structural_coverage import render_structural_covera
 from dashboard.institutional_ml_assistive import (
     render_constitutional_side_leak_section,
     render_ml_assistive_governance_section,
-    render_supervised_ml_operational_panel,
 )
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
 from dashboard.institutional_conference_audit import render_conference_governance_section
@@ -160,8 +159,15 @@ from dashboard.institutional_supervised_ml import (
     SUPERVISED_ML_GOVERNANCE_ALERT,
     build_supervised_ml_persistence_bundle,
     is_adm_supervised_ml_active,
+    is_supervised_output_calibration_active,
     resolve_adm_ml_enabled,
+    resolve_institutional_ml_status_line,
+    resolve_recalibration_display_status,
     supervised_ml_status_label,
+)
+from dashboard.institutional_ml_calibration_cockpit import (
+    SESSION_PERSIST as COCKPIT_SESSION_PERSIST,
+    render_ml_calibration_cockpit,
 )
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
@@ -534,6 +540,7 @@ PAGE_TARGETS = {
     "Central ML Assistiva": "central_ml_diagnostics",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
     "Central ML — Operacional Supervisionada": "central_ml_diagnostics",
+    "Central ML — Calibração Supervisionada": "central_ml_diagnostics",
     "Vazamento Lateral Constitucional": "audit_monitoring_side_leak",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
@@ -578,7 +585,12 @@ def _constitutional_status_lines() -> dict[str, str]:
         "batch_label": str(report.get("batch_label") or SOVEREIGN_BATCH_LABEL),
         "generation_status": sovereign_generation_status_label(),
         "lei15a_status": LEI15A_FORMAL_STATUS,
-        "ml_status": "ASSISTIVO — diagnóstico — sem efeito operacional automático",
+        "ml_status": resolve_institutional_ml_status_line(),
+        "calibration_status": (
+            resolve_recalibration_display_status()["headline"]
+            if is_supervised_output_calibration_active()
+            else "RECALIBRAÇÃO: BLOQUEADA"
+        ),
         "history_status": "PROTEGIDO",
         "gestao_projetos": "Fase 0 implantada (M-GOV-030)",
         "inventario_painel": f"Aprovado — {INVENTORY_REPORT_REFERENCE}",
@@ -8121,221 +8133,132 @@ def _render_structural_coverage_ranking_tables(
 
 
 
+def _render_central_ml_observational_expander(snapshot: dict[str, Any]) -> None:
+    with st.expander("Diagnóstico ML observacional (alertas vazamento lateral)", expanded=False):
+        _render_diagnostic_observational_caption()
+        payload = build_central_ml_diagnostics_payload(DB_PATH)
+        _render_ml_diagnostic_source_caption(payload)
+        header_cols = st.columns(3)
+        header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
+        header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
+        header_cols[2].metric("Fonte", "PostgreSQL")
+        if not payload.get("available"):
+            st.warning(
+                "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL."
+            )
+        alerts = list(payload.get("alerts") or [])
+        local_alerts_count = int(payload.get("local_alerts_count", 0) or 0)
+        if not alerts and local_alerts_count > 0:
+            st.info(payload.get("empty_state_message") or CENTRAL_EMPTY_NO_RECURRENT_MESSAGE)
+        elif not alerts and payload.get("available"):
+            st.success("Nenhum alerta ML recorrente ativo no momento.")
+        adm_user = _resolve_ml_diagnostic_adm_user(snapshot)
+        for alert in alerts[:8]:
+            status = str(alert.get("status") or STATUS_PENDENTE)
+            with st.container(border=True):
+                st.markdown(f"**{alert.get('tipo_alerta')}** — {alert.get('tipo_label')}")
+                st.write(
+                    f"Dezena: **{alert.get('dezena_fmt')}** | Status: **{status}** | "
+                    f"Veredito: **{alert.get('verdict_type') or '—'}**"
+                )
+                st.caption(str(alert.get("evidencia") or "—"))
+                if status in ACTIVE_ALERT_STATUSES and alert.get("verdict_buttons_allowed"):
+                    reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
+                    adm_guide = dict(alert.get("adm_guide") or {})
+                    suggested_verdict = str(adm_guide.get("suggested_verdict") or "")
+                    st.text_input(
+                        "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE, REJECT e override)",
+                        key=reason_key,
+                    )
+                    action_cols = st.columns(3)
+                    if action_cols[0].button(
+                        "ACCEPT_DIAGNOSTIC",
+                        key=f"ml_diag_accept_{alert.get('alert_key')}",
+                        type="primary",
+                    ):
+                        reason = str(st.session_state.get(reason_key) or "").strip()
+                        if suggested_verdict and suggested_verdict != VERDICT_ACCEPT_DIAGNOSTIC and not reason:
+                            st.error("Override do veredito sugerido exige motivo.")
+                        else:
+                            try:
+                                register_ml_diagnostic_verdict(
+                                    alert_type=str(alert.get("tipo_alerta")),
+                                    dezena=int(alert.get("dezena") or 0),
+                                    ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                    verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
+                                    reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                    adm_user=adm_user,
+                                    leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                    alert_card=alert,
+                                    db_path=DB_PATH,
+                                )
+                                st.success("Veredito ACCEPT_DIAGNOSTIC registrado.")
+                                st.rerun()
+                            except ValueError as exc:
+                                st.error(str(exc))
+                    if action_cols[1].button(
+                        "REQUEST_MORE_EVIDENCE",
+                        key=f"ml_diag_more_evidence_{alert.get('alert_key')}",
+                    ):
+                        reason = str(st.session_state.get(reason_key) or "").strip()
+                        if not reason:
+                            st.error("Informe o motivo antes de confirmar REQUEST_MORE_EVIDENCE.")
+                        else:
+                            try:
+                                register_ml_diagnostic_verdict(
+                                    alert_type=str(alert.get("tipo_alerta")),
+                                    dezena=int(alert.get("dezena") or 0),
+                                    ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                    verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
+                                    reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                    verdict_reason=reason,
+                                    adm_user=adm_user,
+                                    leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                    alert_card=alert,
+                                    missing_evidence=list(alert.get("evidence_gaps") or []),
+                                    db_path=DB_PATH,
+                                )
+                                st.info("Veredito REQUEST_MORE_EVIDENCE registrado.")
+                                st.rerun()
+                            except ValueError as exc:
+                                st.error(str(exc))
+                    if action_cols[2].button(
+                        "REJECT",
+                        key=f"ml_diag_reject_{alert.get('alert_key')}",
+                    ):
+                        reason = str(st.session_state.get(reason_key) or "").strip()
+                        if not reason:
+                            st.error("Informe o motivo antes de confirmar REJECT.")
+                        else:
+                            try:
+                                register_ml_diagnostic_verdict(
+                                    alert_type=str(alert.get("tipo_alerta")),
+                                    dezena=int(alert.get("dezena") or 0),
+                                    ml_proposal=dict(alert.get("ml_proposal") or {}),
+                                    verdict_type=VERDICT_REJECT,
+                                    reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
+                                    verdict_reason=reason,
+                                    adm_user=adm_user,
+                                    leakage_evidence=dict(alert.get("leakage_evidence") or {}),
+                                    alert_card=alert,
+                                    db_path=DB_PATH,
+                                )
+                                st.warning("Veredito REJECT registrado.")
+                                st.rerun()
+                            except ValueError as exc:
+                                st.error(str(exc))
+        history = list_ml_diagnostic_decisions(db_path=DB_PATH, limit=50)
+        if history:
+            with st.expander("Histórico de decisões ADM (observacional)", expanded=False):
+                st.dataframe(pd.DataFrame(history), hide_index=True, use_container_width=True)
+
+
 def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Central ML — Operacional Supervisionada")
-    render_ml_assistive_governance_section()
-    render_supervised_ml_operational_panel(DB_PATH)
-    st.divider()
-    st.markdown("### Diagnóstico ML observacional")
-    _render_diagnostic_observational_caption()
-    st.info(
-        "Princípio institucional: tudo o que o ML vê, o ADM vê. "
-        "O ML propõe; o ADM emite veredito (ACCEPT_DIAGNOSTIC, REQUEST_MORE_EVIDENCE ou REJECT). "
-        + (
-            "ML operacional supervisionado ativo no Gerador CORE_002 — decision trace persistido no PostgreSQL."
-            if is_adm_supervised_ml_active()
-            else "Nenhum veredito gera efeito operacional, comando de geração, recalibração ou mutação da Lei 15."
-        )
-    )
-    payload = build_central_ml_diagnostics_payload(DB_PATH)
-    _render_ml_diagnostic_source_caption(payload)
-    header_cols = st.columns(3)
-    header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
-    header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])
-    header_cols[2].metric("Fonte", "PostgreSQL")
-    st.caption("política: ADM_VERDICT_POLICY (3 vereditos, sem efeito operacional)")
-    if not payload.get("available"):
-        st.warning(
-            "Nenhuma reconciliation_run com jogos e resultado oficial encontrada no PostgreSQL. "
-            "Os alertas permanecem indisponíveis até haver conferência persistida."
-        )
-    alerts = list(payload.get("alerts") or [])
-    local_alerts_count = int(payload.get("local_alerts_count", 0) or 0)
-    if not alerts and local_alerts_count > 0:
-        st.info(payload.get("empty_state_message") or CENTRAL_EMPTY_NO_RECURRENT_MESSAGE)
-    elif not alerts and payload.get("available"):
-        st.success("Nenhum alerta ML recorrente ativo no momento para a última reconciliation_run.")
-    adm_user = _resolve_ml_diagnostic_adm_user(snapshot)
-    for alert in alerts:
-        status = str(alert.get("status") or STATUS_PENDENTE)
-        with st.container(border=True):
-            st.markdown(f"**{alert.get('tipo_alerta')}** — {alert.get('tipo_label')}")
-            info_cols = st.columns(3)
-            info_cols[0].write(f"Dezena: **{alert.get('dezena_fmt')}**")
-            info_cols[1].write(f"Status: **{status}**")
-            info_cols[2].write(f"Veredito: **{alert.get('verdict_type') or '—'}**")
-            st.markdown("**Evidência**")
-            st.write(alert.get("evidencia") or "—")
-            _render_diagnostic_evidence_base(
-                dict(alert.get("evidence_base") or {}),
-                title="Base do diagnóstico",
-            )
-            detail_cols = st.columns(2)
-            detail_cols[0].write(f"Regra base: `{alert.get('regra_base')}`")
-            detail_cols[1].write(f"Threshold: `{alert.get('threshold_usado')}`")
-            guard_cols = st.columns(3)
-            guard_cols[0].write(f"Fonte: `{alert.get('fonte')}`")
-            guard_cols[1].write("generation_cmd: `False` — bloqueado, não executável (diagnóstico)")
-            guard_cols[2].write("recalibration_cmd: `False` — bloqueado, não executável (diagnóstico)")
-            if alert.get("evidence_gaps"):
-                st.caption(f"Lacunas detectadas: {', '.join(alert.get('evidence_gaps') or [])}")
-            adm_guide = dict(alert.get("adm_guide") or {})
-            if adm_guide:
-                st.markdown("**Guia ADM**")
-                guide_cols = st.columns(2)
-                guide_cols[0].write(f"Evidência: **{adm_guide.get('evidence_status', '—')}**")
-                guide_cols[1].write(f"Governança: **{adm_guide.get('governance_status', '—')}**")
-                st.info(
-                    f"Veredito sugerido (somente orientação): **{adm_guide.get('suggested_verdict', '—')}** — "
-                    f"{adm_guide.get('reason_hint', '')}"
-                )
-                st.caption(
-                    "O ADM decide manualmente; override do veredito sugerido exige motivo. "
-                    "Nenhum veredito gera efeito operacional."
-                )
-            if alert.get("tipo_alerta") == ALERT_001:
-                leakage_evidence = dict(alert.get("leakage_evidence") or {})
-                leakage_table = list(leakage_evidence.get("leakage_table") or [])
-                drilldown_map = dict(leakage_evidence.get("drilldown_per_dezena") or {})
-                if leakage_table or drilldown_map:
-                    with st.expander("Drilldown auditável (vazamento lateral)", expanded=False):
-                        st.caption(
-                            "Vazamento = dezena em cartao_final e fora de resultado_oficial "
-                            "(sobra_real = cartao_final − resultado_oficial)."
-                        )
-                        if leakage_table:
-                            st.dataframe(
-                                strip_adm_technical_columns(pd.DataFrame(leakage_table)),
-                                hide_index=True,
-                                use_container_width=True,
-                            )
-                        for dezena_key, drilldown_rows in sorted(drilldown_map.items()):
-                            st.markdown(f"**Dezena {dezena_key}**")
-                            st.dataframe(
-                                strip_adm_technical_columns(pd.DataFrame(strip_adm_technical_records(drilldown_rows))),
-                                hide_index=True,
-                                use_container_width=True,
-                            )
-            if status in ACTIVE_ALERT_STATUSES and alert.get("verdict_buttons_allowed"):
-                reason_key = f"ml_diag_verdict_reason_{alert.get('alert_key')}"
-                suggested_verdict = str(adm_guide.get("suggested_verdict") or "")
-                st.text_input(
-                    "Motivo do veredito (obrigatório para REQUEST_MORE_EVIDENCE, REJECT e override)",
-                    key=reason_key,
-                )
-                action_cols = st.columns(3)
-                if action_cols[0].button(
-                    "ACCEPT_DIAGNOSTIC",
-                    key=f"ml_diag_accept_{alert.get('alert_key')}",
-                    type="primary",
-                ):
-                    reason = str(st.session_state.get(reason_key) or "").strip()
-                    if suggested_verdict and suggested_verdict != VERDICT_ACCEPT_DIAGNOSTIC and not reason:
-                        st.error("Override do veredito sugerido exige motivo.")
-                    else:
-                        try:
-                            register_ml_diagnostic_verdict(
-                                alert_type=str(alert.get("tipo_alerta")),
-                                dezena=int(alert.get("dezena") or 0),
-                                ml_proposal=dict(alert.get("ml_proposal") or {}),
-                                verdict_type=VERDICT_ACCEPT_DIAGNOSTIC,
-                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                                adm_user=adm_user,
-                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                                alert_card=alert,
-                                db_path=DB_PATH,
-                            )
-                            st.success("Veredito ACCEPT_DIAGNOSTIC registrado (status=ACEITO).")
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-                if action_cols[1].button(
-                    "REQUEST_MORE_EVIDENCE",
-                    key=f"ml_diag_more_evidence_{alert.get('alert_key')}",
-                ):
-                    reason = str(st.session_state.get(reason_key) or "").strip()
-                    if not reason:
-                        st.error("Informe o motivo antes de confirmar REQUEST_MORE_EVIDENCE.")
-                    elif suggested_verdict and suggested_verdict != VERDICT_REQUEST_MORE_EVIDENCE and not reason:
-                        st.error("Override do veredito sugerido exige motivo.")
-                    else:
-                        try:
-                            register_ml_diagnostic_verdict(
-                                alert_type=str(alert.get("tipo_alerta")),
-                                dezena=int(alert.get("dezena") or 0),
-                                ml_proposal=dict(alert.get("ml_proposal") or {}),
-                                verdict_type=VERDICT_REQUEST_MORE_EVIDENCE,
-                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                                verdict_reason=reason,
-                                adm_user=adm_user,
-                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                                alert_card=alert,
-                                missing_evidence=list(alert.get("evidence_gaps") or []),
-                                db_path=DB_PATH,
-                            )
-                            st.info("Veredito REQUEST_MORE_EVIDENCE registrado (status=PENDENTE_EVIDENCIA).")
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-                if action_cols[2].button(
-                    "REJECT",
-                    key=f"ml_diag_reject_{alert.get('alert_key')}",
-                ):
-                    reason = str(st.session_state.get(reason_key) or "").strip()
-                    if not reason:
-                        st.error("Informe o motivo antes de confirmar REJECT.")
-                    elif suggested_verdict and suggested_verdict != VERDICT_REJECT and not reason:
-                        st.error("Override do veredito sugerido exige motivo.")
-                    else:
-                        try:
-                            register_ml_diagnostic_verdict(
-                                alert_type=str(alert.get("tipo_alerta")),
-                                dezena=int(alert.get("dezena") or 0),
-                                ml_proposal=dict(alert.get("ml_proposal") or {}),
-                                verdict_type=VERDICT_REJECT,
-                                reconciliation_run_id=int(alert.get("reconciliation_run_id") or 0),
-                                verdict_reason=reason,
-                                adm_user=adm_user,
-                                leakage_evidence=dict(alert.get("leakage_evidence") or {}),
-                                alert_card=alert,
-                                db_path=DB_PATH,
-                            )
-                            st.warning("Veredito REJECT registrado (status=REJEITADO).")
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-            else:
-                if alert.get("verdict_reason") or alert.get("adm_reason"):
-                    st.caption(f"Motivo: {alert.get('verdict_reason') or alert.get('adm_reason')}")
-                if alert.get("missing_evidence"):
-                    st.caption(f"Evidência faltante: {', '.join(alert.get('missing_evidence') or [])}")
-                if alert.get("adr_candidate"):
-                    st.caption("ADR candidate: sim (sem efeito operacional)")
-                if alert.get("adm_user"):
-                    st.caption(f"ADM: {alert.get('adm_user')}")
-    st.markdown("### Histórico de decisões")
-    history = list_ml_diagnostic_decisions(db_path=DB_PATH, limit=200)
-    if not history:
-        st.caption("Nenhuma decisão ADM registrada ainda.")
-    else:
-        history_df = pd.DataFrame(
-            [
-                {
-                    "alert_type": row["alert_type"],
-                    "dezena": row["dezena_fmt"],
-                    "verdict_type": row.get("verdict_type") or "",
-                    "status": row.get("status") or row.get("decision") or "",
-                    "reason": row.get("verdict_reason") or row.get("reason") or "",
-                    "missing_evidence": ", ".join(row.get("missing_evidence") or []),
-                    "adr_candidate": row.get("adr_candidate"),
-                    "timestamp": row.get("timestamp") or "",
-                    "adm_user": row.get("adm_user") or "",
-                }
-                for row in history
-            ]
-        )
-        st.dataframe(history_df, hide_index=True, use_container_width=True)
+    render_ml_calibration_cockpit(DB_PATH)
+    _render_central_ml_observational_expander(snapshot)
+    with st.expander("Governança ML assistiva (referência institucional)", expanded=False):
+        render_ml_assistive_governance_section()
 
 
 def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
@@ -11268,6 +11191,7 @@ def _persist_clean_law15_generation_history(
         "issues_detected": list(ml_bundle.get("issues_detected") or []),
         "batch_status_counts": dict(ml_bundle.get("batch_status_counts") or {}),
         "action_taken": str(ml_bundle.get("action_taken") or ""),
+        "cockpit_calibration_workflow": dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {}),
         "historical_deduplication_mode": str(result.get("historical_deduplication_mode", "AUDIT_ONLY") or "AUDIT_ONLY"),
         "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
@@ -13902,14 +13826,25 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
         else "BLOQUEADA"
     )
     generation_tone = "danger" if _is_sovereign_generation_blocked() else ("success" if generation_loaded else "success")
+    recalibration = resolve_recalibration_display_status()
+    ml_pill_status = (
+        "SUPERVISIONADO"
+        if is_supervised_output_calibration_active()
+        else ("ASSISTIVO" if is_adm_supervised_ml_active() else "ASSISTIVO")
+    )
+    ml_pill_tone = "success" if is_supervised_output_calibration_active() else "info"
     with status_cols[0]:
         _render_home_status_pill("Lei 15", SOVEREIGN_CORE_ID, "success")
     with status_cols[1]:
         _render_home_status_pill("Geração", generation_status, generation_tone)
     with status_cols[2]:
-        _render_home_status_pill("Recalibração", "BLOQUEADA", "danger")
+        _render_home_status_pill(
+            recalibration["pill_label"],
+            recalibration["pill_status"],
+            recalibration["pill_tone"],
+        )
     with status_cols[3]:
-        _render_home_status_pill("ML", "ASSISTIVO", "info")
+        _render_home_status_pill("ML", ml_pill_status, ml_pill_tone)
     with status_cols[4]:
         _render_home_status_pill("Purge", "PROTEGIDO", "danger")
     st.markdown("</div>", unsafe_allow_html=True)

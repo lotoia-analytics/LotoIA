@@ -91,6 +91,7 @@ def render_compact_status_chips(*, ml_active: bool, generation_active: bool) -> 
     chips = [
         "CORE_002 ativo" if generation_active else "CORE_002 bloqueado",
         "ML supervisionado ativo" if ml_active else "ML inativo",
+        "Calibração saída ativa" if ml_active else "Calibração inativa",
         "Lei 15A inoperante",
     ]
     st.markdown(

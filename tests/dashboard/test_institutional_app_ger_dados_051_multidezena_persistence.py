@@ -13,7 +13,7 @@ from lotoia.governance.m_ger_dados_051_controlled_ge_removal import resolve_auth
 
 
 def test_build_marker_v28() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v34"
+    assert BUILD_MARKER == "institutional-adm-runtime-v35"
 
 
 def test_persist_blocked_when_commander_rejects() -> None:

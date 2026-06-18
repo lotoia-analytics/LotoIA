@@ -24,10 +24,19 @@ from lotoia.ml.supervised_output_calibration import (
     CALIBRATION_VERSION,
     MISSION_ID as CALIBRATION_MISSION_ID,
     STATUS_ACTIVE as CALIBRATION_STATUS_ACTIVE,
+    is_output_calibration_enabled,
 )
 
 MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
+VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
+CALIBRATION_SUPERVISED_LABEL = "CALIBRAÇÃO ML SUPERVISIONADA: ATIVA"
+RECALIBRATION_OUTPUT_ACTIVE_LABEL = "RECALIBRAÇÃO DE SAÍDA: ATIVA COM SUPERVISÃO"
+ML_FREE_RECALIBRATION_BLOCKED = "BLOQUEADA — ML livre fora do CORE_002"
+COCKPIT_WORKFLOW_PENDING = "pendente"
+COCKPIT_WORKFLOW_AUTHORIZED = "autorizada"
+COCKPIT_WORKFLOW_APPLIED = "aplicada"
+COCKPIT_WORKFLOW_REJECTED = "rejeitada"
 OPERATIONAL_PANEL_SOURCE = "postgresql"
 OPERATIONAL_PANEL_TABLES = "generation_events / generated_games"
 EMPTY_ML_EVENTS_MESSAGE = (
@@ -684,4 +693,218 @@ def build_supervised_ml_operational_panel_snapshot(
         "selected_generation_event_id": selected_id if selected_id > 0 else None,
         "selected_event": selected_event,
         "empty_message": EMPTY_ML_EVENTS_MESSAGE,
+    }
+
+
+def is_supervised_output_calibration_active() -> bool:
+    return is_adm_supervised_ml_active() and is_output_calibration_enabled()
+
+
+def resolve_recalibration_display_status() -> dict[str, Any]:
+    """Separa ML livre (bloqueada) de calibração supervisionada da saída (ativa)."""
+    supervised = is_supervised_output_calibration_active()
+    if supervised:
+        return {
+            "pill_label": "Calibração ML",
+            "pill_status": "ATIVA COM SUPERVISÃO",
+            "pill_tone": "success",
+            "headline": CALIBRATION_SUPERVISED_LABEL,
+            "detail": RECALIBRATION_OUTPUT_ACTIVE_LABEL,
+            "ml_free_status": ML_FREE_RECALIBRATION_BLOCKED,
+            "supervised_calibration_active": True,
+            "recalibration_cmd": False,
+            "recalibration_free_blocked": True,
+        }
+    return {
+        "pill_label": "Recalibração",
+        "pill_status": "BLOQUEADA",
+        "pill_tone": "danger",
+        "headline": "RECALIBRAÇÃO: BLOQUEADA",
+        "detail": "Recalibração livre ou automática fora do CORE_002 permanece bloqueada.",
+        "ml_free_status": ML_FREE_RECALIBRATION_BLOCKED,
+        "supervised_calibration_active": False,
+        "recalibration_cmd": False,
+        "recalibration_free_blocked": True,
+    }
+
+
+def resolve_institutional_ml_status_line() -> str:
+    if is_supervised_output_calibration_active():
+        return "SUPERVISIONADO — calibração de saída ativa (M-ML-054)"
+    if is_adm_supervised_ml_active():
+        return "SUPERVISIONADO — operacional sobre CORE_002"
+    return "ASSISTIVO — diagnóstico — sem efeito operacional automático"
+
+
+def _issue_types_from_event(event: Mapping[str, Any] | None) -> set[str]:
+    if not isinstance(event, Mapping):
+        return set()
+    diagnostics = dict(event.get("calibration_diagnostics") or {})
+    return {
+        str(row.get("tipo") or "")
+        for row in list(diagnostics.get("issues") or [])
+        if isinstance(row, dict)
+    }
+
+
+def build_ml_calibration_recommendations(event: Mapping[str, Any] | None) -> list[str]:
+    if not isinstance(event, Mapping):
+        return ["Gerar lote CORE_002 com ML ativo para obter diagnóstico estrutural."]
+    issue_types = _issue_types_from_event(event)
+    recommendations: list[str] = []
+    mapping = {
+        "quase_repetidos_alto": "Reduzir quase repetidos — penalizar overlap no pool",
+        "similaridade_media_gp_elevada": "Melhorar diversidade por lote — separar cartões similares",
+        "sobreposicao_maxima_elevada": "Penalizar sobreposição excessiva entre jogos",
+        "prefixo_excessivo": "Penalizar prefixos repetidos (faixa 01–03)",
+        "sufixo_excessivo": "Penalizar sufixos repetidos (faixa 22–25)",
+        "dezena_subcoberta": "Reforçar dezenas ausentes e subcobertas (7/15/23 críticas)",
+        "padrao_ausencia_recorrente": "Equilibrar padrões de ausência recorrentes",
+    }
+    for issue_type, text in mapping.items():
+        if issue_type in issue_types:
+            recommendations.append(text)
+    if not recommendations and event.get("calibration_applied"):
+        recommendations.append("Lote calibrado — validar diversidade e cobertura na próxima geração.")
+    elif not recommendations:
+        recommendations.append("Estrutura estável — manter calibração supervisionada ativa na geração.")
+    return recommendations[:6]
+
+
+def build_ml_calibration_diagnosis_card(event: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(event, Mapping):
+        return {
+            "available": False,
+            "headline": "Sem lote ML persistido",
+            "metrics": {},
+            "issues_preview": [],
+        }
+    diagnostics = dict(event.get("calibration_diagnostics") or {})
+    redundancy = dict(diagnostics.get("redundancy") or {})
+    issues = list(event.get("issues_detected") or [])
+    near_dup = int(redundancy.get("cartoes_quase_repetidos", 0) or 0)
+    avg_overlap = float(redundancy.get("sobreposicao_media", 0) or 0)
+    diversity_score = float(event.get("diversity_score", 0.0) or 0.0)
+    issue_types = _issue_types_from_event(event)
+    prefix_suffix_vicio = bool({"prefixo_excessivo", "sufixo_excessivo"} & issue_types)
+    subcovered = sum(1 for row in list(diagnostics.get("issues") or []) if row.get("tipo") == "dezena_subcoberta")
+    return {
+        "available": True,
+        "headline": f"Lote {int(event.get('generation_event_id', 0) or 0)} — {event.get('batch_label', '-')}",
+        "metrics": {
+            "redundancia": "alta" if near_dup >= 20 or avg_overlap >= 10 else "normal",
+            "quase_repetidos": near_dup,
+            "similaridade_media": round(avg_overlap, 2),
+            "prefixos_sufixos": "viciados" if prefix_suffix_vicio else "ok",
+            "dezenas_subcobertas": subcovered,
+            "diversidade": "baixa" if diversity_score < 0.55 else "adequada",
+            "diversity_score": round(diversity_score, 3),
+            "six_bases_risco": "alerta" if issues else "estável",
+        },
+        "issues_preview": issues[:5],
+        "formato": f"{int(event.get('card_format', 15) or 15)}D",
+        "jogos": int(event.get("persisted_games", 0) or 0),
+        "created_at": str(event.get("created_at") or ""),
+    }
+
+
+def build_ml_calibration_result_card(
+    event: Mapping[str, Any] | None,
+    *,
+    workflow_status: str,
+    decision_at: str,
+    apply_next_generation: bool,
+) -> dict[str, Any]:
+    calibration_applied = bool(event.get("calibration_applied")) if isinstance(event, Mapping) else False
+    trace_persisted = bool(
+        isinstance(event, Mapping)
+        and (event.get("calibration_decision_trace") or event.get("decision_trace"))
+    )
+    if workflow_status == COCKPIT_WORKFLOW_REJECTED:
+        operational_status = "rejeitada"
+    elif calibration_applied:
+        operational_status = "aplicada"
+    elif workflow_status == COCKPIT_WORKFLOW_AUTHORIZED:
+        operational_status = "autorizada"
+    elif workflow_status == COCKPIT_WORKFLOW_PENDING and isinstance(event, Mapping) and event.get("issues_detected"):
+        operational_status = "pendente"
+    else:
+        operational_status = workflow_status or "pendente"
+    return {
+        "operational_status": operational_status,
+        "calibration_applied": calibration_applied,
+        "trace_persistido": trace_persisted,
+        "proxima_geracao_afetada": bool(apply_next_generation),
+        "decision_at": decision_at,
+        "diversity_score": float(event.get("diversity_score", 0.0) or 0.0) if isinstance(event, Mapping) else 0.0,
+        "issues_count": len(list(event.get("issues_detected") or [])) if isinstance(event, Mapping) else 0,
+        "actions_count": len(list(event.get("calibration_actions_applied") or [])) if isinstance(event, Mapping) else 0,
+        "before_after_available": calibration_applied,
+    }
+
+
+def build_ml_calibration_cockpit_snapshot(
+    db_path: Path | str,
+    *,
+    generation_event_id: int | None = None,
+    workflow_status: str = COCKPIT_WORKFLOW_PENDING,
+    decision_at: str = "",
+    apply_next_generation: bool = False,
+) -> dict[str, Any]:
+    panel = build_supervised_ml_operational_panel_snapshot(
+        db_path,
+        generation_event_id=generation_event_id,
+    )
+    selected_event = dict(panel.get("selected_event") or {})
+    recalibration = resolve_recalibration_display_status()
+    diagnosis = build_ml_calibration_diagnosis_card(selected_event or None)
+    recommendations = build_ml_calibration_recommendations(selected_event or None)
+    result = build_ml_calibration_result_card(
+        selected_event or None,
+        workflow_status=workflow_status,
+        decision_at=decision_at,
+        apply_next_generation=apply_next_generation,
+    )
+    return {
+        "mission_id": VIS_COCKPIT_MISSION_ID,
+        "calibration_engine_mission": CALIBRATION_MISSION_ID,
+        "supervised_calibration_active": recalibration["supervised_calibration_active"],
+        "recalibration_display": recalibration,
+        "constitutional_summary": {
+            "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",
+            "lei_15": "ATIVA",
+            "lei_15a": "INOPERANTE",
+            "ml_livre": "BLOQUEADA",
+            "geracao_ml_fora_path": "BLOQUEADA",
+            "calibracao_supervisionada": (
+                "ATIVA" if recalibration["supervised_calibration_active"] else "INATIVA"
+            ),
+            "purge": "PROTEGIDO",
+            "public_app_ml": "SEM ML OPERACIONAL",
+        },
+        "diagnosis": diagnosis,
+        "recommendations": recommendations,
+        "result": result,
+        "panel": panel,
+        "selected_event": selected_event,
+        "events": list(panel.get("events") or []),
+    }
+
+
+def build_cockpit_persist_bundle(
+    *,
+    workflow_status: str,
+    decision_at: str,
+    apply_next_generation: bool,
+    authorized_event_id: int | None,
+    recommendations: list[str],
+) -> dict[str, Any]:
+    return {
+        "mission_id": VIS_COCKPIT_MISSION_ID,
+        "cockpit_workflow_status": workflow_status,
+        "cockpit_decision_at": decision_at,
+        "cockpit_apply_next_generation": bool(apply_next_generation),
+        "cockpit_authorized_event_id": authorized_event_id,
+        "cockpit_recommendations": list(recommendations),
+        "supervised_calibration_active": is_supervised_output_calibration_active(),
     }
