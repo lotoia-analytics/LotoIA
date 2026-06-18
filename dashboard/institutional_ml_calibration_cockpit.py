@@ -328,5 +328,6 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             _render_result_card(dict(snapshot.get("result") or {}))
 
     st.divider()
+    st.markdown("### Detalhes técnicos")
     _render_technical_expanders(db_path, snapshot)
     return snapshot

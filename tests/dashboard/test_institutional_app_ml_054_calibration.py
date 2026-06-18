@@ -27,7 +27,7 @@ from lotoia.ml.supervised_output_calibration import (
 
 
 def test_build_marker_v34() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v35"
+    assert BUILD_MARKER == "institutional-adm-runtime-v36"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
