@@ -48,6 +48,7 @@ VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
 OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
+OVERLAP_FORMAT_MISSION_ID_067 = "M-ML-067"
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
@@ -1027,7 +1028,13 @@ def build_sovereign_coverage_diagnosis_card(
         "ml_detail_scope_label": str(comparison.get("ml_detail_scope_label") or ""),
         "ml_events_window": int(agg.get("total_events", 0) or 0),
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "ml_format_aware_memory": dict(
+            coverage_evidence.get("ml_format_aware_memory")
+            or coverage_evidence.get("overlap_format_memory")
+            or {}
+        ),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1237,7 +1244,13 @@ def build_ml_calibration_cockpit_snapshot(
         "proxima_acao": str(coverage_evidence.get("proxima_acao") or ""),
         "ml_verdict_trace": dict(coverage_evidence.get("ml_verdict_trace") or {}),
         "ml_verdict_payload": dict(coverage_evidence.get("ml_verdict_payload") or {}),
+        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "ml_format_aware_memory": dict(
+            coverage_evidence.get("ml_format_aware_memory")
+            or coverage_evidence.get("overlap_format_memory")
+            or {}
+        ),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
@@ -1365,7 +1378,11 @@ def build_cockpit_persist_bundle(
         "proxima_acao": str(evidence.get("proxima_acao") or ml_verdict_payload.get("proxima_acao") or ""),
         "ml_verdict_trace": dict(evidence.get("ml_verdict_trace") or ml_verdict_payload.get("trace") or {}),
         "ml_verdict_payload": ml_verdict_payload,
+        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "overlap_format_memory": dict(evidence.get("overlap_format_memory") or {}),
+        "ml_format_aware_memory": dict(
+            evidence.get("ml_format_aware_memory") or evidence.get("overlap_format_memory") or {}
+        ),
         "format_analyses": list(evidence.get("format_analyses") or plan.get("format_analyses") or []),
         "primary_format_analysis": dict(
             evidence.get("primary_format_analysis") or plan.get("primary_format_analysis") or {}

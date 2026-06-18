@@ -8831,10 +8831,18 @@ def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> Non
 
     redundancia = dict(payload.get("redundancia_gp") or {})
     st.markdown("### Redundância GP")
-    redundancy_cols = st.columns(3)
+    redundancy_cols = st.columns(4)
     redundancy_cols[0].metric("Similaridade média", redundancia.get("similaridade_media_entre_jogos", 0.0))
     redundancy_cols[1].metric("Sobreposição máxima", redundancia.get("sobreposicao_maxima", 0))
-    redundancy_cols[2].metric("Quase repetidos", redundancia.get("cartoes_quase_repetidos", 0))
+    redundancy_cols[2].metric("Quase repetidos críticos", redundancia.get("quase_repetidos_criticos", redundancia.get("cartoes_quase_repetidos", 0)))
+    redundancy_cols[3].metric("Pares em atenção", redundancia.get("pares_em_atencao", 0))
+    composition_rows = list(redundancia.get("overlap_composition_rows") or [])
+    if composition_rows:
+        st.caption(
+            f"Pares possíveis: {int(redundancia.get('pares_possiveis', redundancia.get('pair_count', 0)) or 0)} | "
+            f"Formato: {redundancia.get('formato', '—')}"
+        )
+        st.dataframe(pd.DataFrame(composition_rows), hide_index=True, use_container_width=True)
     if redundancia.get("ausencias_recorrentes_no_GP"):
         st.dataframe(
             pd.DataFrame(redundancia["ausencias_recorrentes_no_GP"]),

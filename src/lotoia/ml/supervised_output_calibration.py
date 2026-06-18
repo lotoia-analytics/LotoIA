@@ -53,7 +53,7 @@ def analyze_pool_structural_issues(
     """Diagnóstico estrutural do pool — somente leitura + detecção de problemas."""
     cards = _pool_cards(games)
     pool_size = len(cards)
-    redundancy = compute_gp_redundancy(cards) if pool_size >= 2 else {}
+    redundancy = compute_gp_redundancy(cards, game_size=int(game_size)) if pool_size >= 2 else {}
     issues: list[dict[str, Any]] = []
 
     if pool_size < 2:
@@ -65,8 +65,10 @@ def analyze_pool_structural_issues(
             "issue_count": 0,
         }
 
-    pair_count = int(redundancy.get("pair_count", 0) or 0)
-    near_dup = int(redundancy.get("cartoes_quase_repetidos", 0) or 0)
+    pair_count = int(redundancy.get("pair_count", redundancy.get("pares_possiveis", 0)) or 0)
+    near_dup = int(
+        redundancy.get("quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos", 0)) or 0
+    )
     near_dup_ratio = (near_dup / pair_count) if pair_count > 0 else 0.0
     if near_dup_ratio >= DEFAULT_NEAR_DUP_PAIR_RATIO:
         issues.append(
@@ -75,7 +77,10 @@ def analyze_pool_structural_issues(
                 "severidade": "alta",
                 "valor": near_dup,
                 "limite": round(DEFAULT_NEAR_DUP_PAIR_RATIO * pair_count, 1),
-                "descricao": f"Quase repetidos elevado ({near_dup} pares, ratio={near_dup_ratio:.2f})",
+                "descricao": (
+                    f"Quase repetidos críticos elevado ({near_dup} pares overlap N/N-1, "
+                    f"ratio={near_dup_ratio:.2f})"
+                ),
             }
         )
 

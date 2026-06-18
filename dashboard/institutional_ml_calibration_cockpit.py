@@ -131,11 +131,15 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     cols = st.columns(3)
     cols[0].metric("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0))
     cols[1].metric("Sobreposição máxima", int(metrics.get("sobreposicao_maxima", 0) or 0))
-    cols[2].metric("Quase repetidos", int(metrics.get("quase_repetidos", 0) or 0))
+    cols[2].metric("Quase repetidos críticos", int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0))
     cols2 = st.columns(3)
     cols2[0].metric("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0))
     cols2[1].metric("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0))
-    cols2[2].metric("Risco 6 Bases", str(metrics.get("six_bases_risco", "—")))
+    cols2[2].metric("Pares em atenção", int(metrics.get("pares_em_atencao", 0) or 0))
+    cols2b = st.columns(3)
+    cols2b[0].metric("Risco 6 Bases", str(metrics.get("six_bases_risco", "—")))
+    cols2b[1].metric("Pares possíveis", int(metrics.get("pares_possiveis", 0) or 0))
+    cols2b[2].metric("Formato primário", f"{int(metrics.get('primary_format_size', 0) or 0)}D" if metrics.get("primary_format_size") else "—")
     cols3 = st.columns(3)
     cols3[0].metric("Jogos 13 hits", int(metrics.get("desempenho_13_hits", 0) or 0))
     cols3[1].metric("Jogos 14 hits", int(metrics.get("desempenho_14_hits", 0) or 0))
@@ -151,16 +155,44 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
         )
 
 
+def _render_overlap_composition(metrics: dict[str, Any], *, primary_format: dict[str, Any] | None = None) -> None:
+    """Composição de pares por overlap — M-ML-067."""
+    rows = list(metrics.get("overlap_composition_rows") or [])
+    game_size = int(metrics.get("primary_format_size") or (primary_format or {}).get("game_size") or 0)
+    if not rows and game_size > 0:
+        from lotoia.ml.overlap_format_thresholds import build_overlap_composition_rows
+
+        distribution = {
+            int(key): int(value)
+            for key, value in dict(metrics.get("distribuicao_por_overlap") or {}).items()
+        }
+        rows = build_overlap_composition_rows(game_size, distribution)
+    if not rows:
+        return
+    st.markdown("##### Composição de pares por overlap (M-ML-067)")
+    formato = f"{game_size}D" if game_size else str((primary_format or {}).get("formato") or "—")
+    st.caption(f"Formato analisado: {formato} | Pares possíveis: {int(metrics.get('pares_possiveis', 0) or 0)}")
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    criticos = int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0)
+    atencao = int(metrics.get("pares_em_atencao", 0) or 0)
+    st.caption(f"Quase repetidos críticos (overlap N + N-1): {criticos}")
+    st.caption(f"Pares em atenção (overlap N-2): {atencao}")
+
+
 def _render_overlap_format_verdict(snapshot: dict[str, Any]) -> None:
-    st.markdown("##### Limiares de sobreposição por formato (M-ML-060)")
+    st.markdown("##### Limiares de sobreposição por formato (M-ML-060 / M-ML-067)")
     diagnosis = dict(snapshot.get("diagnosis") or {})
+    metrics = dict(diagnosis.get("metrics") or snapshot.get("metrics") or {})
     primary = dict(
         snapshot.get("primary_format_analysis")
         or diagnosis.get("primary_format_analysis")
         or {}
     )
-    if not primary:
+    if not primary and not metrics.get("overlap_composition_rows"):
         st.caption("Aguardando leitura soberana com formato identificado.")
+        return
+    _render_overlap_composition(metrics, primary_format=primary or None)
+    if not primary:
         return
     st.markdown(f"**Formato analisado:** {primary.get('formato', '—')}")
     st.markdown(f"**Sobreposição máxima observada:** {primary.get('sobreposicao_maxima', '—')}")
@@ -423,12 +455,28 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
     lot_details = list(snapshot.get("lot_details") or [])
     coverage = dict(snapshot.get("coverage_evidence") or {})
 
-    with st.expander("Memória ML — Limiares por Formato 15D a 23D", expanded=False):
-        memory = dict(snapshot.get("overlap_format_memory") or {})
-        thresholds = list(memory.get("thresholds") or [])
+    with st.expander("Memória ML — Limiares format-aware 15D a 23D (M-ML-067)", expanded=False):
+        memory = dict(
+            snapshot.get("ml_format_aware_memory")
+            or snapshot.get("overlap_format_memory")
+            or {}
+        )
+        overlap_memory = dict(memory.get("overlap_memory") or memory)
+        thresholds = list(overlap_memory.get("thresholds") or memory.get("thresholds") or [])
         if thresholds:
             st.dataframe(pd.DataFrame(thresholds), hide_index=True, use_container_width=True)
-            st.caption(str(memory.get("rule_summary") or ""))
+            st.caption(str(overlap_memory.get("rule_summary") or memory.get("rule_summary") or ""))
+        similarity_memory = dict(memory.get("similarity_memory") or {})
+        if similarity_memory.get("format_thresholds"):
+            st.markdown("**Limiares de similaridade média por formato**")
+            similarity_rows = [
+                {"formato": fmt, **bands}
+                for fmt, bands in dict(similarity_memory.get("format_thresholds") or {}).items()
+            ]
+            st.dataframe(pd.DataFrame(similarity_rows), hide_index=True, use_container_width=True)
+        legacy = dict(memory.get("legacy_rule") or {})
+        if legacy:
+            st.caption(f"Régua legada: overlap fixo >= {legacy.get('near_duplicate_overlap_fixed')} — {legacy.get('status')}")
         else:
             st.caption("Memória de limiares indisponível.")
 

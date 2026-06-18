@@ -634,8 +634,39 @@ def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[s
     similaridade = _safe_float(redundancy.get("similaridade_media_entre_jogos"))
     sobreposicao_media = _safe_float(redundancy.get("sobreposicao_media"))
     sobreposicao_maxima = _safe_int(redundancy.get("sobreposicao_maxima"))
-    quase_repetidos = _safe_int(redundancy.get("cartoes_quase_repetidos"))
+    quase_repetidos_criticos = _safe_int(
+        redundancy.get("quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos"))
+    )
+    quase_repetidos = quase_repetidos_criticos
+    pares_em_atencao = _safe_int(redundancy.get("pares_em_atencao", redundancy.get("pares_atencao")))
+    pares_possiveis = _safe_int(redundancy.get("pares_possiveis", redundancy.get("pair_count")))
+    distribuicao_por_overlap = dict(redundancy.get("distribuicao_por_overlap") or {})
+    overlap_composition_rows = list(redundancy.get("overlap_composition_rows") or [])
     diversity_score = round(max(0.0, 1.0 - similaridade), 4)
+    formatos = [
+        int(value)
+        for value in list(evidence_base.get("formatos_analisados") or summary.get("formatos_analisados") or [])
+    ]
+    primary_format_size = int(formatos[0]) if len(formatos) == 1 else 0
+    if primary_format_size <= 0 and redundancy.get("game_size"):
+        primary_format_size = _safe_int(redundancy.get("game_size"))
+    redundancia_por_formato = dict(payload.get("redundancia_por_formato") or {})
+    if primary_format_size > 0:
+        fmt_redundancy = dict(redundancia_por_formato.get(str(primary_format_size)) or {})
+        if fmt_redundancy:
+            quase_repetidos_criticos = _safe_int(
+                fmt_redundancy.get("quase_repetidos_criticos", fmt_redundancy.get("cartoes_quase_repetidos"))
+            )
+            quase_repetidos = quase_repetidos_criticos
+            pares_em_atencao = _safe_int(fmt_redundancy.get("pares_em_atencao", fmt_redundancy.get("pares_atencao")))
+            pares_possiveis = _safe_int(fmt_redundancy.get("pares_possiveis", fmt_redundancy.get("pair_count")))
+            distribuicao_por_overlap = dict(fmt_redundancy.get("distribuicao_por_overlap") or distribuicao_por_overlap)
+            overlap_composition_rows = list(fmt_redundancy.get("overlap_composition_rows") or overlap_composition_rows)
+            similaridade = _safe_float(
+                fmt_redundancy.get("similaridade_media_entre_jogos", similaridade)
+            )
+            sobreposicao_maxima = _safe_int(fmt_redundancy.get("sobreposicao_maxima", sobreposicao_maxima))
+            diversity_score = round(max(0.0, 1.0 - similaridade), 4)
 
     prefix_top = dict(abertura.get("prefixo_3_mais_gerado") or {})
     suffix_top = dict(fechamento.get("sufixo_3_mais_gerado") or {})
@@ -658,7 +689,7 @@ def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[s
 
     redundancia_geral = (
         "alta"
-        if quase_repetidos >= 20 or similaridade >= 0.55
+        if quase_repetidos_criticos >= 20 or similaridade >= 0.55 or pares_em_atencao >= 20
         else "normal"
     )
 
@@ -668,7 +699,13 @@ def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[s
         "sobreposicao_media": sobreposicao_media,
         "sobreposicao_maxima": sobreposicao_maxima,
         "quase_repetidos": quase_repetidos,
-        "cartoes_quase_repetidos": quase_repetidos,
+        "quase_repetidos_criticos": quase_repetidos_criticos,
+        "cartoes_quase_repetidos": quase_repetidos_criticos,
+        "pares_em_atencao": pares_em_atencao,
+        "pares_possiveis": pares_possiveis,
+        "distribuicao_por_overlap": distribuicao_por_overlap,
+        "overlap_composition_rows": overlap_composition_rows,
+        "primary_format_size": primary_format_size,
         "redundancia_geral": redundancia_geral,
         "prefixos_sufixos_viciados": prefix_viciado or suffix_viciado,
         "prefixo_viciado": prefix_viciado,

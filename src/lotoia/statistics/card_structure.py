@@ -18,6 +18,7 @@ FULL_DEZENAS = tuple(range(1, 26))
 BAIXAS = tuple(range(1, 6))
 MEDIAS = tuple(range(6, 16))
 ALTAS = tuple(range(16, 26))
+# Legado pré M-ML-067 — substituído por régua format-aware em overlap_format_thresholds.
 NEAR_DUPLICATE_OVERLAP = 13
 
 
@@ -150,34 +151,46 @@ def compute_card_structure_metrics(numbers: Sequence[int]) -> dict[str, Any]:
     }
 
 
-def compute_gp_redundancy(games: Sequence[Sequence[int]]) -> dict[str, Any]:
+def compute_gp_redundancy(
+    games: Sequence[Sequence[int]],
+    *,
+    game_size: int | None = None,
+) -> dict[str, Any]:
+    """Redundância GP com régua format-aware M-ML-067 (quase repetidos = overlap N e N-1)."""
+    from lotoia.ml.overlap_format_thresholds import build_pair_overlap_distribution
+
     normalized = [sorted({int(number) for number in game}) for game in games if game]
     if len(normalized) < 2:
+        size = int(game_size or (len(normalized[0]) if normalized else 15))
         return {
+            "game_size": size,
+            "formato": f"{size}D",
             "similaridade_media_entre_jogos": 0.0,
             "sobreposicao_media": 0.0,
             "sobreposicao_maxima": 0.0,
             "cartoes_quase_repetidos": 0,
+            "quase_repetidos_criticos": 0,
+            "pares_em_atencao": 0,
             "pair_count": 0,
+            "pares_possiveis": 0,
+            "distribuicao_por_overlap": {},
+            "overlap_composition_rows": [],
+            "legacy_near_duplicate_overlap_15d": NEAR_DUPLICATE_OVERLAP,
         }
+
+    size = int(game_size or max(len(game) for game in normalized))
+    distribution = build_pair_overlap_distribution(normalized, game_size=size)
     overlaps: list[int] = []
-    near_duplicate_pairs = 0
-    pair_count = 0
-    for left_index, left in enumerate(normalized):
-        left_set = set(left)
-        for right in normalized[left_index + 1 :]:
-            overlap = len(left_set & set(right))
-            overlaps.append(overlap)
-            pair_count += 1
-            if overlap >= NEAR_DUPLICATE_OVERLAP:
-                near_duplicate_pairs += 1
-    game_size = max((len(game) for game in normalized), default=15)
+    for overlap_text, count in dict(distribution.get("distribuicao_por_overlap") or {}).items():
+        overlaps.extend([int(overlap_text)] * int(count))
+    pair_count = int(distribution.get("pair_count", 0) or 0)
     return {
-        "similaridade_media_entre_jogos": round(sum(overlaps) / pair_count / game_size, 4) if pair_count else 0.0,
+        **distribution,
+        "similaridade_media_entre_jogos": round(sum(overlaps) / pair_count / size, 4) if pair_count else 0.0,
         "sobreposicao_media": round(sum(overlaps) / pair_count, 4) if pair_count else 0.0,
         "sobreposicao_maxima": max(overlaps) if overlaps else 0,
-        "cartoes_quase_repetidos": near_duplicate_pairs,
-        "pair_count": pair_count,
+        "legacy_near_duplicate_overlap_15d": NEAR_DUPLICATE_OVERLAP,
+        "legacy_near_duplicate_pairs_count": sum(1 for overlap in overlaps if overlap >= NEAR_DUPLICATE_OVERLAP),
     }
 
 

@@ -14,7 +14,8 @@ from lotoia.ml.overlap_format_thresholds import (
     LEVEL_CRITICO,
     LEVEL_RUIM,
     MISSION_ID as OVERLAP_MISSION_ID,
-    build_overlap_format_memory,
+    MISSION_ID_067 as OVERLAP_MISSION_ID_067,
+    build_ml_format_aware_memory,
     build_per_format_overlap_analysis,
     resolve_primary_format_analysis,
 )
@@ -30,6 +31,7 @@ MISSION_ID = "M-ML-VIS-058"
 FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 SOVEREIGN_MISSION_ID = "M-ML-VIS-059"
 OVERLAP_FORMAT_MISSION_ID = OVERLAP_MISSION_ID
+OVERLAP_FORMAT_MISSION_ID_067 = OVERLAP_MISSION_ID_067
 SCOPE_RECENT_OFFICIAL = SCOPE_ALL_OPERATIONAL_CORE_002
 DEFAULT_EVENTS_LIMIT = 10
 
@@ -133,7 +135,8 @@ def build_calibration_plan(
 
     similaridade = _safe_float(m.get("similaridade_media"))
     sobreposicao_max = _safe_int(m.get("sobreposicao_maxima"))
-    quase_repetidos = _safe_int(m.get("quase_repetidos"))
+    quase_repetidos = _safe_int(m.get("quase_repetidos_criticos", m.get("quase_repetidos")))
+    pares_atencao = _safe_int(m.get("pares_em_atencao"))
     diversity_score = _safe_float(m.get("diversity_score"))
     subcovered = _safe_int(m.get("dezenas_subcobertas"))
     subcovered_list = [
@@ -172,12 +175,18 @@ def build_calibration_plan(
         )
 
     if quase_repetidos >= NEAR_DUP_HIGH_THRESHOLD:
-        plan_items.append("Penalizar clones estruturais e quase repetidos.")
-        impact_items.append("Diminuir quase repetidos.")
+        plan_items.append("Penalizar clones estruturais e quase repetidos críticos (overlap N e N-1).")
+        impact_items.append("Diminuir quase repetidos críticos.")
         parametros_sugeridos["near_duplicate_penalty"] = max(
             _safe_float(parametros_sugeridos.get("near_duplicate_penalty"), 1.0),
             1.25,
         )
+
+    if pares_atencao >= 10:
+        plan_items.append(
+            f"Monitorar {pares_atencao} pares em atenção (overlap N-2) — não confundir com quase clone crítico."
+        )
+        impact_items.append("Reduzir pares em atenção sem mascarar clones reais.")
 
     if prefix_viciado and prefix not in {"—", ""}:
         plan_items.append(f"Penalizar prefixo viciado {prefix}.")
@@ -257,6 +266,7 @@ def build_calibration_plan(
     return {
         "mission_id": FIX01_MISSION_ID,
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "plan_items": plan_items,
         "impact_items": impact_items,
         "parametros_sugeridos": parametros_sugeridos,
@@ -279,7 +289,8 @@ def interpret_coverage_evidence(
 
     similaridade = _safe_float(m.get("similaridade_media"))
     sobreposicao_max = _safe_int(m.get("sobreposicao_maxima"))
-    quase_repetidos = _safe_int(m.get("quase_repetidos"))
+    quase_repetidos = _safe_int(m.get("quase_repetidos_criticos", m.get("quase_repetidos")))
+    pares_atencao = _safe_int(m.get("pares_em_atencao"))
     diversity_score = _safe_float(m.get("diversity_score"))
     subcovered = _safe_int(m.get("dezenas_subcobertas"))
     formatos = [int(value) for value in list(m.get("formatos_analisados") or []) if int(value) > 0]
@@ -293,7 +304,8 @@ def interpret_coverage_evidence(
                 evidencia=(
                     f"Similaridade média {similaridade:.3f}; "
                     f"sobreposição média {m.get('sobreposicao_media', '—')}; "
-                    f"quase repetidos {quase_repetidos}."
+                    f"quase repetidos críticos {quase_repetidos}; "
+                    f"pares em atenção {pares_atencao}."
                 ),
                 causa_provavel="Pool com estruturas muito próximas entre cartões.",
                 acao_recomendada="Aumentar penalidade de similaridade/overlap no rerank supervisionado.",
@@ -321,8 +333,11 @@ def interpret_coverage_evidence(
         blocks.append(
             _build_decision_block(
                 issue_type="quase_repetidos_alto",
-                problema_detectado="Clones estruturais entre jogos.",
-                evidencia=f"Quase repetidos {quase_repetidos}; similaridade média {similaridade:.3f}.",
+                problema_detectado="Clones estruturais entre jogos (overlap N ou N-1).",
+                evidencia=(
+                    f"Quase repetidos críticos {quase_repetidos}; "
+                    f"pares em atenção {pares_atencao}; similaridade média {similaridade:.3f}."
+                ),
                 causa_provavel="Assinaturas estruturais repetidas no pool oficial recente.",
                 acao_recomendada="Penalizar assinaturas parecidas e diversificar candidatos no rerank.",
                 impacto_esperado="Menos jogos repetitivos e melhor cobertura estrutural.",
@@ -497,7 +512,7 @@ def get_structural_coverage_evidence(
     metrics = dict(snapshot.get("metrics") or {})
     format_analyses = build_per_format_overlap_analysis(structural, metrics)
     primary_format = resolve_primary_format_analysis(format_analyses)
-    overlap_format_memory = build_overlap_format_memory()
+    overlap_format_memory = build_ml_format_aware_memory()
     if primary_format:
         metrics["primary_format_analysis"] = dict(primary_format)
     metrics["format_analyses"] = format_analyses
@@ -546,7 +561,9 @@ def get_structural_coverage_evidence(
         "generation_event_ids": list(metrics.get("generation_event_ids") or []),
         "events_limit": int(events_limit),
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "overlap_format_memory": overlap_format_memory,
+        "ml_format_aware_memory": overlap_format_memory,
         "format_analyses": format_analyses,
         "primary_format_analysis": dict(primary_format or {}),
         "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
