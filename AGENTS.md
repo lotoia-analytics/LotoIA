@@ -91,6 +91,7 @@ Dependencies (`.venv` + `requirements.txt` + `pip install -e .`) are refreshed a
 source .venv/bin/activate
 python scripts/ops/apply_cloud_migrations.py
 python scripts/checks/postgresql_cloud_health_check.py
+python scripts/ops/railway_database_url_m_plat_063.py --json
 ```
 
 Do **not** run `cp .env.example .env`: the `Settings` model (`src/lotoia/config.py`) forbids extra keys, and `.env.example` ships many integration keys (Evolution/Messenger/Asaas) — a copied `.env` makes the whole `pytest` collection fail with `extra_forbidden`. Leave `.env` absent and rely on OS env vars (all `Settings` fields have safe defaults).

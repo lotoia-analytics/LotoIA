@@ -80,3 +80,8 @@ def test_placeholder_host_user_pass_rejected() -> None:
         is_placeholder_database_url("postgresql://user:pass@postgres.railway.internal:5432/railway")
         is False
     )
+
+
+def test_cursor_placeholder_host_rejected() -> None:
+    assert is_placeholder_database_url("https://cursor.com") is True
+    assert is_placeholder_database_url("postgresql://user:pass@cursor.com:5432/railway") is True

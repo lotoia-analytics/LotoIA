@@ -31,6 +31,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lotoia.database.env_resolution import (  # noqa: E402
+    audit_database_env_from_os,
+    is_invalid_database_url_literal,
+    is_placeholder_database_url,
+)
 
 REQUIRED_RAILWAY_VARS = (
     "DATABASE_URL",
@@ -91,12 +99,25 @@ def _audit_railway_variables() -> dict[str, Any]:
         for marker in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
     ) if database_url else False
 
+    database_audit = audit_database_env_from_os()
+    database_url_invalid = bool(database_url) and (
+        is_invalid_database_url_literal(database_url) or is_placeholder_database_url(database_url)
+    )
+
+    status = "PASS"
+    if missing_required or localhost_violation or database_url_invalid:
+        status = "FAIL"
+    elif database_audit.get("compat_fallback_active"):
+        status = "WARN"
+
     return {
         "present": present,
         "missing_required": missing_required,
         "missing_recommended": missing_recommended,
         "localhost_violation": localhost_violation,
-        "status": "PASS" if not missing_required and not localhost_violation else "FAIL",
+        "database_url_invalid": database_url_invalid,
+        "database_audit": database_audit,
+        "status": status,
     }
 
 
