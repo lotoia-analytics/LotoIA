@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-VIS-056](#m-ml-vis-056--central-ml-cockpit-de-calibração-supervisionada) | Central ML — cockpit calibração | `CONCLUIDA` | `COCKPIT OPERACIONAL / CALIBRAÇÃO ML ATIVA` |
 | [M-ML-054](#m-ml-054--central-ml-como-motor-de-calibração-supervisionada-da-saída) | Central ML — calibração supervisionada saída | `CONCLUIDA` | `CALIBRAÇÃO AUTOMÁTICA / TRACE POSTGRESQL` |
 | [M-ML-VIS-053B](#m-ml-vis-053b--corrigir-rota-da-central-ml-no-painel-adm) | Rota Central ML — fallback corrigido | `CONCLUIDA` | `CENTRAL ML ABRE / SEM FALLBACK M-PLAT-040` |
 | [M-ML-VIS-053](#m-ml-vis-053--ativar-painel-central-ml-assistida--operacional-supervisionada) | Central ML Operacional Supervisionada | `CONCLUIDA` | `PAINEL ML ATIVO / POSTGRESQL SOBERANO` |
@@ -46,6 +47,22 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-VIS-056 — Central ML Cockpit de Calibração Supervisionada
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v35` |
+| **Pré-requisito** | M-ML-054 — motor de calibração |
+
+**Objetivo:** Refatorar a Central ML para cockpit operacional com diagnóstico, recomendação, comandos supervisionados e resultado — detalhes técnicos em expansores.
+
+**Veredicto:** **M-ML-VIS-056 CONCLUÍDA — CENTRAL ML TRANSFORMADA EM COCKPIT DE CALIBRAÇÃO SUPERVISIONADA**
+
+**Cartão:** `cartoes/M-ML-VIS-056_CENTRAL_ML_COCKPIT.md`
+
+---
 
 ### M-ML-054 — Central ML como Motor de Calibração Supervisionada da Saída
 

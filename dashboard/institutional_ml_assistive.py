@@ -19,6 +19,7 @@ from dashboard.institutional_supervised_ml import (
     build_supervised_ml_operational_panel_snapshot,
     is_adm_supervised_ml_active,
     is_ml_operational_enabled,
+    is_supervised_output_calibration_active,
     supervised_ml_status_label,
 )
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
@@ -136,10 +137,12 @@ ML_SECURITY_STATUS_READ_ONLY: dict[str, str] = {
 ML_SECURITY_STATUS_OPERATIONAL: dict[str, str] = {
     "ml_operacional": "True — supervisionado sobre CORE_002",
     "geracao_por_ml": "permitida somente via path soberano ADM",
-    "recalibracao_automatica": "proibida",
+    "recalibracao_automatica": "ATIVA COM SUPERVISÃO — calibração de saída M-ML-054",
+    "calibracao_supervisionada_saida": "ATIVA — motor M-ML-054 subordinado ao CORE_002",
+    "recalibracao_ml_livre": "BLOQUEADA — fora do path soberano",
     "promocao_automatica": "proibida",
     "generation_cmd": "False — painel ML não executa geração",
-    "recalibration_cmd": "False — bloqueado, não executável",
+    "recalibration_cmd": "False — recalibração livre bloqueada; calibração supervisionada ativa",
     "comandos_executaveis": "não nesta tela",
     "decisao_final": "governança + trace PostgreSQL",
     "decision_trace": "ativo — persistido",
@@ -333,7 +336,10 @@ def render_ml_assistive_governance_section() -> None:
     security_cols = st.columns(4)
     security_cols[0].metric("ML operacional", "True" if operational else "False")
     security_cols[1].metric("generation_cmd", "False")
-    security_cols[2].metric("recalibration_cmd", "False")
+    if operational and is_supervised_output_calibration_active():
+        security_cols[2].metric("Calibração ML", "ATIVA")
+    else:
+        security_cols[2].metric("recalibration_cmd", "False")
     security_cols[3].metric("Decisão final", "Governança + trace" if operational else "Governança")
     st.dataframe(
         pd.DataFrame([{"campo": k, "valor": v} for k, v in payload["ml_security_status"].items()]),

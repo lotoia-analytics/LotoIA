@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-ML-VIS-056",
+        "titulo": "Central ML — Cockpit de Calibração Supervisionada",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_visual + agent_dados + agent_qualidade + agent_governanca",
+        "evidencia": "M-ML-VIS-056 — cockpit operacional + status calibração ML supervisionada ativa",
+    },
+    {
         "id": "M-ML-054",
         "titulo": "Central ML como Motor de Calibração Supervisionada da Saída",
         "status": "CONCLUIDA",
