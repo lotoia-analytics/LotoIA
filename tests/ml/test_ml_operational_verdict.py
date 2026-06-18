@@ -17,7 +17,7 @@ from lotoia.ml.overlap_format_thresholds import evaluate_format_overlap_verdict
 
 
 def test_build_marker_v43() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v50"
+    assert BUILD_MARKER == "institutional-adm-runtime-v51"
 
 
 def test_mission_id() -> None:
