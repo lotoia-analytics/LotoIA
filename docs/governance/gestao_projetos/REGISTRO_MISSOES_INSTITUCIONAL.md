@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-VIS-053](#m-ml-vis-053--ativar-painel-central-ml-assistida--operacional-supervisionada) | Central ML Operacional Supervisionada | `CONCLUIDA` | `PAINEL ML ATIVO / POSTGRESQL SOBERANO` |
 | [M-GER-DADOS-051](#m-ger-dados-051--persistência-16d23d--histórico-analítico--remoção-ges) | Persistência multidezena CORE_002 | `CONCLUIDA` | `16D–23D PERSISTIDOS / GE 114 REMOVIDO / 115 PRESERVADO` |
 | [M-PLAT-050](#m-plat-050--corrigir-saturação-de-conexões-postgresql--sqlalchemy) | Pool PostgreSQL Streamlit | `CONCLUIDA` | `HOME ESTÁVEL / SEM QUEUEPOOL TIMEOUT` |
 | [M-DADOS-049](#m-dados-049--reset-controlado-das-gerações-antigas) | Reset controlado gerações antigas | `CONCLUIDA` | `NOVA FASE 001 / POSTGRESQL VALIDADO` |
@@ -43,6 +44,26 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-VIS-053 — Ativar Painel Central ML Assistida / Operacional Supervisionada
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v32` |
+| **Pré-requisito** | M-ML-045 — ML operacional supervisionado + trace PostgreSQL |
+
+**Objetivo:** Ativar a Central ML para exibir eventos reais `ml_enabled=True` em PostgreSQL,
+com decision trace, feature attribution e ML × 6 Bases — sem mock e sem session_state soberano.
+
+**Entregáveis:** loader PostgreSQL em `institutional_supervised_ml.py`, painel em
+`institutional_ml_assistive.py`, rota `central_ml_diagnostics`, testes M-ML-VIS-053.
+
+**Veredicto:** **M-ML-VIS-053 CONCLUÍDA — CENTRAL ML OPERACIONAL SUPERVISIONADA ATIVA SOBRE POSTGRESQL**
+
+**Cartão:** `cartoes/M-ML-VIS-053_CENTRAL_ML_OPERACIONAL_SUPERVISIONADA.md`
+
+---
 
 ### M-GER-DADOS-051 — Persistência 16D–23D + Histórico Analítico + Remoção GEs remanescentes
 

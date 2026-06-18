@@ -103,6 +103,7 @@ from dashboard.institutional_structural_coverage import render_structural_covera
 from dashboard.institutional_ml_assistive import (
     render_constitutional_side_leak_section,
     render_ml_assistive_governance_section,
+    render_supervised_ml_operational_panel,
 )
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
 from dashboard.institutional_conference_audit import render_conference_governance_section
@@ -129,7 +130,6 @@ from dashboard.institutional_operational_structural_coverage import (
     HISTORICAL_SECTION_TITLE,
     HISTORICAL_SOURCE_CAPTION,
     OPERATIONAL_COVERAGE_TITLE,
-    OPERATIONAL_GENERATION_ALL_LABEL,
     OPERATIONAL_SOURCE_CAPTION,
     build_operational_generation_dropdown_options,
     build_operational_generations_aggregate_summary,
@@ -8116,8 +8116,9 @@ def _render_structural_coverage_ranking_tables(
 
 def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Central ML Assistiva")
+    st.subheader("Central ML — Operacional Supervisionada")
     render_ml_assistive_governance_section()
+    render_supervised_ml_operational_panel(DB_PATH)
     st.divider()
     st.markdown("### Diagnóstico ML observacional")
     _render_diagnostic_observational_caption()
