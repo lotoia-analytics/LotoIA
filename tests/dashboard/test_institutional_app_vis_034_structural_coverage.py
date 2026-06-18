@@ -12,7 +12,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v28"
+    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v29"
 
 
 def test_structural_coverage_module_imports() -> None:
@@ -68,8 +68,8 @@ def test_cobertura_page_integrates_governance_and_is_read_only() -> None:
     source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
     assert "render_structural_coverage_governance_section" in source
     assert "LEI15_CORE_002" in source
-    assert "histórico não é núcleo" in source
-    assert "Diagnóstico observacional de lote" in source
+    assert "Cobertura Operacional CORE_002" in source or "OPERATIONAL_COVERAGE_TITLE" in source
+    assert "OPERATIONAL_SOURCE_CAPTION" in source or "generation_events / generated_games" in source
     forbidden = (
         "_run_clean_law15_generation",
         "generate_best_games",

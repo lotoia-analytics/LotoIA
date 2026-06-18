@@ -8,6 +8,7 @@ from typing import Any, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    GeneratedGame,
     GenerationEvent,
     LotofacilOfficialHistory,
     ReconciliationGame,
@@ -15,6 +16,7 @@ from lotoia.database.database import (
     get_session,
 )
 from lotoia.governance.analysis_batch_labels import batch_label_game_size
+from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
 from lotoia.observability.hb_metrics import resolve_official_numbers_for_contest, resolve_reconciliation_game_hits
 from lotoia.statistics.card_structure import (
     analyze_stuck_games,
@@ -30,6 +32,7 @@ from lotoia.statistics.card_structure import (
 
 SOURCE_POSTGRESQL = "postgresql"
 RECONCILIATION_TABLES = "reconciliation_runs / reconciliation_games"
+OPERATIONAL_TABLES = "generation_events / generated_games"
 DEFAULT_OFFICIAL_WINDOW = 50
 EVIDENCE_LEVEL_LOCAL = "LOCAL_DIAGNOSTIC"
 EVIDENCE_LEVEL_STRUCTURAL_RECURRENT = "STRUCTURAL_RECURRENT_DIAGNOSTIC"
@@ -72,6 +75,130 @@ def empty_card_structure_payload() -> dict[str, Any]:
         },
         "evidence_level": EVIDENCE_LEVEL_LOCAL,
     }
+
+
+def empty_operational_card_structure_payload() -> dict[str, Any]:
+    payload = empty_card_structure_payload()
+    payload["tables"] = OPERATIONAL_TABLES
+    payload["coverage_layer"] = "operational_core_002"
+    return payload
+
+
+def _serialize_generated_game(row: GeneratedGame, *, generation_event_id: int) -> dict[str, Any]:
+    context = dict(row.context_json or {})
+    numbers = [int(number) for number in (row.numbers or [])]
+    final_card_numbers = [int(number) for number in (context.get("final_card_numbers") or numbers or [])]
+    return {
+        "game_index": int(row.game_index or 0),
+        "numbers": numbers,
+        "final_card_numbers": final_card_numbers,
+        "core_numbers": list(context.get("core_numbers") or []),
+        "audited_reserve_numbers": list(context.get("audited_reserve_numbers") or []),
+        "generation_event_id": int(generation_event_id),
+        "reconciliation_run_id": 0,
+        "hits": 0,
+        "matched_numbers": [],
+        "prize_tier": "",
+        "contest_id": int(getattr(row, "target_contest", 0) or 0),
+    }
+
+
+def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str | None = None) -> int:
+    numbers = resolve_cartao_final_from_game(game)
+    if numbers:
+        return len(numbers)
+    label_size = core_002_batch_label_game_size(batch_label)
+    if label_size is not None:
+        return int(label_size)
+    return len(game.get("numbers") or [])
+
+
+def load_operational_card_structure_diagnostics_from_db(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    game_size: int | None = None,
+    official_window: int = DEFAULT_OFFICIAL_WINDOW,
+) -> dict[str, Any]:
+    """Carrega diagnóstico estrutural a partir de generation_events + generated_games (CORE_002)."""
+    selected_ge_id = int(generation_event_id or 0)
+    effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else None
+
+    with get_session(db_path) as session:
+        event_query = session.query(GenerationEvent).order_by(
+            GenerationEvent.created_at.asc(),
+            GenerationEvent.id.asc(),
+        )
+        if selected_ge_id > 0:
+            event_query = event_query.filter(GenerationEvent.id == selected_ge_id)
+        events = event_query.all()
+
+        sovereign_events = [
+            event
+            for event in events
+            if is_sovereign_core_label(str(getattr(event, "analysis_batch_label", "") or ""))
+        ]
+        if not sovereign_events:
+            return empty_operational_card_structure_payload()
+
+        games: list[dict[str, Any]] = []
+        generation_event_ids: list[int] = []
+        contest_ids: list[int] = []
+        batch_labels_seen: set[str] = set()
+        selected_batch_label: str | None = None
+
+        for event in sovereign_events:
+            ge_id = int(event.id or 0)
+            if ge_id <= 0:
+                continue
+            rows = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == ge_id)
+                .order_by(GeneratedGame.game_index.asc())
+                .all()
+            )
+            if not rows:
+                continue
+            event_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
+            if event_label:
+                batch_labels_seen.add(event_label)
+                if selected_ge_id > 0:
+                    selected_batch_label = event_label
+            generation_event_ids.append(ge_id)
+            for row in rows:
+                payload = _serialize_generated_game(row, generation_event_id=ge_id)
+                contest_id = int(payload.get("contest_id") or 0)
+                if contest_id > 0:
+                    contest_ids.append(contest_id)
+                resolved_card = resolve_cartao_final_from_game(payload)
+                card_size = len(resolved_card) if resolved_card else _resolve_generated_game_card_size(
+                    payload,
+                    batch_label=event_label,
+                )
+                if effective_game_size is not None and card_size != effective_game_size:
+                    continue
+                games.append(payload)
+
+        if not games:
+            return empty_operational_card_structure_payload()
+
+        official_cards, official_contests = _load_official_cards(session, limit=official_window)
+
+    payload = build_card_structure_payload(
+        games=games,
+        official_cards=official_cards,
+        official_contests=official_contests,
+        generation_event_ids=generation_event_ids,
+        reconciliation_run_ids=[],
+        contest_ids=contest_ids,
+        analysis_batch_labels=sorted(batch_labels_seen),
+        selected_analysis_batch_label=str(selected_batch_label or "").strip().upper() or None,
+    )
+    payload["tables"] = OPERATIONAL_TABLES
+    payload["coverage_layer"] = "operational_core_002"
+    if selected_ge_id > 0:
+        payload["selected_generation_event_id"] = selected_ge_id
+    return payload
 
 
 def resolve_evidence_level(*, total_geracoes: int, total_concursos: int) -> str:
