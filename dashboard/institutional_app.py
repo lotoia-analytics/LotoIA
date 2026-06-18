@@ -64,7 +64,10 @@ from lotoia.governance.output_commander import (
 )
 from lotoia.governance.lei15_15a_core_realignment_v3 import get_v3_mode
 from lotoia.governance.analysis_batch_labels import BATCH_LABEL_UI_OPTIONS
-from lotoia.observability.card_structure_diagnostics import load_card_structure_diagnostics_from_db
+from lotoia.observability.card_structure_diagnostics import (
+    load_card_structure_diagnostics_from_db,
+    load_operational_card_structure_diagnostics_from_db,
+)
 from lotoia.observability.ml_diagnostic_panels import (
     ACTIVE_ALERT_STATUSES,
     ALERT_001,
@@ -120,6 +123,14 @@ from dashboard.institutional_db_runtime import (
 from dashboard.institutional_operational_generation import (
     build_operational_generation_index,
     resolve_operational_generation_label,
+)
+from dashboard.institutional_operational_structural_coverage import (
+    EMPTY_OPERATIONAL_MESSAGE,
+    HISTORICAL_SECTION_TITLE,
+    HISTORICAL_SOURCE_CAPTION,
+    OPERATIONAL_COVERAGE_TITLE,
+    OPERATIONAL_SOURCE_CAPTION,
+    load_operational_core_002_generations,
 )
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
@@ -1311,6 +1322,24 @@ def _cached_card_structure_diagnostics_from_db(
         generation_event_id=generation_event_id,
         reconciliation_run_id=reconciliation_run_id,
         concurso_analisado=concurso_analisado,
+    )
+
+
+@st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
+def _cached_operational_core_002_generations(db_path: str) -> list[dict[str, Any]]:
+    return load_operational_core_002_generations(db_path)
+
+
+@st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
+def _cached_operational_card_structure_diagnostics_from_db(
+    db_path: str,
+    generation_event_id: int | None,
+    game_size: int | None,
+) -> dict[str, Any]:
+    return load_operational_card_structure_diagnostics_from_db(
+        db_path,
+        generation_event_id=generation_event_id,
+        game_size=game_size,
     )
 
 
@@ -8015,6 +8044,39 @@ def _render_diagnostic_evidence_base(
 
 
 
+def _resolve_structural_ranking_rows(
+    section: dict[str, Any],
+    *,
+    kind: str,
+    size: int,
+    profile: str,
+) -> list[dict[str, Any]]:
+    prefix_key = "prefixo" if kind == "abertura" else "sufixo"
+    if profile == "lotoia":
+        for key in (f"lotoia_{prefix_key}_{size}_ranking", f"ranking_{prefix_key}_{size}"):
+            rows = section.get(key)
+            if rows:
+                return list(rows)
+        comparison = section.get("comparacao_com_concursos_oficiais")
+        if isinstance(comparison, dict):
+            lotoia_rows = comparison.get("lotoia")
+            if lotoia_rows:
+                return list(lotoia_rows)
+        if size == 4:
+            comparison4 = section.get(f"comparacao_com_concursos_oficiais_{prefix_key}_4")
+            if isinstance(comparison4, dict) and comparison4.get("lotoia"):
+                return list(comparison4.get("lotoia") or [])
+        return []
+    comparison = section.get("comparacao_com_concursos_oficiais")
+    if size == 4:
+        comparison = section.get(f"comparacao_com_concursos_oficiais_{prefix_key}_4") or comparison
+    if isinstance(comparison, dict) and comparison.get("oficial"):
+        return list(comparison.get("oficial") or [])
+    official_key = f"official_{prefix_key}_{size}_ranking"
+    rows = section.get(official_key)
+    return list(rows or [])
+
+
 def _render_structural_coverage_ranking_tables(
     section: dict[str, Any],
     *,
@@ -8022,16 +8084,16 @@ def _render_structural_coverage_ranking_tables(
 ) -> None:
     prefix = "prefixo" if kind == "abertura" else "sufixo"
     table_specs = [
-        (f"LotoIA — {prefix} 3", f"lotoia_{prefix}_3_ranking"),
-        (f"Concursos oficiais — {prefix} 3", f"official_{prefix}_3_ranking"),
-        (f"LotoIA — {prefix} 4", f"lotoia_{prefix}_4_ranking"),
-        (f"Concursos oficiais — {prefix} 4", f"official_{prefix}_4_ranking"),
+        (f"LotoIA — {prefix} 3", "lotoia", 3),
+        (f"Concursos oficiais — {prefix} 3", "official", 3),
+        (f"LotoIA — {prefix} 4", "lotoia", 4),
+        (f"Concursos oficiais — {prefix} 4", "official", 4),
     ]
     first_row = st.columns(2)
     second_row = st.columns(2)
-    for index, (title, source_key) in enumerate(table_specs):
+    for index, (title, profile, size) in enumerate(table_specs):
         target_col = first_row[index] if index < 2 else second_row[index - 2]
-        rows = list(section.get(source_key) or [])
+        rows = _resolve_structural_ranking_rows(section, kind=kind, size=size, profile=profile)
         with target_col:
             st.markdown(f"**{title}**")
             if rows:
@@ -8344,108 +8406,18 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 
 
 
-def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
-    snapshot = _live_institutional_snapshot(snapshot)
-    st.subheader("Cobertura Estrutural")
-    render_structural_coverage_governance_section(
-        generation_blocked=_is_sovereign_generation_blocked(),
-    )
-    st.divider()
-    st.markdown("### Diagnóstico observacional de lote")
-    st.caption(
-        "Referência constitucional: **LEI15_CORE_002**. Lotes V2/V3/V4 abaixo são **evidência histórica** — "
-        "histórico não é núcleo soberano. Ver também **Núcleo Lei 15 — CORE_002** (read-only)."
-    )
-    _render_diagnostic_observational_caption()
-    st.write(
-        "Visão observacional completa da estrutura do cartão: abertura, fechamento, faixas, gaps, "
-        "sequências, ausências, redundância GP e travamento em 13/14."
-    )
-    st.info(
-        "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
-        "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
-    )
-    if is_light_mode_enabled() and not render_lazy_load_gate(
-        SESSION_LOAD_STRUCTURAL,
-        "Carregar Cobertura Estrutural",
-        help_text=(
-            "Modo leve ativo: métricas de cobertura estrutural não são carregadas automaticamente. "
-            "Clique para executar a consulta no lote selecionado."
-        ),
-    ):
-        batch_options = batch_select_options()
-        filter_cols = st.columns(5)
-        filter_cols[0].selectbox(
-            "Lote de análise (padrão V3)",
-            options=batch_options,
-            index=default_batch_index(batch_options),
-            key="structural_coverage_batch_label_preview",
-            disabled=True,
-        )
-        return
-
-    filter_cols = st.columns(5)
-    batch_options = batch_select_options(include_all=not is_light_mode_enabled())
-    selected_batch_option = filter_cols[0].selectbox(
-        "Lote de análise",
-        options=batch_options,
-        index=default_batch_index(batch_options),
-        key="structural_coverage_batch_label",
-    )
-    if is_light_mode_enabled() and selected_batch_option == "(todos)":
-        st.warning("Modo leve: selecione um lote específico. Consulta em todos os lotes desabilitada.")
-        return
-    selected_game_size = filter_cols[1].selectbox(
-        "game_size",
-        options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
-        index=0,
-        key="structural_coverage_game_size",
-    )
-    selected_generation_event_id = filter_cols[2].number_input(
-        "generation_event_id",
-        min_value=0,
-        value=0,
-        step=1,
-        key="structural_coverage_generation_event_id",
-    )
-    selected_reconciliation_run_id = filter_cols[3].number_input(
-        "reconciliation_run_id",
-        min_value=0,
-        value=0,
-        step=1,
-        key="structural_coverage_reconciliation_run_id",
-    )
-    selected_concurso = filter_cols[4].number_input(
-        "concurso_analisado",
-        min_value=0,
-        value=0,
-        step=1,
-        key="structural_coverage_concurso_analisado",
-    )
-    payload = _cached_card_structure_diagnostics_from_db(
-        DB_PATH,
-        None if selected_batch_option == "(todos)" else str(selected_batch_option),
-        None if selected_game_size == "(todos)" else int(selected_game_size),
-        int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
-        int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
-        int(selected_concurso) if int(selected_concurso) > 0 else None,
-    )
-    st.caption(
-        f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
-        f"operational_effect=`{payload.get('operational_effect', False)}`"
-    )
-    if not payload.get("available"):
-        st.warning("Nenhuma reconciliation persistida com jogos encontrada no PostgreSQL.")
-        return
-
+def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> None:
     summary = dict(payload.get("summary") or {})
     summary_cols = st.columns(4)
     summary_cols[0].metric("Gerações", int(summary.get("total_geracoes", 0) or 0))
     summary_cols[1].metric("Jogos", int(summary.get("total_jogos", 0) or 0))
     summary_cols[2].metric("Concursos comparados", int(summary.get("total_concursos_comparados", 0) or 0))
-    summary_cols[3].metric("Formatos", ", ".join(str(size) for size in (summary.get("formatos_analisados") or [])) or "-")
+    summary_cols[3].metric(
+        "Formatos",
+        ", ".join(str(size) for size in (summary.get("formatos_analisados") or [])) or "-",
+    )
     if summary.get("analysis_batch_label"):
-        st.caption(f"Lote selecionado: `{summary.get('analysis_batch_label')}`")
+        st.caption(f"batch_label: `{summary.get('analysis_batch_label')}`")
 
     st.markdown("### Resumo estrutural")
     st.write(
@@ -8458,8 +8430,12 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     abertura_cols = st.columns(2)
     prefix3 = abertura.get("prefixo_3_mais_gerado") or {}
     prefix4 = abertura.get("prefixo_4_mais_gerado") or {}
-    abertura_cols[0].write(f"Prefixo 3 mais gerado: `{prefix3.get('estrutura', '-')}` ({prefix3.get('frequencia', 0)}x)")
-    abertura_cols[1].write(f"Prefixo 4 mais gerado: `{prefix4.get('estrutura', '-')}` ({prefix4.get('frequencia', 0)}x)")
+    abertura_cols[0].write(
+        f"Prefixo 3 mais gerado: `{prefix3.get('estrutura', '-')}` ({prefix3.get('frequencia', 0)}x)"
+    )
+    abertura_cols[1].write(
+        f"Prefixo 4 mais gerado: `{prefix4.get('estrutura', '-')}` ({prefix4.get('frequencia', 0)}x)"
+    )
     if abertura.get("prefixos_pouco_cobertos"):
         st.caption(f"Prefixos pouco cobertos: {', '.join(abertura['prefixos_pouco_cobertos'])}")
     _render_structural_coverage_ranking_tables(abertura, kind="abertura")
@@ -8469,8 +8445,12 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     fechamento_cols = st.columns(2)
     suffix3 = fechamento.get("sufixo_3_mais_gerado") or {}
     suffix4 = fechamento.get("sufixo_4_mais_gerado") or {}
-    fechamento_cols[0].write(f"Sufixo 3 mais gerado: `{suffix3.get('estrutura', '-')}` ({suffix3.get('frequencia', 0)}x)")
-    fechamento_cols[1].write(f"Sufixo 4 mais gerado: `{suffix4.get('estrutura', '-')}` ({suffix4.get('frequencia', 0)}x)")
+    fechamento_cols[0].write(
+        f"Sufixo 3 mais gerado: `{suffix3.get('estrutura', '-')}` ({suffix3.get('frequencia', 0)}x)"
+    )
+    fechamento_cols[1].write(
+        f"Sufixo 4 mais gerado: `{suffix4.get('estrutura', '-')}` ({suffix4.get('frequencia', 0)}x)"
+    )
     if fechamento.get("sufixos_pouco_cobertos"):
         st.caption(f"Sufixos pouco cobertos: {', '.join(fechamento['sufixos_pouco_cobertos'])}")
     _render_structural_coverage_ranking_tables(fechamento, kind="fechamento")
@@ -8550,6 +8530,152 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         dict(payload.get("evidence_base") or {}),
         title="Base do diagnóstico",
     )
+
+
+def _render_historical_structural_coverage_section() -> None:
+    with st.expander(HISTORICAL_SECTION_TITLE, expanded=False):
+        st.caption(HISTORICAL_SOURCE_CAPTION)
+        st.write(
+            "Camada secundária de evidência histórica e reconciliação. "
+            "Não representa geração operacional CORE_002 atual."
+        )
+        filter_cols = st.columns(5)
+        batch_options = batch_select_options(include_all=not is_light_mode_enabled())
+        selected_batch_option = filter_cols[0].selectbox(
+            "Lote histórico (reconciliação)",
+            options=batch_options,
+            index=default_batch_index(batch_options),
+            key="structural_coverage_historical_batch_label",
+        )
+        if is_light_mode_enabled() and selected_batch_option == "(todos)":
+            st.warning("Modo leve: selecione um lote histórico específico.")
+            return
+        selected_game_size = filter_cols[1].selectbox(
+            "game_size (histórico)",
+            options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
+            index=0,
+            key="structural_coverage_historical_game_size",
+        )
+        selected_generation_event_id = filter_cols[2].number_input(
+            "generation_event_id (histórico)",
+            min_value=0,
+            value=0,
+            step=1,
+            key="structural_coverage_historical_generation_event_id",
+        )
+        selected_reconciliation_run_id = filter_cols[3].number_input(
+            "reconciliation_run_id",
+            min_value=0,
+            value=0,
+            step=1,
+            key="structural_coverage_historical_reconciliation_run_id",
+        )
+        selected_concurso = filter_cols[4].number_input(
+            "concurso_analisado",
+            min_value=0,
+            value=0,
+            step=1,
+            key="structural_coverage_historical_concurso_analisado",
+        )
+        payload = _cached_card_structure_diagnostics_from_db(
+            DB_PATH,
+            None if selected_batch_option == "(todos)" else str(selected_batch_option),
+            None if selected_game_size == "(todos)" else int(selected_game_size),
+            int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
+            int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
+            int(selected_concurso) if int(selected_concurso) > 0 else None,
+        )
+        st.caption(
+            f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
+            f"coverage_layer=`historical_reconciliation`"
+        )
+        if not payload.get("available"):
+            st.info("Nenhuma reconciliação histórica encontrada para os filtros selecionados.")
+            return
+        _render_structural_coverage_diagnostics_body(payload)
+
+
+def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
+    snapshot = _live_institutional_snapshot(snapshot)
+    st.subheader("Cobertura Estrutural")
+    render_structural_coverage_governance_section(
+        generation_blocked=_is_sovereign_generation_blocked(),
+    )
+    st.divider()
+    st.markdown(f"### {OPERATIONAL_COVERAGE_TITLE}")
+    st.caption(OPERATIONAL_SOURCE_CAPTION)
+    st.caption(
+        "Referência constitucional: **LEI15_CORE_002**. Geração operacional via "
+        "**Gerador ADM CORE_002** — leitura soberana em PostgreSQL."
+    )
+    _render_diagnostic_observational_caption()
+    st.write(
+        "Visão observacional da estrutura do cartão a partir de gerações operacionais persistidas: "
+        "abertura, fechamento, faixas, gaps, sequências, ausências, redundância GP e travamento em 13/14."
+    )
+    st.info(
+        "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
+        "não altera a Lei 15A, não envia alertas para a Central de Diagnósticos e não emite veredito ADM."
+    )
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_STRUCTURAL,
+        "Carregar Cobertura Estrutural",
+        help_text=(
+            "Modo leve ativo: métricas de cobertura estrutural não são carregadas automaticamente. "
+            "Clique para executar a consulta no lote selecionado."
+        ),
+    ):
+        return
+
+    operational_generations = _cached_operational_core_002_generations(str(DB_PATH))
+    if not operational_generations:
+        st.warning(EMPTY_OPERATIONAL_MESSAGE)
+        _render_historical_structural_coverage_section()
+        return
+
+    dropdown_labels = [str(row.get("dropdown_label") or "") for row in operational_generations]
+    label_to_generation = {
+        str(row.get("dropdown_label") or ""): row for row in operational_generations
+    }
+    default_index = max(0, len(dropdown_labels) - 1)
+    selected_label = st.selectbox(
+        "Geração operacional",
+        options=dropdown_labels,
+        index=default_index,
+        key="structural_coverage_operational_generation",
+    )
+    selected_generation = dict(label_to_generation.get(selected_label) or operational_generations[-1])
+    selected_ge_id = int(selected_generation.get("generation_event_id", 0) or 0)
+    selected_card_format = int(selected_generation.get("card_format", 15) or 15)
+
+    meta_cols = st.columns(4)
+    meta_cols[0].metric("Geração operacional", str(selected_generation.get("operational_generation_label") or "-"))
+    meta_cols[1].metric("generation_event_id", str(selected_ge_id))
+    meta_cols[2].metric("Formato cartão", f"{selected_card_format}D")
+    meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+    detail_cols = st.columns(4)
+    detail_cols[0].write(f"batch_label: `{selected_generation.get('analysis_batch_label', '-')}`")
+    detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
+    detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
+    detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
+    st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
+
+    payload = _cached_operational_card_structure_diagnostics_from_db(
+        str(DB_PATH),
+        selected_ge_id,
+        selected_card_format,
+    )
+    st.caption(
+        f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
+        f"coverage_layer=`{payload.get('coverage_layer', 'operational_core_002')}`"
+    )
+    if not payload.get("available"):
+        st.warning("Geração operacional selecionada sem jogos persistidos em generated_games.")
+        _render_historical_structural_coverage_section()
+        return
+
+    _render_structural_coverage_diagnostics_body(payload)
+    _render_historical_structural_coverage_section()
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:

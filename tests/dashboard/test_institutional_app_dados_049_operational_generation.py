@@ -10,8 +10,8 @@ from dashboard.institutional_build import BUILD_MARKER
 from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL
 
 
-def test_build_marker_v25() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v28"
+def test_build_marker_v29() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v29"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
@@ -49,9 +49,10 @@ def test_analytical_page_reads_postgresql_not_session_only() -> None:
     assert "session_state" not in source.split("generation_history =")[0]
 
 
-def test_structural_coverage_reads_postgresql() -> None:
+def test_structural_coverage_reads_postgresql_operational_source() -> None:
     source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
-    assert "_cached_card_structure_diagnostics_from_db" in source
+    assert "_cached_operational_card_structure_diagnostics_from_db" in source
+    assert "OPERATIONAL_SOURCE_CAPTION" in source or "generation_events / generated_games" in source
     assert "postgresql" in source.lower()
 
 
