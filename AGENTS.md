@@ -81,7 +81,7 @@ LotoIA is a **Python monorepo** (no Node.js, no Docker required). There is **no 
 - **Virtualenv**: `.venv/` at repo root — `source .venv/bin/activate` or `.venv/bin/pytest` directly.
 - **Package manager**: `pip install -r requirements.txt` and `pip install -e .` for the `lotoia` CLI.
 - **Persistence**: PostgreSQL via `DATABASE_URL` / `LOTOIA_DATABASE_URL` (Railway secrets). Historical CSV at `data/raw/historico_lotofacil.csv` is backup/export only.
-- **DB connection gotcha (Cloud VM)**: the injected `DATABASE_URL` secret is currently set to the literal string `DATABASE_URL` (misconfigured) and the Railway *internal* host is unreachable from the Cloud VM anyway. The working connection is the injected `DATABASE_PUBLIC_URL` secret (public proxy, e.g. `shortline.proxy.rlwy.net`). For any operational/service/migration run, export it first: `export DATABASE_URL="$DATABASE_PUBLIC_URL"`. The `pytest` suite does NOT need this (it uses ephemeral SQLite) — in fact see the test gotcha below.
+- **DATABASE_URL soberano (M-PLAT-063)**: no Railway, use `${{Postgres.DATABASE_URL}}` — nunca o texto literal `DATABASE_URL`. `DATABASE_PUBLIC_URL` é workaround temporário (proxy TCP público) só quando `DATABASE_URL` estiver inválido; o código promove a URL resolvida para `DATABASE_URL` em runtime. Guia: `docs/governance/M_PLAT_063_DATABASE_URL_RAILWAY.md`.
 
 ### Environment bootstrap (first session)
 
@@ -89,8 +89,6 @@ Dependencies (`.venv` + `requirements.txt` + `pip install -e .`) are refreshed a
 
 ```bash
 source .venv/bin/activate
-export DATABASE_URL="$DATABASE_PUBLIC_URL"        # see DB connection gotcha above
-export LOTOIA_DATABASE_URL="$DATABASE_PUBLIC_URL"
 python scripts/ops/apply_cloud_migrations.py
 python scripts/checks/postgresql_cloud_health_check.py
 ```

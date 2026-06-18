@@ -9,13 +9,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter, is_operational_database_path
-
-_INSTITUTIONAL_DATABASE_ENV_VARS = (
-    "DATABASE_URL",
-    "LOTOIA_DATABASE_URL",
-    "STREAMLIT_DATABASE_URL",
-    "LOTOIA_DATABASE_POOLER_URL",
-    "STREAMLIT_DATABASE_POOLER_URL",
+from lotoia.database.env_resolution import (
+    COMPAT_DATABASE_PUBLIC_URL_ENV,
+    database_url_resolution_issue,
+    is_invalid_database_url_literal,
+    promote_resolved_database_url_to_env,
+    resolve_institutional_database_url_from_env,
 )
 
 _LOCALHOST_MARKERS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
@@ -65,14 +64,6 @@ def is_auth_required() -> bool:
     return is_cloud_production_runtime()
 
 
-def _resolve_database_url_from_env() -> tuple[str, str]:
-    for env_name in _INSTITUTIONAL_DATABASE_ENV_VARS:
-        value = os.getenv(env_name, "").strip()
-        if value:
-            return value, env_name
-    return "", ""
-
-
 def _is_localhost_database_url(database_url: str) -> bool:
     parsed = urlparse(database_url)
     host = (parsed.hostname or "").strip().lower()
@@ -85,9 +76,17 @@ def evaluate_cloud_runtime_policy(db_path: Path) -> CloudRuntimePolicyResult:
     postgresql_required = cloud_runtime or _truthy_env("LOTOIA_CLOUD_ONLY")
     violations: list[str] = []
 
-    env_url, env_source = _resolve_database_url_from_env()
+    raw_database_url = os.getenv("DATABASE_URL", "").strip()
+    env_url, env_source = resolve_institutional_database_url_from_env()
+
     if not env_url and is_operational_database_path(db_path):
-        violations.append("DATABASE_URL ausente — PostgreSQL obrigatório (Lei No 001)")
+        if raw_database_url and is_invalid_database_url_literal(raw_database_url):
+            violations.append(
+                database_url_resolution_issue(raw_database_url, source="DATABASE_URL")
+                or "DATABASE_URL inválido"
+            )
+        else:
+            violations.append("DATABASE_URL ausente — PostgreSQL obrigatório (Lei No 001)")
         return CloudRuntimePolicyResult(
             cloud_runtime=cloud_runtime,
             auth_required=auth_required,
@@ -97,12 +96,19 @@ def evaluate_cloud_runtime_policy(db_path: Path) -> CloudRuntimePolicyResult:
             violations=tuple(violations),
         )
 
+    if raw_database_url and is_invalid_database_url_literal(raw_database_url) and cloud_runtime:
+        if not env_url:
+            violations.append(
+                "DATABASE_URL contém valor literal inválido — configure "
+                "${{Postgres.DATABASE_URL}} no Railway (M-PLAT-063)"
+            )
+
+    promote_resolved_database_url_to_env()
     adapter = InstitutionalDatabaseAdapter(db_path)
     if postgresql_required:
-        if not env_url:
-            violations.append("DATABASE_URL ausente em runtime cloud — fallback SQLite proibido (Lei No 001)")
-        elif not (env_url.lower().startswith("postgresql") or env_url.lower().startswith("postgres://")):
-            violations.append("DATABASE_URL deve ser PostgreSQL em runtime cloud (scheme atual inválido)")
+        issue = database_url_resolution_issue(env_url, source=env_source or "DATABASE_URL")
+        if issue and env_source != COMPAT_DATABASE_PUBLIC_URL_ENV:
+            violations.append(issue)
         elif _is_localhost_database_url(env_url):
             violations.append("DATABASE_URL aponta para localhost — proibido em runtime cloud")
         if adapter.backend != "postgresql":

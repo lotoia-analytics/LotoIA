@@ -33,28 +33,12 @@ from lotoia.public.persistence.repositories import (
     ReconciliationEventRepository,
 )
 
-_INSTITUTIONAL_DATABASE_ENV_VARS = ("DATABASE_URL", "LOTOIA_DATABASE_URL", "STREAMLIT_DATABASE_URL")
-_INSTITUTIONAL_DATABASE_POOLER_ENV_VARS = (
-    "LOTOIA_DATABASE_POOLER_URL",
-    "STREAMLIT_DATABASE_POOLER_URL",
-)
+from lotoia.database.env_resolution import resolve_institutional_database_url_from_env
 _DEFAULT_SUPABASE_POOLER_HOST = "aws-1-us-west-1.pooler.supabase.com"
 
 
 def _read_database_url_from_env() -> tuple[str, str]:
-    for env_name in _INSTITUTIONAL_DATABASE_ENV_VARS:
-        env_value = os.getenv(env_name, "").strip()
-        if env_value:
-            return env_value, env_name
-    return "", ""
-
-
-def _read_pooler_database_url_from_env() -> tuple[str, str]:
-    for env_name in _INSTITUTIONAL_DATABASE_POOLER_ENV_VARS:
-        env_value = os.getenv(env_name, "").strip()
-        if env_value:
-            return env_value, env_name
-    return "", ""
+    return resolve_institutional_database_url_from_env()
 
 
 def _extract_supabase_project_ref(database_url: str) -> str:
@@ -85,9 +69,6 @@ def is_operational_database_path(path: Path = DEFAULT_DATABASE_PATH) -> bool:
 
 
 def _has_institutional_database_url_in_env() -> bool:
-    pooler_url, _ = _read_pooler_database_url_from_env()
-    if pooler_url:
-        return True
     env_url, _ = _read_database_url_from_env()
     return bool(env_url)
 
@@ -130,9 +111,6 @@ class InstitutionalDatabaseAdapter:
 
     @property
     def database_url(self) -> str:
-        pooler_url, _ = _read_pooler_database_url_from_env()
-        if pooler_url:
-            return pooler_url
         env_url, _ = _read_database_url_from_env()
         if env_url:
             return _rewrite_supabase_url_to_pooler(env_url)
@@ -159,9 +137,6 @@ class InstitutionalDatabaseAdapter:
 
     @property
     def database_source(self) -> str:
-        pooler_url, pooler_env_name = _read_pooler_database_url_from_env()
-        if pooler_url:
-            return pooler_env_name
         _, env_name = _read_database_url_from_env()
         if env_name:
             return env_name
