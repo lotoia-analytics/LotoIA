@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from lotoia.ml.overlap_format_thresholds import (
+    LEVEL_ATENCAO,
     LEVEL_CRITICO,
     LEVEL_RUIM,
     NEAR_DUP_HIGH_THRESHOLD,
     build_per_format_overlap_analysis,
+    classify_similarity_for_format,
 )
 from lotoia.observability.card_structure_diagnostics import (
     build_card_structure_payload,
@@ -120,7 +122,13 @@ def evaluate_ml_operational_verdict(
     m = dict(metrics)
     per_format = [dict(row) for row in list(format_analyses or m.get("format_analyses") or [])]
     similaridade = _safe_float(m.get("similaridade_media"))
-    quase_repetidos = _safe_int(m.get("quase_repetidos"))
+    quase_repetidos = _safe_int(m.get("quase_repetidos_criticos", m.get("quase_repetidos")))
+    pares_atencao = _safe_int(m.get("pares_em_atencao"))
+    primary_size = _safe_int(
+        m.get("primary_format_size") or (m.get("formatos_analisados") or [15])[0] if m.get("formatos_analisados") else 15,
+        15,
+    )
+    similarity_reading = classify_similarity_for_format(similaridade, primary_size)
     hits_13 = _safe_int(m.get("desempenho_13_hits"))
     hits_14 = _safe_int(m.get("desempenho_14_hits"))
     hits_15 = _safe_int(m.get("desempenho_15_hits"))
@@ -145,16 +153,32 @@ def evaluate_ml_operational_verdict(
         reason_parts.append("quase clone estrutural")
         rule_triggers.append("overlap_ruim_formato")
 
-    if similaridade > SIMILARITY_REPROVED_MIN:
+    if similarity_reading["band"] == "critico":
+        verdict = _merge_verdict(verdict, VERDICT_REPROVADO)
+        reason_parts.append(
+            f"similaridade média crítica para {primary_size}D ({similaridade:.4f})"
+        )
+        rule_triggers.append("similaridade_critica_formato")
+    elif similarity_reading["band"] == "alta_redundancia":
+        verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
+        reason_parts.append(
+            f"similaridade média alta para {primary_size}D ({similaridade:.4f})"
+        )
+        rule_triggers.append("similaridade_alta_redundancia_formato")
+    elif similarity_reading["band"] == "atencao":
+        verdict = _merge_verdict(verdict, VERDICT_APROVADO_COM_ALERTA)
+        reason_parts.append(
+            f"similaridade média em atenção para {primary_size}D ({similaridade:.4f})"
+        )
+        rule_triggers.append("similaridade_atencao_formato")
+    elif similaridade > SIMILARITY_REPROVED_MIN:
         verdict = _merge_verdict(verdict, VERDICT_REPROVADO)
         reason_parts.append(f"similaridade média crítica ({similaridade:.4f})")
         rule_triggers.append("similaridade_reprovada")
-
     elif similaridade > SIMILARITY_CALIBRATION_MIN:
         verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
         reason_parts.append(f"similaridade média elevada ({similaridade:.4f})")
         rule_triggers.append("similaridade_calibracao")
-
     elif SIMILARITY_ATTENTION_MIN <= similaridade <= SIMILARITY_ATTENTION_MAX:
         verdict = _merge_verdict(verdict, VERDICT_APROVADO_COM_ALERTA)
         reason_parts.append(f"similaridade média em atenção ({similaridade:.4f})")
@@ -178,6 +202,16 @@ def evaluate_ml_operational_verdict(
         verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
         reason_parts.append("ausência de captura 13/14/15 com redundância alta")
         rule_triggers.append("captura_ausente_redundancia")
+
+    primary_analysis = per_format[0] if len(per_format) == 1 else None
+    if primary_analysis and str(primary_analysis.get("level")) == LEVEL_ATENCAO:
+        if similarity_reading["band"] in {"atencao", "alta_redundancia", "critico"} and pares_atencao >= 10:
+            verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
+            reason_parts.append(
+                f"overlap máximo em atenção ({primary_analysis.get('sobreposicao_maxima')}) "
+                f"com {pares_atencao} pares em atenção e similaridade {similaridade:.4f}"
+            )
+            rule_triggers.append("overlap_atencao_com_redundancia_agregada")
 
     overlap_detail = _format_overlap_detail(per_format)
     if overlap_detail and overlap_detail not in reason_parts:
@@ -210,6 +244,9 @@ def evaluate_ml_operational_verdict(
         "similaridade_media": similaridade,
         "sobreposicao_maxima": _safe_int(m.get("sobreposicao_maxima")),
         "quase_repetidos": quase_repetidos,
+        "quase_repetidos_criticos": quase_repetidos,
+        "pares_em_atencao": pares_atencao,
+        "similarity_band": similarity_reading,
         "calibration_applied": bool(calibration_applied),
         "calibration_authorized": bool(calibration_authorized),
         "official_release_allowed": official_release_allowed,
@@ -240,6 +277,9 @@ def evaluate_ml_operational_verdict(
             "similaridade_media": similaridade,
             "sobreposicao_maxima": _safe_int(m.get("sobreposicao_maxima")),
             "quase_repetidos": quase_repetidos,
+            "quase_repetidos_criticos": quase_repetidos,
+            "pares_em_atencao": pares_atencao,
+            "similarity_band": similarity_reading,
             "desempenho_13_hits": hits_13,
             "desempenho_14_hits": hits_14,
             "desempenho_15_hits": hits_15,

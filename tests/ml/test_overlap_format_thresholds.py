@@ -15,6 +15,7 @@ from lotoia.ml.overlap_format_thresholds import (
     MISSION_ID,
     SUPPORTED_FORMAT_SIZES,
     build_format_overlap_threshold,
+    build_ml_format_aware_memory,
     build_overlap_format_memory,
     build_per_format_overlap_analysis,
     classify_overlap_for_format,
@@ -23,8 +24,8 @@ from lotoia.ml.overlap_format_thresholds import (
 from lotoia.observability.coverage_evidence_interpreter import build_calibration_plan, get_structural_coverage_evidence
 
 
-def test_build_marker_v43() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v51"
+def test_build_marker_v55() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v55"
 
 
 @pytest.mark.parametrize(
@@ -60,6 +61,13 @@ def test_overlap_memory_registers_all_formats() -> None:
     assert memory["mission_id"] == MISSION_ID
     assert len(memory["thresholds"]) == len(SUPPORTED_FORMAT_SIZES)
     assert memory["supported_formats"] == [f"{size}D" for size in SUPPORTED_FORMAT_SIZES]
+
+
+def test_ml_format_aware_memory_unified() -> None:
+    memory = build_ml_format_aware_memory()
+    assert memory["mission_id"] == "M-ML-067"
+    assert memory["legacy_rule"]["near_duplicate_overlap_fixed"] == 13
+    assert len(memory["similarity_memory"]["format_thresholds"]) == len(SUPPORTED_FORMAT_SIZES)
 
 
 def test_overlap_equal_format_size_is_critical() -> None:
