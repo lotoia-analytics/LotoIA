@@ -81,19 +81,19 @@ LotoIA is a **Python monorepo** (no Node.js, no Docker required). There is **no 
 - **Virtualenv**: `.venv/` at repo root — `source .venv/bin/activate` or `.venv/bin/pytest` directly.
 - **Package manager**: `pip install -r requirements.txt` and `pip install -e .` for the `lotoia` CLI.
 - **Persistence**: PostgreSQL via `DATABASE_URL` / `LOTOIA_DATABASE_URL` (Railway secrets). Historical CSV at `data/raw/historico_lotofacil.csv` is backup/export only.
+- **DATABASE_URL soberano (M-PLAT-063)**: no Railway, use `${{Postgres.DATABASE_URL}}` — nunca o texto literal `DATABASE_URL`. `DATABASE_PUBLIC_URL` é workaround temporário (proxy TCP público) só quando `DATABASE_URL` estiver inválido; o código promove a URL resolvida para `DATABASE_URL` em runtime. Guia: `docs/governance/M_PLAT_063_DATABASE_URL_RAILWAY.md`.
 
 ### Environment bootstrap (first session)
 
+Dependencies (`.venv` + `requirements.txt` + `pip install -e .`) are refreshed automatically by the Cloud Agent update script on startup. To run the operational DB scripts manually:
+
 ```bash
-python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-cp -n .env.example .env
-# DATABASE_URL must be set (Railway PostgreSQL — injected in Cloud Agent secrets)
 python scripts/ops/apply_cloud_migrations.py
 python scripts/checks/postgresql_cloud_health_check.py
 ```
+
+Do **not** run `cp .env.example .env`: the `Settings` model (`src/lotoia/config.py`) forbids extra keys, and `.env.example` ships many integration keys (Evolution/Messenger/Asaas) — a copied `.env` makes the whole `pytest` collection fail with `extra_forbidden`. Leave `.env` absent and rely on OS env vars (all `Settings` fields have safe defaults).
 
 ### Services (Railway production; manual start only for debugging)
 
@@ -109,14 +109,27 @@ python scripts/checks/postgresql_cloud_health_check.py
 
 ```bash
 source .venv/bin/activate
-ruff check src backend dashboard tests scripts
-python -m pytest
+ruff check src backend dashboard tests scripts   # whole-tree; currently reports pre-existing lint debt
+python -m pytest                                  # whole suite; NOT green (see below)
 ```
 
-Unit tests may use ephemeral SQLite in `tmp_path` for isolation — that is test infrastructure, not an operational development database.
+Unit tests may use ephemeral SQLite in `tmp_path` for isolation — that is test infrastructure, not an operational development database. Do **not** export `DATABASE_URL` when running `pytest`: it forces SQLite-based tests onto the real PostgreSQL and breaks them.
+
+**What CI actually gates** (`.github/workflows/governance-gate.yml`) is the source of truth, not the whole tree:
+
+```bash
+ruff check scripts/checks tests/governance/test_branch_protection_artifacts.py
+python -m compileall -q dashboard/institutional_app.py scripts/checks
+python -m pytest tests/test_clean_app_formats.py tests/dashboard/test_cloud_entrypoint.py tests/governance/test_branch_protection_artifacts.py -q
+python scripts/checks/governance_contract_check.py
+```
+
+The full `ruff check ...` tree and full `python -m pytest` both have many **pre-existing** failures (hundreds of lint findings; ~220 test failures that assume specific DB/data state). Treat the CI subset above as the real gate; don't assume a clean full-tree run.
 
 ### Gotchas
 
-- Streamlit binds port **8501**; FastAPI uses **8000** (`API_HOST` / `API_PORT` in `.env`).
+- Streamlit binds port **8501**; FastAPI uses **8000** (`API_HOST` / `API_PORT`).
 - Without `DATABASE_URL`, cloud policy fails closed — do not bootstrap with `scripts/init_database.py`.
 - Operational data lives in PostgreSQL only; CSV is never an operational source on institutional panels.
+- **Auth on the Cloud VM**: `is_auth_required()` is False unless a `RAILWAY_*` env var, `APP_ENV=production`, or `LOTOIA_CLOUD_ONLY=1` is set — so the institutional dashboard opens without a login on the Cloud VM. To force the login gate, set `LOTOIA_AUTH_REQUIRED=1` (plus `LOTOIA_ADMIN_EMAIL` / `LOTOIA_ADMIN_PASSWORD` to bootstrap an admin).
+- **Generation is gated by ADR-047 (`LEI15_GENERATION_ROUTING_ADR_047`)**: the legacy/default generation path is blocked. The HTTP endpoints `/generate/game`, `/generate/games`, `/generate/best-games`, and `POST /api/public/generate` all currently error (`batch_label=None` blocked) — this is by design, not a setup bug. The only sanctioned path passes `batch_label="STRUCT_LEI15_CORE_CANDIDATE_002_15D_001"`, e.g. `generate_best_games(count=2, pool_size=20, batch_label="STRUCT_LEI15_CORE_CANDIDATE_002_15D_001")`. The institutional dashboard's "Gerador ADM CORE_002 — Geração Soberana Controlada" panel uses this sanctioned path and generates successfully.

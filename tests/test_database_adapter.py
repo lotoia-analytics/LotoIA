@@ -13,6 +13,7 @@ from lotoia.database.database import bootstrap_institutional_database, database_
 
 def test_adapter_uses_sqlite_path_when_database_url_is_absent(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     adapter = InstitutionalDatabaseAdapter(tmp_path / "lotoia.db")
 
     assert adapter.backend == "sqlite"
@@ -22,21 +23,23 @@ def test_adapter_uses_sqlite_path_when_database_url_is_absent(monkeypatch, tmp_p
 
 
 def test_adapter_prefers_database_url_environment(monkeypatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/lotoia")
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@postgres.railway.internal:5432/lotoia")
     adapter = InstitutionalDatabaseAdapter(Path("data/lotoia.db"))
 
     assert adapter.backend == "postgresql"
-    assert adapter.database_url == "postgresql+psycopg://user:pass@host:5432/lotoia"
+    assert adapter.database_url == "postgresql://user:pass@postgres.railway.internal:5432/lotoia"
     assert adapter.is_shared_cloud_ready is True
 
 
 def test_adapter_supports_named_cloud_database_env(monkeypatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("LOTOIA_DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/lotoia")
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("LOTOIA_DATABASE_URL", "postgresql+psycopg://user:pass@postgres.railway.internal:5432/lotoia")
     adapter = InstitutionalDatabaseAdapter(Path("data/lotoia.db"))
 
     assert adapter.backend == "postgresql"
-    assert adapter.database_url == "postgresql+psycopg://user:pass@host:5432/lotoia"
+    assert adapter.database_url == "postgresql://user:pass@postgres.railway.internal:5432/lotoia"
     assert adapter.database_source == "LOTOIA_DATABASE_URL"
     assert adapter.is_shared_cloud_ready is True
 
@@ -59,6 +62,7 @@ def test_adapter_rewrites_supabase_direct_url_to_pooler_without_sni_hostname(mon
 
 def test_database_url_follows_institutional_adapter(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     resolved = database_url(tmp_path / "lotoia.db")
 
     assert resolved.startswith("sqlite:///")
@@ -80,10 +84,11 @@ def test_sqlite_adapter_exposes_institutional_contract(monkeypatch, tmp_path: Pa
 
 def test_resolve_institutional_adapter_switches_by_backend(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     sqlite_adapter = resolve_institutional_adapter(tmp_path / "lotoia.db")
     assert isinstance(sqlite_adapter, SQLiteInstitutionalAdapter)
 
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@host:5432/lotoia")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@postgres.railway.internal:5432/lotoia")
     postgres_adapter = resolve_institutional_adapter(tmp_path / "lotoia.db")
     assert isinstance(postgres_adapter, PostgresInstitutionalAdapter)
     assert postgres_adapter.is_shared_cloud_ready is True
@@ -91,6 +96,7 @@ def test_resolve_institutional_adapter_switches_by_backend(monkeypatch, tmp_path
 
 def test_bootstrap_institutional_database_reports_backend(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     info = bootstrap_institutional_database(tmp_path / "lotoia.db")
 
     assert info["backend"] == "sqlite"

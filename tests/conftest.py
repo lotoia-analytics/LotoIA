@@ -8,6 +8,14 @@ import pytest
 
 from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL
 from lotoia.generator.basic_generator import _attach_scores, _build_game
+from lotoia.database.env_resolution import COMPAT_DATABASE_PUBLIC_URL_ENV, PRIMARY_DATABASE_ENV_VARS
+
+
+@pytest.fixture(autouse=True)
+def _isolate_database_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent host Cloud Agent secrets from leaking into unit tests."""
+    for env_name in (*PRIMARY_DATABASE_ENV_VARS, COMPAT_DATABASE_PUBLIC_URL_ENV):
+        monkeypatch.delenv(env_name, raising=False)
 
 
 @pytest.fixture
