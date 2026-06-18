@@ -129,7 +129,11 @@ from dashboard.institutional_operational_structural_coverage import (
     HISTORICAL_SECTION_TITLE,
     HISTORICAL_SOURCE_CAPTION,
     OPERATIONAL_COVERAGE_TITLE,
+    OPERATIONAL_GENERATION_ALL_LABEL,
     OPERATIONAL_SOURCE_CAPTION,
+    build_operational_generation_dropdown_options,
+    build_operational_generations_aggregate_summary,
+    is_all_operational_generations_selection,
     load_operational_core_002_generations,
 )
 from dashboard.institutional_route_inventory import (
@@ -8633,7 +8637,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         _render_historical_structural_coverage_section()
         return
 
-    dropdown_labels = [str(row.get("dropdown_label") or "") for row in operational_generations]
+    dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
     label_to_generation = {
         str(row.get("dropdown_label") or ""): row for row in operational_generations
     }
@@ -8644,25 +8648,58 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         index=default_index,
         key="structural_coverage_operational_generation",
     )
-    selected_generation = dict(label_to_generation.get(selected_label) or operational_generations[-1])
-    selected_ge_id = int(selected_generation.get("generation_event_id", 0) or 0)
-    selected_card_format = int(selected_generation.get("card_format", 15) or 15)
+    if is_all_operational_generations_selection(selected_label):
+        selected_generation = build_operational_generations_aggregate_summary(operational_generations)
+        selected_ge_id = 0
+        selected_card_format = None
+    else:
+        selected_generation = dict(label_to_generation.get(selected_label) or operational_generations[-1])
+        selected_ge_id = int(selected_generation.get("generation_event_id", 0) or 0)
+        selected_card_format = int(selected_generation.get("card_format", 15) or 15)
 
     meta_cols = st.columns(4)
-    meta_cols[0].metric("Geração operacional", str(selected_generation.get("operational_generation_label") or "-"))
-    meta_cols[1].metric("generation_event_id", str(selected_ge_id))
-    meta_cols[2].metric("Formato cartão", f"{selected_card_format}D")
-    meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
-    detail_cols = st.columns(4)
-    detail_cols[0].write(f"batch_label: `{selected_generation.get('analysis_batch_label', '-')}`")
-    detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
-    detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
-    detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
-    st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
+    if is_all_operational_generations_selection(selected_label):
+        meta_cols[0].metric(
+            "Geração operacional",
+            f"Todos ({int(selected_generation.get('generation_events_count', 0) or 0)})",
+        )
+        meta_cols[1].metric(
+            "generation_event_id",
+            f"{int(selected_generation.get('generation_events_count', 0) or 0)} IDs",
+        )
+        meta_cols[2].metric(
+            "Formato cartão",
+            str(selected_generation.get("card_format_label") or "-"),
+        )
+        meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+        detail_cols = st.columns(4)
+        detail_cols[0].write(
+            "batch_label: "
+            + (
+                f"`{selected_generation.get('analysis_batch_label', '-')}`"
+                if len(selected_generation.get("analysis_batch_labels") or []) <= 1
+                else f"`{len(selected_generation.get('analysis_batch_labels') or [])} labels`"
+            )
+        )
+        detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
+        detail_cols[2].write("origem: `aggregate`")
+        detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
+        st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
+    else:
+        meta_cols[0].metric("Geração operacional", str(selected_generation.get("operational_generation_label") or "-"))
+        meta_cols[1].metric("generation_event_id", str(selected_ge_id))
+        meta_cols[2].metric("Formato cartão", f"{selected_card_format}D")
+        meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+        detail_cols = st.columns(4)
+        detail_cols[0].write(f"batch_label: `{selected_generation.get('analysis_batch_label', '-')}`")
+        detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
+        detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
+        detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
+        st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
-        selected_ge_id,
+        selected_ge_id if selected_ge_id > 0 else None,
         selected_card_format,
     )
     st.caption(

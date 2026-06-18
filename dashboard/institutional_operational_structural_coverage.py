@@ -21,6 +21,61 @@ EMPTY_OPERATIONAL_MESSAGE = (
     "Nenhuma geração operacional CORE_002 persistida encontrada. "
     "Gere um lote no Gerador ADM CORE_002 para habilitar a Cobertura Estrutural operacional."
 )
+OPERATIONAL_GENERATION_ALL_LABEL = "Todos — todas as gerações operacionais CORE_002"
+
+
+def is_all_operational_generations_selection(label: str | None) -> bool:
+    return str(label or "").strip() == OPERATIONAL_GENERATION_ALL_LABEL
+
+
+def build_operational_generation_dropdown_options(
+    generations: list[dict[str, Any]],
+) -> list[str]:
+    if not generations:
+        return []
+    labels = [str(row.get("dropdown_label") or "") for row in generations]
+    return [OPERATIONAL_GENERATION_ALL_LABEL, *labels]
+
+
+def build_operational_generations_aggregate_summary(
+    generations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not generations:
+        return {}
+    total_games = sum(int(row.get("games_count", 0) or 0) for row in generations)
+    card_formats = sorted({int(row.get("card_format", 15) or 15) for row in generations})
+    generation_event_ids = [
+        int(row.get("generation_event_id", 0) or 0)
+        for row in generations
+        if int(row.get("generation_event_id", 0) or 0) > 0
+    ]
+    batch_labels = sorted(
+        {
+            str(row.get("analysis_batch_label", "") or "").strip()
+            for row in generations
+            if str(row.get("analysis_batch_label", "") or "").strip()
+        }
+    )
+    return {
+        "operational_generation_label": "Todos",
+        "generation_event_id": 0,
+        "generation_event_ids": generation_event_ids,
+        "generation_events_count": len(generations),
+        "card_format": card_formats[0] if len(card_formats) == 1 else 0,
+        "card_formats": card_formats,
+        "card_format_label": ", ".join(f"{size}D" for size in card_formats) if card_formats else "-",
+        "games_count": total_games,
+        "analysis_batch_label": batch_labels[0] if len(batch_labels) == 1 else "múltiplos",
+        "analysis_batch_labels": batch_labels,
+        "ml_enabled": any(bool(row.get("ml_enabled", False)) for row in generations),
+        "origin": "aggregate",
+        "persistence_status": "Persistido",
+        "created_at": (
+            f"{generations[0].get('created_at', '-')} → {generations[-1].get('created_at', '-')}"
+            if len(generations) > 1
+            else str(generations[0].get("created_at", "-") or "-")
+        ),
+    }
 
 
 def _resolve_card_format_from_event(event: GenerationEvent, game_rows: list[GeneratedGame]) -> int:
