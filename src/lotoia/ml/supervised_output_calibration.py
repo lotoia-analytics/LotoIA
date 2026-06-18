@@ -9,6 +9,12 @@ import os
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
+from lotoia.ml.structural_auto_calibration import (
+    MISSION_ID as STRUCTURAL_AUTO_MISSION_ID,
+    build_auto_calibration_plan_from_pool,
+    compute_structural_diversity_bonus,
+    is_structural_auto_calibration_format,
+)
 from lotoia.statistics.card_structure import (
     compute_gp_redundancy,
     compute_missing_dezenas,
@@ -30,6 +36,7 @@ CRITICAL_DEZENAS: frozenset[int] = frozenset({7, 15, 23})
 DEFAULT_UNDERCOVER_RATIO = 0.18
 DEFAULT_PREFIX_SHARE_LIMIT = 0.14
 DEFAULT_NEAR_DUP_PAIR_RATIO = 0.28
+DOMINANCE_CALIBRATION_THRESHOLD = 6
 
 
 def is_output_calibration_enabled() -> bool:
@@ -86,7 +93,8 @@ def analyze_pool_structural_issues(
 
     avg_overlap = float(redundancy.get("sobreposicao_media", 0) or 0)
     max_overlap = int(redundancy.get("sobreposicao_maxima", 0) or 0)
-    if avg_overlap >= game_size * 0.55:
+    size = int(game_size)
+    if avg_overlap >= size * 0.55:
         issues.append(
             {
                 "tipo": "similaridade_media_gp_elevada",
@@ -95,7 +103,7 @@ def analyze_pool_structural_issues(
                 "descricao": f"Similaridade média GP elevada ({avg_overlap:.2f})",
             }
         )
-    if max_overlap >= game_size - 2:
+    if max_overlap >= size - 2:
         issues.append(
             {
                 "tipo": "sobreposicao_maxima_elevada",
@@ -107,7 +115,7 @@ def analyze_pool_structural_issues(
 
     prefix3 = Counter(format_dezena_group(compute_prefix(card, 3)) for card in cards)
     suffix3 = Counter(format_dezena_group(compute_suffix(card, 3)) for card in cards)
-    prefix_limit = max(3, int(pool_size * DEFAULT_PREFIX_SHARE_LIMIT))
+    prefix_limit = max(DOMINANCE_CALIBRATION_THRESHOLD, int(pool_size * DEFAULT_PREFIX_SHARE_LIMIT))
     for prefix, count in prefix3.most_common(8):
         if count >= prefix_limit:
             issues.append(
@@ -192,6 +200,7 @@ def _compute_game_calibration_adjustment(
     pool_size: int,
     all_cards: Sequence[list[int]],
     plan_params: Mapping[str, Any] | None = None,
+    game_size: int = 15,
 ) -> dict[str, Any]:
     card = _game_card(game)
     if not card:
@@ -201,6 +210,7 @@ def _compute_game_calibration_adjustment(
     actions: list[str] = []
     penalty = 0.0
     boost = 0.0
+    size = int(game_size or diagnostics.get("game_size") or len(card) or 15)
 
     overlaps: list[int] = []
     card_key = tuple(card)
@@ -210,17 +220,18 @@ def _compute_game_calibration_adjustment(
         overlaps.append(len(card_set & set(other)))
     if overlaps:
         avg_overlap = sum(overlaps) / len(overlaps)
-        overlap_threshold = 10.0
+        overlap_threshold = max(10.0, size * 0.58)
         if avg_overlap >= overlap_threshold:
-            delta = (avg_overlap - 9.0) * 0.35
+            delta = (avg_overlap - (overlap_threshold - 1.0)) * 0.35
             delta *= _plan_scale(plan_params, "redundancy_penalty_boost")
             delta *= _plan_scale(plan_params, "max_overlap_penalty")
             penalty += delta
             actions.append(f"penalidade_redundancia_media={delta:.3f}")
         max_overlap = max(overlaps)
-        if max_overlap >= 13:
-            overlap_delta = (max_overlap - 12) * 0.25 * _plan_scale(plan_params, "max_overlap_penalty")
-            penalty += overlap_delta
+        critical_overlap = max(size - 1, 13)
+        if max_overlap >= critical_overlap:
+            overlap_delta = (max_overlap - (size - 2)) * 0.25 * _plan_scale(plan_params, "max_overlap_penalty")
+            penalty += max(overlap_delta, 0.0)
             actions.append(f"penalidade_overlap_maximo={overlap_delta:.3f}")
 
     prefix3 = format_dezena_group(compute_prefix(card, 3))
@@ -243,6 +254,9 @@ def _compute_game_calibration_adjustment(
         prefix_scale = _plan_scale(plan_params, "prefix_penalty")
         penalty += 1.0 * prefix_scale
         actions.append(f"penalidade_prefixo_autorizado={prefix3}")
+    elif plan_params and str(plan_params.get("prefixo_alvo") or "") and prefix3 != str(plan_params.get("prefixo_alvo")):
+        boost += 0.25 * _plan_scale(plan_params, "diversity_floor_boost")
+        actions.append(f"reforco_prefixo_alternativo={prefix3}")
     if suffix3 in excessive_suffixes:
         suffix_scale = _plan_scale(plan_params, "suffix_penalty")
         penalty += 1.0 * suffix_scale
@@ -251,6 +265,9 @@ def _compute_game_calibration_adjustment(
         suffix_scale = _plan_scale(plan_params, "suffix_penalty")
         penalty += 0.9 * suffix_scale
         actions.append(f"penalidade_sufixo_autorizado={suffix3}")
+    elif plan_params and str(plan_params.get("sufixo_alvo") or "") and suffix3 != str(plan_params.get("sufixo_alvo")):
+        boost += 0.2 * _plan_scale(plan_params, "diversity_floor_boost")
+        actions.append(f"reforco_sufixo_alternativo={suffix3}")
 
     number_presence = diagnostics.get("number_presence") or {}
     authorized_subcovered = {
@@ -273,16 +290,36 @@ def _compute_game_calibration_adjustment(
             boost += weight
             actions.append(f"reforco_dezena_{number:02d}={weight:.2f}")
 
+    excessive_dezenas = {
+        int(str(value).lstrip("0") or "0")
+        for value in list((plan_params or {}).get("dezenas_excessivas") or [])
+        if str(value).strip().isdigit()
+    }
+    if excessive_dezenas:
+        overlap_count = sum(1 for number in card_set if number in excessive_dezenas)
+        if overlap_count >= 2:
+            excess_penalty = 0.18 * overlap_count * _plan_scale(plan_params, "redundancy_penalty_boost")
+            penalty += excess_penalty
+            actions.append(f"penalidade_dezenas_excessivas={excess_penalty:.3f}")
+
     diversity_scale = _plan_scale(plan_params, "diversity_floor_boost")
-    if diversity_scale > 1.0 and overlaps:
-        avg_overlap = sum(overlaps) / len(overlaps)
-        if avg_overlap <= 8.5:
-            diversity_boost = 0.25 * (diversity_scale - 1.0 + 1.0)
-            boost += diversity_boost
-            actions.append(f"reforco_diversidade={diversity_boost:.3f}")
+    structural_weight = _plan_scale(plan_params, "structural_diversity_weight")
+    if structural_weight > 1.0 or diversity_scale > 1.0:
+        diversity_bonus = compute_structural_diversity_bonus(
+            game,
+            diagnostics=diagnostics,
+            pool_size=pool_size,
+            dominant_prefix=str((plan_params or {}).get("prefixo_alvo") or ""),
+            dominant_suffix=str((plan_params or {}).get("sufixo_alvo") or ""),
+        )
+        if diversity_bonus > 0:
+            weighted = diversity_bonus * max(structural_weight, diversity_scale)
+            boost += weighted
+            actions.append(f"reforco_diversidade_estrutural={weighted:.3f}")
 
     near_dup_scale = _plan_scale(plan_params, "near_duplicate_penalty")
-    if near_dup_scale > 1.0 and overlaps and max(overlaps) >= 12:
+    near_dup_threshold = max(size - 1, 12)
+    if near_dup_scale > 1.0 and overlaps and max(overlaps) >= near_dup_threshold:
         near_dup_delta = 0.4 * near_dup_scale
         penalty += near_dup_delta
         actions.append(f"penalidade_quase_repetido={near_dup_delta:.3f}")
@@ -316,6 +353,7 @@ def apply_supervised_output_calibration(
     game_size: int = 15,
     ml_enabled: bool = True,
     calibration_plan: Mapping[str, Any] | None = None,
+    event_context: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Aplica calibração supervisionada no pool antes de compose_sovereign_gp."""
     empty_bundle = {
@@ -328,14 +366,30 @@ def apply_supervised_output_calibration(
     plan = dict(calibration_plan or {})
     plan_params = dict(plan.get("parametros_sugeridos") or {})
     plan_authorized = bool(plan.get("authorized"))
+    size = int(game_size)
+
+    auto_plan: dict[str, Any] = {}
+    if is_structural_auto_calibration_format(size):
+        auto_plan = build_auto_calibration_plan_from_pool(
+            games,
+            game_size=size,
+            event_context=event_context,
+        )
+        if auto_plan.get("auto_structural_calibration") and auto_plan.get("parametros_sugeridos"):
+            for key, value in dict(auto_plan.get("parametros_sugeridos") or {}).items():
+                plan_params.setdefault(key, value)
+            plan_authorized = plan_authorized or bool(auto_plan.get("authorized"))
+
     if not ml_enabled or not is_output_calibration_enabled() or not games:
         return games, empty_bundle
 
-    diagnostics = analyze_pool_structural_issues(games, game_size=game_size)
+    diagnostics = analyze_pool_structural_issues(games, game_size=size)
     all_cards = _pool_cards(games)
     pool_size = len(all_cards)
     if pool_size == 0:
         return games, empty_bundle
+
+    effective_params = plan_params if plan_authorized or auto_plan.get("auto_structural_calibration") else None
 
     calibrated: list[dict[str, Any]] = []
     actions_summary: list[str] = []
@@ -350,7 +404,8 @@ def apply_supervised_output_calibration(
             diagnostics=diagnostics,
             pool_size=pool_size,
             all_cards=all_cards,
-            plan_params=plan_params if plan_authorized else None,
+            plan_params=effective_params,
+            game_size=size,
         )
         base_profile = float(enriched.get("profile_score", 0) or 0)
         net = float(adjustment.get("net_adjustment", 0) or 0)
@@ -380,9 +435,18 @@ def apply_supervised_output_calibration(
         status_counts[str(adjustment.get("status", "moderado"))] += 1
         calibrated.append(enriched)
 
+    structural_weight = float((effective_params or {}).get("structural_diversity_weight", 1.0) or 1.0)
     calibrated.sort(
         key=lambda row: (
             -float(row.get("profile_score", 0) or 0),
+            -compute_structural_diversity_bonus(
+                row,
+                diagnostics=diagnostics,
+                pool_size=pool_size,
+                dominant_prefix=str((effective_params or {}).get("prefixo_alvo") or ""),
+                dominant_suffix=str((effective_params or {}).get("sufixo_alvo") or ""),
+            )
+            * structural_weight,
             -float(row.get("score_ml", 0) or 0),
             -float((row.get("final_score") or {}).get("final_score", 0) or 0),
             tuple(row.get("numbers") or ()),
@@ -426,10 +490,17 @@ def apply_supervised_output_calibration(
         ),
         "batch_status_counts": dict(status_counts),
         "pool_size": pool_size,
-        "game_size": int(game_size),
+        "game_size": size,
         "lei15_core_002_preserved": True,
         "lei15a_applied": False,
     }
+    if auto_plan.get("auto_structural_calibration"):
+        bundle["structural_auto_calibration_mission_id"] = STRUCTURAL_AUTO_MISSION_ID
+        bundle["structural_auto_calibration_plan"] = auto_plan
+        bundle["structural_calibration_memory"] = dict(
+            auto_plan.get("structural_calibration_memory") or {}
+        )
+        bundle["structural_actions_applied"] = list(auto_plan.get("structural_actions") or [])
     if plan_authorized:
         bundle["authorized_calibration_plan"] = {
             "mission_id": plan.get("mission_id"),

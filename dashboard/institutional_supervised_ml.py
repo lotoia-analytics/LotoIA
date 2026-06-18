@@ -49,6 +49,7 @@ VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
 OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
 OVERLAP_FORMAT_MISSION_ID_067 = "M-ML-067"
+STRUCTURAL_AUTO_CALIBRATION_MISSION_ID = "M-ML-069"
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
@@ -1037,6 +1038,11 @@ def build_sovereign_coverage_diagnosis_card(
         ),
         "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
         "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
+        "structural_auto_calibration_mission_id": coverage_evidence.get(
+            "structural_auto_calibration_mission_id", STRUCTURAL_AUTO_CALIBRATION_MISSION_ID
+        ),
+        "structural_auto_calibration_plan": dict(coverage_evidence.get("structural_auto_calibration_plan") or {}),
+        "structural_calibration_memory": dict(coverage_evidence.get("structural_calibration_memory") or {}),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1255,6 +1261,11 @@ def build_ml_calibration_cockpit_snapshot(
         ),
         "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
         "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
+        "structural_auto_calibration_mission_id": coverage_evidence.get(
+            "structural_auto_calibration_mission_id", STRUCTURAL_AUTO_CALIBRATION_MISSION_ID
+        ),
+        "structural_auto_calibration_plan": dict(coverage_evidence.get("structural_auto_calibration_plan") or {}),
+        "structural_calibration_memory": dict(coverage_evidence.get("structural_calibration_memory") or {}),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
