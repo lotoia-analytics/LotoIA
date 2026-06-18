@@ -48,6 +48,7 @@ DEPRECATED_BUILD_MARKERS: frozenset[str] = frozenset(
         "institutional-adm-runtime-v39",
         "institutional-adm-runtime-v40",
         "institutional-adm-runtime-v41",
+        "institutional-adm-runtime-v43",
     }
 )
 

@@ -8,11 +8,16 @@ from typing import Any, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    GenerationEvent,
     LotofacilOfficialHistory,
     MlDiagnosticDecision,
     ReconciliationGame,
     ReconciliationRun,
     get_session,
+)
+from lotoia.governance.batch_operational_scope import (
+    is_generation_event_active_reading,
+    summarize_active_reading_exclusions,
 )
 from lotoia.analytics.lotofacil_scientific_core import validation_threshold_by_game_size
 from lotoia.observability.observational_leftover import (
@@ -371,6 +376,7 @@ def load_recent_reconciliation_runs_context(
     *,
     limit: int = 5,
     db_path: str = DEFAULT_DATABASE_PATH,
+    active_reading_only: bool = True,
 ) -> list[dict[str, Any]]:
     """Carrega reconciliation_runs recentes com jogos e resultado oficial."""
     contexts: list[dict[str, Any]] = []
@@ -378,10 +384,26 @@ def load_recent_reconciliation_runs_context(
         runs = (
             session.query(ReconciliationRun)
             .order_by(ReconciliationRun.created_at.desc(), ReconciliationRun.id.desc())
-            .limit(max(1, int(limit)))
+            .limit(max(1, int(limit) * 4))
             .all()
         )
+        generation_event_cache: dict[int, GenerationEvent | None] = {}
+
+        def _load_generation_event(event_id: int) -> GenerationEvent | None:
+            if event_id <= 0:
+                return None
+            if event_id not in generation_event_cache:
+                generation_event_cache[event_id] = (
+                    session.query(GenerationEvent).filter(GenerationEvent.id == event_id).one_or_none()
+                )
+            return generation_event_cache[event_id]
+
         for run in runs:
+            generation_event_id = int(getattr(run, "generation_event_id", 0) or 0)
+            if active_reading_only:
+                event = _load_generation_event(generation_event_id)
+                if event is not None and not is_generation_event_active_reading(event):
+                    continue
             contest_id = int(getattr(run, "contest_id", 0) or 0)
             games_rows = (
                 session.query(ReconciliationGame)
@@ -406,6 +428,8 @@ def load_recent_reconciliation_runs_context(
                     "recalibration_command": False,
                 }
             )
+            if len(contexts) >= max(1, int(limit)):
+                break
     return contexts
 
 
@@ -973,11 +997,19 @@ def build_alert_003_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
 
 def load_distinct_generation_event_count(
     db_path: str = DEFAULT_DATABASE_PATH,
+    *,
+    active_reading_only: bool = True,
 ) -> int:
     """Conta generation_event_id distintos persistidos em reconciliation_runs."""
     with get_session(db_path) as session:
         values = session.query(ReconciliationRun.generation_event_id).distinct().all()
-        return len({int(row[0]) for row in values if int(row[0] or 0) > 0})
+        event_ids = {int(row[0]) for row in values if int(row[0] or 0) > 0}
+        if not active_reading_only:
+            return len(event_ids)
+        if not event_ids:
+            return 0
+        events = session.query(GenerationEvent).filter(GenerationEvent.id.in_(event_ids)).all()
+        return len([event for event in events if is_generation_event_active_reading(event)])
 
 
 def annotate_alert_routing(
@@ -1098,6 +1130,7 @@ def build_central_ml_diagnostics_payload(
     active_alerts = _merge_alert_decisions(bundle["central_alerts"], decisions=decisions)
     pending = [alert for alert in active_alerts if alert["status"] in ACTIVE_ALERT_STATUSES]
     latest = bundle["latest"]
+    exclusions = summarize_active_reading_exclusions(db_path)
     updated_at = datetime.now(UTC).isoformat()
     return {
         "available": bool(bundle["available"]),
@@ -1111,6 +1144,9 @@ def build_central_ml_diagnostics_payload(
         "min_required_generations": MIN_GENERATIONS_FOR_CENTRAL,
         "local_alerts_count": len(bundle["local_alerts"]),
         "total_alertas_ativos": len(pending),
+        "excluded_batches_count": int(exclusions.get("excluded_batches_count", 0) or 0),
+        "excluded_batches_message": str(exclusions.get("message", "") or ""),
+        "excluded_batches_audit": list(exclusions.get("excluded_batches") or []),
         "ultima_atualizacao": updated_at,
         "alerts": active_alerts,
         "local_alerts": bundle["local_alerts"],
