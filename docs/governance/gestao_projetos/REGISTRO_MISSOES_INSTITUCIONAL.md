@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-PLAT-050](#m-plat-050--corrigir-saturação-de-conexões-postgresql--sqlalchemy) | Pool PostgreSQL Streamlit | `CONCLUIDA` | `HOME ESTÁVEL / SEM QUEUEPOOL TIMEOUT` |
 | [M-DADOS-049](#m-dados-049--reset-controlado-das-gerações-antigas) | Reset controlado gerações antigas | `CONCLUIDA` | `NOVA FASE 001 / POSTGRESQL VALIDADO` |
 | [M-DADOS-048](#m-dados-048--card-último-concurso-monitorado--postgresql-imported_contests) | Último concurso monitorado | `CONCLUIDA` | `POSTGRESQL imported_contests / SEM RESÍDUO 5000` |
 | [M-VIS-047](#m-vis-047--simplificação-operacional-da-página-de-geração-adm-core_002) | Geração ADM — simplificação operacional | `CONCLUIDA` | `PÁGINA LIMPA / JOGOS 1–100 / DEZENAS 15–23` |
@@ -41,6 +42,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-PLAT-050 — Corrigir Saturação de Conexões PostgreSQL / SQLAlchemy no Runtime Streamlit
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-18 |
+| Agentes | `agent_plataforma` + `agent_dados` + `agent_qualidade` + `agent_governanca` |
+| Status | `CONCLUIDA` |
+| Tipo | Correção crítica runtime |
+
+**Correção:** Pool PostgreSQL ampliado (5/10), `get_session` com fechamento garantido, `ensure_database_schema` once-per-process, fail-safe Home/diagnósticos.
+
+**Build:** `institutional-adm-runtime-v26`
+
+**Veredicto:** **M-PLAT-050 CONCLUÍDA — POOL POSTGRESQL CORRIGIDO, HOME ESTÁVEL, SEM QUEUEPOOL TIMEOUT**
+
+**Cartão:** `cartoes/M-PLAT-050_POSTGRES_POOL_STREAMLIT.md`
+
+---
 
 ### M-DADOS-049 — Reset Controlado das Gerações Antigas + Validação Histórico Analítico e Cobertura Estrutural
 

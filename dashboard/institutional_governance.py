@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-PLAT-050",
+        "titulo": "Corrigir saturação de conexões PostgreSQL / SQLAlchemy no Runtime Streamlit",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_dados + agent_qualidade + agent_governanca",
+        "evidencia": "M-PLAT-050 — pool 5/10, schema once, fail-safe Home",
+    },
+    {
         "id": "M-DADOS-049",
         "titulo": "Reset Controlado das Gerações Antigas + Validação Histórico/Cobertura",
         "status": "CONCLUIDA",

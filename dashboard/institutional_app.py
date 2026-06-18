@@ -7,6 +7,7 @@ except ImportError:
     import _bootstrap  # type: ignore[no-redef]  # noqa: F401
 
 import json
+import logging
 import math
 import os
 import re
@@ -30,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
-from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, create_database, get_engine, get_session
+from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, ensure_database_schema, get_engine, get_session
 from lotoia.data.history_export import export_historical_csv
 from lotoia.data.loader import load_draws_csv
 from lotoia.analytics.lotofacil_scientific_core import (
@@ -111,6 +112,11 @@ from dashboard.institutional_monitored_contest import (
     to_conference_contest_payload,
     validate_expected_contest_numbers,
 )
+from dashboard.institutional_db_runtime import (
+    DB_UNAVAILABLE_LABEL,
+    imported_contests_summary_unavailable,
+    official_history_diagnostics_unavailable,
+)
 from dashboard.institutional_operational_generation import (
     build_operational_generation_index,
     resolve_operational_generation_label,
@@ -180,6 +186,7 @@ from lotoia.governance.cloud_runtime_policy import (
     enforce_cloud_runtime_policy,
 )
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+logger = logging.getLogger(__name__)
 REPORTS_DIR = PROJECT_ROOT / "reports"
 LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
 HB_GEOMETRY_DIR = Path(os.fspath(DEFAULT_HB_GEOMETRY_DIR))
@@ -2759,38 +2766,43 @@ def _load_official_history_summary() -> dict[str, Any]:
 
 
 def _load_imported_contests_summary() -> dict[str, Any]:
-    with get_session(DB_PATH) as session:
-        rows = (
-            session.query(ImportedContest)
-            .order_by(ImportedContest.contest_number.asc())
-            .all()
-        )
-    contest_numbers = [int(getattr(row, "contest_number", 0) or 0) for row in rows if int(getattr(row, "contest_number", 0) or 0) > 0]
-    latest = rows[-1] if rows else None
-    return {
-        "count": len(rows),
-        "first_contest": contest_numbers[0] if contest_numbers else None,
-        "last_contest": contest_numbers[-1] if contest_numbers else None,
-        "latest_contest": {
-            "contest_number": int(getattr(latest, "contest_number", 0) or 0) if latest is not None else 0,
-            "draw_date": str(getattr(latest, "data", "") or "") if latest is not None else "",
-            "numbers": [int(value) for value in str(getattr(latest, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()] if latest is not None else [],
-            "source": "imported_contests" if latest is not None else "",
-        }
-        if latest is not None
-        else {},
-        "window": contest_numbers[-10:],
-        "rows": [
-            {
-                "contest_number": int(getattr(row, "contest_number", 0) or 0),
-                "draw_date": str(getattr(row, "data", "") or ""),
-                "numbers": [int(value) for value in str(getattr(row, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()],
-                "source": "imported_contests",
+    try:
+        with get_session(DB_PATH) as session:
+            rows = (
+                session.query(ImportedContest)
+                .order_by(ImportedContest.contest_number.asc())
+                .all()
+            )
+        contest_numbers = [int(getattr(row, "contest_number", 0) or 0) for row in rows if int(getattr(row, "contest_number", 0) or 0) > 0]
+        latest = rows[-1] if rows else None
+        return {
+            "count": len(rows),
+            "first_contest": contest_numbers[0] if contest_numbers else None,
+            "last_contest": contest_numbers[-1] if contest_numbers else None,
+            "latest_contest": {
+                "contest_number": int(getattr(latest, "contest_number", 0) or 0) if latest is not None else 0,
+                "draw_date": str(getattr(latest, "data", "") or "") if latest is not None else "",
+                "numbers": [int(value) for value in str(getattr(latest, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()] if latest is not None else [],
+                "source": "imported_contests" if latest is not None else "",
             }
-            for row in rows[-10:]
-        ],
-        "source": "imported_contests",
-    }
+            if latest is not None
+            else {},
+            "window": contest_numbers[-10:],
+            "rows": [
+                {
+                    "contest_number": int(getattr(row, "contest_number", 0) or 0),
+                    "draw_date": str(getattr(row, "data", "") or ""),
+                    "numbers": [int(value) for value in str(getattr(row, "dezenas", "") or "").replace(",", " ").split() if str(value).isdigit()],
+                    "source": "imported_contests",
+                }
+                for row in rows[-10:]
+            ],
+            "source": "imported_contests",
+            "status": "OK",
+        }
+    except Exception as exc:
+        logger.warning("imported_contests summary unavailable: %s", exc)
+        return imported_contests_summary_unavailable(error=str(exc))
 
 
 def _load_official_history_rows(limit: int | None = None, *, descending: bool = False) -> list[dict[str, Any]]:
@@ -2851,41 +2863,52 @@ def _load_official_history_contest(contest_number: int | str | None) -> dict[str
 
 
 def _load_official_history_diagnostics() -> dict[str, Any]:
-    official_rows = _load_official_history_rows()
-    imported_summary = _load_imported_contests_summary()
-    contest_numbers = [int(row.get("concurso", 0) or 0) for row in official_rows if int(row.get("concurso", 0) or 0) > 0]
-    if contest_numbers:
-        min_contest = contest_numbers[0]
-        max_contest = contest_numbers[-1]
-        official_set = set(contest_numbers)
+    try:
+        official_rows = _load_official_history_rows()
+        imported_summary = _load_imported_contests_summary()
+        if str(imported_summary.get("status") or "") == "UNAVAILABLE":
+            payload = official_history_diagnostics_unavailable(
+                error=str(imported_summary.get("error") or DB_UNAVAILABLE_LABEL)
+            )
+            payload["imported_contests_count"] = 0
+            return payload
+        contest_numbers = [int(row.get("concurso", 0) or 0) for row in official_rows if int(row.get("concurso", 0) or 0) > 0]
+        if contest_numbers:
+            min_contest = contest_numbers[0]
+            max_contest = contest_numbers[-1]
+            official_set = set(contest_numbers)
+            imported_last = imported_summary.get("last_contest")
+            target_max = max(
+                int(max_contest or 0),
+                int(imported_last or 0),
+            )
+            missing = [contest for contest in range(min_contest, target_max + 1) if contest not in official_set]
+        else:
+            min_contest = None
+            max_contest = None
+            missing = []
         imported_last = imported_summary.get("last_contest")
-        target_max = max(
-            int(max_contest or 0),
-            int(imported_last or 0),
-        )
-        missing = [contest for contest in range(min_contest, target_max + 1) if contest not in official_set]
-    else:
-        min_contest = None
-        max_contest = None
-        missing = []
-    imported_last = imported_summary.get("last_contest")
-    status = "OK"
-    if not contest_numbers:
-        status = "INCOMPLETA"
-    elif missing:
-        status = "INCOMPLETA"
-    return {
-        "total_lotofacil_official_history": len(official_rows),
-        "contest_number_min": min_contest,
-        "contest_number_max": max_contest,
-        "concursos_faltantes": missing,
-        "total_concursos_faltantes": len(missing),
-        "ultimo_concurso_imported_contests": imported_last,
-        "ultimo_concurso_lotofacil_official_history": max_contest,
-        "status_base_oficial": status,
-        "imported_contests_count": int(imported_summary.get("count", 0) or 0),
-        "imported_contests_window": list(imported_summary.get("window") or []),
-    }
+        status = "OK"
+        if not contest_numbers:
+            status = "INCOMPLETA"
+        elif missing:
+            status = "INCOMPLETA"
+        return {
+            "total_lotofacil_official_history": len(official_rows),
+            "contest_number_min": min_contest,
+            "contest_number_max": max_contest,
+            "concursos_faltantes": missing,
+            "total_concursos_faltantes": len(missing),
+            "ultimo_concurso_imported_contests": imported_last,
+            "ultimo_concurso_lotofacil_official_history": max_contest,
+            "status_base_oficial": status,
+            "imported_contests_count": int(imported_summary.get("count", 0) or 0),
+            "imported_contests_window": list(imported_summary.get("window") or []),
+            "db_status": "OK",
+        }
+    except Exception as exc:
+        logger.warning("official history diagnostics unavailable: %s", exc)
+        return official_history_diagnostics_unavailable(error=str(exc))
 
 
 def _ensure_official_history_seeded() -> dict[str, Any]:
@@ -9916,7 +9939,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
 
 
 def _ensure_institutional_schema() -> None:
-    create_database(DB_PATH)
+    try:
+        ensure_database_schema(DB_PATH)
+    except Exception as exc:
+        logger.warning("institutional schema ensure skipped: %s", exc)
 
 
 def _generation_strategy_display(size: int) -> dict[str, Any]:
@@ -13465,14 +13491,24 @@ def _render_home_quick_access() -> None:
 def _render_home_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = dict(snapshot.get("counts") or {})
-    monitored_contest = build_imported_contests_selection_context(
-        list_imported_contest_records=_list_all_imported_contest_records,
-        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
-        official_history_max=int(
+    try:
+        official_history_max = int(
             (_load_official_history_diagnostics().get("contest_number_max", 0) or 0)
+        ) or None
+        monitored_contest = build_imported_contests_selection_context(
+            list_imported_contest_records=_list_all_imported_contest_records,
+            load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+            official_history_max=official_history_max,
         )
-        or None,
-    )
+    except Exception as exc:
+        logger.warning("home monitored contest unavailable: %s", exc)
+        monitored_contest = {
+            "contest_number": None,
+            "display_contest_number": "—",
+            "source": DB_UNAVAILABLE_LABEL,
+            "sync_status": "UNAVAILABLE",
+            "sync_message": DB_UNAVAILABLE_LABEL,
+        }
     contest_number = monitored_contest.get("contest_number")
     contest_display = str(monitored_contest.get("display_contest_number") or "—")
     contest_source = str(monitored_contest.get("source") or MONITORED_CONTEST_SOURCE_LABEL)
