@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 import dashboard.institutional_app as institutional_app
+import dashboard.institutional_simulation_contests as simulation_contests
 from lotoia.operations.lot_operational_status import (
     GENERATION_ORIGIN_SIMULATION,
     STATUS_NOT_OFFICIALIZED,
@@ -26,7 +27,8 @@ def test_simulation_uses_same_generator() -> None:
 
 def test_simulation_multicontest_limit_50() -> None:
     source = inspect.getsource(institutional_app._run_simulation_multicontest_lab)
-    assert "contests_limit: int = 50" in source
+    assert "SIMULATION_MAX_CONTESTS" in source
+    assert simulation_contests.SIMULATION_MAX_CONTESTS == 50
 
 
 def test_conference_all_official_mode() -> None:
