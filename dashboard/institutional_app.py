@@ -12369,20 +12369,28 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         },
         reverse=True,
     )
-    latest_official_contest = _resolve_latest_official_conference_contest()
-    latest_contest_number = _safe_int((latest_official_contest or {}).get("concurso"), default=0) or 0
+    latest_contest_record: dict[str, Any] | None = None
+    conference_contest_load_warning: str | None = None
+    try:
+        latest_contest_record = _resolve_latest_official_conference_contest()
+    except Exception as exc:
+        latest_contest_record = None
+        conference_contest_load_warning = f"Falha ao carregar último concurso oficial: {exc}"
+    latest_contest_number = _safe_int((latest_contest_record or {}).get("concurso"), default=0) or 0
     conf_cols = st.columns(4)
     conf_cols[0].metric("Último concurso oficial", latest_contest_number or "-")
     conf_cols[1].metric("Gerações oficializadas", len(official_generation_event_ids))
     conf_cols[2].metric("Jogos elegíveis", sum(int(group.get("total_games", 0) or 0) for group in official_groups))
     conf_cols[3].metric("Modo", "Oficial")
-    if latest_official_contest:
+    if conference_contest_load_warning:
+        st.warning(conference_contest_load_warning)
+    if latest_contest_record:
         st.caption(
             f"Concurso automático: {latest_contest_number} | dezenas: "
-            f"{' '.join(f'{number:02d}' for number in latest_official_contest.get('dezenas', []) or []) or '-'}"
+            f"{' '.join(f'{number:02d}' for number in latest_contest_record.get('dezenas', []) or []) or '-'}"
         )
     else:
-        st.warning("Último concurso oficial indisponível em imported_contests.")
+        st.info("Nenhum concurso oficial disponível para conferência.")
     if official_generation_event_ids:
         st.caption(
             "Gerações aprovadas: "
@@ -12396,7 +12404,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     if action_cols[0].button(
         "Conferir Resultados",
         type="primary",
-        disabled=not bool(latest_official_contest and official_generation_event_ids),
+        disabled=not bool(latest_contest_record and official_generation_event_ids),
         key="conference_run_all_official",
     ):
         _run_institutional_conference(
@@ -12410,6 +12418,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         st.rerun()
 
     st.divider()
+    check_result = st.session_state.get("institutional_check_result")
     with st.expander("Diagnóstico técnico (imported_contests / sync)", expanded=False):
         try:
             with _get_engine_cached().begin() as connection:
@@ -12422,8 +12431,6 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         diagnostic_state = _load_official_sync_diagnostics()
         if diagnostic_state:
             st.json(diagnostic_state)
-
-        check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
     if isinstance(check_result, dict):
@@ -12557,8 +12564,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
     elif isinstance(check_result, dict) and check_result.get("status") == "checked":
         st.info("Conferência executada, mas nenhum resultado foi renderizado.")
-    elif not latest_contest_record:
-        st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
+    elif latest_contest_record is None:
+        st.info("Nenhum concurso oficial disponível para conferência.")
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
