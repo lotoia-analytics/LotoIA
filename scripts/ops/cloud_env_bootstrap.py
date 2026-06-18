@@ -10,6 +10,7 @@ from lotoia.database.env_resolution import (
     is_invalid_database_url_literal,
     is_placeholder_database_url,
     is_railway_internal_database_url,
+    normalize_database_url,
     promote_resolved_database_url_to_env,
     resolve_institutional_database_url_from_env,
 )
