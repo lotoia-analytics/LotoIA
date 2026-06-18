@@ -12,6 +12,10 @@ from lotoia.governance.batch_operational_scope import (
     is_generation_event_active_reading,
     resolve_batch_operational_fields,
 )
+from lotoia.operations.lot_operational_status import (
+    extract_lot_operational_status,
+    should_defer_generator_persist_verdict_for_coverage,
+)
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
 
 from dashboard.institutional_operational_generation import (
@@ -188,6 +192,75 @@ def load_operational_core_002_generations(
                 }
             )
     return generations
+
+
+def diagnose_operational_coverage_gap(
+    db_path: Any = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Explica por que o último lote soberano não aparece na Cobertura (M-OPS-062-FIX-06)."""
+    with get_session(db_path) as session:
+        events = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.id.desc())
+            .limit(20)
+            .all()
+        )
+        for event in events:
+            batch_label = str(getattr(event, "analysis_batch_label", "") or "")
+            if not is_sovereign_core_label(batch_label):
+                continue
+            ge_id = int(event.id or 0)
+            context = dict(getattr(event, "context_json", {}) or {})
+            game_count = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == ge_id)
+                .count()
+            )
+            lot_status = extract_lot_operational_status(context)
+            active = is_generation_event_active_reading(event)
+            deferred = should_defer_generator_persist_verdict_for_coverage(context)
+            reasons: list[str] = []
+            if game_count <= 0:
+                reasons.append("sem_linhas_em_generated_games")
+            if not is_sovereign_core_label(batch_label):
+                reasons.append("batch_label_nao_soberano")
+            if not active and not deferred:
+                reasons.append(f"status_inativo:{lot_status or 'desconhecido'}")
+            if context.get("active_reading_scope") is False:
+                reasons.append(
+                    f"active_reading_scope_false:{context.get('excluded_from_active_reading_reason', '-')}"
+                )
+            visible_after_fix = active or deferred
+            return {
+                "mission_id": COVERAGE_CACHE_FIX_MISSION_ID,
+                "generation_event_id": ge_id,
+                "analysis_batch_label": batch_label,
+                "persisted_games": int(game_count),
+                "lot_operational_status": lot_status,
+                "ml_verdict": str(context.get("ml_verdict") or ""),
+                "generation_origin": str(context.get("generation_origin") or ""),
+                "simulation_mode": bool(context.get("simulation_mode")),
+                "active_reading": bool(active),
+                "deferred_for_coverage": bool(deferred),
+                "visible_in_coverage_loader": bool(visible_after_fix and game_count > 0),
+                "exclusion_reasons": reasons,
+                "user_message": (
+                    "Lote elegível — recarregue a Cobertura após o deploy M-OPS-062-FIX-06."
+                    if visible_after_fix and game_count > 0
+                    else (
+                        "Nenhum jogo em generated_games — gere novamente no Gerador ADM."
+                        if game_count <= 0
+                        else f"Lote excluído da leitura ativa ({lot_status or 'status desconhecido'})."
+                    )
+                ),
+            }
+    return {
+        "mission_id": COVERAGE_CACHE_FIX_MISSION_ID,
+        "generation_event_id": 0,
+        "user_message": "Nenhuma geração CORE_002 persistida encontrada.",
+        "visible_in_coverage_loader": False,
+        "exclusion_reasons": ["nenhum_generation_event_soberano"],
+    }
 
 
 def resolve_operational_generation_by_id(
