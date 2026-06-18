@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from lotoia.database.database import GeneratedGame, GenerationEvent, create_database, get_session
 from lotoia.governance.batch_operational_scope import (
     OPERATIONAL_STATUS_NEEDS_CALIBRATION,
@@ -24,6 +26,7 @@ from lotoia.ml.ml_operational_verdict import VERDICT_APROVADO, VERDICT_PRECISA_C
 from dashboard.institutional_operational_structural_coverage import (
     build_active_coverage_scope_summary,
     load_operational_core_002_generations,
+    sync_persisted_event_operational_status,
 )
 
 
@@ -74,6 +77,36 @@ def _seed_sovereign_event(
             )
         session.commit()
         return event_id
+
+
+def test_sync_persisted_event_operational_status_aligns_needs_calibration() -> None:
+    synced = sync_persisted_event_operational_status(
+        {
+            "operational_status": "pending_structural_review",
+            "lot_operational_status": "needs_calibration",
+        }
+    )
+    assert synced["operational_status"] == OPERATIONAL_STATUS_NEEDS_CALIBRATION
+    assert synced["active_reading_scope"] is True
+
+
+def test_sync_persisted_event_operational_status_marks_inactive_rejected() -> None:
+    synced = sync_persisted_event_operational_status(
+        {
+            "operational_status": "pending_structural_review",
+            "lot_operational_status": "blocked_for_officialization",
+        }
+    )
+    assert synced["operational_status"] == "rejected"
+    assert synced["active_reading_scope"] is False
+
+
+def test_persist_clean_law15_invalidates_operational_cache() -> None:
+    import dashboard.institutional_app as institutional_app
+
+    source = inspect.getsource(institutional_app._persist_clean_law15_generation_history)
+    assert "_invalidate_operational_structural_cache" in source
+    assert "_bust_operational_coverage_cache" in source
 
 
 def test_needs_calibration_is_active_structural_reading() -> None:

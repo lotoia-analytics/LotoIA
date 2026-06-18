@@ -6,6 +6,9 @@ from typing import Any, Mapping
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, get_session
 from lotoia.governance.batch_operational_scope import (
+    ACTIVE_READING_OPERATIONAL_STATUSES,
+    INACTIVE_READING_OPERATIONAL_STATUSES,
+    LOT_OPERATIONAL_STATUS_ALIASES,
     is_generation_event_active_reading,
     resolve_batch_operational_fields,
 )
@@ -17,6 +20,7 @@ from dashboard.institutional_operational_generation import (
 )
 
 MISSION_ID = "M-VIS-DADOS-052"
+COVERAGE_CACHE_FIX_MISSION_ID = "M-OPS-062-FIX-05"
 OPERATIONAL_COVERAGE_TITLE = "Cobertura Operacional CORE_002"
 OPERATIONAL_SOURCE_CAPTION = "Fonte: PostgreSQL / generation_events / generated_games"
 HISTORICAL_SECTION_TITLE = "Histórico / evidência legada — não é geração operacional atual"
@@ -80,6 +84,20 @@ def build_operational_generations_aggregate_summary(
             else str(generations[0].get("created_at", "-") or "-")
         ),
     }
+
+
+def sync_persisted_event_operational_status(context_json: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Alinha operational_status com lot_operational_status após persistência (M-OPS-062-FIX-05)."""
+    merged = dict(context_json or {})
+    lot_status = str(merged.get("lot_operational_status") or "").strip().lower()
+    if not lot_status:
+        return merged
+    mapped = LOT_OPERATIONAL_STATUS_ALIASES.get(lot_status, lot_status)
+    allowed = ACTIVE_READING_OPERATIONAL_STATUSES | INACTIVE_READING_OPERATIONAL_STATUSES
+    if mapped in allowed:
+        merged["operational_status"] = mapped
+        merged["active_reading_scope"] = mapped in ACTIVE_READING_OPERATIONAL_STATUSES
+    return merged
 
 
 def _resolve_card_format_from_event(event: GenerationEvent, game_rows: list[GeneratedGame]) -> int:

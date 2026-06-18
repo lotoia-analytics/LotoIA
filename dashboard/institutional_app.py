@@ -162,6 +162,7 @@ from dashboard.institutional_operational_structural_coverage import (
     build_operational_generations_aggregate_summary,
     is_all_operational_generations_selection,
     load_operational_core_002_generations,
+    sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
@@ -1406,6 +1407,12 @@ def _cached_card_structure_diagnostics_from_db(
 @st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
 def _cached_operational_core_002_generations(db_path: str) -> list[dict[str, Any]]:
     return load_operational_core_002_generations(db_path)
+
+
+def _invalidate_operational_structural_cache() -> None:
+    """Invalida cache da Cobertura Estrutural após nova persistência (M-OPS-062-FIX-05)."""
+    _cached_operational_core_002_generations.clear()
+    _cached_operational_card_structure_diagnostics_from_db.clear()
 
 
 @st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
@@ -8953,6 +8960,9 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     ):
         return
 
+    if st.session_state.pop("_bust_operational_coverage_cache", False):
+        _invalidate_operational_structural_cache()
+
     operational_generations = _cached_operational_core_002_generations(str(DB_PATH))
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
     scope_summary = build_active_coverage_scope_summary(
@@ -9440,6 +9450,7 @@ def _persist_generation_snapshot(
             "calibration_state": "none",
             "active_reading_scope": True,
         }
+        event_context = sync_persisted_event_operational_status(event_context)
         event = GenerationEvent(
             lead_id=None,
             first_name="institutional",
@@ -11690,6 +11701,9 @@ def _persist_clean_law15_generation_history(
                 new_generation_event_id=new_event_id,
                 selected_card_format=int(selected_card_format),
             )
+        _invalidate_operational_structural_cache()
+        st.session_state["_bust_operational_coverage_cache"] = True
+        st.session_state["last_persisted_generation_event_id"] = new_event_id
         return {
             **persisted,
             "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
