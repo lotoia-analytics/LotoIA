@@ -1035,6 +1035,8 @@ def build_sovereign_coverage_diagnosis_card(
             or coverage_evidence.get("overlap_format_memory")
             or {}
         ),
+        "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
+        "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1251,6 +1253,8 @@ def build_ml_calibration_cockpit_snapshot(
             or coverage_evidence.get("overlap_format_memory")
             or {}
         ),
+        "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
+        "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,

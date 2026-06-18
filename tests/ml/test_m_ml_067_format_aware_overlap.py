@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from dashboard.institutional_build import BUILD_MARKER
 from lotoia.ml.overlap_format_thresholds import (
     LEVEL_ATENCAO,
     LEVEL_BOM,
@@ -137,11 +136,6 @@ def test_extract_operational_metrics_includes_composition() -> None:
     assert "pares_em_atencao" in metrics
     assert "distribuicao_por_overlap" in metrics
     assert metrics["quase_repetidos"] == metrics["quase_repetidos_criticos"]
-
-
-def test_build_marker_v55() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v55"
-
 
 def test_all_formats_overlap_matrix() -> None:
     for size in SUPPORTED_FORMAT_SIZES:

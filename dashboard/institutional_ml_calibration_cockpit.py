@@ -455,6 +455,40 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
     lot_details = list(snapshot.get("lot_details") or [])
     coverage = dict(snapshot.get("coverage_evidence") or {})
 
+    with st.expander("Auditoria M-ML-068 — Concentração estrutural", expanded=False):
+        audit = dict(
+            snapshot.get("structural_concentration_audit")
+            or dict(coverage.get("structural_concentration_audit") or {})
+        )
+        if audit.get("available"):
+            diag = dict(audit.get("diagnostico") or {})
+            st.caption(
+                f"GE {audit.get('generation_event_id')} | {audit.get('formato')} | "
+                f"similaridade {float(audit.get('similaridade_media', 0) or 0):.4f} | "
+                f"diversidade {float(audit.get('diversity_score', 0) or 0):.4f}"
+            )
+            prefix = dict((audit.get("prefixos_sufixos") or {}).get("prefixo_mais_dominante") or {})
+            if prefix:
+                st.markdown(
+                    f"**Prefixo dominante:** {prefix.get('estrutura')} — "
+                    f"{prefix.get('frequencia')}/{prefix.get('total')} ({prefix.get('share_pct')}%)"
+                )
+            suffix = dict((audit.get("prefixos_sufixos") or {}).get("sufixo_mais_dominante") or {})
+            if suffix:
+                st.markdown(
+                    f"**Sufixo dominante:** {suffix.get('estrutura')} — "
+                    f"{suffix.get('frequencia')}/{suffix.get('total')} ({suffix.get('share_pct')}%)"
+                )
+            coverage_rows = list((audit.get("cobertura_dezenas") or {}).get("tabela_dezenas") or [])[:10]
+            if coverage_rows:
+                st.markdown("**Top desvios de cobertura (dezenas)**")
+                st.dataframe(pd.DataFrame(coverage_rows), hide_index=True, use_container_width=True)
+            st.markdown(f"**Causa provável:** {diag.get('problema_detectado', '—')}")
+            for action in list(diag.get("acoes_recomendadas") or [])[:5]:
+                st.caption(f"→ {action}")
+        else:
+            st.caption("Auditoria M-ML-068 indisponível para o escopo atual.")
+
     with st.expander("Memória ML — Limiares format-aware 15D a 23D (M-ML-067)", expanded=False):
         memory = dict(
             snapshot.get("ml_format_aware_memory")
