@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, create_engine, inspect
 from sqlalchemy import event
@@ -13,6 +15,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 DEFAULT_DATABASE_PATH = Path("data/lotoia.db")
 logger = logging.getLogger(__name__)
+
+_SCHEMA_INITIALIZED_LOCK = threading.Lock()
+_SCHEMA_INITIALIZED_URLS: set[str] = set()
 
 
 def _resolve_institutional_database_url(path: Path = DEFAULT_DATABASE_PATH) -> str:
@@ -1082,6 +1087,24 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def resolve_postgresql_pool_config() -> dict[str, int | bool]:
+    """Configuração conservadora do pool para Railway/Streamlit (M-PLAT-050)."""
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": _env_int("LOTOIA_DATABASE_POOL_RECYCLE_SECONDS", 120),
+        "pool_size": _env_int("LOTOIA_DATABASE_POOL_SIZE", 5),
+        "max_overflow": _env_int("LOTOIA_DATABASE_MAX_OVERFLOW", 10),
+        "pool_timeout": _env_int("LOTOIA_DATABASE_POOL_TIMEOUT_SECONDS", 30),
+        "pool_use_lifo": True,
+    }
+
+
+def reset_schema_initialization_cache() -> None:
+    """Test helper — permite reexecutar ensure_database_schema."""
+    with _SCHEMA_INITIALIZED_LOCK:
+        _SCHEMA_INITIALIZED_URLS.clear()
+
+
 @lru_cache(maxsize=8)
 def _build_engine(resolved_url: str):
     is_sqlite = resolved_url.startswith("sqlite:///")
@@ -1092,12 +1115,8 @@ def _build_engine(resolved_url: str):
         connect_args["connect_timeout"] = _env_int("LOTOIA_DATABASE_CONNECT_TIMEOUT_SECONDS", 5)
         engine_kwargs.update(
             {
-                "pool_pre_ping": True,
-                "pool_recycle": _env_int("LOTOIA_DATABASE_POOL_RECYCLE_SECONDS", 120),
-                "pool_size": _env_int("LOTOIA_DATABASE_POOL_SIZE", 1),
-                "max_overflow": _env_int("LOTOIA_DATABASE_MAX_OVERFLOW", 0),
-                "pool_timeout": _env_int("LOTOIA_DATABASE_POOL_TIMEOUT_SECONDS", 10),
-                "pool_use_lifo": True,
+                "connect_args": connect_args,
+                **resolve_postgresql_pool_config(),
             }
         )
     else:
@@ -2031,9 +2050,27 @@ def bootstrap_institutional_database(path: Path = DEFAULT_DATABASE_PATH) -> dict
     return {"database_url": resolved_url, "backend": backend}
 
 
-def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Session:
+def ensure_database_schema(path: Path = DEFAULT_DATABASE_PATH, *, force: bool = False) -> None:
+    """Garante schema uma vez por processo/URL — evita create_all a cada rerun Streamlit."""
     resolved_url = database_url(path)
-    engine = get_engine(path)
-    if engine.url.get_backend_name() == "sqlite" or os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_SESSION", "").strip().lower() in {"1", "true", "yes", "on"}:
+    with _SCHEMA_INITIALIZED_LOCK:
+        if not force and resolved_url in _SCHEMA_INITIALIZED_URLS:
+            return
         create_database(path)
-    return _session_factory(resolved_url)()
+        _SCHEMA_INITIALIZED_URLS.add(resolved_url)
+
+
+@contextmanager
+def get_session(path: Path = DEFAULT_DATABASE_PATH) -> Iterator[Session]:
+    """Context manager — sempre fecha sessão e devolve conexão ao pool."""
+    resolved_url = database_url(path)
+    if (
+        _build_engine(resolved_url).url.get_backend_name() == "sqlite"
+        or os.getenv("LOTOIA_BOOTSTRAP_SCHEMA_ON_SESSION", "").strip().lower() in {"1", "true", "yes", "on"}
+    ):
+        ensure_database_schema(path)
+    session = _session_factory(resolved_url)()
+    try:
+        yield session
+    finally:
+        session.close()

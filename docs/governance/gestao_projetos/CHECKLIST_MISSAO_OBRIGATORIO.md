@@ -1,118 +1,141 @@
 # Checklist Obrigatório de Missão — LotoIA
 
-Usar **antes**, **durante** e **ao encerrar** toda missão institucional.
+Todo cartão de missão deve passar por este checklist antes de transitar para
+`AGUARDANDO_VEREDICTO` ou `CONCLUIDA`.
 
-Marcar `[x]` somente com evidência. Item sem evidência = item **não cumprido**.
-
----
-
-## A. Abertura
-
-- [ ] **A1.** `mission_id` único definido (formato `SNAKE_CASE` ou `MISSAO_*`)
-- [ ] **A2.** Agente responsável (`owner`) único identificado
-- [ ] **A3.** Agentes de apoio listados (sem sobreposição de escopo)
-- [ ] **A4.** Objetivo em uma frase verificável
-- [ ] **A5.** Escopo **permitido** explícito
-- [ ] **A6.** Escopo **proibido** explícito (Lei 15, geração, purge, banco, etc.)
-- [ ] **A7.** Dependências de missões anteriores identificadas
-- [ ] **A8.** Cartão registrado em `QUADRO_MISSOES.md` (status `ABERTA` ou `PLANEJADA`)
+**Política:** `POLITICA_GESTAO_PROJETOS_LOTOIA.md`
 
 ---
 
-## B. Governança e fronteiras
+## A. Autorização e escopo
 
-- [ ] **B1.** Missão **não** altera Lei 15 / Lei 15A sem ADR + `agent_governanca`
-- [ ] **B2.** Missão **não** altera `FINAL_SCORE_WEIGHTS` ou `validation_threshold` sem ADR
-- [ ] **B3.** Missão **não** promove ML a componente institucional sem relatório comparativo
-- [ ] **B4.** `operational_effect` declarado (`true` / `false`)
-- [ ] **B5.** Se `operational_effect=false`, confirmado que nenhum dado operacional será mutado
-- [ ] **B6.** Purge / reset / delete_history **não** executados salvo missão `agent_dados` dedicada
-
----
-
-## C. Execução técnica
-
-- [ ] **C1.** Branch de trabalho identificada (ou `main` se hotfix autorizado)
-- [ ] **C2.** Nenhum arquivo referenciado por import permanece fora do Git
-- [ ] **C3.** Secrets/credenciais **não** commitados (`.env`, tokens, URLs com senha)
-- [ ] **C4.** Escopo limitado ao pedido — sem refatoração ampla não solicitada
-- [ ] **C5.** SQLite / CSV **não** usados como fonte operacional (Lei No 001)
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| A1 | Missão possui ID único (`M-<DOMÍNIO>-<NNN>`) | Sim | Cartão + registro |
+| A2 | Escopo **autorizado** está escrito | Sim | Cartão |
+| A3 | Escopo **proibido** está escrito | Sim | Cartão |
+| A4 | Agente primário declarado | Sim | Cartão |
+| A5 | Agentes consultivos declarados (se houver) | Quando aplicável | Cartão |
+| A6 | Zonas protegidas respeitadas (Lei 15, Lei 001, ML, ADM) | Sim | Revisão governança |
 
 ---
 
-## D. Testes mínimos
+## B. Planejamento documental
 
-*(Aplicável quando missão altera código Python, dashboard ou API.)*
-
-- [ ] **D1.** Testes de regressão relevantes executados (listar comando)
-- [ ] **D2.** Resultado dos testes registrado (passed / failed / skipped + motivo)
-- [ ] **D3.** Import/boot do módulo afetado verificado (ex.: dashboard, API)
-- [ ] **D4.** Falhas ambientais documentadas separadamente de falhas de código
-
-**Missão somente documental:** marcar N/A e citar revisão humana.
-
----
-
-## E. Evidência Git (obrigatória se houver alteração de repositório)
-
-- [ ] **E1.** `git status` final limpo para arquivos da missão
-- [ ] **E2.** Commit realizado com mensagem descritiva
-- [ ] **E3.** Hash do commit registrado
-- [ ] **E4.** Push confirmado para GitHub
-- [ ] **E5.** Link do commit ou PR registrado
-- [ ] **E6.** PR + review quando `main` protegida (exceto hotfix autorizado)
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| B1 | Cartão institucional preenchido | Sim | `TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md` |
+| B2 | Entrada criada no quadro | Sim | `QUADRO_PROJETOS_MISSOES.md` |
+| B3 | Entrada criada no registro | Sim | `REGISTRO_MISSOES_INSTITUCIONAL.md` |
+| B4 | Status inicial coerente com a matriz | Sim | Matriz de status |
+| B5 | Critério de encerramento definido | Sim | Cartão |
 
 ---
 
-## F. Deploy e produção
+## C. Evidência Git
 
-*(Aplicável quando missão afeta runtime Railway / painel / API.)*
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| C1 | Branch criada no padrão institucional (`cursor/<nome>-cae6`) | Sim | `git branch` |
+| C2 | Commits descritivos e atômicos | Sim | `git log` |
+| C3 | Push para remoto (`origin`) | Sim | `git push` |
+| C4 | Nenhum artefato crítico fora do Git | Sim | Diff + inventário |
+| C5 | PR aberto ou referenciado (quando aplicável) | Quando aplicável | URL ou número PR |
 
-- [ ] **F1.** Commit em `main` confirmado no GitHub
-- [ ] **F2.** Deploy Railway iniciado ou confirmado
-- [ ] **F3.** Commit implantado identificado (SHA curto)
-- [ ] **F4.** Healthcheck produção OK (`/_stcore/health` ou `/health`)
-- [ ] **F5.** CI gate relevante consultado (ex.: `railway-panel-deploy-gate`)
-- [ ] **F6.** Veredicto deploy: `DEPLOYADO` / `EM ANDAMENTO` / `FALHOU`
-
-**Sem impacto em produção:** marcar N/A.
-
----
-
-## G. Encerramento
-
-- [ ] **G1.** Veredicto final da matriz oficial selecionado (um único)
-- [ ] **G2.** `QUADRO_MISSOES.md` atualizado
-- [ ] **G3.** Entrada append em `REGISTRO_MISSOES.md`
-- [ ] **G4.** Pendências remanescentes listadas (se houver)
-- [ ] **G5.** Handoff para próxima missão documentado (se aplicável)
+> **Gate crítico:** missão que altera código **não pode** avançar sem C1–C4.
 
 ---
 
-## H. Bloqueios — fail closed
+## D. Evidência de qualidade (quando o escopo toca código)
 
-Encerrar com veredicto **negativo** se qualquer item abaixo ocorrer sem correção:
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| D1 | `ruff check` nos paths alterados | Sim | Saída do comando |
+| D2 | `python -m pytest` (suite relevante ou completa) | Sim | Saída do comando |
+| D3 | Sem regressão conhecida documentada | Sim | Notas no cartão |
+| D4 | Agente `agent_qualidade` consultado (se mudança ampla) | Quando aplicável | Cartão |
 
-| Bloqueio | Veredicto típico |
-|----------|------------------|
-| Código em produção referencia arquivo não versionado | `RISCO DE PRODUÇÃO` |
-| Push feito mas deploy quebrado | `DEPLOY AINDA QUEBRADO` |
-| Escopo proibido violado | `MISSÃO BLOQUEADA` |
-| Sem commit quando houve alteração de código | `EVIDÊNCIA GIT AUSENTE` |
-| Geração/purge executados fora de missão autorizada | `VIOLAÇÃO DE GOVERNANÇA` |
+Se o escopo for **somente documental**, marcar D1–D4 como `N/A` com justificativa no cartão.
 
 ---
 
-## Modelo de preenchimento (rodapé)
+## E. Evidência de deploy (quando aplicável)
 
-```yaml
-mission_id:
-owner:
-data_abertura:
-data_encerramento:
-commits: []
-testes: "comando + resultado"
-deploy_sha:
-veredicto:
-checklist_preenchido_por: agent_governanca | agent_plataforma | ...
+> **Política:** `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` — evidência proporcional ao risco.
+> Screenshot e script HTTP **não são obrigatórios** por padrão.
+
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| E1 | Deploy exige validação formal | Quando aplicável | Política + cartão |
+| E2 | SHA esperado documentado | Quando aplicável | Cartão / relatório |
+| E3 | Perfil de risco classificado (baixo/médio/alto/crítico) | Quando aplicável | Cartão |
+| E4 | **Evidência leve** (build + commit + deploy + painel OK + bloqueios) | Quando aplicável — missões baixo/médio risco | Texto / registro / PR |
+| E5 | Checklist Railway ou script HTTP (`railway_panel_deploy_sync_check.py`) | **Condicional** — risco alto/crítico ou operador solicita | Log / relatório |
+| E6 | Screenshot | **Condicional** — dúvida visual / layout crítico / divergência UI-runtime / solicitação | Imagem (opcional) |
+| E7 | Build marker confirmado | Quando aplicável | Sidebar / log / texto |
+| E8 | Rollback ou congelamento definido se falhar | Quando aplicável | Cartão |
+
+Se o escopo **não envolve deploy**, marcar E1–E8 como `N/A`.
+
+---
+
+## F. Bloqueios e riscos
+
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| F1 | Bloqueios ativos registrados | Quando existir | Cartão + quadro |
+| F2 | Risco de leakage temporal avaliado (ML/estatística) | Quando aplicável | Cartão |
+| F3 | Risco a Lei 001 / PostgreSQL avaliado | Quando aplicável | Cartão |
+| F4 | Risco a LEI15_CORE_002 avaliado | Quando aplicável | Cartão |
+| F5 | Plano de reversão documentado | Sim | Cartão |
+
+---
+
+## G. Veredicto e encerramento
+
+| # | Item | Obrigatório | Evidência |
+|---|------|-------------|-----------|
+| G1 | Veredicto formal emitido | Sim | Registro |
+| G2 | Veredicto assinado por agente competente | Sim | Registro |
+| G3 | Quadro atualizado com status final | Sim | Quadro |
+| G4 | Lições aprendidas registradas (se incidente) | Quando aplicável | Registro |
+| G5 | Artefatos versionados no commit final | Sim | Git |
+
+### Veredictos aceitos
+
+- `APROVADO`
+- `APROVADO_COM_RESSALVAS`
+- `BLOQUEADO`
+- `REJEITADO`
+- `CONGELADO`
+
+---
+
+## Resumo de conformidade (preencher no cartão)
+
+```text
+Missão ID:
+Agente primário:
+Escopo: [ ] documental  [ ] código  [ ] deploy  [ ] misto
+
+A Autorização:     [ ] OK  [ ] N/A
+B Documentação:    [ ] OK  [ ] N/A
+C Git:             [ ] OK  [ ] N/A
+D Qualidade:       [ ] OK  [ ] N/A
+E Deploy:          [ ] OK  [ ] N/A
+F Bloqueios:       [ ] OK  [ ] N/A
+G Veredicto:       [ ] OK  [ ] pendente
+
+Pode avançar para AGUARDANDO_VEREDICTO? [ ] Sim  [ ] Não
+Pode encerrar como CONCLUIDA?             [ ] Sim  [ ] Não
 ```
+
+---
+
+## Regra de falha
+
+Se qualquer item **obrigatório** estiver incompleto:
+
+1. status da missão deve ser `AGUARDANDO_EVIDENCIA` ou `BLOQUEADA`;
+2. o item faltante deve ser listado no cartão;
+3. deploy de produção **não** deve ser considerado validado.

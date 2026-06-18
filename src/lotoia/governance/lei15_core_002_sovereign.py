@@ -4,7 +4,8 @@ ADR: ADR-046-NUCLEO-LEI15-CANDIDATE-002
 Status institucional: NÚCLEO SOBERANO DA LEI 15
 
 Label técnico rastreável: STRUCT_LEI15_CORE_CANDIDATE_002_15D_001
-Geração bloqueada por padrão — execução futura somente via Painel ADM 100% funcional.
+Geração soberana controlada ativa por padrão (M-GER-044) — desativável via
+LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0.
 """
 
 from __future__ import annotations
@@ -24,7 +25,9 @@ CANDIDATE_ORIGIN_LABEL: Final = BATCH_LABEL
 ADR_ID: Final = "ADR-046"
 
 _LABEL_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_15D_\d+$")
+_MULTIDEZENA_LABEL_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_(\d+)D_\d+$")
 _VALID_MODES: Final = frozenset({"off", "sovereign"})
+_VALID_MULTIDEZENA_FORMATS: Final = frozenset(range(15, 24))
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,13 +54,35 @@ def is_sovereign_implanted() -> bool:
     return get_sovereign_mode() == "sovereign"
 
 
+def resolve_core_002_batch_label(card_format: int, *, sequence: int = 1) -> str:
+    """Label derivada CORE_002 por formato multidezena (15D–23D) — não é Lei 15A."""
+    fmt = int(card_format or 15)
+    if fmt not in _VALID_MULTIDEZENA_FORMATS:
+        raise ValueError(f"Formato CORE_002 inválido: {fmt}D (permitido 15–23).")
+    return f"{LABEL_PREFIX}{fmt}D_{int(sequence):03d}"
+
+
+def core_002_batch_label_game_size(batch_label: str | None) -> int | None:
+    normalized = str(batch_label or "").strip().upper()
+    if normalized == BATCH_LABEL or _LABEL_PATTERN.match(normalized):
+        return 15
+    match = _MULTIDEZENA_LABEL_PATTERN.match(normalized)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def is_sovereign_core_label(batch_label: str | None) -> bool:
     normalized = str(batch_label or "").strip().upper()
-    return normalized == BATCH_LABEL or bool(_LABEL_PATTERN.match(normalized))
+    return (
+        normalized == BATCH_LABEL
+        or bool(_LABEL_PATTERN.match(normalized))
+        or bool(_MULTIDEZENA_LABEL_PATTERN.match(normalized))
+    )
 
 
 def is_generation_enabled() -> bool:
-    raw = os.getenv(ENV_GENERATION_ENABLED, "0").strip().lower()
+    raw = os.getenv(ENV_GENERATION_ENABLED, "1").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
@@ -76,7 +101,7 @@ def should_apply_core_002(batch_label: str | None = None) -> bool:
 
 
 def enforce_generation_policy(batch_label: str | None = None) -> None:
-    """Falha fechada: geração CAND-002 bloqueada até Painel ADM autorizar."""
+    """Falha fechada: geração CAND-002 requer flag explícita quando desativada."""
     if not is_sovereign_core_label(batch_label):
         return
     if not is_generation_enabled():

@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD_FILE = ROOT / "dashboard" / "institutional_build.py"
 DASHBOARD_DIR = ROOT / "dashboard"
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 
 def _git_diff_names(base_ref: str) -> list[str]:
     completed = subprocess.run(
@@ -35,7 +38,7 @@ def _dashboard_paths_changed(changed_files: list[str]) -> bool:
 
 
 def _build_marker_changed(changed_files: list[str]) -> bool:
-    target = BUILD_FILE.as_posix()
+    target = BUILD_FILE.relative_to(ROOT).as_posix()
     return target in changed_files
 
 

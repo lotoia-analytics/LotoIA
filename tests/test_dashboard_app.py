@@ -104,76 +104,62 @@ def test_clean_runtime_strategy_display_is_archived_and_direct() -> None:
 
 
 @pytest.mark.parametrize("requested_count", [10, 20, 30, 50])
-def test_clean_runtime_generates_requested_quantity(monkeypatch, requested_count: int) -> None:
-    candidates = [
-        {"numbers": list(range(1, 26))},
-        {"numbers": list(range(2, 26)) + [1]},
-        {"numbers": list(range(3, 26)) + [1, 2]},
-    ]
-    monkeypatch.setattr(ia, "generate_ranked_games", lambda **kwargs: candidates * 4)
-
-    games = ia._generate_direct_15_games(
-        total_games=requested_count,
-        seed=123,
-        history_frequency={},
-        latest_numbers=set(),
-        batch_number_usage={},
-        batch_profile_usage={},
-        batch_total_games=requested_count,
-        core_numbers=[],
-        discouraged_numbers=[],
-        max_frequency_ratio=1.0,
-        min_frequency_ratio=0.0,
-        preferred_profile_ratios={},
-        odd_min=5,
-        odd_max=10,
-        even_min=5,
-        even_max=10,
-        sequence_max=15,
-        coverage_min=0.0,
-        entropy_min=0.0,
-        repeat_min=0,
-        repeat_max=15,
-        preferred_parity_pairs=[],
-        allowed_parity_pairs=[],
-    )
-
-    assert len(games) == requested_count
-    assert all(len(game["numbers"]) == 15 for game in games)
+def test_clean_runtime_direct_generation_legacy_blocked(requested_count: int) -> None:
+    with pytest.raises(RuntimeError, match="BLK-LEGACY-GEN-001"):
+        ia._generate_direct_15_games(
+            total_games=requested_count,
+            seed=123,
+            history_frequency={},
+            latest_numbers=set(),
+            batch_number_usage={},
+            batch_profile_usage={},
+            batch_total_games=requested_count,
+            core_numbers=[],
+            discouraged_numbers=[],
+            max_frequency_ratio=1.0,
+            min_frequency_ratio=0.0,
+            preferred_profile_ratios={},
+            odd_min=5,
+            odd_max=10,
+            even_min=5,
+            even_max=10,
+            sequence_max=15,
+            coverage_min=0.0,
+            entropy_min=0.0,
+            repeat_min=0,
+            repeat_max=15,
+            preferred_parity_pairs=[],
+            allowed_parity_pairs=[],
+        )
 
 
-def test_clean_runtime_reports_insufficient_candidates_when_fill_fails(monkeypatch) -> None:
-    monkeypatch.setattr(ia, "generate_ranked_games", lambda **kwargs: [])
-    monkeypatch.setattr(ia, "_select_subset_from_candidate", lambda *args, **kwargs: None)
-    monkeypatch.setattr(ia, "_force_subset_from_universe", lambda *args, **kwargs: [])
-
-    games = ia._generate_direct_15_games(
-        total_games=10,
-        seed=123,
-        history_frequency={},
-        latest_numbers=set(),
-        batch_number_usage={},
-        batch_profile_usage={},
-        batch_total_games=10,
-        core_numbers=[],
-        discouraged_numbers=[],
-        max_frequency_ratio=1.0,
-        min_frequency_ratio=0.0,
-        preferred_profile_ratios={},
-        odd_min=5,
-        odd_max=10,
-        even_min=5,
-        even_max=10,
-        sequence_max=15,
-        coverage_min=0.0,
-        entropy_min=0.0,
-        repeat_min=0,
-        repeat_max=15,
-        preferred_parity_pairs=[],
-        allowed_parity_pairs=[],
-    )
-
-    assert games == []
+def test_clean_runtime_reports_legacy_direct_path_blocked() -> None:
+    with pytest.raises(RuntimeError, match="_generate_direct_15_games"):
+        ia._generate_direct_15_games(
+            total_games=10,
+            seed=123,
+            history_frequency={},
+            latest_numbers=set(),
+            batch_number_usage={},
+            batch_profile_usage={},
+            batch_total_games=10,
+            core_numbers=[],
+            discouraged_numbers=[],
+            max_frequency_ratio=1.0,
+            min_frequency_ratio=0.0,
+            preferred_profile_ratios={},
+            odd_min=5,
+            odd_max=10,
+            even_min=5,
+            even_max=10,
+            sequence_max=15,
+            coverage_min=0.0,
+            entropy_min=0.0,
+            repeat_min=0,
+            repeat_max=15,
+            preferred_parity_pairs=[],
+            allowed_parity_pairs=[],
+        )
 
 
 def test_clean_runtime_strategy_avoids_legacy_group_materialization() -> None:
@@ -183,17 +169,22 @@ def test_clean_runtime_strategy_avoids_legacy_group_materialization() -> None:
     assert strategy["policy_mode"] != "OFFICIAL_GROUP_MATERIALIZATION"
 
 
-def test_clean_law15_generation_payload_is_isolated(monkeypatch) -> None:
-    monkeypatch.setattr(ia, "_history_number_frequency", lambda: {})
-    monkeypatch.setattr(ia, "_load_latest_contest_summary", lambda: {"dezenas": []})
+def test_clean_law15_generation_payload_is_isolated(
+    monkeypatch: pytest.MonkeyPatch,
+    sovereign_generation_enabled,
+) -> None:
+    monkeypatch.setattr(ia, "get_latest_official_contest", lambda: {"contest_number": 3700, "dezenas": list(range(1, 16))})
     monkeypatch.setattr(ia, "load_all_output_signatures", lambda: [])
     monkeypatch.setattr(
         ia,
-        "_generate_direct_15_games",
-        lambda **kwargs: [
-            {"numbers": list(range(1, 16))},
-            {"numbers": list(range(2, 17))},
-        ],
+        "_invoke_sovereign_adm_generate_best_games",
+        lambda **kwargs: {
+            "games": [
+                {"numbers": list(range(1, 16))},
+                {"numbers": list(range(2, 17))},
+            ],
+            "generation_path": "LEI15_CORE_002",
+        },
     )
     monkeypatch.setattr(
         ia,
@@ -207,36 +198,37 @@ def test_clean_law15_generation_payload_is_isolated(monkeypatch) -> None:
             "historical_duplicates_removed": 0,
         },
     )
+    monkeypatch.setattr(ia.st, "session_state", {})
 
     result = ia._run_clean_law15_generation(requested_count=10)
 
-    assert result["generation_mode"] == "CLEAN_LAW15_ISOLATED_PAGE"
-    assert result["policy_mode"] == "CLEAN_LAW15_ISOLATED_PAGE"
+    assert result["generation_mode"] == "LEI15_CORE_002_SOVEREIGN"
+    assert result["policy_mode"] == "ADR_047_CONSTITUTIONAL"
     assert result["selected_quantity"] == 10
     assert result["dezenas_por_jogo"] == 15
-    assert result["batch_fill_strategy"] == "FILL_UNTIL_REQUESTED_QUANTITY"
-    assert result["scientific_law_role"] == "COMMANDER"
-    assert result["clean_adm_runtime_role"] == "EXECUTOR"
-    assert result["output_commander_role"] == "AUDITOR"
-    assert result["historical_deduplication_mode"] == "AUDIT_ONLY"
-    assert result["historical_duplicates_removed"] == 0
+    assert result["batch_fill_strategy"] == "SOVEREIGN_GENERATE_BEST_GAMES"
+    assert result["sovereign_generation_path"] == "generate_best_games"
     assert result["legacy_generation_flow"] == "ARCHIVED"
     assert result["legacy_dashboard_generation"] == "BYPASSED"
-    assert result["legacy_calibrator_role"] == "REMOVED_FROM_RUNTIME"
-    assert result["calibration_engine_role"] == "DISABLED"
 
 
 @pytest.mark.parametrize("requested_count", [10, 20, 30, 50])
-def test_clean_law15_generation_page_requests_operational_sizes(monkeypatch, requested_count: int) -> None:
-    monkeypatch.setattr(ia, "_history_number_frequency", lambda: {})
-    monkeypatch.setattr(ia, "_load_latest_contest_summary", lambda: {"dezenas": []})
+def test_clean_law15_generation_page_requests_operational_sizes(
+    monkeypatch: pytest.MonkeyPatch,
+    sovereign_generation_enabled,
+    requested_count: int,
+) -> None:
+    monkeypatch.setattr(ia, "get_latest_official_contest", lambda: {"contest_number": 3700, "dezenas": list(range(1, 16))})
     monkeypatch.setattr(ia, "load_all_output_signatures", lambda: [])
 
-    def fake_generate_direct_15_games(**kwargs):
-        total_games = int(kwargs.get("total_games", 0) or 0)
-        return [{"numbers": list(range(1, 16))} for _ in range(total_games)]
+    def fake_sovereign_generate(**kwargs):
+        total_games = int(kwargs.get("requested_count", 0) or 0)
+        return {
+            "games": [{"numbers": list(range(1, 16))} for _ in range(total_games)],
+            "generation_path": "LEI15_CORE_002",
+        }
 
-    monkeypatch.setattr(ia, "_generate_direct_15_games", fake_generate_direct_15_games)
+    monkeypatch.setattr(ia, "_invoke_sovereign_adm_generate_best_games", fake_sovereign_generate)
     monkeypatch.setattr(
         ia,
         "output_commander_validate_games",
@@ -249,6 +241,7 @@ def test_clean_law15_generation_page_requests_operational_sizes(monkeypatch, req
             "historical_duplicates_removed": 0,
         },
     )
+    monkeypatch.setattr(ia.st, "session_state", {})
 
     result = ia._run_clean_law15_generation(requested_count=requested_count)
 

@@ -100,9 +100,9 @@ _LEI15_CORE_CANDIDATE_001_LABELS: tuple[str, ...] = (
     "STRUCT_LEI15_CORE_CANDIDATE_001_D_15D_001",
 )
 
-# Núcleo Soberano LEI15_CORE_002 — ADR-046 implantado
-_LEI15_CORE_002_SOVEREIGN_LABELS: tuple[str, ...] = (
-    "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001",
+# Núcleo Soberano LEI15_CORE_002 — ADR-046 implantado (15D–23D derivados)
+_LEI15_CORE_002_SOVEREIGN_LABELS: tuple[str, ...] = tuple(
+    f"STRUCT_LEI15_CORE_CANDIDATE_002_{size}D_001" for size in range(15, 24)
 )
 
 ALLOWED_BATCH_LABELS: tuple[str, ...] = (
@@ -146,7 +146,7 @@ _LEI15_CORE_V4_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_V4_PATTERN_PROTECTED_(\
 _LEI15_CORE_CANDIDATE_001_PATTERN = re.compile(
     r"^STRUCT_LEI15_CORE_CANDIDATE_001(?:_[ABCD])?_15D_\d+$"
 )
-_LEI15_CORE_002_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_15D_\d+$")
+_LEI15_CORE_002_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_(\d+)D_\d+$")
 # Pattern: STRUCT_TEST_<size>D[_<epoch>]
 _TEST_PATTERN = re.compile(r"^STRUCT_TEST_(\d+)D(?:_\d+)?$")
 
@@ -173,7 +173,7 @@ def batch_label_game_size(label: str | None) -> int | None:
         return 15
     m = _LEI15_CORE_002_PATTERN.match(normalized)
     if m:
-        return 15
+        return int(m.group(1))
     m = _LEI15_CORE_V3_1_PATTERN.match(normalized)
     if m:
         return int(m.group(1))

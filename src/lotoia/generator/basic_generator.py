@@ -537,6 +537,7 @@ def generate_best_games(
     ml_enabled: bool = False,
     seed: int | None = None,
     batch_label: str | None = None,
+    calibration_plan: dict[str, object] | None = None,
 ) -> dict[str, object]:
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
@@ -682,6 +683,16 @@ def generate_best_games(
 
     _v2_fallback_to_v1 = False
     _v3_fallback_to_v1 = False
+    _calibration_bundle = None
+    if _apply_sovereign and ml_enabled:
+        from lotoia.ml.supervised_output_calibration import apply_supervised_output_calibration
+
+        games, _calibration_bundle = apply_supervised_output_calibration(
+            games,
+            game_size=count,
+            ml_enabled=True,
+            calibration_plan=calibration_plan,
+        )
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp
 
@@ -907,4 +918,8 @@ def generate_best_games(
         },
         "generation_routing": _routing.to_dict(),
     }
+    if _calibration_bundle and _calibration_bundle.get("calibration_applied"):
+        payload["calibration_bundle"] = _calibration_bundle
+        payload["calibration_applied"] = True
+        payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
     return payload

@@ -1,130 +1,174 @@
 # Matriz de Status das Tarefas — LotoIA
 
-Estados, transições permitidas e veredictos formais de encerramento.
+Define estados oficiais, transições permitidas, bloqueios e critérios de saída.
+
+**Política:** `POLITICA_GESTAO_PROJETOS_LOTOIA.md`
 
 ---
 
-## 1. Estados operacionais
+## 1. Estados oficiais
 
-| Status | Código | Descrição |
-|--------|--------|-----------|
-| Planejada | `PLANEJADA` | Missão registrada; execução não iniciada |
-| Aberta | `ABERTA` | Em execução ativa |
-| Bloqueada | `BLOQUEADA` | Impedimento externo (secrets, aprovação, dependência) |
-| Em revisão | `EM_REVISAO` | Código/docs prontos; aguarda PR/merge/review |
-| Em deploy | `EM_DEPLOY` | Merge feito; Railway/CI propagando |
-| Concluída | `CONCLUÍDA` | Veredicto positivo; evidência completa |
-| Cancelada | `CANCELADA` | Escopo descartado; motivo registrado |
-| Arquivada | `ARQUIVADA` | Histórico preservado; sem ação pendente |
+| Status | Código | Descrição | Quem pode definir |
+|--------|--------|-----------|-------------------|
+| Proposta | `PROPOSTA` | Ideia ou ordem registrada, sem autorização | Qualquer agente |
+| Autorizada | `AUTORIZADA` | Escopo e agente aprovados | `agent_governanca` |
+| Em execução | `EM_EXECUCAO` | Trabalho ativo em branch/commits | Agente primário |
+| Aguardando evidência | `AGUARDANDO_EVIDENCIA` | Falta Git, teste ou deploy | Agente primário |
+| Bloqueada | `BLOQUEADA` | Impedimento formal; trabalho parado | `agent_governanca` ou origem do bloqueio |
+| Aguardando veredicto | `AGUARDANDO_VEREDICTO` | Evidências completas; decisão pendente | Agente primário |
+| Concluída | `CONCLUIDA` | Veredicto positivo (`APROVADO` ou `APROVADO_COM_RESSALVAS`) | `agent_governanca` |
+| Congelada | `CONGELADA` | Pausa institucional; pode retomar | `agent_governanca` |
+| Rejeitada | `REJEITADA` | Veredicto `REJEITADO` | `agent_governanca` |
+| Arquivada | `ARQUIVADA` | Encerrada sem retomada prevista | `agent_governanca` |
+| Cancelada | `CANCELADA` | Abortada antes de entregar | Agente primário + governança |
 
 ---
 
-## 2. Transições permitidas
+## 2. Diagrama de transições
 
-```text
-PLANEJADA → ABERTA
-ABERTA → BLOQUEADA | EM_REVISAO | CONCLUÍDA (só documental) | CANCELADA
-BLOQUEADA → ABERTA | CANCELADA
-EM_REVISAO → EM_DEPLOY | BLOQUEADA | CONCLUÍDA (sem deploy)
-EM_DEPLOY → CONCLUÍDA | BLOQUEADA (deploy falhou)
-CONCLUÍDA → ARQUIVADA
-CANCELADA → ARQUIVADA
+```mermaid
+stateDiagram-v2
+    [*] --> PROPOSTA
+    PROPOSTA --> AUTORIZADA : governança aprova escopo
+    PROPOSTA --> ARQUIVADA : descartada
+    PROPOSTA --> CANCELADA : cancelada
+
+    AUTORIZADA --> EM_EXECUCAO : início trabalho
+    AUTORIZADA --> CONGELADA : pausa institucional
+
+    EM_EXECUCAO --> AGUARDANDO_EVIDENCIA : falta git/teste/deploy
+    EM_EXECUCAO --> BLOQUEADA : impedimento
+    EM_EXECUCAO --> AGUARDANDO_VEREDICTO : checklist completo
+
+    AGUARDANDO_EVIDENCIA --> EM_EXECUCAO : evidência reunida
+    AGUARDANDO_EVIDENCIA --> BLOQUEADA : impedimento crítico
+
+    BLOQUEADA --> EM_EXECUCAO : bloqueio removido
+    BLOQUEADA --> CONGELADA : pausa longa
+    BLOQUEADA --> REJEITADA : veredicto negativo
+
+    AGUARDANDO_VEREDICTO --> CONCLUIDA : APROVADO
+    AGUARDANDO_VEREDICTO --> CONCLUIDA : APROVADO_COM_RESSALVAS
+    AGUARDANDO_VEREDICTO --> REJEITADA : REJEITADO
+    AGUARDANDO_VEREDICTO --> BLOQUEADA : nova evidência faltando
+
+    CONCLUIDA --> ARQUIVADA : arquivamento
+    CONGELADA --> AUTORIZADA : retomada
+    REJEITADA --> ARQUIVADA : arquivamento
+    CANCELADA --> ARQUIVADA : arquivamento
 ```
 
-**Proibido:** `PLANEJADA → CONCLUÍDA` sem passar por `ABERTA`.
-**Proibido:** `ABERTA → CONCLUÍDA` para missão com código em produção sem `EM_DEPLOY` ou checkpoint explícito N/A.
+---
+
+## 3. Matriz de transição (tabela)
+
+| De \ Para | `AUTORIZADA` | `EM_EXECUCAO` | `AGUARDANDO_EVIDENCIA` | `BLOQUEADA` | `AGUARDANDO_VEREDICTO` | `CONCLUIDA` | `CONGELADA` | `REJEITADA` | `ARQUIVADA` | `CANCELADA` |
+|-----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `PROPOSTA` | ✓ | | | | | | ✓ | | ✓ | ✓ |
+| `AUTORIZADA` | | ✓ | | | | | ✓ | | ✓ | ✓ |
+| `EM_EXECUCAO` | | | ✓ | ✓ | ✓ | | ✓ | | | ✓ |
+| `AGUARDANDO_EVIDENCIA` | | ✓ | | ✓ | | | | | | |
+| `BLOQUEADA` | | ✓ | | | | | ✓ | ✓ | ✓ | |
+| `AGUARDANDO_VEREDICTO` | | | ✓ | ✓ | | ✓ | | ✓ | | |
+| `CONCLUIDA` | | | | | | | | | ✓ | |
+| `CONGELADA` | ✓ | ✓ | | | | | | | ✓ | |
+| `REJEITADA` | | | | | | | | | ✓ | |
+| `CANCELADA` | | | | | | | | | ✓ | |
+
+✓ = transição permitida quando critérios da seção 4 forem atendidos.
 
 ---
 
-## 3. Veredictos de encerramento
+## 4. Critérios por transição
 
-Usar **exatamente um** veredicto por missão.
+### Para `AUTORIZADA`
 
-### 3.1 Sucesso
+- escopo autorizado e proibido escritos no cartão;
+- agente primário definido;
+- entrada no quadro e registro.
 
-| Veredicto | Quando usar |
-|-----------|-------------|
-| `MISSÃO CONCLUÍDA` | Escopo cumprido; Git/testes OK; sem pendência operacional |
-| `GESTAO_PROJETOS_FASE_0_IMPLANTADA` | Implantação de artefato de governança documental |
-| `PAINEL RESTAURADO` | Hotfix produção; painel carrega sem erro de import/runtime |
-| `GIT SINCRONIZADO` | Merge/push concluído; branch alinhada com remoto |
-| `RAILWAY DEPLOYADO EM {SHA}` | Produção confirmada no commit indicado |
-| `HISTÓRICO INSTITUCIONAL PROTEGIDO — PURGE BLOQUEADO` | Política de preservação implantada |
-| `PATH ÚNICO CORE_002 GARANTIDO — LEGACY DEFAULT BLOQUEADO` | Routing Lei 15 implantado |
-| `TRANSIÇÃO CONSTITUCIONAL REGISTRADA` | ADR/registro governança sem runtime |
+### Para `EM_EXECUCAO`
 
-### 3.2 Andamento / condicional
+- missão `AUTORIZADA` ou retomada de `CONGELADA` / `BLOQUEADA`;
+- branch Git criada quando houver alteração de artefatos versionáveis.
 
-| Veredicto | Quando usar |
-|-----------|-------------|
-| `DEPLOY EM ANDAMENTO` | Push OK; Railway/CI ainda propagando |
-| `HOTFIX PUBLICADO — AGUARDANDO DEPLOY` | Commit em main; produção ainda no SHA anterior |
-| `EVIDÊNCIA PARCIAL` | Trabalho feito; falta item checklist (listar qual) |
+### Para `AGUARDANDO_EVIDENCIA`
 
-### 3.3 Falha / bloqueio
+- falta um ou mais itens obrigatórios da seção C, D ou E do checklist;
+- deve listar **qual** evidência falta no cartão.
 
-| Veredicto | Quando usar |
-|-----------|-------------|
-| `MISSÃO BLOQUEADA` | Não executável no ambiente atual |
-| `HOTFIX BLOQUEADO` | Correção não publicada (sem push/aprovação) |
-| `DEPLOY AINDA QUEBRADO` | Produção com erro após deploy |
-| `DEPLOY FALHOU` | Build/deploy Railway falhou |
-| `RAILWAY AINDA EM {SHA}` | Produção não atualizou após merge |
-| `RISCO DE PRODUÇÃO` | Código divergente Git vs runtime; import quebrado; dados em risco |
-| `EVIDÊNCIA GIT AUSENTE` | Alteração local sem commit/push |
-| `VIOLAÇÃO DE GOVERNANÇA` | Escopo proibido executado |
-| `RISCO DE GOVERNANÇA GIT` | Missões locais sem commit (pré-consolidação) |
+### Para `BLOQUEADA`
 
----
+- impedimento documentado (auditoria, conflito constitucional, dependência externa);
+- campo de bloqueio preenchido no cartão e quadro;
+- **proibido** considerar deploy de produção validado enquanto bloqueada.
 
-## 4. Matriz status × evidência
+### Para `AGUARDANDO_VEREDICTO`
 
-| Status | Git commit | Push | Testes | Deploy check | Pode encerrar? |
-|--------|------------|------|--------|--------------|----------------|
-| PLANEJADA | — | — | — | — | Não |
-| ABERTA | opcional WIP | — | WIP | — | Não |
-| EM_REVISAO | obrigatório | pendente ou OK | obrigatório* | — | Não |
-| EM_DEPLOY | obrigatório | OK | obrigatório* | pendente | Condicional** |
-| CONCLUÍDA | obrigatório | OK | OK ou N/A | OK ou N/A | Sim |
+- checklist obrigatório completo para o tipo de missão;
+- evidência Git presente;
+- testes e deploy marcados OK ou N/A com justificativa.
 
-\* Quando missão altera código.
-\*\* Encerrar com `DEPLOY EM ANDAMENTO` ou aguardar `RAILWAY DEPLOYADO EM {SHA}`.
+### Para `CONCLUIDA`
+
+- veredicto `APROVADO` ou `APROVADO_COM_RESSALVAS` no registro;
+- quadro e registro atualizados no mesmo ciclo Git quando possível.
+
+### Para `REJEITADA`
+
+- veredicto `REJEITADO` com motivo;
+- nenhum deploy pendente deve ser promovido.
+
+### Para `CONGELADA`
+
+- pausa institucional explícita;
+- não equivale a conclusão — retomada exige revalidação de escopo.
+
+### Para `ARQUIVADA` / `CANCELADA`
+
+- motivo registrado;
+- links para commits e veredictos preservados.
 
 ---
 
-## 5. Prioridade × SLA documental (Fase 0)
+## 5. Bloqueios institucionais conhecidos (seed Fase 0)
 
-| Prioridade | Expectativa de registro | Checkpoint |
-|------------|-------------------------|------------|
-| `critical` | Atualizar quadro no mesmo dia | Deploy + veredicto |
-| `high` | Atualizar quadro em 24h | Git + testes |
-| `medium` | Atualizar quadro em 72h | Git |
-| `low` | Atualizar quadro na semana | Veredicto |
-
-*SLA documental — não automação.*
-
----
-
-## 6. Mapeamento incidente → veredicto (referência)
-
-| Situação | Veredicto |
-|----------|-----------|
-| `ModuleNotFoundError` pós-deploy por arquivo não versionado | `RISCO DE PRODUÇÃO` → hotfix → `PAINEL RESTAURADO` |
-| Merge em main sem deploy refletido | `DEPLOY EM ANDAMENTO` ou `RAILWAY AINDA EM {SHA}` |
-| Secrets ausentes no agente | `MISSÃO BLOQUEADA` |
-| 7 commits locais sem push | `RISCO DE GOVERNANÇA GIT` |
+| Código | Condição | Efeito nas transições |
+|--------|----------|------------------------|
+| `BLK-GIT-001` | Alteração local sem commit/push | Não pode ir a `AGUARDANDO_VEREDICTO` |
+| `BLK-TEST-001` | Código alterado sem pytest/ruff | Não pode ir a `AGUARDANDO_VEREDICTO` |
+| `BLK-DEPLOY-001` | Deploy exigido sem SHA validado | Não pode ir a `CONCLUIDA` |
+| `BLK-LEI15-001` | Missão mexe em geração sem ADR | Deve ir a `BLOQUEADA` |
+| `BLK-ADM-001` | Painel ADM conflitante (auditoria 2026-06-17) | Missões ADM ficam `BLOQUEADA` até veredicto |
+| `BLK-VER-001` | Sem veredicto formal | Não pode ir a `CONCLUIDA` |
 
 ---
 
-## 7. Campos obrigatórios no registro ao mudar status
+## 6. Mapeamento veredicto → status final
 
-```yaml
-mission_id:
-status_anterior:
-status_novo:
-data:
-responsavel:
-evidencia: "link commit / PR / healthcheck"
-veredicto: "se encerramento"
-observacao:
-```
+| Veredicto | Status final usual |
+|-----------|-------------------|
+| `APROVADO` | `CONCLUIDA` → `ARQUIVADA` |
+| `APROVADO_COM_RESSALVAS` | `CONCLUIDA` (ressalvas no registro) |
+| `BLOQUEADO` | `BLOQUEADA` |
+| `REJEITADO` | `REJEITADA` → `ARQUIVADA` |
+| `CONGELADO` | `CONGELADA` |
+
+---
+
+## 7. Responsabilidades
+
+| Papel | Ação |
+|-------|------|
+| Agente primário | Atualiza cartão, solicita transição, reúne evidências |
+| `agent_governanca` | Autoriza escopo, emite veredicto, desbloqueia quando aplicável |
+| `agent_plataforma` | Valida evidência de deploy e runtime |
+| `agent_qualidade` | Valida evidência de testes quando escopo inclui código |
+
+---
+
+## Referências
+
+- [`CHECKLIST_MISSAO_OBRIGATORIO.md`](CHECKLIST_MISSAO_OBRIGATORIO.md)
+- [`QUADRO_PROJETOS_MISSOES.md`](QUADRO_PROJETOS_MISSOES.md)
+- [`REGISTRO_MISSOES_INSTITUCIONAL.md`](REGISTRO_MISSOES_INSTITUCIONAL.md)

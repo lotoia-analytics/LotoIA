@@ -173,6 +173,90 @@ def test_render_conference_page_no_typeerror_on_expander(monkeypatch: pytest.Mon
     admin_app._render_conference_page({})
 
 
+def test_render_conference_page_no_latest_contest_fallback_without_name_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    info_messages: list[str] = []
+
+    monkeypatch.setattr(admin_app, "_live_institutional_snapshot", lambda snapshot: snapshot)
+    monkeypatch.setattr(
+        admin_app,
+        "_database_snapshot",
+        lambda: {"counts": {"imported_contests": 0, "generated_games": 0, "reconciliation_runs": 0}},
+    )
+    monkeypatch.setattr(admin_app, "_load_persisted_generation_event_groups", lambda **_kwargs: [])
+    monkeypatch.setattr(admin_app, "_get_latest_unreconciled_generation_event_id", lambda **_kwargs: None)
+    monkeypatch.setattr(admin_app, "_load_latest_generated_games", lambda: {})
+    monkeypatch.setattr(admin_app, "_load_official_history_diagnostics", lambda: {})
+    monkeypatch.setattr(admin_app, "_load_official_sync_diagnostics", lambda: None)
+    monkeypatch.setattr(admin_app, "_get_engine_cached", lambda: (_ for _ in ()).throw(RuntimeError("skip runtime query")))
+    monkeypatch.setattr(
+        admin_app,
+        "build_imported_contests_selection_context",
+        lambda **_kwargs: {
+            "valid_contest_numbers": [],
+            "min_contest": 0,
+            "max_contest": 0,
+            "default_contest": 0,
+            "latest_record": None,
+        },
+    )
+
+    class _StreamlitStub:
+        session_state: dict[str, object] = {}
+
+        def subheader(self, *_args, **_kwargs) -> None:
+            return None
+
+        def divider(self) -> None:
+            return None
+
+        def markdown(self, *_args, **_kwargs) -> None:
+            return None
+
+        def write(self, *_args, **_kwargs) -> None:
+            return None
+
+        def columns(self, spec):
+            return [self for _ in range(len(spec) if isinstance(spec, list) else spec)]
+
+        def metric(self, *_args, **_kwargs) -> None:
+            return None
+
+        def caption(self, *_args, **_kwargs) -> None:
+            return None
+
+        def warning(self, *_args, **_kwargs) -> None:
+            return None
+
+        def info(self, message, *_args, **_kwargs) -> None:
+            info_messages.append(str(message))
+
+        def button(self, *_args, **_kwargs):
+            return False
+
+        def container(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(admin_app, "st", _StreamlitStub())
+    monkeypatch.setattr(admin_app, "render_conference_governance_section", lambda **_kwargs: None)
+
+    admin_app._render_conference_page({})
+    assert any("Último concurso ainda não veio do banco" in message for message in info_messages)
+
+
+def test_render_conference_page_does_not_reference_undefined_latest_contest() -> None:
+    source = inspect.getsource(admin_app._render_conference_page)
+    assert "latest_contest_record" in source
+    assert not re.search(r"elif not latest_contest[^_]", source)
+
+
 def test_conference_page_interactive_components_have_keys() -> None:
     source = inspect.getsource(admin_app._render_conference_page)
     required_keys = [

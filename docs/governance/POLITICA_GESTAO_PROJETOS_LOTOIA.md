@@ -1,208 +1,206 @@
-# Política de Gestão de Projetos — LotoIA (Fase 0)
+# Política de Gestão de Projetos LotoIA — Fase 0
 
 ## Status
 
 `POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA`
 
-| Campo | Valor |
-|-------|-------|
-| Registro | `POLITICA_GESTAO_PROJETOS_LOTOIA` |
-| Fase | **0** — documental, versionada no Git |
-| Data | 2026-06-17 |
-| Agentes | `agent_governanca`, `agent_plataforma` |
-| Escopo | Governança de missões — **sem** Painel ADM, banco, geração ou Núcleo |
+Documento oficial de governança documental para missões, tarefas, agentes, evidências Git,
+testes, deploy e veredictos institucionais.
+
+**Fase:** 0 — documental e versionada no Git.
+
+**Não altera:** Painel ADM, geração, banco de dados, Núcleo `LEI15_CORE_002`, runtime ou
+automação destrutiva.
 
 ---
 
-## Contexto
+## 1. Propósito
 
-Após o incidente de deploy em produção causado por `dashboard/institutional_light_mode.py`
-existir localmente mas **não estar versionado no Git** (`ModuleNotFoundError` em
-`institutional_app.py`), ficou registrado que a LotoIA precisa de uma camada formal de
-**Gestão de Projetos** para controlar:
+Após o incidente de deploy causado por artefato não versionado, a LotoIA institui uma camada
+formal de Gestão de Projetos para impedir que missões avancem sem:
 
-- missões e tarefas institucionais;
-- roteamento por agente;
-- status e bloqueios;
-- evidência Git;
-- testes mínimos;
-- deploy e checkpoint de produção;
-- veredicto formal de encerramento.
+- evidência Git rastreável;
+- validação de testes quando aplicável;
+- validação de deploy quando aplicável;
+- veredicto formal documentado;
+- registro institucional atualizado.
 
-Esta política **não substitui** ADRs, Lei No 001, Lei 15/15A ou políticas científicas.
-Complementa a governança operacional com disciplina de **execução de missões**.
+Esta política complementa — e não substitui — Lei 001, governança operacional, política ML
+assistivo e trilha ADR.
 
 ---
 
-## Objetivo
+## 2. Escopo da Fase 0
 
-Impedir que tarefas avancem, sejam consideradas concluídas ou entrem em produção **sem**
-evidência rastreável de:
+### Autorizado
 
-1. escopo declarado e respeitado;
-2. commit e push no GitHub;
-3. testes mínimos executados (quando aplicável);
-4. checkpoint de deploy (quando aplicável);
-5. veredicto institucional explícito.
+- documentos de lei, política, quadro, checklist, template, matriz e registro em
+  `docs/governance/gestao_projetos/`;
+- versionamento Git de missões e veredictos;
+- roteamento explícito de agentes Cursor;
+- bloqueio documental de avanço sem evidência.
 
----
+### Proibido na Fase 0
 
-## Fase 0 — o que é
-
-| Característica | Fase 0 |
-|----------------|--------|
-| Formato | Markdown versionado em `docs/governance/gestao_projetos/` |
-| Interface | **Nenhuma** — fora do Painel ADM |
-| Banco | **Nenhum** — sem tabelas ou persistência operacional |
-| Automação destrutiva | **Proibida** |
-| Automação de deploy | **Proibida** — deploy continua manual/Railway/CI existente |
-| Rastreabilidade | Git + quadro documental + registro de missões |
+- interface no Painel ADM;
+- persistência em PostgreSQL ou outro banco;
+- automação que altere código, schema, deploy ou geração sem missão autorizada;
+- substituição de ADR, Lei 15, Lei 001 ou política ML assistivo;
+- promoção automática de tarefas a componentes institucionais.
 
 ---
 
-## Fase 0 — o que não é
+## 3. Princípios obrigatórios
 
-- Não é ferramenta de PM (Jira, Linear, etc.).
-- Não é alteração de runtime, API, dashboard ou schema.
-- Não autoriza geração de jogos, purge, reset de histórico ou mudança de Núcleo.
-- Não substitui PR, CODEOWNERS ou branch protection em `main`.
-
----
-
-## Princípios institucionais
-
-### 1. Uma missão, um foco
-
-Cada missão deve ter **um agente responsável** e escopo delimitado. Proibido misturar na
-mesma ordem operacional: banco + geração + painel + governança constitucional.
-
-Referência: ADR-047 — ordem de transição por agente.
-
-### 2. Nada concluído sem evidência Git
-
-Toda entrega operacional ou de código **deve** terminar com:
-
-- `git status` final;
-- branch utilizada;
-- arquivos alterados;
-- commit realizado;
-- hash do commit;
-- push confirmado para o GitHub;
-- link do commit ou branch.
-
-Missões **somente documentais** encerram com commit dos artefatos em
-`docs/governance/gestao_projetos/`.
-
-### 3. Arquivo referenciado = arquivo versionado
-
-Se código importa, referencia ou depende de um módulo/arquivo, esse arquivo **deve**
-existir no Git **antes** do merge em `main`. Incidente tipo `institutional_light_mode`
-é **falha de governança de projeto**, não apenas bug de runtime.
-
-### 4. Veredicto obrigatório
-
-Toda missão encerra com **um** veredicto da matriz oficial
-(`gestao_projetos/MATRIZ_STATUS_TAREFAS.md`). Veredictos ambíguos ou omitidos =
-missão **não encerrada**.
-
-### 5. Deploy ≠ commit
-
-Push em `main` **não** prova produção atualizada. Missões que afetam produção exigem
-checkpoint Railway separado (commit implantado, healthcheck, CI gate quando existir).
-
-### 6. operational_effect = false por padrão
-
-Missões de diagnóstico, auditoria, relatório ou documentação **não** alteram geração,
-histórico operacional ou comportamento do painel, salvo autorização explícita.
+1. **Nenhuma missão sem escopo escrito** — toda missão declara o que pode e o que não pode
+   alterar.
+2. **Nenhum avanço sem evidência Git** — branch, commits, push e referência de PR quando
+   existir.
+3. **Nenhum encerramento sem veredicto** — status final exige veredicto formal no registro.
+4. **Agente único responsável por domínio** — roteamento explícito; mistura só com
+   autorização documentada.
+5. **Bloqueio explícito** — impedimentos são registrados, não omitidos.
+6. **Reversibilidade** — toda missão deve indicar como desfazer ou congelar o que foi feito.
+7. **Fase 0 é read-mostly para runtime** — documentação governa; execução continua pelos
+   fluxos já existentes.
 
 ---
 
-## Artefatos obrigatórios (Fase 0)
+## 4. Hierarquia documental
 
-| Artefato | Caminho | Função |
-|----------|---------|--------|
-| Política (este documento) | `docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md` | Lei operacional de PM |
-| Quadro de missões | `docs/governance/gestao_projetos/QUADRO_MISSOES.md` | Visão ativa de projetos |
-| Checklist de missão | `docs/governance/gestao_projetos/CHECKLIST_MISSAO_OBRIGATORIO.md` | Gate antes/durante/depois |
-| Cartão de tarefa | `docs/governance/gestao_projetos/MODELO_CARTAO_TAREFA.md` | Template de abertura |
-| Matriz de status | `docs/governance/gestao_projetos/MATRIZ_STATUS_TAREFAS.md` | Estados e veredictos |
-| Registro de missões | `docs/governance/gestao_projetos/REGISTRO_MISSOES.md` | Histórico auditável |
+| Camada | Artefato | Função |
+|--------|----------|--------|
+| Lei / política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` | Regras institucionais |
+| Quadro | `gestao_projetos/QUADRO_PROJETOS_MISSOES.md` | Visão ativa de projetos e missões |
+| Checklist | `gestao_projetos/CHECKLIST_MISSAO_OBRIGATORIO.md` | Gate obrigatório por missão |
+| Checkpoint produção | `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` | Evidência de produção proporcional ao risco |
+| Missões por pacote | `POLITICA_MISSOES_POR_PACOTE_LOTOIA.md` | Agrupamento e risco de pacotes |
+| Multiagente | `DIRETRIZ_EXECUCAO_MULTIAGENTE_LOTOIA.md` | Rodadas multiagente |
+| Template | `gestao_projetos/TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md` | Modelo de cartão de tarefa |
+| Matriz | `gestao_projetos/MATRIZ_STATUS_TAREFAS.md` | Estados, transições e bloqueios |
+| Registro | `gestao_projetos/REGISTRO_MISSOES_INSTITUCIONAL.md` | Log cronológico e veredictos |
 
 ---
 
-## Fluxo de vida de uma missão (Fase 0)
+## 5. Definições
+
+| Termo | Definição |
+|-------|-----------|
+| **Projeto** | Conjunto institucional de missões com objetivo de longo prazo |
+| **Missão** | Ordem institucional delimitada, com agente, escopo e critério de encerramento |
+| **Tarefa** | Unidade executável dentro de uma missão; usa o cartão institucional |
+| **Agente** | Domínio Cursor (`.cursor/rules/agent_*.mdc`) responsável pelo escopo |
+| **Evidência Git** | Branch, commits, diff revisável e push para remoto |
+| **Evidência de teste** | Saída de `pytest` e/ou `ruff check` quando o escopo tocar código |
+| **Evidência de deploy** | Build + commit + confirmação deploy/painel (evidência leve); script HTTP e screenshot **condicionais** — ver `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` |
+| **Veredicto** | Decisão formal: `APROVADO`, `APROVADO_COM_RESSALVAS`, `BLOQUEADO`, `REJEITADO`, `CONGELADO` |
+| **Bloqueio** | Impedimento registrado que impede transição de status |
+
+---
+
+## 6. Fluxo institucional mínimo
 
 ```text
-Abertura (cartão preenchido)
-  → Roteamento (agente responsável + apoio)
-  → Execução (escopo permitido apenas)
-  → Checklist preenchido
-  → Evidência Git (commit/push/PR)
-  → Testes mínimos (se aplicável)
-  → Checkpoint deploy (se aplicável)
-  → Veredicto formal
-  → Atualização QUADRO + REGISTRO
+Proposta
+  -> Autorização (escopo + agente)
+  -> Execução (branch + commits)
+  -> Evidência Git
+  -> Evidência de testes (se aplicável)
+  -> Evidência de deploy (se aplicável)
+  -> Veredicto formal
+  -> Registro atualizado
+  -> Encerramento ou arquivamento
 ```
 
----
-
-## Roteamento por agente
-
-| Agente | Domínio típico de missão |
-|--------|--------------------------|
-| `agent_governanca` | ADRs, políticas, pesos, promoção ML, transição constitucional |
-| `agent_plataforma` | FastAPI, Railway, runtime, deploy, secrets, CI |
-| `agent_dados` | PostgreSQL, ingestão, reset operacional controlado, backup |
-| `agent_geracao` | Lei 15, motores, routing, labels de lote |
-| `agent_estatistico` | Scoring, relatórios estruturais, benchmarks |
-| `agent_ml` | Modelos assistivos, walk-forward, experimentos |
-| `agent_visual` | Streamlit, layout, UX do painel |
-| `agent_qualidade` | pytest, ruff, gates de CI |
-
-**Regra:** missão com `owner` único; agentes de apoio **não** expandem escopo.
+Nenhuma etapa pode ser pulada por conveniência operacional.
 
 ---
 
-## Relação com documentos existentes
+## 7. Roteamento de agentes
 
-| Documento | Relação |
-|-----------|---------|
-| `GOVERNANCA_OPERACIONAL_LOTOIA.md` | Fonte única PostgreSQL — PM não altera |
-| `BRANCH_PROTECTION_MAIN.md` | PR e checks — PM exige conformidade |
-| `POLITICA_ML_ASSISTIVO.md` | ML auxiliar — PM não promove modelos |
-| `POLITICA_PRESERVACAO_HISTORICO_LOTOIA.md` | Purge bloqueado — PM não autoriza limpeza |
-| ADR-047 | Ordem de transição Lei 15 — PM registra dependências |
+| Agente | Domínio principal |
+|--------|-------------------|
+| `agent_governanca` | ADRs, políticas, snapshots, aprovações institucionais |
+| `agent_plataforma` | FastAPI, runtime, deploy, scripts operacionais |
+| `agent_dados` | Ingestão, PostgreSQL, pipelines |
+| `agent_estatistico` | Scoring, estatística estrutural |
+| `agent_geracao` | Lei 15 / Lei 15A, motor de geração |
+| `agent_ml` | ML assistivo, walk-forward, experimentos |
+| `agent_qualidade` | Testes, ruff, CI |
+| `agent_visual` | Streamlit, layout, UX |
 
----
-
-## Incidentes que esta política previne
-
-| Incidente | Controle Fase 0 |
-|-----------|-----------------|
-| Arquivo local não versionado quebra produção | Checklist § dependências versionadas |
-| Missão “concluída” sem push | Cláusula Git obrigatória |
-| Merge constitucional sem testes | Checklist § testes mínimos |
-| Deploy assumido sem checkpoint | Matriz: `DEPLOY EM ANDAMENTO` vs `DEPLOYADO` |
-| Escopo misturado (painel + banco + núcleo) | Princípio 1 + cartão de tarefa |
+Missões multi-agente devem declarar agente **primário** e agentes **consultivos** no cartão.
 
 ---
 
-## Próximas fases (fora do escopo atual)
+## 8. Relação com incidentes e deploy
 
-| Fase | Conteúdo | Pré-requisito |
-|------|----------|---------------|
-| **1** | Scripts read-only de sync quadro ↔ JSON export | Fase 0 estável 30 dias |
-| **2** | Gate CI opcional (missão sem checklist = warning) | ADR dedicada |
-| **3** | Painel ADM — módulo read-only de status | Missão `agent_visual` dedicada |
+Todo incidente operacional ou de deploy com impacto institucional deve:
 
-**Nenhuma fase posterior é autorizada por este documento.**
+1. abrir ou referenciar uma missão no registro;
+2. registrar causa raiz, módulo afetado e artefatos não versionados identificados;
+3. exigir evidência Git antes de considerar correção encerrada;
+4. produzir veredicto formal antes de retomar deploy de produção quando aplicável.
 
----
-
-## Veredicto desta implantação
-
-`GESTAO_PROJETOS_FASE_0_IMPLANTADA`
+Esta política responde diretamente ao gap identificado: **tarefa concluída sem prova no Git
+não é tarefa concluída**.
 
 ---
 
-*Referências: ADR-047, `AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17`, incidente hotfix `f0c1261`.*
+## 9. Zonas protegidas (sempre)
+
+Sem missão autorizada e ADR quando exigido, é proibido alterar via Gestão de Projetos:
+
+- Núcleo soberano `LEI15_CORE_002` e flags `LOTOIA_LEI15_CORE_002*`;
+- regras de geração Lei 15 / Lei 15A;
+- schema ou dados operacionais PostgreSQL;
+- Painel ADM (Fase 0 não adiciona superfície de gestão);
+- `FINAL_SCORE_WEIGHTS`, `validation_threshold` e promoções ML institucionais.
+
+---
+
+## 10. Evolução prevista (fora da Fase 0)
+
+Fases futuras podem incluir — somente com nova política ou ADR:
+
+- painel de gestão no ADM;
+- persistência de missões no PostgreSQL;
+- automação de gates CI/CD;
+- integração com observabilidade institucional.
+
+A Fase 0 **não antecipa** essas implementações.
+
+---
+
+## 11. Conformidade
+
+Uma missão está em conformidade com esta política quando:
+
+- [ ] possui cartão institucional preenchido;
+- [ ] consta no quadro e no registro;
+- [ ] passou pelo checklist obrigatório;
+- [ ] respeita a matriz de status;
+- [ ] encerrou com veredicto formal quando aplicável.
+
+---
+
+## 12. Referências
+
+- `docs/governance/GOVERNANCA_OPERACIONAL_LOTOIA.md`
+- `docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md`
+- `docs/governance/POLITICA_ML_ASSISTIVO.md`
+- `docs/governance/AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md`
+- `docs/governance/gestao_projetos/README.md`
+- `docs/governance/POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md`
+- `AGENTS.md`
+- `.cursor/rules/agent_governanca.mdc`
+- `.cursor/rules/agent_plataforma.mdc`
+
+---
+
+## Histórico
+
+| Data | Evento |
+|------|--------|
+| 2026-06-17 | Formalização da Política de Gestão de Projetos — Fase 0 |
+| 2026-06-17 | Referência à Política de Checkpoint de Produção simplificada |

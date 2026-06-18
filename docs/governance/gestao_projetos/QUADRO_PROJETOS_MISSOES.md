@@ -1,0 +1,122 @@
+# Quadro de Projetos e Missões — LotoIA
+
+## Status do quadro
+
+| Campo | Valor |
+|-------|-------|
+| Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
+| Atualização | 2026-06-18 (M-ML-VIS-056 cockpit Central ML) |
+| Modo | Fase 0 — documental/Git |
+| Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
+
+---
+
+## Legenda de status (resumo)
+
+| Status | Significado |
+|--------|-------------|
+| `PROPOSTA` | Aguardando autorização |
+| `AUTORIZADA` | Escopo aprovado, pronta para execução |
+| `EM_EXECUCAO` | Trabalho ativo |
+| `AGUARDANDO_EVIDENCIA` | Falta Git, teste ou deploy |
+| `BLOQUEADA` | Impedimento formal |
+| `AGUARDANDO_VEREDICTO` | Evidências reunidas, falta decisão |
+| `CONCLUIDA` | Veredicto positivo registrado |
+| `CONGELADA` | Pausada institucionalmente |
+| `ARQUIVADA` | Encerrada sem execução futura |
+
+Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
+
+---
+
+## Projetos institucionais ativos
+
+### P-GOV-001 — Governança e constitucionalidade
+
+| ID missão | Título | Agente primário | Status | Última evidência Git |
+|-----------|--------|-----------------|--------|----------------------|
+| M-ML-VIS-056 | Central ML — cockpit calibração supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v35` |
+| M-ML-054 | Central ML — calibração supervisionada da saída | `agent_ml` + multiagente | `CONCLUIDA` | build `institutional-adm-runtime-v34` |
+| M-ML-VIS-053B | Rota Central ML — sem fallback M-PLAT-040 | `agent_plataforma` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v33` |
+| M-ML-VIS-053 | Central ML Operacional Supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v32` |
+| M-GER-DADOS-051 | Persistência 16D–23D + Histórico Analítico + remoção GEs | `agent_geracao` + `agent_dados` | `CONCLUIDA` | [PR #162](https://github.com/lotoia-analytics/LotoIA/pull/162) — build `institutional-adm-runtime-v27` |
+| M-PLAT-050 | Corrigir saturação pool PostgreSQL Streamlit | `agent_plataforma` + `agent_dados` | `CONCLUIDA` | [PR #161](https://github.com/lotoia-analytics/LotoIA/pull/161) — build `institutional-adm-runtime-v26` |
+| M-DADOS-049 | Reset controlado gerações antigas | `agent_dados` + `agent_geracao` | `CONCLUIDA` | merge — build `institutional-adm-runtime-v25` |
+| M-GOV-042 | Auditoria Constitucional Final — Painel ADM e public_app | `agent_governanca` + multiagente | `CONCLUIDA` | merge `5346d0f` — [PR #150](https://github.com/lotoia-analytics/LotoIA/pull/150) — 30/30 itens — build `institutional-adm-runtime-v17` |
+| M-RODADA-001 | Rodada multiagente Painel / CORE_002 | multiagente (8) | `CONCLUIDA` | merge `295f1c0` — [PR #130](https://github.com/lotoia-analytics/LotoIA/pull/130) |
+| M-GOV-031 | Checkpoint produção simplificado | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `1de7cfd` — [PR #129](https://github.com/lotoia-analytics/LotoIA/pull/129) |
+| M-PLAT-041 | Separação public_app x ADM Institucional | `agent_plataforma` + `agent_governanca` | `CONCLUIDA` | merge `1f8688a` — [PR #148](https://github.com/lotoia-analytics/LotoIA/pull/148) — build `institutional-adm-runtime-v17` |
+| M-PLAT-040 | Limpeza de órfãs e rotas legadas do Painel ADM | `agent_plataforma` + `agent_visual` | `CONCLUIDA` | merge `8cc1568` — [PR #146](https://github.com/lotoia-analytics/LotoIA/pull/146) — build `institutional-adm-runtime-v16` |
+| M-DADOS-039 | Área Restrita / Limpeza Controlada protegida pela Lei 001 | `agent_dados` + `agent_governanca` | `CONCLUIDA` | merge `ae15edf` — [PR #144](https://github.com/lotoia-analytics/LotoIA/pull/144) — build `institutional-adm-runtime-v15` |
+| M-GOV-038 | Lei 15A redefinida — camada futura subordinada ao CORE_002 | `agent_governanca` + `agent_geracao` | `CONCLUIDA` | merge `0c2dadb` — [PR #142](https://github.com/lotoia-analytics/LotoIA/pull/142) — build `institutional-adm-runtime-v14` |
+| M-VIS-037 | Conferir Resultados / Auditoria de Lotes Persistidos | `agent_visual` + `agent_dados` | `CONCLUIDA` | merge `539f256` — produção `institutional-adm-runtime-v13` |
+| M-VIS-036 | Simulação Institucional / Backtesting | `agent_estatistico` + `agent_ml` | `CONCLUIDA` | merge `240e3d0` — produção `institutional-adm-runtime-v12` |
+| M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `CONCLUIDA` | merge `76031cb` — produção `institutional-adm-runtime-v11` |
+| M-VIS-034 | Cobertura Estrutural + 6 Bases refinadas no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a533e61` — produção `institutional-adm-runtime-v10` |
+| M-VIS-033 | Pacote Núcleo Lei 15 no Painel ADM | `agent_visual` + `agent_estatistico` | `CONCLUIDA` | merge `a2009cda` — produção `institutional-adm-runtime-v9` |
+| M-VIS-032 | Governança read-only no Painel ADM | `agent_visual` + `agent_governanca` | `CONCLUIDA` | merge `7df540c` — produção `institutional-adm-runtime-v7` |
+| M-VIS-031 | Painel ADM Fase 1 — bloqueios constitucionais | `agent_visual` + `agent_plataforma` | `CONCLUIDA` | merge `a5a3f2f` — [PR #125](https://github.com/lotoia-analytics/LotoIA/pull/125) — produção `a5a3f2f250b1` / `institutional-adm-runtime-v6` |
+| M-GOV-030 | Gestão de Projetos — Fase 0 | `agent_governanca` + `agent_plataforma` | `CONCLUIDA` | merge `7a10363` — [PR #121](https://github.com/lotoia-analytics/LotoIA/pull/121) |
+| M-GOV-029 | Inventário funcional ADM (Mission 29) | `agent_visual` | `CONGELADA` | docs em `main` |
+| M-GOV-028 | Manutenção institucional contínua (Mission 28) | `agent_governanca` | `CONCLUIDA` | `MISSION_28_CONTINUOUS_MAINTENANCE_POLICY.md` |
+| M-GOV-027 | Auditoria constitucional pós LEI15_CORE_002 | `agent_governanca` | `AGUARDANDO_VEREDICTO` | `AUDITORIA_CONSTITUCIONAL_LOTOIA_2026_06_17.md` |
+
+### P-LEI15-001 — Núcleo soberano Lei 15
+
+| ID missão | Título | Agente primário | Status | Bloqueio |
+|-----------|--------|-----------------|--------|----------|
+| M-LEI15-003 | Unificar path geração ADM → generate_best_games | `agent_geracao` + `agent_plataforma` | `CONCLUIDA` | merge `6dea9e7` — produção `institutional-adm-runtime-v8` |
+| M-LEI15-002 | Implantação LEI15_CORE_002 | `agent_geracao` | `CONCLUIDA` | Geração bloqueada (`GENERATION_ENABLED=0`) |
+| M-LEI15-001 | Alinhamento constitucional doc/painel/ADM | `agent_governanca` | `BLOQUEADA` | Painel ADM conflitante — ver auditoria |
+
+### P-OPS-001 — Runtime e deploy cloud
+
+| ID missão | Título | Agente primário | Status | Última evidência deploy |
+|-----------|--------|-----------------|--------|-------------------------|
+| M-OPS-015 | Cloud-only Railway (Lei 001) | `agent_plataforma` | `CONCLUIDA` | `RAILWAY_CLOUD_ONLY_DEPLOYMENT_2026_06_15.md` |
+| M-OPS-INC-001 | Incidente deploy — artefato não versionado | `agent_plataforma` + `agent_governanca` | `CONCLUIDA` | hotfix `f0c1261` — `build=institutional-adm-runtime-v6` |
+
+### P-ML-001 — ML assistivo e experimentos
+
+| ID missão | Título | Agente primário | Status |
+|-----------|--------|-----------------|--------|
+| M-ML-VIS-053 | Central ML Operacional Supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` |
+| M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `CONCLUIDA` |
+| M-ML-009 | Política ML assistivo (ADR-042 / ADR-009) | `agent_ml` | `CONCLUIDA` |
+
+---
+
+## Missões sem projeto (documentais avulsas)
+
+| ID | Título | Status | Referência |
+|----|--------|--------|------------|
+| DOC-001 | Expansão dimensional 16D–23D | `CONGELADA` | `ADR_EXPANSAO_DIMENSIONAL_16D_23D.md` |
+| M-094 | ManyChat integração | `PROPOSTA` | `ADR-012-manychat.md` |
+
+---
+
+## Fila de abertura (backlog documental)
+
+| Prioridade | Título sugerido | Agente | Motivo |
+|------------|-----------------|--------|--------|
+| Alta | Segregação public_app vs institutional_app | `agent_plataforma` | Rodada multiagente |
+| Média | Consolidação corpus ADR (`ADRs/` vs `docs/adr/`) | `agent_governanca` | Duplicidade documental |
+| Baixa | Fase 1 — gestão de projetos com painel | `agent_governanca` | Fora do escopo Fase 0 |
+
+---
+
+## Regras de manutenção do quadro
+
+1. Toda nova missão recebe ID único `M-<DOMÍNIO>-<NNN>`.
+2. Status deve seguir a matriz oficial — sem status inventado.
+3. Bloqueios devem apontar documento ou veredicto que originou o bloqueio.
+4. Missão `CONCLUIDA` exige veredicto no registro.
+5. Atualizar este quadro no mesmo commit que altera o registro, quando possível.
+
+---
+
+## Referências
+
+- [`REGISTRO_MISSOES_INSTITUCIONAL.md`](REGISTRO_MISSOES_INSTITUCIONAL.md)
+- [`CHECKLIST_MISSAO_OBRIGATORIO.md`](CHECKLIST_MISSAO_OBRIGATORIO.md)
+- [`TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md`](TEMPLATE_CARTAO_TAREFA_INSTITUCIONAL.md)

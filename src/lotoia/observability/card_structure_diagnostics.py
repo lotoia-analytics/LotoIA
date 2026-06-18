@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
+    GeneratedGame,
     GenerationEvent,
     LotofacilOfficialHistory,
     ReconciliationGame,
@@ -19,6 +23,7 @@ from lotoia.governance.batch_operational_scope import (
     is_generation_event_active_reading,
     summarize_active_reading_exclusions,
 )
+from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
 from lotoia.observability.hb_metrics import resolve_official_numbers_for_contest, resolve_reconciliation_game_hits
 from lotoia.statistics.card_structure import (
     analyze_stuck_games,
@@ -34,11 +39,16 @@ from lotoia.statistics.card_structure import (
 
 SOURCE_POSTGRESQL = "postgresql"
 RECONCILIATION_TABLES = "reconciliation_runs / reconciliation_games"
+OPERATIONAL_TABLES = "generation_events / generated_games"
 DEFAULT_OFFICIAL_WINDOW = 50
 EVIDENCE_LEVEL_LOCAL = "LOCAL_DIAGNOSTIC"
 EVIDENCE_LEVEL_STRUCTURAL_RECURRENT = "STRUCTURAL_RECURRENT_DIAGNOSTIC"
 MIN_GENERATIONS_RECURRENT = 20
 MIN_CONTESTS_RECURRENT = 5
+MISSION_ID_STRUCTURAL_SNAPSHOT = "M-ML-VIS-059"
+SCOPE_ALL_OPERATIONAL_CORE_002 = "operational_core_002_all"
+SCOPE_LABEL_ALL_OPERATIONAL = "Todos — todas as gerações operacionais CORE_002"
+SOURCE_COBERTURA_ESTRUTURAL = "cobertura_estrutural"
 
 
 def empty_card_structure_payload() -> dict[str, Any]:
@@ -79,6 +89,145 @@ def empty_card_structure_payload() -> dict[str, Any]:
         "excluded_batches_message": "Nenhum lote excluído da leitura ativa.",
         "excluded_batches_audit": [],
     }
+
+
+def empty_operational_card_structure_payload() -> dict[str, Any]:
+    payload = empty_card_structure_payload()
+    payload["tables"] = OPERATIONAL_TABLES
+    payload["coverage_layer"] = "operational_core_002"
+    return payload
+
+
+def _serialize_generated_game(row: GeneratedGame, *, generation_event_id: int) -> dict[str, Any]:
+    context = dict(row.context_json or {})
+    numbers = [int(number) for number in (row.numbers or [])]
+    final_card_numbers = [int(number) for number in (context.get("final_card_numbers") or numbers or [])]
+    return {
+        "game_index": int(row.game_index or 0),
+        "numbers": numbers,
+        "final_card_numbers": final_card_numbers,
+        "core_numbers": list(context.get("core_numbers") or []),
+        "audited_reserve_numbers": list(context.get("audited_reserve_numbers") or []),
+        "generation_event_id": int(generation_event_id),
+        "reconciliation_run_id": 0,
+        "hits": 0,
+        "matched_numbers": [],
+        "prize_tier": "",
+        "contest_id": int(getattr(row, "target_contest", 0) or 0),
+    }
+
+
+def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str | None = None) -> int:
+    numbers = resolve_cartao_final_from_game(game)
+    if numbers:
+        return len(numbers)
+    label_size = core_002_batch_label_game_size(batch_label)
+    if label_size is not None:
+        return int(label_size)
+    return len(game.get("numbers") or [])
+
+
+def load_operational_card_structure_diagnostics_from_db(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    generation_event_ids: Sequence[int] | None = None,
+    game_size: int | None = None,
+    official_window: int = DEFAULT_OFFICIAL_WINDOW,
+) -> dict[str, Any]:
+    """Carrega diagnóstico estrutural a partir de generation_events + generated_games (CORE_002)."""
+    selected_ge_id = int(generation_event_id or 0)
+    effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else None
+    allowed_event_ids = {
+        int(value)
+        for value in (generation_event_ids or [])
+        if int(value) > 0
+    }
+
+    with get_session(db_path) as session:
+        event_query = session.query(GenerationEvent).order_by(
+            GenerationEvent.created_at.asc(),
+            GenerationEvent.id.asc(),
+        )
+        if selected_ge_id > 0:
+            event_query = event_query.filter(GenerationEvent.id == selected_ge_id)
+        elif allowed_event_ids:
+            event_query = event_query.filter(GenerationEvent.id.in_(sorted(allowed_event_ids)))
+        events = event_query.all()
+
+        sovereign_events = [
+            event
+            for event in events
+            if is_sovereign_core_label(str(getattr(event, "analysis_batch_label", "") or ""))
+            and is_generation_event_active_reading(event)
+        ]
+        exclusions_summary = summarize_active_reading_exclusions(db_path)
+        if not sovereign_events:
+            empty_payload = empty_operational_card_structure_payload()
+            empty_payload["excluded_batches_count"] = int(exclusions_summary.get("excluded_batches_count", 0) or 0)
+            empty_payload["excluded_batches_message"] = str(exclusions_summary.get("message", "") or "")
+            empty_payload["excluded_batches_audit"] = list(exclusions_summary.get("excluded_batches") or [])
+            return empty_payload
+
+        games: list[dict[str, Any]] = []
+        generation_event_ids: list[int] = []
+        contest_ids: list[int] = []
+        batch_labels_seen: set[str] = set()
+        selected_batch_label: str | None = None
+
+        for event in sovereign_events:
+            ge_id = int(event.id or 0)
+            if ge_id <= 0:
+                continue
+            rows = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == ge_id)
+                .order_by(GeneratedGame.game_index.asc())
+                .all()
+            )
+            if not rows:
+                continue
+            event_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
+            if event_label:
+                batch_labels_seen.add(event_label)
+                if selected_ge_id > 0:
+                    selected_batch_label = event_label
+            generation_event_ids.append(ge_id)
+            for row in rows:
+                payload = _serialize_generated_game(row, generation_event_id=ge_id)
+                contest_id = int(payload.get("contest_id") or 0)
+                if contest_id > 0:
+                    contest_ids.append(contest_id)
+                resolved_card = resolve_cartao_final_from_game(payload)
+                card_size = len(resolved_card) if resolved_card else _resolve_generated_game_card_size(
+                    payload,
+                    batch_label=event_label,
+                )
+                if effective_game_size is not None and card_size != effective_game_size:
+                    continue
+                games.append(payload)
+
+        if not games:
+            return empty_operational_card_structure_payload()
+
+        official_cards, official_contests = _load_official_cards(session, limit=official_window)
+
+    payload = build_card_structure_payload(
+        games=games,
+        official_cards=official_cards,
+        official_contests=official_contests,
+        generation_event_ids=generation_event_ids,
+        reconciliation_run_ids=[],
+        contest_ids=contest_ids,
+        analysis_batch_labels=sorted(batch_labels_seen),
+        selected_analysis_batch_label=str(selected_batch_label or "").strip().upper() or None,
+        excluded_batches_summary=exclusions_summary,
+    )
+    payload["tables"] = OPERATIONAL_TABLES
+    payload["coverage_layer"] = "operational_core_002"
+    if selected_ge_id > 0:
+        payload["selected_generation_event_id"] = selected_ge_id
+    return payload
 
 
 def resolve_evidence_level(*, total_geracoes: int, total_concursos: int) -> str:
@@ -238,6 +387,11 @@ def build_card_structure_payload(
     abertura, fechamento = _aggregate_opening_closing(resolved_cards)
     faixas_gaps = _aggregate_faixas_gaps(resolved_cards)
     redundancia = compute_gp_redundancy(resolved_cards)
+    redundancia_por_formato: dict[str, Any] = {}
+    for fmt in formats:
+        cards_fmt = [card for card in resolved_cards if len(card) == int(fmt)]
+        if len(cards_fmt) >= 2:
+            redundancia_por_formato[str(int(fmt))] = compute_gp_redundancy(cards_fmt)
     ausencias = _aggregate_absence_patterns(resolved_cards)
     comparacao = compare_structure_profiles(resolved_cards, official_cards)
     comparacao["comparacao_com_concursos_oficiais"] = {
@@ -295,6 +449,7 @@ def build_card_structure_payload(
         "faixas_gaps": faixas_gaps,
         "travamento_13_14": travamento,
         "redundancia_gp": {**redundancia, **ausencias},
+        "redundancia_por_formato": redundancia_por_formato,
         "comparacao_oficial": comparacao,
         "evidence_base": evidence_base,
         "evidence_level": evidence_level,
@@ -427,3 +582,226 @@ def load_card_structure_diagnostics_from_db(
         selected_analysis_batch_label=normalized_batch_label,
         excluded_batches_summary=exclusions_summary,
     )
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _format_breakdown_from_payload(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    summary = dict(payload.get("summary") or {})
+    formats = list(summary.get("formatos_analisados") or [])
+    if not formats:
+        formats = list((payload.get("evidence_base") or {}).get("formatos_analisados") or [])
+    return [{"formato": f"{int(fmt)}D", "jogos": int(summary.get("total_jogos", 0) or 0)} for fmt in sorted(formats)]
+
+
+def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Extrai métricas canônicas do payload da Cobertura Estrutural (fonte única M-ML-VIS-059)."""
+    redundancy = dict(payload.get("redundancia_gp") or {})
+    abertura = dict(payload.get("abertura") or {})
+    fechamento = dict(payload.get("fechamento") or {})
+    travamento = dict(payload.get("travamento_13_14") or {})
+    summary = dict(payload.get("summary") or {})
+    evidence_base = dict(payload.get("evidence_base") or {})
+
+    similaridade = _safe_float(redundancy.get("similaridade_media_entre_jogos"))
+    sobreposicao_media = _safe_float(redundancy.get("sobreposicao_media"))
+    sobreposicao_maxima = _safe_int(redundancy.get("sobreposicao_maxima"))
+    quase_repetidos = _safe_int(redundancy.get("cartoes_quase_repetidos"))
+    diversity_score = round(max(0.0, 1.0 - similaridade), 4)
+
+    prefix_top = dict(abertura.get("prefixo_3_mais_gerado") or {})
+    suffix_top = dict(fechamento.get("sufixo_3_mais_gerado") or {})
+    prefix_freq = _safe_int(prefix_top.get("frequencia"))
+    suffix_freq = _safe_int(suffix_top.get("frequencia"))
+    total_jogos = _safe_int(summary.get("total_jogos"))
+
+    subcovered_rows = list(redundancy.get("dezenas_fora_em_muitos_jogos") or [])
+    subcovered_list = [
+        str(row.get("dezena") or "")
+        for row in subcovered_rows
+        if isinstance(row, Mapping) and row.get("dezena")
+    ]
+    prefix_viciado = prefix_freq >= max(3, int(max(1, total_jogos) * 0.14))
+    suffix_viciado = suffix_freq >= max(3, int(max(1, total_jogos) * 0.14))
+
+    hits_13 = len(list(travamento.get("jogos_com_13_hits") or []))
+    hits_14 = len(list(travamento.get("jogos_com_14_hits") or []))
+    hits_15 = len(list(travamento.get("jogos_com_15_hits") or []))
+
+    redundancia_geral = (
+        "alta"
+        if quase_repetidos >= 20 or similaridade >= 0.55
+        else "normal"
+    )
+
+    return {
+        "similaridade_media": similaridade,
+        "similaridade_media_entre_jogos": similaridade,
+        "sobreposicao_media": sobreposicao_media,
+        "sobreposicao_maxima": sobreposicao_maxima,
+        "quase_repetidos": quase_repetidos,
+        "cartoes_quase_repetidos": quase_repetidos,
+        "redundancia_geral": redundancia_geral,
+        "prefixos_sufixos_viciados": prefix_viciado or suffix_viciado,
+        "prefixo_viciado": prefix_viciado,
+        "sufixo_viciado": suffix_viciado,
+        "prefixo_mais_gerado": str(prefix_top.get("estrutura") or "—"),
+        "sufixo_mais_gerado": str(suffix_top.get("estrutura") or "—"),
+        "dezenas_subcobertas": len(subcovered_rows),
+        "dezenas_subcobertas_list": subcovered_list,
+        "diversidade_global": "baixa" if diversity_score < 0.55 else "adequada",
+        "diversity_score": diversity_score,
+        "desempenho_13_hits": hits_13,
+        "desempenho_14_hits": hits_14,
+        "desempenho_15_hits": hits_15,
+        "total_jogos": total_jogos,
+        "total_geracoes": _safe_int(summary.get("total_geracoes")),
+        "format_breakdown": _format_breakdown_from_payload(payload),
+        "formatos_analisados": [
+            int(value)
+            for value in list(evidence_base.get("formatos_analisados") or summary.get("formatos_analisados") or [])
+        ],
+        "generation_event_ids": [
+            int(value)
+            for value in list(evidence_base.get("generation_event_ids") or [])
+            if _safe_int(value) > 0
+        ],
+        "evidence_level": str(payload.get("evidence_level") or EVIDENCE_LEVEL_LOCAL),
+        "six_bases_risco": "alerta" if subcovered_rows or prefix_viciado or suffix_viciado else "estável",
+    }
+
+
+def compute_coverage_snapshot_checksum(payload: Mapping[str, Any]) -> str:
+    """Checksum estável do núcleo redundante do payload (rastreio de leitura)."""
+    core = {
+        "redundancia_gp": dict(payload.get("redundancia_gp") or {}),
+        "summary": dict(payload.get("summary") or {}),
+        "generation_event_ids": list((payload.get("evidence_base") or {}).get("generation_event_ids") or []),
+    }
+    encoded = json.dumps(core, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def build_structural_coverage_reading_metadata(
+    payload: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    *,
+    scope_id: str,
+    scope_label: str,
+    filters: Mapping[str, Any] | None = None,
+    read_at: str | None = None,
+) -> dict[str, Any]:
+    evidence_base = dict(payload.get("evidence_base") or {})
+    return {
+        "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+        "source": SOURCE_COBERTURA_ESTRUTURAL,
+        "tables": str(payload.get("tables") or OPERATIONAL_TABLES),
+        "coverage_layer": str(payload.get("coverage_layer") or "operational_core_002"),
+        "scope_id": scope_id,
+        "scope_label": scope_label,
+        "filters": dict(filters or {}),
+        "total_geracoes": _safe_int(metrics.get("total_geracoes")),
+        "total_jogos": _safe_int(metrics.get("total_jogos")),
+        "format_breakdown": list(metrics.get("format_breakdown") or []),
+        "generation_event_ids": list(metrics.get("generation_event_ids") or []),
+        "formatos_analisados": list(evidence_base.get("formatos_analisados") or []),
+        "read_at": read_at or datetime.now(UTC).isoformat(),
+        "coverage_snapshot_checksum": compute_coverage_snapshot_checksum(payload),
+    }
+
+
+def compare_structural_coverage_scopes(
+    sovereign_ids: Sequence[int],
+    alternate_ids: Sequence[int],
+) -> dict[str, Any]:
+    sovereign = sorted({int(value) for value in sovereign_ids if int(value) > 0})
+    alternate = sorted({int(value) for value in alternate_ids if int(value) > 0})
+    same_scope = sovereign == alternate
+    return {
+        "same_scope": same_scope,
+        "sovereign_generation_event_ids": sovereign,
+        "alternate_generation_event_ids": alternate,
+        "scope_mismatch": not same_scope,
+        "scope_mismatch_reason": (
+            ""
+            if same_scope
+            else "Central ML usa escopo diferente da Cobertura Estrutural atual"
+        ),
+    }
+
+
+def get_structural_coverage_snapshot(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    generation_event_ids: Sequence[int] | None = None,
+    game_size: int | None = None,
+    scope_id: str = SCOPE_ALL_OPERATIONAL_CORE_002,
+    scope_label: str = SCOPE_LABEL_ALL_OPERATIONAL,
+) -> dict[str, Any]:
+    """Fonte soberana compartilhada — Cobertura Estrutural e Central ML (M-ML-VIS-059)."""
+    selected_ge_id = int(generation_event_id or 0)
+    event_ids = [int(value) for value in (generation_event_ids or []) if int(value) > 0]
+    effective_game_size = int(game_size) if game_size is not None and int(game_size) > 0 else None
+    filters: dict[str, Any] = {
+        "generation_event_id": selected_ge_id if selected_ge_id > 0 else None,
+        "generation_event_ids": event_ids,
+        "game_size": effective_game_size,
+    }
+    structural = load_operational_card_structure_diagnostics_from_db(
+        db_path,
+        generation_event_id=selected_ge_id if selected_ge_id > 0 else None,
+        generation_event_ids=event_ids or None,
+        game_size=effective_game_size,
+    )
+    if not structural.get("available"):
+        return {
+            "available": False,
+            "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+            "source": SOURCE_COBERTURA_ESTRUTURAL,
+            "scope_id": scope_id,
+            "scope_label": scope_label,
+            "filters": filters,
+            "metrics": {},
+            "payload": {},
+            "reading": {},
+        }
+
+    metrics = extract_operational_structural_metrics(structural)
+    read_at = datetime.now(UTC).isoformat()
+    reading = build_structural_coverage_reading_metadata(
+        structural,
+        metrics,
+        scope_id=scope_id,
+        scope_label=scope_label,
+        filters=filters,
+        read_at=read_at,
+    )
+    return {
+        "available": True,
+        "mission_id": MISSION_ID_STRUCTURAL_SNAPSHOT,
+        "source": SOURCE_COBERTURA_ESTRUTURAL,
+        "scope_id": scope_id,
+        "scope_label": scope_label,
+        "filters": filters,
+        "tables": structural.get("tables"),
+        "coverage_layer": structural.get("coverage_layer"),
+        "payload": dict(structural),
+        "metrics": metrics,
+        "reading": reading,
+        "coverage_snapshot_checksum": reading.get("coverage_snapshot_checksum"),
+        "read_at": read_at,
+        "generation_event_ids": list(metrics.get("generation_event_ids") or []),
+    }
