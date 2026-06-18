@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -30,6 +31,10 @@ from lotoia.ml.supervised_output_calibration import (
 MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
+VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
+AGGREGATE_SCOPE_LABEL = "Escopo analisado: visão geral das gerações oficiais recentes"
+AGGREGATE_DIAGNOSIS_HEADLINE = "Diagnóstico geral da saída CORE_002 + ML"
+DEFAULT_AGGREGATE_EVENTS_LIMIT = 10
 CALIBRATION_SUPERVISED_LABEL = "CALIBRAÇÃO ML SUPERVISIONADA: ATIVA"
 RECALIBRATION_OUTPUT_ACTIVE_LABEL = "RECALIBRAÇÃO DE SAÍDA: ATIVA COM SUPERVISÃO"
 ML_FREE_RECALIBRATION_BLOCKED = "BLOQUEADA — ML livre fora do CORE_002"
@@ -747,10 +752,12 @@ def _issue_types_from_event(event: Mapping[str, Any] | None) -> set[str]:
     }
 
 
-def build_ml_calibration_recommendations(event: Mapping[str, Any] | None) -> list[str]:
-    if not isinstance(event, Mapping):
+def build_ml_calibration_recommendations(source: Mapping[str, Any] | None) -> list[str]:
+    if not isinstance(source, Mapping):
         return ["Gerar lote CORE_002 com ML ativo para obter diagnóstico estrutural."]
-    issue_types = _issue_types_from_event(event)
+    issue_types = set(source.get("issue_types") or []) or _issue_types_from_event(source)
+    if not issue_types and source.get("aggregate_available"):
+        issue_types = set(source.get("aggregate_issue_types") or [])
     recommendations: list[str] = []
     mapping = {
         "quase_repetidos_alto": "Reduzir quase repetidos — penalizar overlap no pool",
@@ -764,11 +771,190 @@ def build_ml_calibration_recommendations(event: Mapping[str, Any] | None) -> lis
     for issue_type, text in mapping.items():
         if issue_type in issue_types:
             recommendations.append(text)
-    if not recommendations and event.get("calibration_applied"):
+    if not recommendations and source.get("calibration_applied"):
         recommendations.append("Lote calibrado — validar diversidade e cobertura na próxima geração.")
+    elif not recommendations and source.get("aggregate_calibrated_events", 0):
+        recommendations.append(
+            "Calibração aplicada em gerações recentes — validar diversidade global na próxima geração."
+        )
     elif not recommendations:
         recommendations.append("Estrutura estável — manter calibração supervisionada ativa na geração.")
     return recommendations[:6]
+
+
+def load_ml_calibration_event_details(
+    db_path: Path | str,
+    *,
+    limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
+) -> list[dict[str, Any]]:
+    events = load_supervised_ml_operational_events_from_db(db_path, limit=limit)
+    details: list[dict[str, Any]] = []
+    for row in events:
+        ge_id = int(row.get("generation_event_id", 0) or 0)
+        if ge_id <= 0:
+            continue
+        detail = build_supervised_ml_operational_event_detail(db_path, ge_id)
+        if isinstance(detail, dict):
+            details.append(detail)
+    return details
+
+
+def build_ml_calibration_aggregate_context(
+    event_details: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if not event_details:
+        return {
+            "available": False,
+            "scope_label": AGGREGATE_SCOPE_LABEL,
+            "headline": "Sem gerações ML oficiais recentes no PostgreSQL",
+            "metrics": {},
+            "issues_preview": [],
+            "lot_rows": [],
+            "format_breakdown": [],
+        }
+    all_issue_types: set[str] = set()
+    issues_preview: list[str] = []
+    near_dup_total = 0
+    overlap_values: list[float] = []
+    diversity_scores: list[float] = []
+    subcovered_total = 0
+    total_games = 0
+    calibrated_events = 0
+    format_counter: Counter[int] = Counter()
+    lot_rows: list[dict[str, Any]] = []
+
+    for event in event_details:
+        card_format = int(event.get("card_format", 15) or 15)
+        format_counter[card_format] += 1
+        persisted = int(event.get("persisted_games", 0) or 0)
+        total_games += persisted
+        if event.get("calibration_applied"):
+            calibrated_events += 1
+        diagnostics = dict(event.get("calibration_diagnostics") or {})
+        redundancy = dict(diagnostics.get("redundancy") or {})
+        near_dup_total += int(redundancy.get("cartoes_quase_repetidos", 0) or 0)
+        overlap_values.append(float(redundancy.get("sobreposicao_media", 0) or 0))
+        diversity_scores.append(float(event.get("diversity_score", 0.0) or 0.0))
+        for issue in list(diagnostics.get("issues") or []):
+            if not isinstance(issue, dict):
+                continue
+            issue_type = str(issue.get("tipo") or "")
+            if issue_type:
+                all_issue_types.add(issue_type)
+            desc = str(issue.get("descricao") or issue_type or "")
+            if desc and desc not in issues_preview:
+                issues_preview.append(desc)
+        for desc in list(event.get("issues_detected") or []):
+            text = str(desc or "")
+            if text and text not in issues_preview:
+                issues_preview.append(text)
+        subcovered_total += sum(
+            1
+            for row in list(diagnostics.get("issues") or [])
+            if isinstance(row, dict) and row.get("tipo") == "dezena_subcoberta"
+        )
+        lot_rows.append(
+            {
+                "generation_event_id": int(event.get("generation_event_id", 0) or 0),
+                "batch_label": str(event.get("batch_label") or "-"),
+                "formato": f"{card_format}D",
+                "jogos": persisted,
+                "calibracao": bool(event.get("calibration_applied")),
+                "problemas": len(list(event.get("issues_detected") or [])),
+                "diversidade": round(float(event.get("diversity_score", 0.0) or 0.0), 3),
+                "created_at": str(event.get("created_at") or ""),
+            }
+        )
+
+    avg_overlap = sum(overlap_values) / len(overlap_values) if overlap_values else 0.0
+    avg_diversity = sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0
+    prefix_suffix_vicio = bool({"prefixo_excessivo", "sufixo_excessivo"} & all_issue_types)
+    return {
+        "available": True,
+        "scope_label": AGGREGATE_SCOPE_LABEL,
+        "headline": AGGREGATE_DIAGNOSIS_HEADLINE,
+        "total_events": len(event_details),
+        "total_games": total_games,
+        "calibrated_events": calibrated_events,
+        "issue_types": sorted(all_issue_types),
+        "aggregate_issue_types": sorted(all_issue_types),
+        "aggregate_available": True,
+        "metrics": {
+            "redundancia": "alta" if near_dup_total >= 20 or avg_overlap >= 10 else "normal",
+            "quase_repetidos": near_dup_total,
+            "similaridade_media": round(avg_overlap, 2),
+            "prefixos_sufixos": "viciados" if prefix_suffix_vicio else "ok",
+            "dezenas_subcobertas": subcovered_total,
+            "diversidade": "baixa" if avg_diversity < 0.55 else "adequada",
+            "diversity_score": round(avg_diversity, 3),
+            "six_bases_risco": "alerta" if issues_preview else "estável",
+            "geracoes_analisadas": len(event_details),
+        },
+        "issues_preview": issues_preview[:8],
+        "format_breakdown": [
+            {"formato": f"{fmt}D", "geracoes": count}
+            for fmt, count in sorted(format_counter.items())
+        ],
+        "lot_rows": lot_rows,
+        "calibration_applied": calibrated_events > 0,
+        "aggregate_calibrated_events": calibrated_events,
+    }
+
+
+def build_ml_calibration_aggregate_diagnosis_card(aggregate: Mapping[str, Any]) -> dict[str, Any]:
+    if not aggregate.get("available"):
+        return {
+            "available": False,
+            "headline": str(aggregate.get("headline") or "Sem gerações ML recentes"),
+            "scope_label": AGGREGATE_SCOPE_LABEL,
+            "metrics": {},
+            "issues_preview": [],
+        }
+    return {
+        "available": True,
+        "scope_label": str(aggregate.get("scope_label") or AGGREGATE_SCOPE_LABEL),
+        "headline": str(aggregate.get("headline") or AGGREGATE_DIAGNOSIS_HEADLINE),
+        "metrics": dict(aggregate.get("metrics") or {}),
+        "issues_preview": list(aggregate.get("issues_preview") or []),
+        "total_events": int(aggregate.get("total_events", 0) or 0),
+        "total_games": int(aggregate.get("total_games", 0) or 0),
+        "calibrated_events": int(aggregate.get("calibrated_events", 0) or 0),
+        "format_breakdown": list(aggregate.get("format_breakdown") or []),
+    }
+
+
+def build_ml_calibration_aggregate_result_card(
+    aggregate: Mapping[str, Any],
+    *,
+    workflow_status: str,
+    decision_at: str,
+    apply_next_generation: bool,
+) -> dict[str, Any]:
+    calibrated = bool(aggregate.get("calibration_applied"))
+    issues_count = len(list(aggregate.get("issues_preview") or []))
+    if workflow_status == COCKPIT_WORKFLOW_REJECTED:
+        operational_status = "rejeitada"
+    elif calibrated:
+        operational_status = "aplicada"
+    elif workflow_status == COCKPIT_WORKFLOW_AUTHORIZED:
+        operational_status = "autorizada"
+    elif workflow_status == COCKPIT_WORKFLOW_PENDING and issues_count > 0:
+        operational_status = "pendente"
+    else:
+        operational_status = workflow_status or "pendente"
+    metrics = dict(aggregate.get("metrics") or {})
+    return {
+        "operational_status": operational_status,
+        "calibration_applied": calibrated,
+        "trace_persistido": calibrated,
+        "proxima_geracao_afetada": bool(apply_next_generation),
+        "decision_at": decision_at,
+        "diversity_score": float(metrics.get("diversity_score", 0.0) or 0.0),
+        "issues_count": issues_count,
+        "actions_count": int(aggregate.get("calibrated_events", 0) or 0),
+        "before_after_available": calibrated,
+        "geracoes_analisadas": int(aggregate.get("total_events", 0) or 0),
+    }
 
 
 def build_ml_calibration_diagnosis_card(event: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -846,30 +1032,32 @@ def build_ml_calibration_result_card(
 def build_ml_calibration_cockpit_snapshot(
     db_path: Path | str,
     *,
-    generation_event_id: int | None = None,
     workflow_status: str = COCKPIT_WORKFLOW_PENDING,
     decision_at: str = "",
     apply_next_generation: bool = False,
+    events_limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
 ) -> dict[str, Any]:
-    panel = build_supervised_ml_operational_panel_snapshot(
-        db_path,
-        generation_event_id=generation_event_id,
-    )
-    selected_event = dict(panel.get("selected_event") or {})
+    panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
+    event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
+    aggregate = build_ml_calibration_aggregate_context(event_details)
     recalibration = resolve_recalibration_display_status()
-    diagnosis = build_ml_calibration_diagnosis_card(selected_event or None)
-    recommendations = build_ml_calibration_recommendations(selected_event or None)
-    result = build_ml_calibration_result_card(
-        selected_event or None,
+    diagnosis = build_ml_calibration_aggregate_diagnosis_card(aggregate)
+    recommendations = build_ml_calibration_recommendations(aggregate if aggregate.get("available") else None)
+    result = build_ml_calibration_aggregate_result_card(
+        aggregate,
         workflow_status=workflow_status,
         decision_at=decision_at,
         apply_next_generation=apply_next_generation,
     )
+    latest_event = dict(event_details[0]) if event_details else {}
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
+        "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
+        "scope_label": AGGREGATE_SCOPE_LABEL,
+        "aggregate_mode": True,
         "constitutional_summary": {
             "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",
             "lei_15": "ATIVA",
@@ -885,8 +1073,10 @@ def build_ml_calibration_cockpit_snapshot(
         "diagnosis": diagnosis,
         "recommendations": recommendations,
         "result": result,
+        "aggregate": aggregate,
+        "lot_details": list(aggregate.get("lot_rows") or []),
         "panel": panel,
-        "selected_event": selected_event,
+        "latest_event": latest_event,
         "events": list(panel.get("events") or []),
     }
 
@@ -896,15 +1086,16 @@ def build_cockpit_persist_bundle(
     workflow_status: str,
     decision_at: str,
     apply_next_generation: bool,
-    authorized_event_id: int | None,
     recommendations: list[str],
+    scope: str = "aggregate",
 ) -> dict[str, Any]:
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
+        "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
+        "cockpit_scope": scope,
         "cockpit_workflow_status": workflow_status,
         "cockpit_decision_at": decision_at,
         "cockpit_apply_next_generation": bool(apply_next_generation),
-        "cockpit_authorized_event_id": authorized_event_id,
         "cockpit_recommendations": list(recommendations),
         "supervised_calibration_active": is_supervised_output_calibration_active(),
     }

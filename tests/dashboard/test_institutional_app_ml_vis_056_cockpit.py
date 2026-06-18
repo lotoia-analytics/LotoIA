@@ -9,22 +9,15 @@ import pytest
 import dashboard.institutional_app as institutional_app
 import dashboard.institutional_ml_calibration_cockpit as cockpit
 import dashboard.institutional_ml_assistive as ml_assistive
-from dashboard.institutional_build import BUILD_MARKER
-from dashboard.institutional_ml_calibration_cockpit import COCKPIT_SUBTITLE, COCKPIT_TITLE
 from dashboard.institutional_supervised_ml import (
-    CALIBRATION_SUPERVISED_LABEL,
+    AGGREGATE_SCOPE_LABEL,
     VIS_COCKPIT_MISSION_ID,
     build_ml_calibration_cockpit_snapshot,
     build_ml_calibration_recommendations,
     resolve_recalibration_display_status,
 )
 from lotoia.database.database import GeneratedGame, GenerationEvent, create_database, get_session
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, resolve_core_002_batch_label
-
-
-def test_build_marker_v35() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v36"
-    assert institutional_app.APP_BUILD == BUILD_MARKER
+from lotoia.governance.lei15_core_002_sovereign import resolve_core_002_batch_label
 
 
 def test_recalibration_status_active_when_supervised_calibration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,13 +47,16 @@ def test_central_ml_page_uses_cockpit_not_legacy_panel() -> None:
 def test_cockpit_render_module_has_required_sections() -> None:
     module_source = inspect.getsource(cockpit)
     assert "COCKPIT_TITLE" in module_source
-    assert "Diagnóstico do último lote" in module_source
+    assert "Diagnóstico geral da saída" in module_source
     assert "Recomendação ML" in module_source
     assert "Comando supervisionado" in module_source
-    assert "Diagnosticar último lote" in module_source
+    assert "Diagnosticar saída geral" in module_source
     assert "Autorizar calibração" in module_source
+    assert "Detalhes por lote" in module_source
     assert "Bloqueios constitucionais" in module_source
     assert "expanded=False" in module_source
+    assert "Lote analisado" not in module_source
+    assert "selectbox" not in module_source
 
 
 def test_home_page_recalibration_status_not_generic_blocked() -> None:
@@ -140,9 +136,14 @@ def test_cockpit_snapshot_builds_diagnosis_and_recommendations(
 ) -> None:
     db_path = tmp_path / "cockpit.db"
     ge_id = _persist_calibrated_event(db_path)
-    snapshot = build_ml_calibration_cockpit_snapshot(db_path, generation_event_id=ge_id)
+    snapshot = build_ml_calibration_cockpit_snapshot(db_path)
     assert snapshot["mission_id"] == VIS_COCKPIT_MISSION_ID
+    assert snapshot["aggregate_mode"] is True
+    assert snapshot["scope_label"] == AGGREGATE_SCOPE_LABEL
     assert snapshot["diagnosis"]["available"] is True
+    assert snapshot["diagnosis"]["total_events"] >= 1
+    assert snapshot["lot_details"]
+    assert int(snapshot["lot_details"][0]["generation_event_id"]) == ge_id
     assert snapshot["recommendations"]
     assert snapshot["constitutional_summary"]["calibracao_supervisionada"] in {"ATIVA", "INATIVA"}
 
@@ -202,9 +203,6 @@ def test_render_cockpit_without_name_error(
 
         def divider(self) -> None:
             return None
-
-        def selectbox(self, *_args, **_kwargs):
-            return _kwargs.get("options", [""])[0]
 
         def button(self, *_args, **_kwargs):
             return False
