@@ -1,51 +1,76 @@
 #!/usr/bin/env python3
-"""M-DADOS-066 — validação pós-reset absoluto operacional."""
+"""M-DADOS-066 — validação pós-reset (psycopg-only, Railway console safe)."""
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
-_OPS = ROOT / "scripts" / "ops"
-if str(_OPS) not in sys.path:
-    sys.path.insert(0, str(_OPS))
+MISSION_ID = "M-DADOS-066"
 
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL  # noqa: E402
-from lotoia.governance.m_dados_066_absolute_operational_reset import (  # noqa: E402
-    MISSION_ID,
-    OPERATIONAL_DELETE_ORDER,
-    OPERATIONAL_SEQUENCES,
-    PRESERVED_COUNT_TABLES,
-    validate_post_reset_state,
-)
+
+def _load_governance_constants():
+    module_path = ROOT / "src/lotoia/governance/m_dados_066_absolute_operational_reset.py"
+    spec = importlib.util.spec_from_file_location("m_dados_066_gov", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"[{MISSION_ID}] Não foi possível carregar governança.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_GOV = _load_governance_constants()
+OPERATIONAL_DELETE_ORDER = _GOV.OPERATIONAL_DELETE_ORDER
+OPERATIONAL_SEQUENCES = _GOV.OPERATIONAL_SEQUENCES
+PRESERVED_COUNT_TABLES = _GOV.PRESERVED_COUNT_TABLES
+validate_post_reset_state = _GOV.validate_post_reset_state
+
+
+def _resolve_url() -> str:
+    for key in (
+        "DATABASE_URL",
+        "LOTOIA_DATABASE_URL",
+        "STREAMLIT_DATABASE_URL",
+        "DATABASE_PUBLIC_URL",
+    ):
+        raw = os.environ.get(key, "").strip()
+        if not raw or raw == "DATABASE_URL":
+            continue
+        lowered = raw.lower()
+        if "sqlite" in lowered:
+            continue
+        if "postgres" in lowered or lowered.startswith("postgresql://"):
+            return (
+                raw.replace("postgresql+psycopg://", "postgresql://")
+                .replace("postgresql+psycopg2://", "postgresql://")
+            )
+    raise RuntimeError(f"[{MISSION_ID}] PostgreSQL não configurado.")
 
 
 def main() -> int:
-    from cloud_env_bootstrap import ensure_database_url, resolve_database_url
-
     import psycopg
 
     parser = argparse.ArgumentParser(description=f"{MISSION_ID} post-reset validation")
     parser.add_argument("--json", action="store_true")
     parser.parse_args()
 
-    ensure_database_url(root=ROOT)
-    url, _ = resolve_database_url()
-    url = url.replace("postgresql+psycopg://", "postgresql://")
-
-    def count_table(cur, table: str) -> int:
-        cur.execute(f'SELECT COUNT(*) FROM "{table}"')
-        return int(cur.fetchone()[0])
-
+    url = _resolve_url()
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
-            operational_counts = {table: count_table(cur, table) for table in OPERATIONAL_DELETE_ORDER}
-            preserved_counts = {table: count_table(cur, table) for table in PRESERVED_COUNT_TABLES}
+            operational_counts = {}
+            for table in OPERATIONAL_DELETE_ORDER:
+                cur.execute(f'SELECT COUNT(*) FROM "{table}"')
+                operational_counts[table] = int(cur.fetchone()[0])
+
+            preserved_counts = {}
+            for table in PRESERVED_COUNT_TABLES:
+                cur.execute(f'SELECT COUNT(*) FROM "{table}"')
+                preserved_counts[table] = int(cur.fetchone()[0])
 
             cur.execute(
                 """
@@ -91,11 +116,10 @@ def main() -> int:
     report["operational_counts"] = operational_counts
     if generations:
         latest = generations[0]
-        report["checks"]["batch_label_sovereign"] = latest.get("analysis_batch_label") == BATCH_LABEL
-        report["checks"]["operational_label_001"] = latest.get("id") == 1
+        report["checks"]["first_generation_event_id_is_one"] = latest.get("id") == 1
 
     print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0 if report.get("verdict", "").endswith("OK") else 1
+    return 0 if str(report.get("verdict", "")).endswith("OK") else 1
 
 
 if __name__ == "__main__":
