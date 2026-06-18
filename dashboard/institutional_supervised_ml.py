@@ -46,6 +46,7 @@ VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
+OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
 )
@@ -1021,6 +1022,10 @@ def build_sovereign_coverage_diagnosis_card(
         "scope_mismatch_reason": "",
         "ml_detail_scope_label": str(comparison.get("ml_detail_scope_label") or ""),
         "ml_events_window": int(agg.get("total_events", 0) or 0),
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "format_analyses": list(coverage_evidence.get("format_analyses") or []),
+        "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
 
 
@@ -1203,13 +1208,20 @@ def build_ml_calibration_cockpit_snapshot(
     decision_blocks = list(coverage_evidence.get("decision_blocks") or [])
     calibration_plan = dict(coverage_evidence.get("calibration_plan") or {})
     if not calibration_plan.get("plan_items") and coverage_evidence.get("available"):
-        calibration_plan = build_calibration_plan(dict(coverage_evidence.get("metrics") or {}))
+        calibration_plan = build_calibration_plan(
+            dict(coverage_evidence.get("metrics") or {}),
+            format_analyses=list(coverage_evidence.get("format_analyses") or []),
+        )
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "coverage_sovereign_mission_id": VIS_COVERAGE_SOVEREIGN_MISSION_ID,
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "format_analyses": list(coverage_evidence.get("format_analyses") or []),
+        "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
@@ -1298,6 +1310,7 @@ def build_cockpit_persist_bundle(
         "apply_next_generation": bool(apply_next_generation),
         "plan_items_count": len(plan_items),
         "evidencias_count": len(evidence.get("evidencias") or []),
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
     }
     if decision.get("trace"):
         trace.update(dict(decision.get("trace") or {}))
@@ -1306,6 +1319,12 @@ def build_cockpit_persist_bundle(
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
         "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_memory": dict(evidence.get("overlap_format_memory") or {}),
+        "format_analyses": list(evidence.get("format_analyses") or plan.get("format_analyses") or []),
+        "primary_format_analysis": dict(
+            evidence.get("primary_format_analysis") or plan.get("primary_format_analysis") or {}
+        ),
         "cockpit_scope": scope,
         "cockpit_workflow_status": workflow_status,
         "cockpit_decision_at": decision_at,

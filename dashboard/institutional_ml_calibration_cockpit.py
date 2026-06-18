@@ -150,6 +150,36 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
         )
 
 
+def _render_overlap_format_verdict(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Limiares de sobreposição por formato (M-ML-060)")
+    diagnosis = dict(snapshot.get("diagnosis") or {})
+    primary = dict(
+        snapshot.get("primary_format_analysis")
+        or diagnosis.get("primary_format_analysis")
+        or {}
+    )
+    if not primary:
+        st.caption("Aguardando leitura soberana com formato identificado.")
+        return
+    st.markdown(f"**Formato analisado:** {primary.get('formato', '—')}")
+    st.markdown(f"**Sobreposição máxima observada:** {primary.get('sobreposicao_maxima', '—')}")
+    st.markdown(f"**Faixa ideal para {primary.get('formato', '—')}:** {primary.get('faixa_ideal', '—')}")
+    st.markdown(f"**Veredito:** {primary.get('verdict', '—')}")
+    if primary.get("cross_check_note"):
+        st.caption(f"Cruzamento estrutural: {primary.get('cross_check_note')}")
+    if primary.get("recommended_action"):
+        st.markdown(f"**Ação recomendada:** {primary.get('recommended_action')}")
+    format_analyses = list(snapshot.get("format_analyses") or diagnosis.get("format_analyses") or [])
+    if len(format_analyses) > 1:
+        with st.expander(f"Outros formatos analisados ({len(format_analyses) - 1})", expanded=False):
+            for row in format_analyses:
+                item = dict(row)
+                st.markdown(
+                    f"- **{item.get('formato', '—')}** — overlap {item.get('sobreposicao_maxima', '—')} — "
+                    f"{item.get('verdict', '—')}"
+                )
+
+
 def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
     st.markdown("#### 2. Evidências e decisão")
     coverage = dict(snapshot.get("coverage_evidence") or {})
@@ -319,6 +349,15 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
     lot_details = list(snapshot.get("lot_details") or [])
     coverage = dict(snapshot.get("coverage_evidence") or {})
 
+    with st.expander("Memória ML — limiares 15D a 23D", expanded=False):
+        memory = dict(snapshot.get("overlap_format_memory") or {})
+        thresholds = list(memory.get("thresholds") or [])
+        if thresholds:
+            st.dataframe(pd.DataFrame(thresholds), hide_index=True, use_container_width=True)
+            st.caption(str(memory.get("rule_summary") or ""))
+        else:
+            st.caption("Memória de limiares indisponível.")
+
     with st.expander("Detalhes por lote", expanded=False):
         if lot_details:
             st.dataframe(pd.DataFrame(lot_details), hide_index=True, use_container_width=True)
@@ -449,6 +488,7 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     with row1_col1:
         with st.container(border=True):
             _render_diagnosis_card(dict(snapshot.get("diagnosis") or {}))
+            _render_overlap_format_verdict(snapshot)
     with row1_col2:
         with st.container(border=True):
             _render_decision_evidence_card(snapshot)
