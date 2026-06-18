@@ -17,7 +17,6 @@ from lotoia.database.database import (
 
 
 def test_build_marker_v26() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v36"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 

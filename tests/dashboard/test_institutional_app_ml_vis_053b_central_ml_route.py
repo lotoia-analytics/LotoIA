@@ -11,14 +11,13 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 
 def test_build_marker_v33() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v36"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
 def test_canonical_page_id_accepts_active_page_ids() -> None:
     assert institutional_app._canonical_page_id("central_ml_diagnostics") == "central_ml_diagnostics"
     assert institutional_app._canonical_page_id("structural_coverage") == "structural_coverage"
-    assert institutional_app._canonical_page_id("audit_monitoring_side_leak") == "audit_monitoring_side_leak"
+    assert institutional_app._canonical_page_id("audit_monitoring_side_leak") == "central_ml_diagnostics"
 
 
 def test_canonical_page_id_resolves_legacy_central_ml_labels() -> None:

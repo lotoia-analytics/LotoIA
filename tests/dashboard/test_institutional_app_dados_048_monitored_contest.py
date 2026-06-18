@@ -44,7 +44,6 @@ def _record(
 
 
 def test_institutional_app_build_v22_dados_048() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v36"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 

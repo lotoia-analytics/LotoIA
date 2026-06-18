@@ -137,6 +137,7 @@ from dashboard.institutional_operational_structural_coverage import (
 )
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
+    OFFICIAL_SIDEBAR_MENU,
     is_allowed_institutional_page,
     resolve_institutional_page_id,
 )
@@ -507,16 +508,16 @@ PURGE_ONLY_TABLES = ("institutional_output_signatures",)
 PAGE_TARGETS = {
     "Painel Inicial Institucional": "home",
     "Governança Institucional — read-only": "governance_read_only",
-    "Núcleo Lei 15 — CORE_002": "core_002_read_only",
-    "Auditoria Runtime": "audit",
+    "Núcleo Lei 15 — CORE_002": "governance_read_only",
+    "Auditoria Runtime": "fallback",
     "Auditoria e Monitoramento": "audit_monitoring",
-    "Conferência por concurso": "audit_monitoring_conference",
+    "Conferência por concurso": "conference",
     "Desempenho por grupo": "audit_monitoring_group_performance",
-    "Dezenas faltantes": "audit_monitoring_missing_numbers",
-    "Dezenas sobrando": "audit_monitoring_extra_numbers",
-    "Vazamento lateral": "audit_monitoring_side_leak",
-    "Evolução 13 -> 14": "audit_monitoring_13_to_14",
-    "Evolução 14 -> 15": "audit_monitoring_14_to_15",
+    "Dezenas faltantes": "structural_coverage",
+    "Dezenas sobrando": "structural_coverage",
+    "Vazamento lateral": "central_ml_diagnostics",
+    "Evolução 13 -> 14": "central_ml_diagnostics",
+    "Evolução 14 -> 15": "central_ml_diagnostics",
     "Hipóteses para teste offline": "audit_monitoring_offline_hypotheses",
     "Gerar Jogos": "clean_law15_generation",
     "Conferir Resultados — Auditoria de Lotes Persistidos": "conference",
@@ -530,20 +531,21 @@ PAGE_TARGETS = {
     "Área Restrita — Limpeza Controlada": "restricted_controlled_cleanup",
     "Limpeza Controlada — BLOQUEADA": "restricted_controlled_cleanup",
     "Apagar Histórico": "restricted_controlled_cleanup",
-    "Comparativos histórico": "comparative_history",
+    "Comparativos histórico": "structural_coverage",
     "Análises Estratégicas": "strategies_analysis",
     "Testar Estratégias": "strategies_test",
     "Simular Estratégias": "strategies_simulation",
-    "Métricas HB": "hb_metrics",
+    "Métricas HB": "structural_coverage",
     "Cobertura estrutural": "structural_coverage",
-    "Simulação Institucional / Backtesting": "institutional_simulation_backtesting",
+    "Cobertura Estrutural": "structural_coverage",
+    "Simulação Institucional / Backtesting": "simulation",
     "Central ML Assistiva": "central_ml_diagnostics",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
     "Central ML — Operacional Supervisionada": "central_ml_diagnostics",
     "Central ML — Calibração Supervisionada": "central_ml_diagnostics",
-    "Vazamento Lateral Constitucional": "audit_monitoring_side_leak",
+    "Vazamento Lateral Constitucional": "central_ml_diagnostics",
     "Replay institucional": "institutional_replay",
-    "Benchmark resumido": "summary_benchmark",
+    "Benchmark resumido": "structural_coverage",
     "Estatísticas operacionais": "operational_statistics",
     "HB Geometry": "hb_geometry",
     "Gerador ADM CORE_002 — BLOQUEADO": "clean_law15_generation",
@@ -553,13 +555,13 @@ PAGE_TARGETS = {
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
-    {"icon": "🧬", "label": "Núcleo Lei 15 — CORE_002", "page_id": "core_002_read_only"},
     {"icon": "🎯", "label": "Gerador ADM CORE_002 — Geração Soberana Controlada", "page_id": "clean_law15_generation"},
     {"icon": "✅", "label": "Conferir Resultados — Auditoria de Lotes Persistidos", "page_id": "conference"},
+    {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
-    {"icon": "🔎", "label": "Auditoria Runtime", "page_id": "audit"},
-    {"icon": "🧱", "label": "Cobertura estrutural", "page_id": "structural_coverage"},
+    {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
+    {"icon": "🤖", "label": "Central ML — Calibração Supervisionada", "page_id": "central_ml_diagnostics"},
 ]
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
@@ -9950,72 +9952,20 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
             st.session_state["institutional_page_id"] = str(resolved_page_id)
             st.rerun()
 
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Governança</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Governança Institucional — read-only", "governance_read_only"),
-        ("Núcleo Lei 15 — CORE_002", "core_002_read_only"),
-    ]:
-        _nav_entry(label, page_id)
-    st.sidebar.caption(GOVERNANCE_READ_ONLY_ALERT)
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Núcleo Operacional</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Painel Inicial Institucional", "home"),
-        ("Gerador ADM CORE_002 — Geração Soberana Controlada", "clean_law15_generation"),
-        ("Conferir Resultados — Auditoria de Lotes Persistidos", "conference"),
-        ("Simular Resultados", "simulation"),
-    ]:
-        _nav_entry(label, page_id)
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Históricos e Rastreabilidade</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Histórico Analítico", "history_analytical"),
-        ("Histórico Institucional", "history_institutional"),
-        ("Comparativos histórico", "comparative_history"),
-    ]:
-        _nav_entry(label, page_id)
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Auditoria Observacional</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Auditoria Runtime", "audit"),
-        ("Conferência por concurso", "audit_monitoring_conference"),
-        ("Dezenas faltantes", "audit_monitoring_missing_numbers"),
-        ("Dezenas sobrando", "audit_monitoring_extra_numbers"),
-    ]:
-        _nav_entry(label, page_id)
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Analítico observacional</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Benchmark resumido", "summary_benchmark"),
-        ("Métricas HB", "hb_metrics"),
-        ("Cobertura estrutural", "structural_coverage"),
-        ("Simulação Institucional / Backtesting", "institutional_simulation_backtesting"),
-    ]:
-        _nav_entry(label, page_id)
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-group">Diagnósticos ML</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Central ML Assistiva", "central_ml_diagnostics"),
-        ("Vazamento Lateral Constitucional", "audit_monitoring_side_leak"),
-        ("Evolução 13 -> 14", "audit_monitoring_13_to_14"),
-        ("Evolução 14 -> 15", "audit_monitoring_14_to_15"),
-    ]:
-        _nav_entry(label, page_id)
-    st.sidebar.caption(
-        "Camadas observacionais disponíveis. Não geram jogos, não recalibram Lei 15 e não alteram histórico."
-    )
-
-    st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
-    st.sidebar.markdown('<div class="lotoia-sidebar-subgroup">Área bloqueada / restrita</div>', unsafe_allow_html=True)
-    for label, page_id in [
-        ("Área Restrita — Limpeza Controlada", "restricted_controlled_cleanup"),
-    ]:
-        _nav_entry(label, page_id)
-    st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
+    for group_index, (group_name, entries) in enumerate(OFFICIAL_SIDEBAR_MENU):
+        if group_index > 0:
+            st.sidebar.markdown('<div class="lotoia-sidebar-divider"></div>', unsafe_allow_html=True)
+        st.sidebar.markdown(f'<div class="lotoia-sidebar-group">{group_name}</div>', unsafe_allow_html=True)
+        for label, page_id in entries:
+            _nav_entry(label, page_id)
+        if group_name == "Governança / Restrito":
+            st.sidebar.caption(GOVERNANCE_READ_ONLY_ALERT)
+            st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
+        elif group_name == "ML":
+            st.sidebar.caption(
+                "Cockpit de calibração supervisionada da saída CORE_002 + ML. "
+                "Não gera jogos fora do path soberano."
+            )
 
     choice = resolve_institutional_page_id(
         _canonical_page_id(st.session_state.get("institutional_page_id") or page)
