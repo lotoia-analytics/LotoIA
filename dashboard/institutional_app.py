@@ -138,6 +138,7 @@ from dashboard.institutional_operational_structural_coverage import (
 )
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
+    is_allowed_institutional_page,
     resolve_institutional_page_id,
 )
 from dashboard.institutional_auth import require_institutional_login
@@ -530,6 +531,10 @@ PAGE_TARGETS = {
     "Métricas HB": "hb_metrics",
     "Cobertura estrutural": "structural_coverage",
     "Simulação Institucional / Backtesting": "institutional_simulation_backtesting",
+    "Central ML Assistiva": "central_ml_diagnostics",
+    "Central de Diagnósticos ML": "central_ml_diagnostics",
+    "Central ML — Operacional Supervisionada": "central_ml_diagnostics",
+    "Vazamento Lateral Constitucional": "audit_monitoring_side_leak",
     "Replay institucional": "institutional_replay",
     "Benchmark resumido": "summary_benchmark",
     "Estatísticas operacionais": "operational_statistics",
@@ -737,6 +742,8 @@ def _canonical_page_id(value: str | None) -> str:
     aliased = resolve_institutional_page_id(text_value)
     if aliased != text_value:
         return aliased
+    if is_allowed_institutional_page(text_value):
+        return resolve_institutional_page_id(text_value)
     if text_value in PAGE_TARGETS:
         return resolve_institutional_page_id(PAGE_TARGETS[text_value])
     if text_value in PAGE_LABELS:

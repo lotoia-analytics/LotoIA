@@ -17,6 +17,11 @@ LEGACY_PAGE_ALIASES: dict[str, str] = {
     "generation": "clean_law15_generation",
     "clear_histories": "restricted_controlled_cleanup",
     "delete_history": "restricted_controlled_cleanup",
+    "Central de Diagnósticos ML": "central_ml_diagnostics",
+    "central_ml": "central_ml_diagnostics",
+    "ml_diagnostics": "central_ml_diagnostics",
+    "institutional_supervised_ml": "central_ml_diagnostics",
+    "ml_assistive": "central_ml_diagnostics",
 }
 
 INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
@@ -114,6 +119,21 @@ ALIAS_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "alias": "Limpar Históricos",
         "destino": "restricted_controlled_cleanup",
         "motivo": "Label ambíguo — redireciona para limpeza controlada",
+    },
+    {
+        "alias": "Central de Diagnósticos ML",
+        "destino": "central_ml_diagnostics",
+        "motivo": "Label legado — Central ML operacional supervisionada (M-ML-VIS-053B)",
+    },
+    {
+        "alias": "ml_diagnostics",
+        "destino": "central_ml_diagnostics",
+        "motivo": "Alias legado — Central ML Assistiva",
+    },
+    {
+        "alias": "institutional_supervised_ml",
+        "destino": "central_ml_diagnostics",
+        "motivo": "Módulo interno — rota de menu central_ml_diagnostics",
     },
 )
 
