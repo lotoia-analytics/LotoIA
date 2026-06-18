@@ -15,7 +15,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_build_v19() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert BUILD_MARKER == "institutional-adm-runtime-v30"
+    assert BUILD_MARKER == "institutional-adm-runtime-v31"
 
 
 def test_supervised_ml_active_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

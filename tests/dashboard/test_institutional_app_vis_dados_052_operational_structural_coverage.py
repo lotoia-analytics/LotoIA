@@ -12,7 +12,11 @@ from dashboard.institutional_operational_structural_coverage import (
     EMPTY_OPERATIONAL_MESSAGE,
     HISTORICAL_SECTION_TITLE,
     OPERATIONAL_COVERAGE_TITLE,
+    OPERATIONAL_GENERATION_ALL_LABEL,
     OPERATIONAL_SOURCE_CAPTION,
+    build_operational_generation_dropdown_options,
+    build_operational_generations_aggregate_summary,
+    is_all_operational_generations_selection,
     load_operational_core_002_generations,
 )
 from lotoia.database.database import GeneratedGame, GenerationEvent, create_database, get_session
@@ -23,9 +27,37 @@ from lotoia.observability.card_structure_diagnostics import (
 )
 
 
-def test_build_marker_v29() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v30"
+def test_build_marker_v31() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v31"
     assert institutional_app.APP_BUILD == BUILD_MARKER
+
+
+def test_operational_dropdown_includes_todos_option() -> None:
+    generations = [
+        {
+            "dropdown_label": "Geração 001 — GE 1 — 15D — CORE_002 — 10 jogos",
+            "generation_event_id": 1,
+            "games_count": 10,
+            "card_format": 15,
+        },
+        {
+            "dropdown_label": "Geração 002 — GE 2 — 17D — CORE_002 — 20 jogos",
+            "generation_event_id": 2,
+            "games_count": 20,
+            "card_format": 17,
+        },
+    ]
+    options = build_operational_generation_dropdown_options(generations)
+    assert options[0] == OPERATIONAL_GENERATION_ALL_LABEL
+    assert len(options) == 3
+    assert is_all_operational_generations_selection(OPERATIONAL_GENERATION_ALL_LABEL)
+    assert not is_all_operational_generations_selection(generations[0]["dropdown_label"])
+
+    aggregate = build_operational_generations_aggregate_summary(generations)
+    assert aggregate["operational_generation_label"] == "Todos"
+    assert aggregate["generation_events_count"] == 2
+    assert aggregate["games_count"] == 30
+    assert aggregate["card_format_label"] == "15D, 17D"
 
 
 def test_cobertura_page_prioritizes_operational_core_002_source() -> None:
@@ -35,6 +67,9 @@ def test_cobertura_page_prioritizes_operational_core_002_source() -> None:
     assert "_cached_operational_core_002_generations" in source
     assert "_cached_operational_card_structure_diagnostics_from_db" in source
     assert "structural_coverage_operational_generation" in source
+    assert "build_operational_generation_dropdown_options" in source
+    assert "build_operational_generations_aggregate_summary" in source
+    assert "is_all_operational_generations_selection" in source
     assert "EMPTY_OPERATIONAL_MESSAGE" in source
     assert "_render_historical_structural_coverage_section" in source
     assert "batch_select_options" not in source
@@ -119,6 +154,59 @@ def test_operational_loader_reads_generated_games(
     assert payload["tables"] == OPERATIONAL_TABLES
     assert payload["coverage_layer"] == "operational_core_002"
     assert int(payload["summary"]["total_jogos"]) == 1
+
+
+def test_operational_loader_aggregates_all_generations_when_no_filter(
+    tmp_path: Path,
+    sqlite_db_env: None,
+) -> None:
+    db_path = tmp_path / "operational_all.db"
+    create_database(db_path)
+    with get_session(db_path) as session:
+        for card_format in (15, 17):
+            batch_label = resolve_core_002_batch_label(card_format)
+            numbers = list(range(1, card_format + 1))
+            event = GenerationEvent(
+                first_name="institutional",
+                whatsapp="",
+                generated_games=[{"numbers": numbers[:15]}],
+                context_json={"generation_mode": "LEI15_CORE_002_SOVEREIGN"},
+                ml_enabled=0,
+                seed=42,
+                strategy="institutional_clean_hb",
+                ranking_score=0.0,
+                execution_time_ms=1.0,
+                analysis_batch_label=batch_label,
+                analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
+                analysis_batch_created_at=datetime.now(UTC),
+            )
+            session.add(event)
+            session.flush()
+            session.add(
+                GeneratedGame(
+                    generation_event_id=int(event.id),
+                    target_contest=3712,
+                    origin="institutional",
+                    generation_mode="hb_baseline",
+                    game_index=1,
+                    numbers=numbers if card_format == 15 else numbers[:15],
+                    profile_type="HYBRID",
+                    final_score={},
+                    quadra_score={},
+                    context_json={
+                        "selected_card_format": card_format,
+                        "core_numbers": numbers[:15],
+                        "final_card_numbers": numbers,
+                    },
+                )
+            )
+        session.commit()
+
+    payload = load_operational_card_structure_diagnostics_from_db(db_path)
+    assert payload["available"] is True
+    assert int(payload["summary"]["total_jogos"]) == 2
+    assert int(payload["summary"]["total_geracoes"]) == 2
+    assert set(payload["summary"]["formatos_analisados"]) == {15, 17}
 
 
 def test_operational_loader_empty_without_sovereign_generations(
