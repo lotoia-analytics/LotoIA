@@ -149,8 +149,8 @@ from dashboard.institutional_supervised_ml import (
 )
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
-    MULTIDEZENA_BLOCK_REASON,
     is_multidezena_persistence_supported,
+    multidezena_batch_label,
     multidezena_format_label,
     render_compact_status_chips,
     render_generation_games_table,
@@ -180,6 +180,7 @@ from lotoia.governance.lei15_core_002_sovereign import (
     REALIGNMENT_NAME as SOVEREIGN_CORE_ID,
     institutional_status_report,
     is_generation_enabled,
+    resolve_core_002_batch_label,
 )
 from lotoia.governance.cloud_runtime_policy import (
     cloud_runtime_policy_snapshot,
@@ -6630,6 +6631,8 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "seed": int(getattr(event, "seed", 0) or 0),
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "ml_enabled": bool(getattr(event, "ml_enabled", 0) or 0),
+                    "analysis_batch_label": str(getattr(event, "analysis_batch_label", "") or ""),
+                    "analysis_batch_type": str(getattr(event, "analysis_batch_type", "") or ""),
                     "total_games": len(games),
                     "target_contest": max(target_contests) if target_contests else None,
                     "first_name": str(getattr(event, "first_name", "") or ""),
@@ -6886,120 +6889,99 @@ def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: item.get("created_at", ""), reverse=True)[:limit]
 
 
+def _analytical_row_from_game(
+    *,
+    generation: dict[str, Any],
+    game: dict[str, Any],
+    operational_index: dict[int, int] | None = None,
+) -> dict[str, Any]:
+    generation_label = f"Geração {generation.get('generation_event_id', '-')}"
+    created_at = str(generation.get("created_at", "") or "")
+    strategy = str(generation.get("strategy", "") or "")
+    context_json = dict(game.get("generation_context") or {})
+    core_numbers = list(context_json.get("core_numbers") or game.get("numbers", []) or [])
+    reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+    final_card_numbers = list(context_json.get("final_card_numbers") or game.get("numbers", []) or [])
+    card_format = int(context_json.get("selected_card_format", context_json.get("card_format", 15)) or 15)
+    display_numbers = (
+        final_card_numbers
+        if card_format > 15 and final_card_numbers
+        else list(game.get("numbers") or core_numbers or [])
+    )
+    ge_id = int(generation.get("generation_event_id", 0) or 0)
+    hits_value = game.get("hits")
+    return {
+        "geração": generation_label,
+        "generation_event_id": ge_id,
+        "batch_id": str(generation.get("batch_id", "") or ""),
+        "analysis_batch_label": str(generation.get("analysis_batch_label", "") or ""),
+        "ml_enabled": bool(generation.get("ml_enabled", False)),
+        "operacional": resolve_operational_generation_label(ge_id, operational_index=operational_index),
+        "data/hora": created_at,
+        "jogo n°": int(game.get("game_index", 0) or 0),
+        "dezenas": " ".join(f"{number:02d}" for number in display_numbers),
+        "formato_cartao": card_format,
+        "núcleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers),
+        "reservas_auditadas": " ".join(f"+{number:02d}" for number in reserve_numbers) or "-",
+        "cartão_final": " ".join(f"{number:02d}" for number in final_card_numbers),
+        "quantidade_nucleo": int(context_json.get("quantidade_nucleo", len(core_numbers)) or len(core_numbers)),
+        "quantidade_reservas": int(context_json.get("quantidade_reservas", len(reserve_numbers)) or len(reserve_numbers)),
+        "quantidade_final": int(context_json.get("quantidade_final", len(final_card_numbers)) or len(final_card_numbers)),
+        "estratégia": strategy or "-",
+        "score": round(float(game.get("score", 0.0) or 0.0), 4),
+        "origem/modelo": str(game.get("origin", "") or "institutional"),
+        "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
+        "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
+        "acertos": int(hits_value) if hits_value is not None else None,
+        "premiação": str(game.get("prize_status", "") or "") or "—",
+        "observações": str(game.get("prize_tier", "") or "") or "-",
+        "generation_mode": str(game.get("generation_mode", "") or ""),
+        "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
+        "reconciled_at": str(game.get("reconciled_at", "") or ""),
+        "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
+        "status científico": str(generation.get("scientific_status", "-") or "-"),
+        "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
+        "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
+        "tipo visual": str(generation.get("visibility_label", "Conferível") or "Conferível"),
+        "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
+        "policy_id": str(generation.get("policy_id", "") or ""),
+        "policy_origin": str(generation.get("policy_origin", "") or ""),
+        "policy_variant": str(generation.get("policy_variant", "") or ""),
+        "is_conferible": bool(generation.get("is_conferible", False)),
+        "is_rejected_policy": bool(generation.get("is_rejected_policy", False)),
+        "is_candidate": bool(generation.get("is_candidate", False)),
+        "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
+        "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
+        "is_calibration_only": bool(generation.get("is_calibration_only", False)),
+    }
+
+
 def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=25):
-        generation_label = f"Geração {generation.get('generation_event_id', '-')}"
-        created_at = str(generation.get("created_at", "") or "")
-        strategy = str(generation.get("strategy", "") or "")
         for game in generation.get("games", []) or []:
-            context_json = dict(game.get("generation_context") or {})
-            core_numbers = list(context_json.get("core_numbers") or game.get("numbers", []) or [])
-            reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
-            final_card_numbers = list(context_json.get("final_card_numbers") or game.get("numbers", []) or [])
-            card_format = int(context_json.get("selected_card_format", context_json.get("card_format", 15)) or 15)
-            hits_value = game.get("hits")
             rows.append(
-                {
-                    "geração": generation_label,
-                    "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
-                    "batch_id": str(generation.get("batch_id", "") or ""),
-                    "data/hora": created_at,
-                    "jogo n°": int(game.get("game_index", 0) or 0),
-                    "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                    "formato_cartao": card_format,
-                    "núcleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers),
-                    "reservas_auditadas": " ".join(f"+{number:02d}" for number in reserve_numbers) or "-",
-                    "cartão_final": " ".join(f"{number:02d}" for number in final_card_numbers),
-                    "quantidade_nucleo": int(context_json.get("quantidade_nucleo", len(core_numbers)) or len(core_numbers)),
-                    "quantidade_reservas": int(context_json.get("quantidade_reservas", len(reserve_numbers)) or len(reserve_numbers)),
-                    "quantidade_final": int(context_json.get("quantidade_final", len(final_card_numbers)) or len(final_card_numbers)),
-                    "estratégia": strategy or "-",
-                    "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                    "origem/modelo": str(game.get("origin", "") or "institutional"),
-                    "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
-                    "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
-                    "acertos": int(hits_value) if hits_value is not None else None,
-                    "premiação": str(game.get("prize_status", "") or "") or "—",
-                    "observações": str(game.get("prize_tier", "") or "") or "-",
-                    "generation_mode": str(game.get("generation_mode", "") or ""),
-                    "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
-                    "reconciled_at": str(game.get("reconciled_at", "") or ""),
-                    "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
-                    "status científico": str(generation.get("scientific_status", "-") or "-"),
-                    "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
-                    "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
-                    "tipo visual": str(generation.get("visibility_label", "Conferível") or "Conferível"),
-                    "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
-                    "policy_id": str(generation.get("policy_id", "") or ""),
-                    "policy_origin": str(generation.get("policy_origin", "") or ""),
-                    "policy_variant": str(generation.get("policy_variant", "") or ""),
-                    "is_conferible": bool(generation.get("is_conferible", False)),
-                    "is_rejected_policy": bool(generation.get("is_rejected_policy", False)),
-                    "is_candidate": bool(generation.get("is_candidate", False)),
-                    "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
-                    "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
-                    "is_calibration_only": bool(generation.get("is_calibration_only", False)),
-                }
+                _analytical_row_from_game(
+                    generation=generation,
+                    game=game,
+                    operational_index=operational_index,
+                )
             )
     return rows
 
 
 def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=limit):
-        generation_label = f"Geração {generation.get('generation_event_id', '-')}"
-        created_at = str(generation.get("created_at", "") or "")
-        strategy = str(generation.get("strategy", "") or "")
         for game in generation.get("games", []) or []:
-            context_json = dict(game.get("generation_context") or {})
-            core_numbers = list(context_json.get("core_numbers") or game.get("numbers", []) or [])
-            reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
-            final_card_numbers = list(context_json.get("final_card_numbers") or game.get("numbers", []) or [])
-            card_format = int(context_json.get("selected_card_format", context_json.get("card_format", 15)) or 15)
-            hits_value = game.get("hits")
             rows.append(
-                {
-                    "geração": generation_label,
-                    "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
-                    "batch_id": str(generation.get("batch_id", "") or ""),
-                    "data/hora": created_at,
-                    "jogo n°": int(game.get("game_index", 0) or 0),
-                    "dezenas": " ".join(f"{number:02d}" for number in game.get("numbers", [])),
-                    "formato_cartao": card_format,
-                    "núcleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers),
-                    "reservas_auditadas": " ".join(f"+{number:02d}" for number in reserve_numbers) or "-",
-                    "cartão_final": " ".join(f"{number:02d}" for number in final_card_numbers),
-                    "quantidade_nucleo": int(context_json.get("quantidade_nucleo", len(core_numbers)) or len(core_numbers)),
-                    "quantidade_reservas": int(context_json.get("quantidade_reservas", len(reserve_numbers)) or len(reserve_numbers)),
-                    "quantidade_final": int(context_json.get("quantidade_final", len(final_card_numbers)) or len(final_card_numbers)),
-                    "estratégia": strategy or "-",
-                    "score": round(float(game.get("score", 0.0) or 0.0), 4),
-                    "origem/modelo": str(game.get("origin", "") or "institutional"),
-                    "status de conferência": str(game.get("conference_status", "Nao conferido") or "Nao conferido"),
-                    "concurso conferido": int(game.get("contest_id", 0) or 0) if game.get("contest_id") else None,
-                    "acertos": int(hits_value) if hits_value is not None else None,
-                    "premiação": str(game.get("prize_status", "") or "") or "—",
-                    "observações": str(game.get("prize_tier", "") or "") or "-",
-                    "generation_mode": str(game.get("generation_mode", "") or ""),
-                    "reconciliation_id": int(game.get("reconciliation_id", 0) or 0) if game.get("reconciliation_id") else None,
-                    "reconciled_at": str(game.get("reconciled_at", "") or ""),
-                    "status comandante saída": str(generation.get("status_comandante_saida", "APROVADO") or "APROVADO"),
-                    "status científico": str(generation.get("scientific_status", "-") or "-"),
-                    "classificação científica": str(generation.get("scientific_classification", "-") or "-"),
-                    "ação sugerida": str(generation.get("recommended_action", "-") or "-"),
-                    "tipo visual": str(generation.get("visibility_label", "Conferível") or "Conferível"),
-                    "motivo rejeição": str(generation.get("visibility_reason", "-") or "-"),
-                    "policy_id": str(generation.get("policy_id", "") or ""),
-                    "policy_origin": str(generation.get("policy_origin", "") or ""),
-                    "policy_variant": str(generation.get("policy_variant", "") or ""),
-                    "is_conferible": bool(generation.get("is_conferible", False)),
-                    "is_rejected_policy": bool(generation.get("is_rejected_policy", False)),
-                    "is_candidate": bool(generation.get("is_candidate", False)),
-                    "is_guardian_rejected": bool(generation.get("is_guardian_rejected", False)),
-                    "is_scientific_rejected": bool(generation.get("is_scientific_rejected", False)),
-                    "is_calibration_only": bool(generation.get("is_calibration_only", False)),
-                }
+                _analytical_row_from_game(
+                    generation=generation,
+                    game=game,
+                    operational_index=operational_index,
+                )
             )
     return rows
 
@@ -10928,6 +10910,39 @@ def _render_institutional_matrix_reading_section(
     )
 
 
+def _validate_core_002_multidezena_persistence_allowed(
+    *,
+    formatted_games: Sequence[dict[str, Any]],
+    selected_card_format: int,
+) -> dict[str, Any]:
+    """Validação CORE_002 multidezena — subordinada ao núcleo 15D, sem Lei 15A operacional."""
+    expected_size = int(selected_card_format or 15)
+    if expected_size < 16 or expected_size > 23:
+        return {"persistence_allowed": False, "persistence_guard_status": "FORMATO_INVALIDO"}
+    if not formatted_games:
+        return {"persistence_allowed": False, "persistence_guard_status": "SEM_JOGOS"}
+    for index, game in enumerate(formatted_games, start=1):
+        core = _extract_int_numbers(game.get("core_numbers", game.get("numbers", [])))
+        final_card = _extract_int_numbers(game.get("final_card_numbers", []))
+        if len(core) != 15:
+            return {
+                "persistence_allowed": False,
+                "persistence_guard_status": "NUCLEO_INVALIDO",
+                "game_index": index,
+            }
+        if len(final_card) != expected_size:
+            return {
+                "persistence_allowed": False,
+                "persistence_guard_status": "CARTAO_FINAL_INVALIDO",
+                "game_index": index,
+            }
+    return {
+        "persistence_allowed": True,
+        "persistence_guard_status": "CORE_002_MULTIDEZENA_OK",
+        "classification": "COMPATIVEL",
+    }
+
+
 def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
@@ -10948,10 +10963,16 @@ def _persist_clean_law15_generation_history(
         superior_final_cards=cartoes_finais_superiores,
     )
     games_table_rows = _build_games_table_rows_from_generation_games(formatted_games)
-    runtime_contract = validate_lei15_lei15a_runtime_contract(
-        institutional_rows=institutional_rows,
-        games_table_rows=games_table_rows,
-    )
+    if int(selected_card_format) == 15:
+        runtime_contract = validate_lei15_lei15a_runtime_contract(
+            institutional_rows=institutional_rows,
+            games_table_rows=games_table_rows,
+        )
+    else:
+        runtime_contract = _validate_core_002_multidezena_persistence_allowed(
+            formatted_games=formatted_games,
+            selected_card_format=int(selected_card_format),
+        )
     if not runtime_contract.get("persistence_allowed"):
         return {
             "persistence_blocked": True,
@@ -10960,9 +10981,13 @@ def _persist_clean_law15_generation_history(
         }
     payload_games: list[dict[str, Any]] = []
     ml_enabled = bool(result.get("ml_enabled", False))
+    format_batch_label = str(
+        result.get("analysis_batch_label")
+        or multidezena_batch_label(int(selected_card_format))
+    )
     ml_bundle = build_supervised_ml_persistence_bundle(
         list(games),
-        batch_label=str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        batch_label=format_batch_label,
         ml_enabled=ml_enabled,
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
@@ -10972,9 +10997,10 @@ def _persist_clean_law15_generation_history(
         core_numbers = list(game.get("core_numbers", game.get("numbers", [])) or [])
         reserves = list(game.get("audited_reserve_numbers", []) or [])
         final_card = list(game.get("final_card_numbers", game.get("numbers", [])) or [])
+        persist_numbers = final_card if int(selected_card_format) > 15 else core_numbers
         enriched = {
             **dict(game),
-            "numbers": core_numbers,
+            "numbers": persist_numbers,
             "card_format": int(selected_card_format),
             "selected_card_format": int(selected_card_format),
             "core_numbers": core_numbers,
@@ -10994,8 +11020,10 @@ def _persist_clean_law15_generation_history(
     generation_context = {
         "generation_mode": "LEI15_CORE_002_SOVEREIGN",
         "policy_mode": str(ml_bundle.get("policy_mode") or "M-GER-044_SOVEREIGN_CONTROLLED"),
-        "analysis_batch_label": str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        "analysis_batch_label": format_batch_label,
         "analysis_batch_type": "LEI15_CORE_002_SOVEREIGN",
+        "multidezena_subordinate_core_002": int(selected_card_format) > 15,
+        "multidezena_not_lei15a": True,
         "sovereign_generation_path": "generate_best_games",
         "ml_enabled": ml_enabled,
         "ml_operational_status": str(ml_bundle.get("ml_operational_status") or ""),
@@ -11039,7 +11067,7 @@ def _persist_clean_law15_generation_history(
         target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
         batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
         generation_context=generation_context,
-        analysis_batch_label=str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
+        analysis_batch_label=format_batch_label,
         analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
         )
     )
@@ -12407,6 +12435,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         result = _run_clean_law15_generation(requested_count=requested_count)
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
+        result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
         result["display_games"] = _expand_generation_games_for_format(
             result.get("games") or [],
             selected_card_format,
@@ -12422,9 +12451,15 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 result.update(persisted_snapshot)
                 result = _attach_operational_generation_label(result)
                 st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
+            elif persisted_snapshot is not None and persisted_snapshot.get("persistence_blocked"):
+                result["persistence_blocked"] = True
+                result["persistence_block_reason"] = str(
+                    persisted_snapshot.get("persistence_guard_status")
+                    or "Persistência bloqueada — validação CORE_002 falhou."
+                )
         else:
             result["persistence_blocked"] = True
-            result["persistence_block_reason"] = MULTIDEZENA_BLOCK_REASON.format(format=selected_card_format)
+            result["persistence_block_reason"] = f"Formato {selected_card_format}D fora do escopo CORE_002 (15–23)."
         st.session_state["clean_law15_generation_result"] = result
         st.rerun()
 

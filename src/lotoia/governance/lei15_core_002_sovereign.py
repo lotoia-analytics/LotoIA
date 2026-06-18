@@ -25,7 +25,9 @@ CANDIDATE_ORIGIN_LABEL: Final = BATCH_LABEL
 ADR_ID: Final = "ADR-046"
 
 _LABEL_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_15D_\d+$")
+_MULTIDEZENA_LABEL_PATTERN = re.compile(r"^STRUCT_LEI15_CORE_CANDIDATE_002_(\d+)D_\d+$")
 _VALID_MODES: Final = frozenset({"off", "sovereign"})
+_VALID_MULTIDEZENA_FORMATS: Final = frozenset(range(15, 24))
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +54,31 @@ def is_sovereign_implanted() -> bool:
     return get_sovereign_mode() == "sovereign"
 
 
+def resolve_core_002_batch_label(card_format: int, *, sequence: int = 1) -> str:
+    """Label derivada CORE_002 por formato multidezena (15D–23D) — não é Lei 15A."""
+    fmt = int(card_format or 15)
+    if fmt not in _VALID_MULTIDEZENA_FORMATS:
+        raise ValueError(f"Formato CORE_002 inválido: {fmt}D (permitido 15–23).")
+    return f"{LABEL_PREFIX}{fmt}D_{int(sequence):03d}"
+
+
+def core_002_batch_label_game_size(batch_label: str | None) -> int | None:
+    normalized = str(batch_label or "").strip().upper()
+    if normalized == BATCH_LABEL or _LABEL_PATTERN.match(normalized):
+        return 15
+    match = _MULTIDEZENA_LABEL_PATTERN.match(normalized)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def is_sovereign_core_label(batch_label: str | None) -> bool:
     normalized = str(batch_label or "").strip().upper()
-    return normalized == BATCH_LABEL or bool(_LABEL_PATTERN.match(normalized))
+    return (
+        normalized == BATCH_LABEL
+        or bool(_LABEL_PATTERN.match(normalized))
+        or bool(_MULTIDEZENA_LABEL_PATTERN.match(normalized))
+    )
 
 
 def is_generation_enabled() -> bool:

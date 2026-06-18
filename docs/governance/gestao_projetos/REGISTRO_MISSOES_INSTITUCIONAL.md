@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-GER-DADOS-051](#m-ger-dados-051--persistência-16d23d--histórico-analítico--remoção-ges) | Persistência multidezena CORE_002 | `CONCLUIDA` | `16D–23D PERSISTIDOS / GE 114 REMOVIDO / 115 PRESERVADO` |
 | [M-PLAT-050](#m-plat-050--corrigir-saturação-de-conexões-postgresql--sqlalchemy) | Pool PostgreSQL Streamlit | `CONCLUIDA` | `HOME ESTÁVEL / SEM QUEUEPOOL TIMEOUT` |
 | [M-DADOS-049](#m-dados-049--reset-controlado-das-gerações-antigas) | Reset controlado gerações antigas | `CONCLUIDA` | `NOVA FASE 001 / POSTGRESQL VALIDADO` |
 | [M-DADOS-048](#m-dados-048--card-último-concurso-monitorado--postgresql-imported_contests) | Último concurso monitorado | `CONCLUIDA` | `POSTGRESQL imported_contests / SEM RESÍDUO 5000` |
@@ -42,6 +43,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-GER-DADOS-051 — Persistência 16D–23D + Histórico Analítico + Remoção GEs remanescentes
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-18 |
+| Agentes | `agent_geracao` + `agent_dados` + `agent_qualidade` + `agent_visual` + `agent_governanca` + `agent_estatistico` |
+| Status | `CONCLUIDA` |
+| Tipo | Persistência multidezena + remoção controlada |
+
+**Correção:** Persistência CORE_002 liberada para 15D–23D; labels derivadas `STRUCT_LEI15_CORE_CANDIDATE_002_{N}D_001`; Histórico Analítico exibe batch_label/formato/ml_enabled; remoção controlada GE 114 executada; GE 1115 inexistente — GE 115 preservado aguardando confirmação.
+
+**Build:** `institutional-adm-runtime-v27`
+
+**Veredicto:** **M-GER-DADOS-051 CONCLUÍDA — PERSISTÊNCIA 16D–23D LIBERADA, HISTÓRICO ANALÍTICO E COBERTURA ESTRUTURAL RECEBENDO GERAÇÕES, GEs 114/1115 TRATADOS COM SEGURANÇA**
+
+**Cartão:** `cartoes/M-GER-DADOS-051_MULTIDEZENA_PERSISTENCIA.md`
+
+---
 
 ### M-PLAT-050 — Corrigir Saturação de Conexões PostgreSQL / SQLAlchemy no Runtime Streamlit
 

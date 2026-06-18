@@ -11,7 +11,7 @@ from dashboard.institutional_lei15a_governance import (
     LEI15A_FORMAL_STATUS,
     LEI15A_MANDATORY_QUOTE,
 )
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL
+from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, resolve_core_002_batch_label
 
 MISSION_ID = "M-VIS-047"
 
@@ -21,14 +21,13 @@ MIN_REQUESTED_GAMES = 1
 MAX_REQUESTED_GAMES = 100
 
 MULTIDEZENA_FORMAT_OPTIONS: tuple[int, ...] = tuple(range(15, 24))
-PERSISTENCE_SUPPORTED_FORMATS: frozenset[int] = frozenset({15})
+PERSISTENCE_SUPPORTED_FORMATS: frozenset[int] = frozenset(range(15, 24))
 
 STRATEGY_ML_ACTIVE = "CORE_002 + ML supervisionado"
 STRATEGY_ML_INACTIVE = "CORE_002"
 
-MULTIDEZENA_BLOCK_REASON = (
-    "Persistência bloqueada para {format}D — motor CORE_002 gera núcleo 15D; "
-    "formato multidezena {format}D sem persistência institucional validada nesta fase."
+MULTIDEZENA_PERSISTENCE_INFO = (
+    "Formato {format}D — persistência CORE_002 multidezena subordinada ao núcleo 15D (PostgreSQL)."
 )
 
 PROHIBITED_MAIN_PHRASES: tuple[str, ...] = (
@@ -61,6 +60,10 @@ def multidezena_format_label(card_format: int) -> str:
 
 def is_multidezena_persistence_supported(card_format: int) -> bool:
     return int(card_format) in PERSISTENCE_SUPPORTED_FORMATS
+
+
+def multidezena_batch_label(card_format: int) -> str:
+    return resolve_core_002_batch_label(int(card_format))
 
 
 def validate_requested_games_count(raw_value: int | float | str | None) -> tuple[int | None, str | None]:
@@ -122,8 +125,8 @@ def render_generation_operation_block(*, ml_active: bool) -> tuple[int, int]:
                 key="clean_law15_card_format_select",
             )
         )
-        if not is_multidezena_persistence_supported(selected_format):
-            st.caption(MULTIDEZENA_BLOCK_REASON.format(format=selected_format))
+        if is_multidezena_persistence_supported(selected_format):
+            st.caption(MULTIDEZENA_PERSISTENCE_INFO.format(format=selected_format))
     with col_strategy:
         st.metric("Estratégia ativa", STRATEGY_ML_ACTIVE if ml_active else STRATEGY_ML_INACTIVE)
 
@@ -163,6 +166,10 @@ def render_generation_result_summary(result: dict[str, Any]) -> None:
     )
     if result.get("persistence_block_reason"):
         st.warning(str(result.get("persistence_block_reason")))
+    elif int(card_format) > 15 and persisted_id:
+        st.caption(
+            f"Multidezena {card_format}D persistida — subordinada ao CORE_002, não Lei 15A."
+        )
 
 
 def render_generation_games_table(
