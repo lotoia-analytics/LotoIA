@@ -23,7 +23,7 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, resolve_core
 
 
 def test_build_marker_v32() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v33"
+    assert BUILD_MARKER == "institutional-adm-runtime-v34"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 

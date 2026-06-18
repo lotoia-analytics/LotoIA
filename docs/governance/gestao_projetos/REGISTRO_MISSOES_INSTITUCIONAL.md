@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-054](#m-ml-054--central-ml-como-motor-de-calibração-supervisionada-da-saída) | Central ML — calibração supervisionada saída | `CONCLUIDA` | `CALIBRAÇÃO AUTOMÁTICA / TRACE POSTGRESQL` |
 | [M-ML-VIS-053B](#m-ml-vis-053b--corrigir-rota-da-central-ml-no-painel-adm) | Rota Central ML — fallback corrigido | `CONCLUIDA` | `CENTRAL ML ABRE / SEM FALLBACK M-PLAT-040` |
 | [M-ML-VIS-053](#m-ml-vis-053--ativar-painel-central-ml-assistida--operacional-supervisionada) | Central ML Operacional Supervisionada | `CONCLUIDA` | `PAINEL ML ATIVO / POSTGRESQL SOBERANO` |
 | [M-GER-DADOS-051](#m-ger-dados-051--persistência-16d23d--histórico-analítico--remoção-ges) | Persistência multidezena CORE_002 | `CONCLUIDA` | `16D–23D PERSISTIDOS / GE 114 REMOVIDO / 115 PRESERVADO` |
@@ -45,6 +46,27 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-054 — Central ML como Motor de Calibração Supervisionada da Saída
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v34` |
+| **Pré-requisito** | M-ML-045 + M-ML-VIS-053 — ML operacional + painel PostgreSQL |
+
+**Objetivo:** Transformar a Central ML em motor supervisionado de calibração da saída gerada,
+detectando problemas estruturais (redundância, prefixos/sufixos, dezenas subcobertas) e aplicando
+ajustes de score/rerank subordinados ao CORE_002 — sem alterar a Constituição.
+
+**Entregáveis:** `src/lotoia/ml/supervised_output_calibration.py`, hook em `generate_best_games`,
+persistência em `context_json`, painel Central ML com diagnóstico/ação/trace.
+
+**Veredicto:** **M-ML-054 CONCLUÍDA — CENTRAL ML ATIVA COMO MOTOR DE CALIBRAÇÃO SUPERVISIONADA DA SAÍDA**
+
+**Cartão:** `cartoes/M-ML-054_CENTRAL_ML_CALIBRACAO_SUPERVISIONADA.md`
+
+---
 
 ### M-ML-VIS-053B — Corrigir rota da Central ML no Painel ADM
 

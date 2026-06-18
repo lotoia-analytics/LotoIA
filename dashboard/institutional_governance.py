@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-ML-054",
+        "titulo": "Central ML como Motor de Calibração Supervisionada da Saída",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_estatistico + agent_geracao + agent_dados + agent_governanca + agent_qualidade",
+        "evidencia": "M-ML-054 — calibração supervisionada automática no pool CORE_002 + trace PostgreSQL",
+    },
+    {
         "id": "M-ML-VIS-053",
         "titulo": "Ativar Painel Central ML Assistida / Operacional Supervisionada",
         "status": "CONCLUIDA",

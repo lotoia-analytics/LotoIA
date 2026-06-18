@@ -11179,6 +11179,7 @@ def _persist_clean_law15_generation_history(
         list(games),
         batch_label=format_batch_label,
         ml_enabled=ml_enabled,
+        calibration_bundle=dict(result.get("calibration_bundle") or {}),
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])
@@ -11244,7 +11245,29 @@ def _persist_clean_law15_generation_history(
         "clean_adm_runtime_role": "EXECUTOR",
         "output_commander_role": "AUDITOR",
         "legacy_calibrator_role": "REMOVED_FROM_RUNTIME",
-        "calibration_engine_role": "DISABLED",
+        "calibration_engine_role": str(
+            ml_bundle.get("calibration_engine_role")
+            or result.get("calibration_engine_role")
+            or "DISABLED"
+        ),
+        "calibration_applied": bool(ml_bundle.get("calibration_applied")),
+        "calibration_version": str(ml_bundle.get("calibration_version") or ""),
+        "calibration_diagnostics": dict(ml_bundle.get("calibration_diagnostics") or ml_bundle.get("diagnostics") or {}),
+        "calibration_actions_applied": list(
+            ml_bundle.get("calibration_actions_applied") or ml_bundle.get("actions_applied") or []
+        ),
+        "calibration_decision_trace": dict(ml_bundle.get("calibration_decision_trace") or {}),
+        "calibration_feature_attribution": dict(ml_bundle.get("calibration_feature_attribution") or {}),
+        "redundancy_penalty": float(ml_bundle.get("redundancy_penalty", 0.0) or 0.0),
+        "prefix_penalty": int(ml_bundle.get("prefix_penalty", 0) or 0),
+        "suffix_penalty": int(ml_bundle.get("suffix_penalty", 0) or 0),
+        "missing_numbers_boost": int(ml_bundle.get("missing_numbers_boost", 0) or 0),
+        "critical_coverage_boost": int(ml_bundle.get("critical_coverage_boost", 0) or 0),
+        "diversity_score": float(ml_bundle.get("diversity_score", 0.0) or 0.0),
+        "final_ml_score_avg": float(ml_bundle.get("final_ml_score_avg", 0.0) or 0.0),
+        "issues_detected": list(ml_bundle.get("issues_detected") or []),
+        "batch_status_counts": dict(ml_bundle.get("batch_status_counts") or {}),
+        "action_taken": str(ml_bundle.get("action_taken") or ""),
         "historical_deduplication_mode": str(result.get("historical_deduplication_mode", "AUDIT_ONLY") or "AUDIT_ONLY"),
         "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),

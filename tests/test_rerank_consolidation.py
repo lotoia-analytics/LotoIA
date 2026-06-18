@@ -63,9 +63,11 @@ def test_rerank_games_attaches_incremental_score_ml_when_enabled() -> None:
     assert result[0]["score_ml_details"]["model_version"] == "historical_recalibrated_v2"
 
 
-def test_generate_best_games_ml_enabled_does_not_change_ranking(
+def test_generate_best_games_ml_enabled_rerank_attach_does_not_alone_reorder(
     monkeypatch, sovereign_generation_enabled
 ) -> None:
+    """rerank_games só anexa score_ml; ordem só muda se calibração M-ML-054 estiver ativa."""
+    monkeypatch.setenv("LOTOIA_ML_OUTPUT_CALIBRATION_ENABLED", "0")
     pool = [
         make_scored_game([1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24], 10),
         make_scored_game([1, 2, 3, 5, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25], 30),
