@@ -12,8 +12,25 @@ from lotoia.governance.lei15_core_002_sovereign import resolve_core_002_batch_la
 from lotoia.governance.m_ger_dados_051_controlled_ge_removal import resolve_authorized_target_ids
 
 
-def test_build_marker_v27() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v27"
+def test_build_marker_v28() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v28"
+
+
+def test_persist_blocked_when_commander_rejects() -> None:
+    result = {
+        "games": [{"numbers": list(range(1, 16)), "final_score": {}}],
+        "requested_count": 1,
+        "commander_report": {
+            "status_comandante_saida": "BLOQUEADO",
+            "motivo_bloqueio": "duplicidade_na_bateria",
+        },
+    }
+    snapshot = institutional_app._persist_clean_law15_generation_history(
+        result=result,
+        selected_card_format=15,
+    )
+    assert snapshot.get("persistence_blocked") is True
+    assert "duplicidade" in str(snapshot.get("persistence_guard_status") or "")
 
 
 @pytest.mark.parametrize("card_format", list(range(15, 24)))

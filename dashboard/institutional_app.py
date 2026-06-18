@@ -8827,6 +8827,13 @@ def _coerce_analysis_batch_created_at(value: Any) -> datetime | None:
     return None
 
 
+def _ensure_unique_institutional_batch_id(batch_id: str | None) -> str:
+    resolved = str(batch_id or "").strip() or "global"
+    if not load_batch_output_signatures(resolved, DB_PATH):
+        return resolved
+    return f"{resolved}-{uuid.uuid4().hex[:8]}"
+
+
 def _persist_generation_snapshot(
     *,
     games: list[dict[str, Any]],
@@ -8840,6 +8847,7 @@ def _persist_generation_snapshot(
     analysis_batch_created_at: datetime | None = None,
 ) -> dict[str, Any]:
     started_at = time.monotonic()
+    batch_id = _ensure_unique_institutional_batch_id(batch_id)
     context_payload = {
         "source": "institutional_app",
         "target_contest": target_contest,
@@ -10979,6 +10987,17 @@ def _persist_clean_law15_generation_history(
             "persistence_guard_status": "SINCRONIZACAO_FALHOU",
             "runtime_contract": runtime_contract,
         }
+    commander_report = dict(result.get("commander_report") or {})
+    if str(commander_report.get("status_comandante_saida", "APROVADO") or "APROVADO") != "APROVADO":
+        return {
+            "persistence_blocked": True,
+            "persistence_guard_status": str(
+                commander_report.get("motivo_bloqueio")
+                or commander_report.get("blocked_reason")
+                or "COMANDANTE_BLOQUEOU"
+            ),
+            "commander_report": commander_report,
+        }
     payload_games: list[dict[str, Any]] = []
     ml_enabled = bool(result.get("ml_enabled", False))
     format_batch_label = str(
@@ -11060,17 +11079,23 @@ def _persist_clean_law15_generation_history(
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
         "card_format": int(selected_card_format),
     }
-    return _attach_operational_generation_label(
-        _persist_generation_snapshot(
-        games=payload_games,
-        seed=int(result.get("seed", 0) or 0),
-        target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
-        batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
-        generation_context=generation_context,
-        analysis_batch_label=format_batch_label,
-        analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
+    try:
+        return _attach_operational_generation_label(
+            _persist_generation_snapshot(
+                games=payload_games,
+                seed=int(result.get("seed", 0) or 0),
+                target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
+                batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
+                generation_context=generation_context,
+                analysis_batch_label=format_batch_label,
+                analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
+            )
         )
-    )
+    except RuntimeError as exc:
+        return {
+            "persistence_blocked": True,
+            "persistence_guard_status": str(exc),
+        }
 
 
 def _official_15_group_registry_found() -> bool:
@@ -12322,7 +12347,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     analysis_batch_label = _resolve_adm_sovereign_batch_label(
         str(st.session_state.get("clean_law15_analysis_batch_label") or SOVEREIGN_BATCH_LABEL)
     )
-    seed = int(time.time()) % 1_000_000
+    seed = int(time.time_ns() % 1_000_000_000)
     latest_contest = get_latest_official_contest() or {}
     latest_contest_number = _safe_int((latest_contest or {}).get("contest_number"), default=None)
     target_contest = None
@@ -12443,10 +12468,16 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         result["validation_status_lei_17"] = "N_A"
         result["validation_status_lei_18"] = "N_A"
         if is_multidezena_persistence_supported(selected_card_format):
-            persisted_snapshot = _persist_clean_law15_generation_history(
-                result=result,
-                selected_card_format=selected_card_format,
-            )
+            try:
+                persisted_snapshot = _persist_clean_law15_generation_history(
+                    result=result,
+                    selected_card_format=selected_card_format,
+                )
+            except RuntimeError as exc:
+                persisted_snapshot = {
+                    "persistence_blocked": True,
+                    "persistence_guard_status": str(exc),
+                }
             if persisted_snapshot:
                 result.update(persisted_snapshot)
                 result = _attach_operational_generation_label(result)

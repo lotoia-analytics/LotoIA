@@ -78,3 +78,23 @@ def test_output_commander_preserves_official_package_in_audit_only_mode() -> Non
     assert report["historical_duplicates_found"] == 1
     assert report["historical_duplicates_removed"] == 0
     assert report["official_package_preserved"] is True
+
+
+def test_output_commander_blocks_intra_batch_duplicate_in_audit_only_mode() -> None:
+    report = output_commander_validate_games(
+        [
+            {"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]},
+            {"numbers": [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]},
+        ],
+        batch_id="batch-intra-audit",
+        target_size=15,
+        required_total=2,
+        persisted_signatures=set(),
+        historical_deduplication_mode="AUDIT_ONLY",
+    )
+    assert report["status_comandante_saida"] == "BLOQUEADO"
+    assert report["quantidade_jogos_unicos"] == 1
+    assert any(
+        "duplicado_na_bateria" in item.get("errors", [])
+        for item in report.get("invalid_games", [])
+    )

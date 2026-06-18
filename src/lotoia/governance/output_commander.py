@@ -81,12 +81,16 @@ def output_commander_validate_games(
     historical_deduplication_mode: str = "BLOCK",
 ) -> dict[str, Any]:
     resolved_batch_id = str(batch_id or "").strip() or "global"
-    existing_signatures = set(str(signature) for signature in (persisted_signatures or load_batch_output_signatures(batch_id, db_path)))
+    historical_signatures = set(
+        str(signature) for signature in (persisted_signatures or load_batch_output_signatures(batch_id, db_path))
+    )
+    batch_signatures: set[str] = set()
     accepted_games: list[dict[str, Any]] = []
     accepted_signatures: list[str] = []
     duplicate_hashes: list[str] = []
     invalid_games: list[dict[str, Any]] = []
     historical_duplicates_found = 0
+    audit_only = str(historical_deduplication_mode or "BLOCK").upper() == "AUDIT_ONLY"
 
     for index, game in enumerate(games, start=1):
         raw_numbers = _raw_numbers(game.get("numbers", []))
@@ -101,11 +105,14 @@ def output_commander_validate_games(
             game_errors.append("dezenas_fora_do_intervalo")
         if not raw_numbers:
             game_errors.append("jogo_vazio")
-        if signature in existing_signatures:
+        if signature in batch_signatures:
+            duplicate_hashes.append(signature)
+            game_errors.append("duplicado_na_bateria")
+        elif signature in historical_signatures:
             duplicate_hashes.append(signature)
             historical_duplicates_found += 1
-            if str(historical_deduplication_mode or "BLOCK").upper() != "AUDIT_ONLY":
-                game_errors.append("duplicado_na_bateria")
+            if not audit_only:
+                game_errors.append("duplicado_historico")
         if game_errors:
             invalid_games.append(
                 {
@@ -116,7 +123,8 @@ def output_commander_validate_games(
                 }
             )
             continue
-        existing_signatures.add(signature)
+        batch_signatures.add(signature)
+        historical_signatures.add(signature)
         accepted_signatures.append(signature)
         accepted_games.append(dict(game, numbers=normalized_numbers, game_signature=signature))
 
@@ -133,7 +141,7 @@ def output_commander_validate_games(
         blocked_reasons.append("jogos_invalidos_ou_duplicados")
     if total_duplicates:
         blocked_reasons.append("duplicidade_na_bateria")
-    if historical_duplicates_found and str(historical_deduplication_mode or "BLOCK").upper() != "AUDIT_ONLY":
+    if historical_duplicates_found and not audit_only:
         blocked_reasons.append("duplicidade_historica")
     if approved_total < requested_total:
         blocked_reasons.append("nao_atingiu_quantidade_solicitada")
