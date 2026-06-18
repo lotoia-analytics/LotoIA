@@ -95,12 +95,18 @@ Liste explicitamente o que **não pode** ser alterado:
 
 ### Deploy
 
+> Seguir `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` — evidência proporcional ao risco.
+
 | Campo | Valor |
 |-------|-------|
 | Exige deploy? | Sim / Não |
+| Perfil de risco | Baixo / Médio / Alto / Crítico |
 | SHA deployado | |
-| Checklist usado | |
-| Validação pós-deploy | |
+| Build marker | |
+| Evidência leve (P1–P5) | build + commit + deploy + painel OK + bloqueios (texto) |
+| Script HTTP | Condicional — só risco alto/crítico ou solicitação |
+| Screenshot | Condicional — só dúvida visual / layout crítico / solicitação |
+| Validação pós-deploy | Veredicto textual ou formal no registro |
 
 ---
 

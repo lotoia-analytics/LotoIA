@@ -1,0 +1,500 @@
+"""Bloco read-only de Governança Institucional no Painel ADM — M-VIS-032."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any, Callable
+
+import pandas as pd
+import streamlit as st
+
+from dashboard.institutional_build import LOTOIA_PANEL_PRODUCTION_URL
+from dashboard.institutional_lei15a_governance import render_lei15a_governance_section
+from dashboard.institutional_route_inventory import render_route_inventory_section
+from dashboard.institutional_public_separation import render_public_adm_separation_section
+from dashboard.institutional_sovereign_generation import sovereign_generation_status_label
+
+GOVERNANCE_READ_ONLY_ALERT = (
+    "Governança read-only — nenhuma ação operacional é executada nesta tela."
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+GOVERNANCE_DOCS = REPO_ROOT / "docs" / "governance"
+GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
+
+MISSION_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "id": "M-GER-DADOS-051",
+        "titulo": "Persistência 16D–23D + Histórico Analítico + remoção GEs remanescentes",
+        "status": "CONCLUIDA",
+        "agentes": "agent_geracao + agent_dados + agent_qualidade + agent_visual + agent_governanca + agent_estatistico",
+        "evidencia": "M-GER-DADOS-051 — multidezena 15–23D persistida, GE 114 removido, 115 preservado",
+    },
+    {
+        "id": "M-PLAT-050",
+        "titulo": "Corrigir saturação de conexões PostgreSQL / SQLAlchemy no Runtime Streamlit",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_dados + agent_qualidade + agent_governanca",
+        "evidencia": "M-PLAT-050 — pool 5/10, schema once, fail-safe Home",
+    },
+    {
+        "id": "M-DADOS-049",
+        "titulo": "Reset Controlado das Gerações Antigas + Validação Histórico/Cobertura",
+        "status": "CONCLUIDA",
+        "agentes": "agent_dados + agent_geracao + agent_qualidade + agent_governanca + agent_estatistico + agent_visual",
+        "evidencia": "M-DADOS-049 — dry-run + reset controlado + numeração operacional 001",
+    },
+    {
+        "id": "M-DADOS-048",
+        "titulo": "Card Último concurso monitorado — PostgreSQL imported_contests",
+        "status": "CONCLUIDA",
+        "agentes": "agent_dados + agent_visual + agent_governanca + agent_qualidade",
+        "evidencia": "M-DADOS-048 — imported_contests soberano; outlier 5000 filtrado",
+    },
+    {
+        "id": "M-VIS-047",
+        "titulo": "Simplificação Operacional da Página de Geração ADM CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_visual + agent_geracao + agent_governanca + agent_qualidade",
+        "evidencia": "M-VIS-047 — Gerador ADM limpo; jogos 1–100; dezenas 15–23 multidezena CORE_002",
+    },
+    {
+        "id": "M-VIS-046",
+        "titulo": "Corrigir resíduo visual Lei 15A operacional no Runtime Limpo ADM 15",
+        "status": "CONCLUIDA",
+        "agentes": "agent_visual + agent_governanca + agent_geracao + agent_qualidade",
+        "evidencia": "M-VIS-046 — Runtime Limpo 15D CORE_002 sem linguagem Lei 15A operacional",
+    },
+    {
+        "id": "M-ML-045",
+        "titulo": "Ativação Definitiva do ML Operacional Supervisionado",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_geracao + agent_estatistico + agent_dados + agent_governanca + agent_qualidade + agent_plataforma",
+        "evidencia": "M-ML-045 — ml_enabled=True path CORE_002 com trace PostgreSQL",
+    },
+    {
+        "id": "M-GER-044",
+        "titulo": "Ativação Geração Soberana Controlada CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_geracao + agent_dados + agent_qualidade + agent_governanca + agent_plataforma",
+        "evidencia": "M-GER-044 — generate_best_games label soberano ativo",
+    },
+    {
+        "id": "M-GOV-042",
+        "titulo": "Auditoria Constitucional Final — Painel ADM e public_app",
+        "status": "CONCLUIDA",
+        "agentes": "multiagente (8) — auditoria read-only",
+        "evidencia": "AUDITORIA_CONSTITUCIONAL_FINAL_PAINEL_ADM_PUBLIC_APP_M_GOV_042.md",
+    },
+    {
+        "id": "M-PLAT-041",
+        "titulo": "Separação public_app x ADM Institucional",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_governanca + agent_visual + agent_qualidade",
+        "evidencia": "branch cursor/m-plat-041-public-adm-separation-cae6",
+    },
+    {
+        "id": "M-PLAT-040",
+        "titulo": "Limpeza de órfãs e rotas legadas do Painel ADM",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_visual + agent_governanca + agent_qualidade",
+        "evidencia": "branch cursor/m-plat-040-rotas-legadas-cae6",
+    },
+    {
+        "id": "M-DADOS-039",
+        "titulo": "Área Restrita / Limpeza Controlada protegida pela Lei 001",
+        "status": "CONCLUIDA",
+        "agentes": "agent_dados + agent_governanca + agent_visual + agent_qualidade + agent_plataforma",
+        "evidencia": "branch cursor/m-dados-039-limpeza-controlada-cae6",
+    },
+    {
+        "id": "M-GOV-038",
+        "titulo": "Lei 15A redefinida — camada futura subordinada ao CORE_002",
+        "status": "CONCLUIDA",
+        "agentes": "agent_governanca + agent_geracao + agent_estatistico + agent_qualidade",
+        "evidencia": "branch cursor/m-gov-038-lei15a-redefinida-cae6",
+    },
+    {
+        "id": "M-GOV-030",
+        "titulo": "Gestão de Projetos — Fase 0",
+        "status": "CONCLUIDA",
+        "agentes": "agent_governanca + agent_plataforma",
+        "evidencia": "PR #121 — merge 7a10363",
+    },
+    {
+        "id": "M-OPS-INC-001",
+        "titulo": "Incidente deploy — artefato não versionado",
+        "status": "CONCLUIDA",
+        "agentes": "agent_plataforma + agent_governanca",
+        "evidencia": "hotfix f0c1261 — build v6",
+    },
+    {
+        "id": "M-VIS-031",
+        "titulo": "Painel ADM Fase 1 — bloqueios constitucionais",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_plataforma",
+        "evidencia": "PR #125 — merge a5a3f2f — PR #126 fechamento 510cccb",
+    },
+    {
+        "id": "M-VIS-032",
+        "titulo": "Governança read-only no Painel ADM",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_governanca + agent_plataforma",
+        "evidencia": "PR #127 — merge 7df540c — PR #128 fechamento",
+    },
+    {
+        "id": "M-LEI15-003",
+        "titulo": "Unificar path geração ADM → generate_best_games",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_geracao + agent_plataforma + agent_qualidade",
+        "evidencia": "PR #131 — merge 6dea9e7 — PR #132 fechamento",
+    },
+    {
+        "id": "M-VIS-033",
+        "titulo": "Pacote Núcleo Lei 15 no Painel ADM",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_governanca + agent_estatistico + agent_qualidade",
+        "evidencia": "PR #133 — merge a2009cd — build v9",
+    },
+    {
+        "id": "M-VIS-034",
+        "titulo": "Cobertura Estrutural + 6 Bases no Painel ADM",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_estatistico + agent_qualidade",
+        "evidencia": "PR #134/#135 — merge a533e61 — build v10",
+    },
+    {
+        "id": "M-VIS-035",
+        "titulo": "ML Assistivo + Vazamento Lateral Constitucional",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_ml + agent_visual + agent_governanca + agent_qualidade",
+        "evidencia": "PR #136/#137 — merge 76031cb — build v11",
+    },
+    {
+        "id": "M-VIS-036",
+        "titulo": "Simulação Institucional / Backtesting",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_estatistico + agent_ml + agent_visual + agent_qualidade",
+        "evidencia": "PR #138/#139 — merge 240e3d0 — build v12",
+    },
+    {
+        "id": "M-VIS-037",
+        "titulo": "Conferir Resultados / Auditoria de Lotes Persistidos",
+        "status": "CONCLUIDA / VALIDADA EM PRODUÇÃO",
+        "agentes": "agent_visual + agent_dados + agent_governanca + agent_qualidade",
+        "evidencia": "PR #140/#141 — merge 539f256 — build v13",
+    },
+)
+
+BLOCK_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "codigo": "BLK-LEGACY-ROUTES-001",
+        "descricao": "Rotas legadas ADM — aliases redirecionados, órfãs bloqueadas (M-PLAT-040)",
+        "estado": "ATIVO",
+    },
+    {
+        "codigo": "BLK-LEI001-001",
+        "descricao": "Lei 001 — PostgreSQL fonte soberana; purge UI bloqueado",
+        "estado": "ATIVO — M-DADOS-039",
+    },
+    {
+        "codigo": "BLK-HISTORICO-001",
+        "descricao": "Histórico institucional protegido — evidência não apagável por botão",
+        "estado": "ATIVO — M-DADOS-039",
+    },
+    {
+        "codigo": "BLK-GERACAO-001",
+        "descricao": "Geração soberana controlada CORE_002 — path único generate_best_games (M-GER-044)",
+        "estado": "ATIVO — CONTROLADO",
+    },
+    {
+        "codigo": "BLK-PURGE-001",
+        "descricao": "Limpeza Controlada bloqueada — purge real inoperante (M-DADOS-039)",
+        "estado": "ATIVO — mitigado M-VIS-031 / reforçado M-DADOS-039",
+    },
+    {
+        "codigo": "BLK-ADM-001",
+        "descricao": "Rotas ADM órfãs / status constitucional — Fase 1 defensiva",
+        "estado": "ATIVO — mitigado M-VIS-031",
+    },
+    {
+        "codigo": "BLK-LEI15A-001",
+        "descricao": "Lei 15A inoperante — expansão e geração 15A proibidas (M-GOV-038)",
+        "estado": "ATIVO",
+    },
+    {
+        "codigo": "BLK-CORE002-001",
+        "descricao": "Núcleo LEI15_CORE_002 protegido — alteração proibida sem missão",
+        "estado": "ATIVO",
+    },
+    {
+        "codigo": "BLK-DEPLOY-001",
+        "descricao": "Deploy manual fora do fluxo Git/Railway",
+        "estado": "REMOVIDO — monitoramento M-OPS-INC-001",
+    },
+)
+
+LAW_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "nome": "Auditoria Constitucional Final ADM/public_app",
+        "referencia": "Encerramento fase constitucional — M-GOV-042",
+        "path": "docs/governance/AUDITORIA_CONSTITUCIONAL_FINAL_PAINEL_ADM_PUBLIC_APP_M_GOV_042.md",
+    },
+    {
+        "nome": "Inventário Entrypoints public/ADM",
+        "referencia": "Separação public_app x ADM — M-PLAT-041",
+        "path": "docs/governance/INVENTARIO_ENTRYPOINTS_PUBLIC_ADM_M_PLAT_041.md",
+    },
+    {
+        "nome": "Inventário Rotas ADM",
+        "referencia": "Órfãs, aliases e rotas legadas — M-PLAT-040",
+        "path": "docs/governance/INVENTARIO_ROTAS_PAINEL_ADM_M_PLAT_040.md",
+    },
+    {
+        "nome": "Lei 15A",
+        "referencia": "Camada futura subordinada ao CORE_002 — inoperante (M-GOV-038)",
+        "path": "docs/governance/LEI_15A_CAMADA_FUTURA_SUBORDINADA_CORE_002.md",
+    },
+    {
+        "nome": "Lei 001",
+        "referencia": "Fonte única da verdade — PostgreSQL operacional",
+        "path": "docs/governance/LEI_001_FONTE_UNICA_DA_VERDADE.md",
+    },
+    {
+        "nome": "Lei 15",
+        "referencia": "Núcleo operacional 15D — LEI15_CORE_002 soberano",
+        "path": "docs/governance/LEI_15_NUCLEO_OPERACIONAL_15D.md",
+    },
+    {
+        "nome": "ADR-047",
+        "referencia": "Transição constitucional pós-auditoria — geração bloqueada",
+        "path": "docs/adr/ADR-047-TRANSICAO-CONSTITUCIONAL-LEI15-CORE002.md",
+    },
+    {
+        "nome": "Política ML assistivo",
+        "referencia": "ML auxiliar — sem efeito operacional automático",
+        "path": "docs/governance/POLITICA_ML_ASSISTIVO.md",
+    },
+    {
+        "nome": "Política de Preservação de Histórico",
+        "referencia": "Purge protegido — evidência institucional",
+        "path": "docs/governance/POLITICA_PRESERVACAO_HISTORICO_LOTOIA.md",
+    },
+    {
+        "nome": "Política de Gestão de Projetos",
+        "referencia": "Fase 0 documental — missões e veredictos",
+        "path": "docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md",
+    },
+    {
+        "nome": "Inventário Painel ADM",
+        "referencia": "PR #124 — merge 328d26f — read-only conceitual",
+        "path": "docs/governance/INVENTARIO_REDesenHO_CONCEITUAL_PAINEL_ADM_LEI15_CORE002.md",
+    },
+)
+
+VERDICT_ROWS: tuple[dict[str, str], ...] = (
+    {
+        "veredicto": "M-VIS-031 FECHADA FORMALMENTE — PAINEL ADM FASE 1 VALIDADO EM PRODUÇÃO",
+        "origem": "PR #126 — merge 510cccb",
+    },
+    {
+        "veredicto": "M-GOV-030 FECHADA FORMALMENTE — GESTÃO DE PROJETOS FASE 0 APROVADA EM MAIN",
+        "origem": "PR #121 — merge 7a10363",
+    },
+    {
+        "veredicto": "LOTOIA CONFLITANTE — EXIGE CORREÇÃO ANTES DO PAINEL",
+        "origem": "Auditoria constitucional 2026-06-17 — M-GOV-027",
+    },
+    {
+        "veredicto": "ADR-047 — TRANSIÇÃO CONSTITUCIONAL REGISTRADA",
+        "origem": "LEI15_CORE_002 — geração bloqueada até missão autorizada",
+    },
+)
+
+
+def _read_doc_excerpt(relative_path: str, *, max_lines: int = 14) -> str:
+    path = REPO_ROOT / relative_path
+    if not path.exists():
+        return f"(documento não encontrado: {relative_path})"
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[:max_lines]).strip()
+
+
+def _doc_exists(relative_path: str) -> bool:
+    return (REPO_ROOT / relative_path).exists()
+
+
+def build_governance_snapshot(
+    *,
+    app_build: str,
+    active_commit: str,
+    generation_blocked: bool,
+    inventory_reference: str,
+) -> dict[str, Any]:
+    """Snapshot read-only para testes e renderização — sem efeitos colaterais."""
+    railway_commit = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("RAILWAY_GIT_COMMIT")
+        or os.getenv("GIT_COMMIT")
+        or "-"
+    )
+    return {
+        "read_only_alert": GOVERNANCE_READ_ONLY_ALERT,
+        "gestao_projetos_fase": "Fase 0 — documental/Git",
+        "gestao_projetos_policy_status": "POLITICA_GESTAO_PROJETOS_FASE_0_FORMALIZADA",
+        "missions": [dict(row) for row in MISSION_ROWS],
+        "next_authorized_mission": "fase pós M-ML-045 — operação supervisionada CORE_002",
+        "blocks": [dict(row) for row in BLOCK_ROWS],
+        "laws": [
+            {**dict(row), "disponivel": _doc_exists(row["path"])} for row in LAW_ROWS
+        ],
+        "veredicts": [dict(row) for row in VERDICT_ROWS],
+        "generation_status": (
+            "BLOQUEADA" if generation_blocked else sovereign_generation_status_label()
+        ),
+        "purge_status": "PROTEGIDO",
+        "git_railway": {
+            "build": app_build,
+            "commit_ativo": active_commit,
+            "railway_commit_env": railway_commit[:12] if railway_commit != "-" else "-",
+            "production_url": LOTOIA_PANEL_PRODUCTION_URL,
+            "railway_service": os.getenv("RAILWAY_SERVICE_NAME", "-"),
+            "railway_environment": os.getenv("RAILWAY_ENVIRONMENT", "-"),
+            "deploy_mode": "GitHub → Railway (sem deploy manual nesta tela)",
+        },
+        "inventory_reference": inventory_reference,
+        "quadro_excerpt": _read_doc_excerpt("docs/governance/gestao_projetos/QUADRO_PROJETOS_MISSOES.md"),
+        "registro_excerpt": _read_doc_excerpt(
+            "docs/governance/gestao_projetos/REGISTRO_MISSOES_INSTITUCIONAL.md",
+            max_lines=18,
+        ),
+        "policy_excerpt": _read_doc_excerpt("docs/governance/POLITICA_GESTAO_PROJETOS_LOTOIA.md"),
+    }
+
+
+def render_governance_read_only_page(
+    *,
+    snapshot: dict[str, Any],
+    app_build: str,
+    active_commit: str,
+    generation_blocked: bool,
+    inventory_reference: str,
+    render_constitutional_panel: Callable[..., None],
+    render_diagnostic_caption: Callable[[], None],
+) -> None:
+    """Renderiza a área de Governança Institucional — somente leitura."""
+    _ = snapshot
+    payload = build_governance_snapshot(
+        app_build=app_build,
+        active_commit=active_commit,
+        generation_blocked=generation_blocked,
+        inventory_reference=inventory_reference,
+    )
+
+    st.subheader("Governança Institucional — read-only")
+    st.info(GOVERNANCE_READ_ONLY_ALERT)
+    render_diagnostic_caption()
+
+    tab_gestao, tab_missoes, tab_bloqueios, tab_leis, tab_git = st.tabs(
+        [
+            "Gestão de Projetos — Fase 0",
+            "Missões institucionais",
+            "Bloqueios ativos",
+            "Leis e ADRs",
+            "Git / Railway",
+        ]
+    )
+
+    with tab_gestao:
+        st.markdown("##### Gestão de Projetos — Fase 0")
+        st.markdown(
+            f"**Modo:** `{payload['gestao_projetos_fase']}`  \n"
+            f"**Política:** `{payload['gestao_projetos_policy_status']}`"
+        )
+        st.markdown("**Excerto — Política de Gestão de Projetos**")
+        st.code(payload["policy_excerpt"], language="markdown")
+        st.markdown("**Excerto — Quadro de Projetos e Missões**")
+        st.code(payload["quadro_excerpt"], language="markdown")
+        st.markdown("**Excerto — Registro Institucional de Missões**")
+        st.code(payload["registro_excerpt"], language="markdown")
+        st.caption(
+            "Documentos lidos do repositório versionado — sem edição, merge ou deploy pelo painel."
+        )
+
+    with tab_missoes:
+        st.markdown("##### Missões recentes")
+        st.dataframe(
+            pd.DataFrame(payload["missions"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown(
+            f"**Próxima missão autorizada / em execução:** `{payload['next_authorized_mission']}`"
+        )
+        st.markdown("##### Veredictos constitucionais relevantes")
+        st.dataframe(
+            pd.DataFrame(payload["veredicts"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.markdown("##### Confirmação operacional")
+        gen_status = payload["generation_status"]
+        purge_status = payload["purge_status"]
+        if gen_status == "BLOQUEADA":
+            st.success(f"Geração: **{gen_status}** (`LOTOIA_LEI15_CORE_002_GENERATION_ENABLED=0`)")
+        else:
+            st.success(f"Geração: **{gen_status}**")
+            st.caption("Path único CORE_002 — sem promessa de acerto — PostgreSQL rastreável")
+        st.success(f"Purge / histórico: **{purge_status}**")
+
+    with tab_bloqueios:
+        st.markdown("##### Bloqueios institucionais")
+        st.dataframe(
+            pd.DataFrame(payload["blocks"]),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.caption("Exibição informativa — nenhum bloqueio é alterado nesta tela.")
+
+    with tab_leis:
+        st.markdown("##### Leis, ADRs e políticas principais")
+        law_rows = []
+        for row in payload["laws"]:
+            law_rows.append(
+                {
+                    "documento": row["nome"],
+                    "referencia": row["referencia"],
+                    "path": row["path"],
+                    "versionado": "sim" if row["disponivel"] else "ausente",
+                }
+            )
+        st.dataframe(pd.DataFrame(law_rows), hide_index=True, use_container_width=True)
+        st.caption(f"Inventário Painel ADM: {inventory_reference}")
+
+    with tab_git:
+        st.markdown("##### Git / Railway — informativo")
+        git_info = payload["git_railway"]
+        info_cols = st.columns(3)
+        info_cols[0].metric("Build ativo", git_info["build"])
+        info_cols[1].metric("Commit ativo", git_info["commit_ativo"])
+        info_cols[2].metric("Commit Railway (env)", git_info["railway_commit_env"])
+        st.markdown(
+            f"- **URL produção:** `{git_info['production_url']}`\n"
+            f"- **Serviço Railway:** `{git_info['railway_service']}`\n"
+            f"- **Ambiente Railway:** `{git_info['railway_environment']}`\n"
+            f"- **Modo deploy:** {git_info['deploy_mode']}"
+        )
+        st.caption("Sem chamada de API externa destrutiva e sem execução de deploy.")
+
+    st.markdown("---")
+    render_public_adm_separation_section(
+        app_build=app_build,
+        public_build="public-surface-v1-m-plat-041",
+    )
+    st.markdown("---")
+    render_route_inventory_section(app_build=app_build)
+    st.markdown("---")
+    render_lei15a_governance_section(generation_blocked=generation_blocked)
+    st.markdown("---")
+    render_constitutional_panel(compact=False)

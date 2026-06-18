@@ -61,15 +61,21 @@ Se o escopo for **somente documental**, marcar D1–D4 como `N/A` com justificat
 
 ## E. Evidência de deploy (quando aplicável)
 
+> **Política:** `POLITICA_CHECKPOINT_PRODUCAO_LOTOIA.md` — evidência proporcional ao risco.
+> Screenshot e script HTTP **não são obrigatórios** por padrão.
+
 | # | Item | Obrigatório | Evidência |
 |---|------|-------------|-----------|
 | E1 | Deploy exige validação formal | Quando aplicável | Política + cartão |
 | E2 | SHA esperado documentado | Quando aplicável | Cartão / relatório |
-| E3 | Checklist Railway ou validação pós-merge | Quando aplicável | `railway_*_checklist.py` ou relatório |
-| E4 | Build marker ou smoke test pós-deploy | Quando aplicável | Log / screenshot / relatório |
-| E5 | Rollback ou congelamento definido se falhar | Quando aplicável | Cartão |
+| E3 | Perfil de risco classificado (baixo/médio/alto/crítico) | Quando aplicável | Cartão |
+| E4 | **Evidência leve** (build + commit + deploy + painel OK + bloqueios) | Quando aplicável — missões baixo/médio risco | Texto / registro / PR |
+| E5 | Checklist Railway ou script HTTP (`railway_panel_deploy_sync_check.py`) | **Condicional** — risco alto/crítico ou operador solicita | Log / relatório |
+| E6 | Screenshot | **Condicional** — dúvida visual / layout crítico / divergência UI-runtime / solicitação | Imagem (opcional) |
+| E7 | Build marker confirmado | Quando aplicável | Sidebar / log / texto |
+| E8 | Rollback ou congelamento definido se falhar | Quando aplicável | Cartão |
 
-Se o escopo **não envolve deploy**, marcar E1–E5 como `N/A`.
+Se o escopo **não envolve deploy**, marcar E1–E8 como `N/A`.
 
 ---
 
