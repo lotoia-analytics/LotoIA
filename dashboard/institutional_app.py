@@ -74,6 +74,7 @@ from lotoia.governance.batch_operational_scope import (
     is_conference_eligible_scope,
     list_excluded_batches_audit,
     mark_batch_superseded_by_calibration,
+    merge_supersede_operational_fields,
     resolve_batch_operational_fields,
     summarize_active_reading_exclusions,
 )
@@ -8933,6 +8934,16 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         return
 
     operational_generations = _cached_operational_core_002_generations(str(DB_PATH))
+    exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
+    excluded_count = int(exclusions_summary.get("excluded_batches_count", 0) or 0)
+    if excluded_count > 0:
+        st.info(str(exclusions_summary.get("message") or f"{excluded_count} lote(s) removido(s) da leitura ativa."))
+        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
+            st.dataframe(
+                pd.DataFrame(list(exclusions_summary.get("excluded_batches") or [])),
+                hide_index=True,
+                use_container_width=True,
+            )
     if not operational_generations:
         st.warning(EMPTY_OPERATIONAL_MESSAGE)
         _render_historical_structural_coverage_section()
@@ -11392,8 +11403,23 @@ def _supersede_prior_lots_for_calibration(
                 continue
             if is_official_conference_eligible(context):
                 continue
-            context.update(supersede_status_update(superseded_by_event_id=int(new_generation_event_id), reason=reason))
-            event.context_json = context
+            merged = merge_supersede_operational_fields(
+                context,
+                superseded_by_event_id=int(new_generation_event_id),
+                reason=reason,
+            )
+            event.context_json = merged
+            game_rows = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == event.id)
+                .all()
+            )
+            for row in game_rows:
+                row.context_json = merge_supersede_operational_fields(
+                    dict(row.context_json or {}),
+                    superseded_by_event_id=int(new_generation_event_id),
+                    reason=reason,
+                )
             superseded += 1
         if superseded:
             session.commit()

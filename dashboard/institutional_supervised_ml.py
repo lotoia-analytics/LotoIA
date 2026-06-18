@@ -19,6 +19,7 @@ from lotoia.governance.lei15_core_002_sovereign import (
     is_generation_enabled,
     is_sovereign_core_label,
 )
+from lotoia.governance.batch_operational_scope import is_generation_event_active_reading, summarize_active_reading_exclusions
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
 from lotoia.ml.supervised_output_calibration import (
     CALIBRATION_ENGINE_ROLE,
@@ -556,6 +557,8 @@ def load_supervised_ml_operational_events_from_db(
         for event in rows:
             batch_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
             if not is_sovereign_core_label(batch_label):
+                continue
+            if not is_generation_event_active_reading(event):
                 continue
             ge_id = int(event.id or 0)
             if ge_id <= 0:
@@ -1184,6 +1187,7 @@ def build_ml_calibration_cockpit_snapshot(
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
     sovereign_ids = list(coverage_evidence.get("generation_event_ids") or [])
+    exclusions_summary = summarize_active_reading_exclusions(db_path)
     scope_comparison = compare_structural_coverage_scopes(sovereign_ids, ml_event_ids)
     scope_comparison["metrics_scope_label"] = SCOPE_LABEL_ALL_OPERATIONAL
     scope_comparison["ml_detail_scope_label"] = (
@@ -1277,6 +1281,10 @@ def build_ml_calibration_cockpit_snapshot(
         "panel": panel,
         "latest_event": latest_event,
         "events": list(panel.get("events") or []),
+        "generation_event_ids": sovereign_ids,
+        "excluded_batches_count": int(exclusions_summary.get("excluded_batches_count", 0) or 0),
+        "excluded_batches_message": str(exclusions_summary.get("message") or ""),
+        "excluded_batches_audit": list(exclusions_summary.get("excluded_batches") or []),
     }
 
 

@@ -20,6 +20,7 @@ from lotoia.database.database import (
 )
 from lotoia.governance.analysis_batch_labels import batch_label_game_size
 from lotoia.governance.batch_operational_scope import (
+    is_active_reading_scope,
     is_generation_event_active_reading,
     summarize_active_reading_exclusions,
 )
@@ -131,32 +132,8 @@ def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str 
 
 
 def _event_eligible_for_active_structural_reading(context: Mapping[str, Any]) -> bool:
-    """Lotes ativos na leitura padrão da Cobertura Estrutural (M-OPS-062)."""
-    status = str(context.get("lot_operational_status") or "").strip().lower()
-    active_statuses = {
-        "pending_structural_review",
-        "approved_for_officialization",
-        "officialized",
-        "approved_with_warning",
-    }
-    inactive_statuses = {
-        "needs_calibration",
-        "rejected",
-        "blocked_for_officialization",
-        "calibration_source_only",
-        "superseded_by_calibration",
-        "not_officialized",
-        "calibration_authorized",
-        "calibration_applied",
-    }
-    if status in inactive_statuses:
-        return False
-    if status in active_statuses:
-        return True
-    if context.get("official_release_allowed") is False:
-        return False
-    verdict = str(context.get("ml_verdict") or "").strip().upper()
-    if verdict in {"PRECISA CALIBRAR", "REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
+    """Lotes ativos na leitura padrão — M-DADOS-ML-061 / M-OPS-062."""
+    if not is_active_reading_scope(context):
         return False
     lot_origin = str(context.get("generation_origin") or "").strip().lower()
     if lot_origin == "simulation" or bool(context.get("simulation_mode")):

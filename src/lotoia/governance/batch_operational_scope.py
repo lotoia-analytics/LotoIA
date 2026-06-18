@@ -20,18 +20,21 @@ OPERATIONAL_STATUS_NOT_OFFICIALIZED = "not_officialized"
 OPERATIONAL_STATUS_APPROVED = "approved_for_officialization"
 OPERATIONAL_STATUS_OFFICIALIZED = "officialized"
 
+OPERATIONAL_STATUS_APPROVED_WITH_WARNING = "approved_with_warning"
+
 ACTIVE_READING_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
     {
         OPERATIONAL_STATUS_PENDING,
-        OPERATIONAL_STATUS_NEEDS_CALIBRATION,
-        OPERATIONAL_STATUS_CALIBRATION_AUTHORIZED,
         OPERATIONAL_STATUS_APPROVED,
         OPERATIONAL_STATUS_OFFICIALIZED,
+        OPERATIONAL_STATUS_APPROVED_WITH_WARNING,
     }
 )
 
 INACTIVE_READING_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
     {
+        OPERATIONAL_STATUS_NEEDS_CALIBRATION,
+        OPERATIONAL_STATUS_CALIBRATION_AUTHORIZED,
         OPERATIONAL_STATUS_REJECTED,
         OPERATIONAL_STATUS_DISCARDED,
         OPERATIONAL_STATUS_SUPERSEDED,
@@ -78,11 +81,49 @@ def normalize_operational_status(value: object | None) -> str:
     return OPERATIONAL_STATUS_PENDING
 
 
+LOT_OPERATIONAL_STATUS_ALIASES: dict[str, str] = {
+    "superseded_by_calibration": OPERATIONAL_STATUS_SUPERSEDED,
+    "calibration_source_only": OPERATIONAL_STATUS_CALIBRATION_SOURCE,
+    "not_officialized": OPERATIONAL_STATUS_NOT_OFFICIALIZED,
+    "rejected": OPERATIONAL_STATUS_REJECTED,
+    "blocked_for_officialization": OPERATIONAL_STATUS_REJECTED,
+    "needs_calibration": OPERATIONAL_STATUS_NEEDS_CALIBRATION,
+    "calibration_authorized": OPERATIONAL_STATUS_CALIBRATION_AUTHORIZED,
+    "calibration_applied": OPERATIONAL_STATUS_CALIBRATION_APPLIED,
+    "pending_structural_review": OPERATIONAL_STATUS_PENDING,
+    "approved_for_officialization": OPERATIONAL_STATUS_APPROVED,
+    "officialized": OPERATIONAL_STATUS_OFFICIALIZED,
+    "approved_with_warning": OPERATIONAL_STATUS_APPROVED_WITH_WARNING,
+    "failed_structural_validation": OPERATIONAL_STATUS_FAILED_STRUCTURAL,
+    "discarded": OPERATIONAL_STATUS_DISCARDED,
+}
+
+
+def resolve_operational_status_from_context(payload: Mapping[str, Any]) -> str:
+    """Resolve operational_status — lê lot_operational_status (M-OPS-062) quando necessário."""
+    explicit = normalize_operational_status(payload.get("operational_status"))
+    lot_status = _safe_str(payload.get("lot_operational_status")).lower()
+    if lot_status:
+        mapped = LOT_OPERATIONAL_STATUS_ALIASES.get(lot_status, lot_status)
+        if mapped in ACTIVE_READING_OPERATIONAL_STATUSES | INACTIVE_READING_OPERATIONAL_STATUSES:
+            return mapped
+    if payload.get("active_reading_scope") is False:
+        excluded_reason = _safe_str(payload.get("excluded_from_active_reading_reason"))
+        if "calibra" in excluded_reason.lower():
+            return OPERATIONAL_STATUS_SUPERSEDED
+        return OPERATIONAL_STATUS_NOT_OFFICIALIZED
+    if explicit != OPERATIONAL_STATUS_PENDING or not lot_status:
+        return explicit
+    if payload.get("simulation_mode") or _safe_str(payload.get("generation_origin")).lower() == "simulation":
+        return OPERATIONAL_STATUS_NOT_OFFICIALIZED
+    return explicit
+
+
 def resolve_batch_operational_fields(context_json: Mapping[str, Any] | None) -> dict[str, str]:
     payload = dict(context_json or {})
     commander_status = _safe_str(payload.get("status_comandante_saida"), "APROVADO").upper()
     total_duplicates = int(payload.get("total_jogos_duplicados", 0) or 0)
-    operational_status = normalize_operational_status(payload.get("operational_status"))
+    operational_status = resolve_operational_status_from_context(payload)
     if operational_status == OPERATIONAL_STATUS_PENDING and commander_status != "APROVADO":
         operational_status = OPERATIONAL_STATUS_FAILED_STRUCTURAL
     if operational_status == OPERATIONAL_STATUS_PENDING and total_duplicates > 0:
@@ -166,16 +207,29 @@ def build_operational_status_trace(
 
 def _merge_operational_status(context_json: Mapping[str, Any], trace: Mapping[str, Any]) -> dict[str, Any]:
     merged = dict(context_json or {})
-    merged["operational_status"] = trace["operational_status"]
+    operational_status = trace["operational_status"]
+    merged["operational_status"] = operational_status
     merged["ml_validation_status"] = trace["ml_validation_status"]
     merged["officialization_status"] = trace["officialization_status"]
     merged["calibration_state"] = trace["calibration_state"]
+    lot_status_map = {
+        OPERATIONAL_STATUS_SUPERSEDED: "superseded_by_calibration",
+        OPERATIONAL_STATUS_CALIBRATION_SOURCE: "calibration_source_only",
+        OPERATIONAL_STATUS_NOT_OFFICIALIZED: "not_officialized",
+        OPERATIONAL_STATUS_REJECTED: "rejected",
+    }
+    if operational_status in lot_status_map:
+        merged["lot_operational_status"] = lot_status_map[operational_status]
     existing_trace = list(merged.get("batch_operational_trace") or [])
     existing_trace.append(dict(trace))
     merged["batch_operational_trace"] = existing_trace
     merged["active_reading_scope"] = False
     merged["excluded_from_active_reading_at"] = trace["timestamp"]
     merged["excluded_from_active_reading_reason"] = trace["reason"]
+    merged["is_active_structural_reading"] = False
+    merged["is_official_conference_eligible"] = False
+    merged["is_analytical_history_eligible"] = False
+    merged["official_release_allowed"] = False
     return merged
 
 
@@ -254,6 +308,87 @@ def mark_batch_removed_from_active_reading(
         "updated_game_rows": updated_game_rows,
         "trace": trace,
         "active_reading_scope": False,
+    }
+
+
+def merge_supersede_operational_fields(
+    context_json: Mapping[str, Any],
+    *,
+    superseded_by_event_id: int,
+    reason: str = "",
+    calibration_source_only: bool = False,
+) -> dict[str, Any]:
+    """Sincroniza lot_operational_status (M-OPS-062) com operational_status (M-DADOS-ML-061)."""
+    status = OPERATIONAL_STATUS_CALIBRATION_SOURCE if calibration_source_only else OPERATIONAL_STATUS_SUPERSEDED
+    lot_status = "calibration_source_only" if calibration_source_only else "superseded_by_calibration"
+    trace = build_operational_status_trace(
+        batch_id=_safe_str(context_json.get("batch_id")),
+        reason=reason or "superseded_by_calibration",
+        operational_status=status,
+        calibration_state=OPERATIONAL_STATUS_CALIBRATION_APPLIED,
+        source="supersede_prior_lots_for_calibration",
+    )
+    merged = _merge_operational_status(context_json, trace)
+    merged["lot_operational_status"] = lot_status
+    merged["official_release_allowed"] = False
+    merged["is_active_structural_reading"] = False
+    merged["is_official_conference_eligible"] = False
+    merged["is_analytical_history_eligible"] = False
+    merged["superseded_by_generation_event_id"] = int(superseded_by_event_id)
+    merged["superseded_reason"] = reason or "calibration_new_lot_generated"
+    return merged
+
+
+def mark_generation_events_superseded_by_calibration(
+    generation_event_ids: Sequence[int],
+    *,
+    db_path: Any,
+    reason: str,
+    evidence: Mapping[str, Any] | None = None,
+    authorized_plan: Mapping[str, Any] | None = None,
+    operator: str = "",
+    calibration_source_only: bool = False,
+    superseded_by_event_id: int = 0,
+) -> dict[str, Any]:
+    """Marca generation_events específicos como fora do escopo ativo (PostgreSQL)."""
+    normalized_ids = sorted({int(value) for value in generation_event_ids if int(value or 0) > 0})
+    if not normalized_ids:
+        return {"updated_generation_event_ids": [], "updated_game_rows": 0, "active_reading_scope": True}
+    updated_event_ids: list[int] = []
+    updated_game_rows = 0
+    with get_session(db_path) as session:
+        events = session.query(GenerationEvent).filter(GenerationEvent.id.in_(normalized_ids)).all()
+        for event in events:
+            event_context = generation_event_context(event)
+            merged = merge_supersede_operational_fields(
+                event_context,
+                superseded_by_event_id=superseded_by_event_id,
+                reason=reason,
+                calibration_source_only=calibration_source_only,
+            )
+            if evidence:
+                merged.setdefault("batch_operational_trace", [])[-1]["evidence"] = dict(evidence)
+            if authorized_plan:
+                merged.setdefault("batch_operational_trace", [])[-1]["authorized_plan"] = dict(authorized_plan)
+            if operator:
+                merged.setdefault("batch_operational_trace", [])[-1]["operator"] = operator
+            event.context_json = merged
+            game_rows = session.query(GeneratedGame).filter(GeneratedGame.generation_event_id == event.id).all()
+            for row in game_rows:
+                row.context_json = merge_supersede_operational_fields(
+                    dict(row.context_json or {}),
+                    superseded_by_event_id=superseded_by_event_id,
+                    reason=reason,
+                    calibration_source_only=calibration_source_only,
+                )
+                updated_game_rows += 1
+            updated_event_ids.append(int(event.id or 0))
+        session.commit()
+    return {
+        "updated_generation_event_ids": updated_event_ids,
+        "updated_game_rows": updated_game_rows,
+        "active_reading_scope": False,
+        "reason": reason,
     }
 
 
