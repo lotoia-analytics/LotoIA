@@ -12461,7 +12461,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
     elif isinstance(check_result, dict) and check_result.get("status") == "checked":
         st.info("Conferência executada, mas nenhum resultado foi renderizado.")
-    elif not latest_contest:
+    elif not latest_contest_record:
         st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
 
 

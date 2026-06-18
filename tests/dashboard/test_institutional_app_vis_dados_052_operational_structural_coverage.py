@@ -24,7 +24,7 @@ from lotoia.observability.card_structure_diagnostics import (
 
 
 def test_build_marker_v29() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v29"
+    assert BUILD_MARKER == "institutional-adm-runtime-v30"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
