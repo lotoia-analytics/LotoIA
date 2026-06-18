@@ -372,6 +372,11 @@ def build_card_structure_payload(
     abertura, fechamento = _aggregate_opening_closing(resolved_cards)
     faixas_gaps = _aggregate_faixas_gaps(resolved_cards)
     redundancia = compute_gp_redundancy(resolved_cards)
+    redundancia_por_formato: dict[str, Any] = {}
+    for fmt in formats:
+        cards_fmt = [card for card in resolved_cards if len(card) == int(fmt)]
+        if len(cards_fmt) >= 2:
+            redundancia_por_formato[str(int(fmt))] = compute_gp_redundancy(cards_fmt)
     ausencias = _aggregate_absence_patterns(resolved_cards)
     comparacao = compare_structure_profiles(resolved_cards, official_cards)
     comparacao["comparacao_com_concursos_oficiais"] = {
@@ -428,6 +433,7 @@ def build_card_structure_payload(
         "faixas_gaps": faixas_gaps,
         "travamento_13_14": travamento,
         "redundancia_gp": {**redundancia, **ausencias},
+        "redundancia_por_formato": redundancia_por_formato,
         "comparacao_oficial": comparacao,
         "evidence_base": evidence_base,
         "evidence_level": evidence_level,
@@ -629,6 +635,10 @@ def extract_operational_structural_metrics(payload: Mapping[str, Any]) -> dict[s
         "total_jogos": total_jogos,
         "total_geracoes": _safe_int(summary.get("total_geracoes")),
         "format_breakdown": _format_breakdown_from_payload(payload),
+        "formatos_analisados": [
+            int(value)
+            for value in list(evidence_base.get("formatos_analisados") or summary.get("formatos_analisados") or [])
+        ],
         "generation_event_ids": [
             int(value)
             for value in list(evidence_base.get("generation_event_ids") or [])

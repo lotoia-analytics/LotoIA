@@ -6,6 +6,14 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.ml.overlap_format_thresholds import (
+    LEVEL_CRITICO,
+    LEVEL_RUIM,
+    MISSION_ID as OVERLAP_MISSION_ID,
+    build_overlap_format_memory,
+    build_per_format_overlap_analysis,
+    resolve_primary_format_analysis,
+)
 from lotoia.observability.card_structure_diagnostics import (
     SCOPE_ALL_OPERATIONAL_CORE_002,
     SCOPE_LABEL_ALL_OPERATIONAL,
@@ -17,6 +25,7 @@ from lotoia.observability.card_structure_diagnostics import (
 MISSION_ID = "M-ML-VIS-058"
 FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 SOVEREIGN_MISSION_ID = "M-ML-VIS-059"
+OVERLAP_FORMAT_MISSION_ID = OVERLAP_MISSION_ID
 SCOPE_RECENT_OFFICIAL = SCOPE_ALL_OPERATIONAL_CORE_002
 DEFAULT_EVENTS_LIMIT = 10
 
@@ -85,12 +94,38 @@ def _build_decision_block(
     }
 
 
-def build_calibration_plan(metrics: Mapping[str, Any]) -> dict[str, Any]:
+def build_calibration_plan(
+    metrics: Mapping[str, Any],
+    *,
+    format_analyses: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Transforma métricas estruturais em plano operacional de calibração (M-ML-VIS-058-FIX-01)."""
     m = dict(metrics)
     plan_items: list[str] = []
     impact_items: list[str] = []
     parametros_sugeridos: dict[str, Any] = {}
+
+    per_format = [dict(row) for row in list(format_analyses or [])]
+    primary_format = resolve_primary_format_analysis(per_format)
+    if primary_format:
+        fmt = str(primary_format.get("formato") or "")
+        overlap = int(primary_format.get("sobreposicao_maxima", 0) or 0)
+        level = str(primary_format.get("level") or "")
+        plan_items.append(
+            f"Classificar sobreposição máxima {overlap} no formato {fmt} "
+            f"({primary_format.get('faixa_ideal', '—')})."
+        )
+        if level in {LEVEL_CRITICO, LEVEL_RUIM}:
+            action = str(primary_format.get("recommended_action") or "")
+            if action and action not in plan_items:
+                plan_items.append(action)
+            impact_items.append(f"Reduzir clones/overlap extremo no formato {fmt}.")
+            parametros_sugeridos["formato_alvo"] = fmt
+            parametros_sugeridos["game_size"] = int(primary_format.get("game_size", 0) or 0)
+            parametros_sugeridos["max_overlap_penalty"] = max(
+                _safe_float(parametros_sugeridos.get("max_overlap_penalty"), 1.0),
+                1.25 if level == LEVEL_CRITICO else 1.15,
+            )
 
     similaridade = _safe_float(m.get("similaridade_media"))
     sobreposicao_max = _safe_int(m.get("sobreposicao_maxima"))
@@ -106,7 +141,13 @@ def build_calibration_plan(metrics: Mapping[str, Any]) -> dict[str, Any]:
     suffix = str(m.get("sufixo_mais_gerado") or "—")
     prefix_viciado = bool(m.get("prefixo_viciado") or m.get("prefixos_sufixos_viciados"))
     suffix_viciado = bool(m.get("sufixo_viciado") or m.get("prefixos_sufixos_viciados"))
-    game_size = 15
+    primary_game_size = int(
+        (primary_format or {}).get("game_size")
+        or (m.get("formatos_analisados") or [15])[0]
+        if len(m.get("formatos_analisados") or []) == 1
+        else 15
+    )
+    game_size = primary_game_size
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
         plan_items.append("Aumentar penalidade de similaridade/overlap.")
@@ -117,7 +158,9 @@ def build_calibration_plan(metrics: Mapping[str, Any]) -> dict[str, Any]:
         )
 
     if sobreposicao_max >= max(MAX_OVERLAP_HIGH_DEFAULT, game_size - 2):
-        plan_items.append("Reduzir sobreposição máxima entre cartões.")
+        plan_items.append(
+            f"Reduzir sobreposição máxima entre cartões (formato {game_size}D, overlap {sobreposicao_max})."
+        )
         impact_items.append("Diminuir pares com overlap excessivo.")
         parametros_sugeridos["max_overlap_penalty"] = max(
             _safe_float(parametros_sugeridos.get("max_overlap_penalty"), 1.0),
@@ -209,11 +252,14 @@ def build_calibration_plan(metrics: Mapping[str, Any]) -> dict[str, Any]:
 
     return {
         "mission_id": FIX01_MISSION_ID,
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
         "plan_items": plan_items,
         "impact_items": impact_items,
         "parametros_sugeridos": parametros_sugeridos,
         "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
         "has_plan": bool(plan_items),
+        "primary_format_analysis": dict(primary_format or {}),
+        "format_analyses": per_format,
     }
 
 
@@ -232,7 +278,8 @@ def interpret_coverage_evidence(
     quase_repetidos = _safe_int(m.get("quase_repetidos"))
     diversity_score = _safe_float(m.get("diversity_score"))
     subcovered = _safe_int(m.get("dezenas_subcobertas"))
-    game_size = 15
+    formatos = [int(value) for value in list(m.get("formatos_analisados") or []) if int(value) > 0]
+    game_size = int(formatos[0]) if len(formatos) == 1 else 15
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
         blocks.append(
@@ -371,7 +418,8 @@ def interpret_coverage_evidence(
         )
 
     primary = blocks[0] if blocks else None
-    calibration_plan = build_calibration_plan(m)
+    format_analyses = list(m.get("format_analyses") or [])
+    calibration_plan = build_calibration_plan(m, format_analyses=format_analyses)
     plan_items = list(calibration_plan.get("plan_items") or [])
     recommendations = plan_items if plan_items else [
         str(block.get("acao_recomendada") or "")
@@ -443,6 +491,12 @@ def get_structural_coverage_evidence(
 
     structural = dict(snapshot.get("payload") or {})
     metrics = dict(snapshot.get("metrics") or {})
+    format_analyses = build_per_format_overlap_analysis(structural, metrics)
+    primary_format = resolve_primary_format_analysis(format_analyses)
+    overlap_format_memory = build_overlap_format_memory()
+    if primary_format:
+        metrics["primary_format_analysis"] = dict(primary_format)
+    metrics["format_analyses"] = format_analyses
     metrics = _attach_ml_operational_metadata(metrics, ml_aggregate)
     calibration_applied = bool((ml_aggregate or {}).get("calibration_applied"))
     interpretation = interpret_coverage_evidence(
@@ -480,4 +534,8 @@ def get_structural_coverage_evidence(
         "impacto_esperado": str(interpretation.get("impacto_esperado") or ""),
         "generation_event_ids": list(metrics.get("generation_event_ids") or []),
         "events_limit": int(events_limit),
+        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+        "overlap_format_memory": overlap_format_memory,
+        "format_analyses": format_analyses,
+        "primary_format_analysis": dict(primary_format or {}),
     }
