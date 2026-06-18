@@ -32,6 +32,13 @@ MISSION_ROWS: tuple[dict[str, str], ...] = (
         "evidencia": "M-ML-VIS-053 — Central ML lê PostgreSQL ml_enabled=True + trace/attribution/6 bases",
     },
     {
+        "id": "M-ML-VIS-053B",
+        "titulo": "Corrigir rota da Central ML no Painel ADM",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_visual + agent_plataforma + agent_qualidade + agent_governanca",
+        "evidencia": "M-ML-VIS-053B — central_ml_diagnostics não cai mais em fallback M-PLAT-040",
+    },
+    {
         "id": "M-GER-DADOS-051",
         "titulo": "Persistência 16D–23D + Histórico Analítico + remoção GEs remanescentes",
         "status": "CONCLUIDA",

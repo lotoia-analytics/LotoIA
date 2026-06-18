@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-VIS-053B](#m-ml-vis-053b--corrigir-rota-da-central-ml-no-painel-adm) | Rota Central ML — fallback corrigido | `CONCLUIDA` | `CENTRAL ML ABRE / SEM FALLBACK M-PLAT-040` |
 | [M-ML-VIS-053](#m-ml-vis-053--ativar-painel-central-ml-assistida--operacional-supervisionada) | Central ML Operacional Supervisionada | `CONCLUIDA` | `PAINEL ML ATIVO / POSTGRESQL SOBERANO` |
 | [M-GER-DADOS-051](#m-ger-dados-051--persistência-16d23d--histórico-analítico--remoção-ges) | Persistência multidezena CORE_002 | `CONCLUIDA` | `16D–23D PERSISTIDOS / GE 114 REMOVIDO / 115 PRESERVADO` |
 | [M-PLAT-050](#m-plat-050--corrigir-saturação-de-conexões-postgresql--sqlalchemy) | Pool PostgreSQL Streamlit | `CONCLUIDA` | `HOME ESTÁVEL / SEM QUEUEPOOL TIMEOUT` |
@@ -44,6 +45,26 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-VIS-053B — Corrigir rota da Central ML no Painel ADM
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v33` |
+| **Pré-requisito** | M-ML-VIS-053 — painel operacional PostgreSQL |
+
+**Problema:** `_canonical_page_id("central_ml_diagnostics")` retornava `fallback` porque page_ids
+constitucionais não eram reconhecidos — menu abria fallback M-PLAT-040.
+
+**Correção:** reconhecer page_ids em `INSTITUTIONAL_ALLOWED_PAGES`; aliases legados Central ML;
+entradas `PAGE_TARGETS` para labels ML.
+
+**Veredicto:** **M-ML-VIS-053B CONCLUÍDA — CENTRAL ML ABRE CORRETAMENTE E NÃO CAI MAIS EM FALLBACK**
+
+**Cartão:** `cartoes/M-ML-VIS-053B_CENTRAL_ML_ROTA.md`
+
+---
 
 ### M-ML-VIS-053 — Ativar Painel Central ML Assistida / Operacional Supervisionada
 
