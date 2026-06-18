@@ -149,12 +149,14 @@ def render_generation_result_summary(result: dict[str, Any]) -> None:
         persistence_status = "Persistido"
 
     st.markdown("#### Resultado")
-    cols = st.columns(5)
-    cols[0].metric("generation_event_id", str(persisted_id or "-"))
-    cols[1].metric("batch_label", batch_label[-22:] + "…" if len(batch_label) > 22 else batch_label)
-    cols[2].metric("Solicitados", requested)
-    cols[3].metric("Persistidos", persisted_count)
-    cols[4].metric("Gerados", len(display_games))
+    cols = st.columns(6)
+    operational_label = str(result.get("operational_generation_label") or "-")
+    cols[0].metric("Geração operacional", operational_label)
+    cols[1].metric("generation_event_id", str(persisted_id or "-"))
+    cols[2].metric("batch_label", batch_label[-22:] + "…" if len(batch_label) > 22 else batch_label)
+    cols[3].metric("Solicitados", requested)
+    cols[4].metric("Persistidos", persisted_count)
+    cols[5].metric("Gerados", len(display_games))
     st.caption(
         f"formato={card_format}D | persistência={persistence_status} | "
         f"ml_enabled={bool(result.get('ml_enabled', False))}"
