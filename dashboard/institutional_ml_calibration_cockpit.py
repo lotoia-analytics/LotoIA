@@ -155,6 +155,27 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
         )
 
 
+def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Calibração estrutural automática (M-ML-069)")
+    plan = dict(
+        snapshot.get("structural_auto_calibration_plan")
+        or dict(snapshot.get("coverage_evidence") or {}).get("structural_auto_calibration_plan")
+        or {}
+    )
+    actions = list(plan.get("structural_actions") or [])
+    if not actions:
+        st.caption("Nenhuma ação automática pendente para o formato atual.")
+        return
+    for row in actions[:8]:
+        item = dict(row)
+        st.markdown(
+            f"**Problema:** {item.get('problema_detectado', '—')}  \n"
+            f"**Ação aplicada:** {item.get('acao_aplicada', '—')}  \n"
+            f"**Intensidade:** {item.get('intensidade_label', item.get('intensidade', '—'))}  \n"
+            f"**Impacto esperado:** {item.get('impacto_esperado', '—')}"
+        )
+
+
 def _render_overlap_composition(metrics: dict[str, Any], *, primary_format: dict[str, Any] | None = None) -> None:
     """Composição de pares por overlap — M-ML-067."""
     rows = list(metrics.get("overlap_composition_rows") or [])
@@ -652,6 +673,7 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
         with st.container(border=True):
             _render_diagnosis_card(dict(snapshot.get("diagnosis") or {}))
             _render_overlap_format_verdict(snapshot)
+            _render_structural_auto_calibration_card(snapshot)
     with row1_col2:
         with st.container(border=True):
             _render_decision_evidence_card(snapshot)

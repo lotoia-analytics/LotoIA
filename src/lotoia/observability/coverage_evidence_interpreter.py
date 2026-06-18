@@ -19,6 +19,11 @@ from lotoia.ml.overlap_format_thresholds import (
     build_per_format_overlap_analysis,
     resolve_primary_format_analysis,
 )
+from lotoia.ml.structural_auto_calibration import (
+    MISSION_ID as AUTO_CALIBRATION_MISSION_ID,
+    build_auto_calibration_plan,
+    is_structural_auto_calibration_format,
+)
 from lotoia.ml.structural_concentration_audit import (
     MISSION_ID as CONCENTRATION_MISSION_ID,
     audit_structural_concentration_from_db,
@@ -549,6 +554,39 @@ def get_structural_coverage_evidence(
         except Exception:
             structural_concentration_audit = {"available": False, "mission_id": CONCENTRATION_MISSION_ID}
 
+    structural_auto_calibration_plan: dict[str, Any] = {"authorized": False}
+    if (
+        structural_concentration_audit.get("available")
+        and len(formatos) == 1
+        and is_structural_auto_calibration_format(int(formatos[0]))
+    ):
+        occurrence = int(
+            dict((structural or {}).get("context_json") or {}).get("structural_calibration_occurrences", {}).get(
+                f"{int(formatos[0])}D:{(structural_concentration_audit.get('diagnostico') or {}).get('problema_detectado')}",
+                0,
+            )
+            or 0
+        ) + 1
+        structural_auto_calibration_plan = build_auto_calibration_plan(
+            structural_concentration_audit,
+            occurrence_count=occurrence,
+            auto_authorized=True,
+        )
+
+    merged_calibration_plan = dict(interpretation.get("calibration_plan") or {})
+    if structural_auto_calibration_plan.get("plan_items"):
+        merged_calibration_plan = {
+            **merged_calibration_plan,
+            **structural_auto_calibration_plan,
+            "plan_items": list(structural_auto_calibration_plan.get("plan_items") or []),
+            "impact_items": list(structural_auto_calibration_plan.get("impact_items") or []),
+            "parametros_sugeridos": {
+                **dict(merged_calibration_plan.get("parametros_sugeridos") or {}),
+                **dict(structural_auto_calibration_plan.get("parametros_sugeridos") or {}),
+            },
+            "auto_structural_calibration": True,
+        }
+
     return {
         "available": True,
         "mission_id": MISSION_ID,
@@ -570,10 +608,18 @@ def get_structural_coverage_evidence(
         "problemas_detectados": list(interpretation.get("problemas_detectados") or []),
         "evidencias": list(interpretation.get("evidencias") or []),
         "acoes_recomendadas": list(interpretation.get("acoes_recomendadas") or []),
-        "calibration_plan": dict(interpretation.get("calibration_plan") or {}),
-        "plan_items": list(interpretation.get("plan_items") or []),
-        "impacto_detalhado": list(interpretation.get("impacto_detalhado") or []),
-        "parametros_sugeridos": dict(interpretation.get("parametros_sugeridos") or {}),
+        "calibration_plan": merged_calibration_plan,
+        "plan_items": list(merged_calibration_plan.get("plan_items") or interpretation.get("plan_items") or []),
+        "impacto_detalhado": list(
+            merged_calibration_plan.get("impact_items")
+            or interpretation.get("impacto_detalhado")
+            or []
+        ),
+        "parametros_sugeridos": dict(
+            merged_calibration_plan.get("parametros_sugeridos")
+            or interpretation.get("parametros_sugeridos")
+            or {}
+        ),
         "impacto_esperado": str(interpretation.get("impacto_esperado") or ""),
         "generation_event_ids": list(metrics.get("generation_event_ids") or []),
         "events_limit": int(events_limit),
@@ -596,4 +642,9 @@ def get_structural_coverage_evidence(
         "ml_verdict_payload": ml_verdict_payload,
         "structural_concentration_mission_id": CONCENTRATION_MISSION_ID,
         "structural_concentration_audit": structural_concentration_audit,
+        "structural_auto_calibration_mission_id": AUTO_CALIBRATION_MISSION_ID,
+        "structural_auto_calibration_plan": structural_auto_calibration_plan,
+        "structural_calibration_memory": dict(
+            structural_auto_calibration_plan.get("structural_calibration_memory") or {}
+        ),
     }

@@ -25,7 +25,7 @@ from lotoia.observability.coverage_evidence_interpreter import build_calibration
 
 
 def test_build_marker_v56() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v56"
+    assert BUILD_MARKER == "institutional-adm-runtime-v57"
 
 
 @pytest.mark.parametrize(
