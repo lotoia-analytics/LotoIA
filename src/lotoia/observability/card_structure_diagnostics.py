@@ -132,13 +132,12 @@ def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str 
 
 
 def _event_eligible_for_active_structural_reading(context: Mapping[str, Any]) -> bool:
-    """Lotes ativos na leitura padrão — M-DADOS-ML-061 / M-OPS-062."""
-    if not is_active_reading_scope(context):
+    """Lotes ativos na leitura padrão — M-DADOS-ML-061 / M-OPS-062 / M-OPS-062-FIX-04."""
+    if context.get("legacy_excluded_from_active_coverage"):
         return False
-    lot_origin = str(context.get("generation_origin") or "").strip().lower()
-    if lot_origin == "simulation" or bool(context.get("simulation_mode")):
+    if context.get("active_reading_scope") is False:
         return False
-    return True
+    return is_active_reading_scope(context)
 
 
 def load_operational_card_structure_diagnostics_from_db(

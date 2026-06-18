@@ -284,4 +284,4 @@ def test_build_marker_bumped() -> None:
 
     assert BUILD_MARKER == "institutional-adm-runtime-v49"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
-    assert "institutional-adm-runtime-v46" in DEPRECATED_BUILD_MARKERS
+    assert "institutional-adm-runtime-v48" in DEPRECATED_BUILD_MARKERS

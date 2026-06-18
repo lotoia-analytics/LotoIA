@@ -157,6 +157,7 @@ from dashboard.institutional_operational_structural_coverage import (
     HISTORICAL_SOURCE_CAPTION,
     OPERATIONAL_COVERAGE_TITLE,
     OPERATIONAL_SOURCE_CAPTION,
+    build_active_coverage_scope_summary,
     build_operational_generation_dropdown_options,
     build_operational_generations_aggregate_summary,
     is_all_operational_generations_selection,
@@ -8942,6 +8943,19 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
 
     operational_generations = _cached_operational_core_002_generations(str(DB_PATH))
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
+    scope_summary = build_active_coverage_scope_summary(
+        operational_generations,
+        exclusions_summary=exclusions_summary,
+    )
+    scope_cols = st.columns(4)
+    scope_cols[0].metric("Lotes ativos", int(scope_summary.get("active_lots_count", 0) or 0))
+    scope_cols[1].metric("Excluídos da leitura ativa", int(scope_summary.get("excluded_lots_count", 0) or 0))
+    scope_cols[2].metric("Último GE", int(scope_summary.get("latest_generation_event_id", 0) or 0) or "-")
+    scope_cols[3].metric("Status último lote", str(scope_summary.get("latest_operational_status") or "-"))
+    if scope_summary.get("latest_summary"):
+        st.caption(f"Último lote recebido: {scope_summary['latest_summary']}")
+    else:
+        st.caption("Nenhum lote pendente/ativo encontrado para cobertura.")
     excluded_count = int(exclusions_summary.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
         st.info(str(exclusions_summary.get("message") or f"{excluded_count} lote(s) removido(s) da leitura ativa."))
