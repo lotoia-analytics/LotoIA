@@ -5,7 +5,16 @@
 | **Missão** | M-ML-VIS-058-FIX-01 |
 | **Agentes** | agent_ml + agent_visual + agent_dados + agent_qualidade |
 | **Build ADM** | `institutional-adm-runtime-v40` |
+| **PR mergeada** | [#177](https://github.com/lotoia-analytics/LotoIA/pull/177) → `main` @ `611dddc` |
+| **Commit** | `7bd3035` |
 | **Status** | CONCLUÍDA |
+
+## Rastreio de PR
+
+| PR | Base | Resultado |
+|----|------|-----------|
+| [#176](https://github.com/lotoia-analytics/LotoIA/pull/176) | `cursor/gestao-projetos-fase0-cae6` | **Fechado sem merge** (draft + base incorreta) |
+| [#177](https://github.com/lotoia-analytics/LotoIA/pull/177) | `main` | **Mergeada** — PR canônico desta missão |
 
 ## Objetivo
 
