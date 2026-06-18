@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-ML-VIS-053",
+        "titulo": "Ativar Painel Central ML Assistida / Operacional Supervisionada",
+        "status": "CONCLUIDA",
+        "agentes": "agent_ml + agent_visual + agent_dados + agent_qualidade + agent_governanca",
+        "evidencia": "M-ML-VIS-053 — Central ML lê PostgreSQL ml_enabled=True + trace/attribution/6 bases",
+    },
+    {
         "id": "M-GER-DADOS-051",
         "titulo": "Persistência 16D–23D + Histórico Analítico + remoção GEs remanescentes",
         "status": "CONCLUIDA",

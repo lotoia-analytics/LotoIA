@@ -1,18 +1,32 @@
-"""ML operacional supervisionado CORE_002 — estado institucional (M-ML-045)."""
+"""ML operacional supervisionado CORE_002 — estado institucional (M-ML-045 / M-ML-VIS-053)."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    GeneratedGame,
+    GenerationEvent,
+    get_session,
+)
 from lotoia.governance.lei15_core_002_sovereign import (
     BATCH_LABEL,
     ENV_GENERATION_ENABLED,
+    core_002_batch_label_game_size,
     is_generation_enabled,
     is_sovereign_core_label,
 )
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
 
 MISSION_ID = "M-ML-045"
+VIS_MISSION_ID = "M-ML-VIS-053"
+OPERATIONAL_PANEL_SOURCE = "postgresql"
+OPERATIONAL_PANEL_TABLES = "generation_events / generated_games"
+EMPTY_ML_EVENTS_MESSAGE = (
+    "Nenhum evento ML operacional supervisionado encontrado no PostgreSQL."
+)
 ENV_ML_OPERATIONAL_ENABLED = "LOTOIA_ML_CORE_002_OPERATIONAL_ENABLED"
 
 CONSTITUTIONAL_BLOCKS: tuple[str, ...] = (
@@ -249,4 +263,236 @@ def build_supervised_ml_persistence_bundle(
         "policy_mode": "M-ML-045_SUPERVISED_OPERATIONAL" if ml_enabled else "M-GER-044_SOVEREIGN_CONTROLLED",
         "supervised_ml_mission": MISSION_ID,
         **trace,
+    }
+
+
+def _resolve_event_card_format(event: GenerationEvent, context: dict[str, Any]) -> int:
+    for key in ("selected_card_format", "card_format", "format_cartao", "formato_cartao", "quantidade_final"):
+        raw = context.get(key)
+        if raw is not None and str(raw).strip().isdigit():
+            return int(raw)
+    label_size = core_002_batch_label_game_size(str(getattr(event, "analysis_batch_label", "") or ""))
+    if label_size is not None:
+        return int(label_size)
+    return 15
+
+
+def _extract_trace_status(context: dict[str, Any]) -> str:
+    traces = list(context.get("decision_trace") or [])
+    if traces:
+        return "persistido"
+    return "ausente"
+
+
+def _extract_attribution_status(context: dict[str, Any]) -> str:
+    attributions = list(context.get("feature_attribution") or [])
+    if not attributions:
+        return "ausente"
+    for row in attributions:
+        if isinstance(row, dict) and (row.get("attribution") or row.get("score_ml") is not None):
+            return "persistido"
+    return "ausente"
+
+
+def _extract_six_bases_status(context: dict[str, Any]) -> str:
+    rows = list(context.get("ml_six_bases_reading") or [])
+    return "persistido" if rows else "ausente"
+
+
+def _summarize_decision_trace(traces: list[dict[str, Any]]) -> dict[str, Any]:
+    if not traces:
+        return {"status": "ausente", "total_jogos": 0, "sample": None}
+    sample = dict(traces[0]) if isinstance(traces[0], dict) else {}
+    ml_enabled_count = sum(1 for row in traces if isinstance(row, dict) and row.get("ml_enabled"))
+    return {
+        "status": "persistido",
+        "total_jogos": len(traces),
+        "ml_enabled_count": ml_enabled_count,
+        "sample": {
+            "accepted_by": sample.get("accepted_by"),
+            "reranked_by": sample.get("reranked_by"),
+            "final_selection_reason": sample.get("final_selection_reason"),
+            "score_ml": sample.get("score_ml"),
+            "lei15_core_002_preserved": sample.get("lei15_core_002_preserved"),
+            "lei15a_applied": sample.get("lei15a_applied"),
+        },
+    }
+
+
+def _summarize_feature_attribution(attributions: list[dict[str, Any]]) -> dict[str, Any]:
+    if not attributions:
+        return {"status": "ausente", "total_jogos": 0, "top_factors": [], "sample": None}
+    top_factors: list[dict[str, Any]] = []
+    sample = None
+    for row in attributions:
+        if not isinstance(row, dict):
+            continue
+        if sample is None:
+            sample = {
+                "score_ml": row.get("score_ml"),
+                "model_version": row.get("model_version"),
+                "feature_schema_version": row.get("feature_schema_version"),
+            }
+        for factor in list(row.get("attribution") or [])[:5]:
+            if isinstance(factor, dict) and factor not in top_factors:
+                top_factors.append(factor)
+            if len(top_factors) >= 5:
+                break
+        if len(top_factors) >= 5:
+            break
+    return {
+        "status": "persistido" if sample else "ausente",
+        "total_jogos": len(attributions),
+        "top_factors": top_factors,
+        "sample": sample,
+    }
+
+
+def load_supervised_ml_operational_events_from_db(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Lista generation_events CORE_002 com ml_enabled=True (fonte soberana PostgreSQL)."""
+    events: list[dict[str, Any]] = []
+    with get_session(db_path) as session:
+        rows = (
+            session.query(GenerationEvent)
+            .filter(GenerationEvent.ml_enabled == 1)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .limit(max(1, int(limit)) * 5)
+            .all()
+        )
+        for event in rows:
+            batch_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
+            if not is_sovereign_core_label(batch_label):
+                continue
+            ge_id = int(event.id or 0)
+            if ge_id <= 0:
+                continue
+            context = dict(getattr(event, "context_json", {}) or {})
+            games_count = int(
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == ge_id)
+                .count()
+            )
+            ml_scored_games = int(context.get("ml_scored_games", 0) or 0)
+            if ml_scored_games <= 0 and games_count > 0:
+                ml_scored_games = games_count
+            events.append(
+                {
+                    "generation_event_id": ge_id,
+                    "batch_label": batch_label,
+                    "ml_enabled": True,
+                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    "requested_count": int(context.get("selected_quantity", 0) or 0),
+                    "persisted_games": games_count,
+                    "ml_scored_games": ml_scored_games,
+                    "card_format": _resolve_event_card_format(event, context),
+                    "decision_trace_status": _extract_trace_status(context),
+                    "feature_attribution_status": _extract_attribution_status(context),
+                    "ml_six_bases_status": _extract_six_bases_status(context),
+                    "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
+                }
+            )
+            if len(events) >= max(1, int(limit)):
+                break
+    return events
+
+
+def build_supervised_ml_operational_event_detail(
+    db_path: Path | str,
+    generation_event_id: int,
+) -> dict[str, Any] | None:
+    """Detalhe operacional de um generation_event ML (PostgreSQL only)."""
+    selected_id = int(generation_event_id or 0)
+    if selected_id <= 0:
+        return None
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == selected_id).one_or_none()
+        if event is None or int(event.ml_enabled or 0) != 1:
+            return None
+        batch_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
+        if not is_sovereign_core_label(batch_label):
+            return None
+        context = dict(getattr(event, "context_json", {}) or {})
+        game_rows = (
+            session.query(GeneratedGame)
+            .filter(GeneratedGame.generation_event_id == selected_id)
+            .order_by(GeneratedGame.game_index.asc())
+            .all()
+        )
+    traces = list(context.get("decision_trace") or [])
+    if not traces:
+        traces = [
+            dict(getattr(row, "context_json", {}) or {}).get("decision_trace")
+            for row in game_rows
+            if isinstance(getattr(row, "context_json", None), dict)
+            and (getattr(row, "context_json", {}) or {}).get("decision_trace")
+        ]
+        traces = [dict(row) for row in traces if isinstance(row, dict)]
+    attributions = list(context.get("feature_attribution") or [])
+    if not attributions:
+        attributions = [
+            dict(getattr(row, "context_json", {}) or {}).get("feature_attribution")
+            for row in game_rows
+            if isinstance(getattr(row, "context_json", None), dict)
+            and (getattr(row, "context_json", {}) or {}).get("feature_attribution")
+        ]
+        attributions = [dict(row) for row in attributions if isinstance(row, dict)]
+    six_bases = list(context.get("ml_six_bases_reading") or [])
+    if not six_bases:
+        six_bases = build_ml_six_bases_operational_summary()
+    return {
+        "generation_event_id": selected_id,
+        "batch_label": batch_label,
+        "ml_enabled": True,
+        "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+        "requested_count": int(context.get("selected_quantity", 0) or 0),
+        "persisted_games": len(game_rows),
+        "ml_scored_games": int(context.get("ml_scored_games", 0) or 0) or len(game_rows),
+        "card_format": _resolve_event_card_format(event, context),
+        "ml_operational_status": str(context.get("ml_operational_status") or SUPERVISED_ML_STATUS_ACTIVE),
+        "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
+        "decision_trace": _summarize_decision_trace(traces),
+        "feature_attribution": _summarize_feature_attribution(attributions),
+        "ml_six_bases_reading": six_bases,
+        "constitutional_blocks": list(CONSTITUTIONAL_BLOCKS),
+    }
+
+
+def build_supervised_ml_operational_panel_snapshot(
+    db_path: Path | str = DEFAULT_DATABASE_PATH,
+    *,
+    generation_event_id: int | None = None,
+    events_limit: int = 10,
+) -> dict[str, Any]:
+    """Snapshot operacional da Central ML — PostgreSQL como fonte soberana."""
+    events = load_supervised_ml_operational_events_from_db(db_path, limit=events_limit)
+    selected_id = int(generation_event_id or 0)
+    if selected_id <= 0 and events:
+        selected_id = int(events[0].get("generation_event_id", 0) or 0)
+    selected_event = (
+        build_supervised_ml_operational_event_detail(db_path, selected_id)
+        if selected_id > 0
+        else None
+    )
+    return {
+        "mission_id": VIS_MISSION_ID,
+        "source": OPERATIONAL_PANEL_SOURCE,
+        "tables": OPERATIONAL_PANEL_TABLES,
+        "available": bool(events),
+        "ml_operational_active": is_adm_supervised_ml_active(),
+        "ml_operational_status": supervised_ml_status_label(),
+        "core_id": "LEI15_CORE_002",
+        "sovereign_batch_label": BATCH_LABEL,
+        "public_app_ml": False,
+        "lei15a_operational": False,
+        "generation_cmd": False,
+        "recalibration_cmd": False,
+        "constitutional_blocks": list(CONSTITUTIONAL_BLOCKS),
+        "events": events,
+        "selected_generation_event_id": selected_id if selected_id > 0 else None,
+        "selected_event": selected_event,
+        "empty_message": EMPTY_ML_EVENTS_MESSAGE,
     }

@@ -8,11 +8,16 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.institutional_supervised_ml import (
+    CONSTITUTIONAL_BLOCKS,
+    EMPTY_ML_EVENTS_MESSAGE,
     SUPERVISED_ML_DISCLAIMER,
     SUPERVISED_ML_GOVERNANCE_ALERT,
     SUPERVISED_ML_STATUS_ACTIVE,
+    VIS_MISSION_ID,
     build_ml_six_bases_operational_summary,
     build_supervised_ml_activation_snapshot,
+    build_supervised_ml_operational_event_detail,
+    build_supervised_ml_operational_panel_snapshot,
     is_adm_supervised_ml_active,
     is_ml_operational_enabled,
     supervised_ml_status_label,
@@ -339,17 +344,14 @@ def render_ml_assistive_governance_section() -> None:
 
     if operational:
         st.markdown("##### Decision trace / Feature attribution / Lineage")
+        st.caption(
+            "Leitura operacional em PostgreSQL — consulte o bloco "
+            "**ML operacional supervisionado (PostgreSQL)** abaixo para o último evento persistido."
+        )
         activation = dict(payload.get("supervised_ml_activation") or {})
-        st.json(
-            {
-                "mission_id": activation.get("mission_id"),
-                "batch_label": activation.get("batch_label"),
-                "ml_layer": activation.get("ml_layer"),
-                "persistence": activation.get("persistence"),
-                "decision_trace": "persistido por jogo em generation_events.context_json",
-                "feature_attribution": "score_ml_details + attribution por jogo",
-                "lineage": "build_sovereign_pool → rerank_games → compose_sovereign_gp",
-            }
+        st.caption(
+            f"missão={activation.get('mission_id')} | batch_label={activation.get('batch_label')} | "
+            f"persistência={activation.get('persistence')}"
         )
 
     st.markdown("##### Separação: diagnóstico → operação")
@@ -422,3 +424,139 @@ def render_constitutional_side_leak_section() -> None:
         "Consulte a **Central ML Assistiva** para drilldown auditável de alertas "
         "de vazamento lateral recorrente — sempre read-only."
     )
+
+
+def render_supervised_ml_operational_panel(
+    db_path: Any,
+    *,
+    selected_generation_event_id: int | None = None,
+) -> dict[str, Any]:
+    """Painel operacional supervisionado — leitura PostgreSQL (M-ML-VIS-053)."""
+    payload = build_supervised_ml_operational_panel_snapshot(
+        db_path,
+        generation_event_id=selected_generation_event_id,
+    )
+    st.markdown("### ML operacional supervisionado (PostgreSQL)")
+    st.caption(
+        f"Fonte: `{payload.get('source')}` | Tabelas: `{payload.get('tables')}` | "
+        f"Missão: `{payload.get('mission_id')}`"
+    )
+
+    if payload.get("ml_operational_active"):
+        st.success(str(payload.get("ml_operational_status") or SUPERVISED_ML_STATUS_ACTIVE))
+    else:
+        st.warning(str(payload.get("ml_operational_status") or "BLOQUEADO"))
+
+    status_cols = st.columns(4)
+    status_cols[0].metric("CORE_002", "ativo" if payload.get("ml_operational_active") else "bloqueado")
+    status_cols[1].metric("ml_enabled", "True" if payload.get("ml_operational_active") else "False")
+    status_cols[2].metric("public_app ML", "False")
+    status_cols[3].metric("Lei 15A", "inoperante")
+
+    guard_cols = st.columns(2)
+    guard_cols[0].metric("generation_cmd", "False")
+    guard_cols[1].metric("recalibration_cmd", "False")
+
+    st.markdown("##### Bloqueios constitucionais ML")
+    st.dataframe(
+        pd.DataFrame([{"bloqueio": code} for code in payload.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS]),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    events = list(payload.get("events") or [])
+    if not events:
+        st.warning(str(payload.get("empty_message") or EMPTY_ML_EVENTS_MESSAGE))
+        return payload
+
+    event_labels = [
+        (
+            f"GE {int(row.get('generation_event_id', 0) or 0)} — "
+            f"{row.get('batch_label', '-')} — "
+            f"{int(row.get('persisted_games', 0) or 0)} jogos — "
+            f"ml_scored={int(row.get('ml_scored_games', 0) or 0)}"
+        )
+        for row in events
+    ]
+    label_to_id = {
+        label: int(row.get("generation_event_id", 0) or 0)
+        for label, row in zip(event_labels, events, strict=True)
+    }
+    default_index = 0
+    selected_id = int(payload.get("selected_generation_event_id") or events[0].get("generation_event_id") or 0)
+    for index, row in enumerate(events):
+        if int(row.get("generation_event_id", 0) or 0) == selected_id:
+            default_index = index
+            break
+    selected_label = st.selectbox(
+        "Últimos eventos ML operacionais",
+        options=event_labels,
+        index=default_index,
+        key="central_ml_operational_event_select",
+    )
+    resolved_id = int(label_to_id.get(selected_label, selected_id) or selected_id)
+    selected_event = build_supervised_ml_operational_event_detail(db_path, resolved_id)
+
+    if not isinstance(selected_event, dict):
+        st.info("Evento ML selecionado sem detalhe disponível no PostgreSQL.")
+        return payload
+
+    meta_cols = st.columns(5)
+    meta_cols[0].metric("generation_event_id", str(selected_event.get("generation_event_id", "-")))
+    meta_cols[1].metric("batch_label", str(selected_event.get("batch_label", "-"))[:28])
+    meta_cols[2].metric("Jogos persistidos", int(selected_event.get("persisted_games", 0) or 0))
+    meta_cols[3].metric("Jogos pontuados", int(selected_event.get("ml_scored_games", 0) or 0))
+    meta_cols[4].metric("Formato", f"{int(selected_event.get('card_format', 15) or 15)}D")
+    detail_cols = st.columns(4)
+    detail_cols[0].write(f"ml_enabled: `{bool(selected_event.get('ml_enabled'))}`")
+    detail_cols[1].write(f"requested_count: `{int(selected_event.get('requested_count', 0) or 0)}`")
+    detail_cols[2].write(f"missão: `{selected_event.get('supervised_ml_mission', '-')}`")
+    detail_cols[3].write(f"created_at: `{selected_event.get('created_at', '-')}`")
+
+    trace = dict(selected_event.get("decision_trace") or {})
+    st.markdown("##### Decision Trace")
+    if trace.get("status") == "persistido":
+        st.caption(f"Status: persistido | jogos com trace: {int(trace.get('total_jogos', 0) or 0)}")
+        sample = dict(trace.get("sample") or {})
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"campo": key, "valor": str(value)}
+                    for key, value in sample.items()
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.info("Decision trace ausente neste evento — fallback controlado sem quebra de página.")
+
+    attribution = dict(selected_event.get("feature_attribution") or {})
+    st.markdown("##### Feature Attribution")
+    if attribution.get("status") == "persistido":
+        st.caption(f"Status: persistido | jogos: {int(attribution.get('total_jogos', 0) or 0)}")
+        sample = dict(attribution.get("sample") or {})
+        if sample:
+            st.json(sample)
+        top_factors = list(attribution.get("top_factors") or [])
+        if top_factors:
+            st.dataframe(pd.DataFrame(top_factors), hide_index=True, use_container_width=True)
+    else:
+        st.info("Feature attribution ausente neste evento — fallback controlado sem quebra de página.")
+
+    st.markdown("##### ML × 6 Bases")
+    six_bases = list(selected_event.get("ml_six_bases_reading") or [])
+    if six_bases:
+        st.dataframe(pd.DataFrame(six_bases), hide_index=True, use_container_width=True)
+        st.caption("Hit isolado não é veredicto — leitura supervisionada das seis bases.")
+    else:
+        st.info("ML × 6 Bases ausente — exibindo template operacional.")
+        st.dataframe(
+            pd.DataFrame(build_ml_six_bases_operational_summary()),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    st.caption(SUPERVISED_ML_GOVERNANCE_ALERT)
+    st.caption(SUPERVISED_ML_DISCLAIMER)
+    return payload

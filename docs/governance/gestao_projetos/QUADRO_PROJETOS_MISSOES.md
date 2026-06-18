@@ -5,7 +5,7 @@
 | Campo | Valor |
 |-------|-------|
 | Registro | `QUADRO_PROJETOS_MISSOES_FASE_0` |
-| Atualização | 2026-06-18 (M-GER-DADOS-051 persistência multidezena CORE_002) |
+| Atualização | 2026-06-18 (M-ML-VIS-053 Central ML operacional supervisionada) |
 | Modo | Fase 0 — documental/Git |
 | Política | `POLITICA_GESTAO_PROJETOS_LOTOIA.md` |
 
@@ -35,6 +35,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status | Última evidência Git |
 |-----------|--------|-----------------|--------|----------------------|
+| M-ML-VIS-053 | Central ML Operacional Supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` | build `institutional-adm-runtime-v32` |
 | M-GER-DADOS-051 | Persistência 16D–23D + Histórico Analítico + remoção GEs | `agent_geracao` + `agent_dados` | `CONCLUIDA` | [PR #162](https://github.com/lotoia-analytics/LotoIA/pull/162) — build `institutional-adm-runtime-v27` |
 | M-PLAT-050 | Corrigir saturação pool PostgreSQL Streamlit | `agent_plataforma` + `agent_dados` | `CONCLUIDA` | [PR #161](https://github.com/lotoia-analytics/LotoIA/pull/161) — build `institutional-adm-runtime-v26` |
 | M-DADOS-049 | Reset controlado gerações antigas | `agent_dados` + `agent_geracao` | `CONCLUIDA` | merge — build `institutional-adm-runtime-v25` |
@@ -76,6 +77,7 @@ Detalhes completos: [`MATRIZ_STATUS_TAREFAS.md`](MATRIZ_STATUS_TAREFAS.md)
 
 | ID missão | Título | Agente primário | Status |
 |-----------|--------|-----------------|--------|
+| M-ML-VIS-053 | Central ML Operacional Supervisionada | `agent_ml` + `agent_visual` | `CONCLUIDA` |
 | M-VIS-035 | ML Assistivo + Vazamento Lateral Constitucional | `agent_ml` + `agent_visual` | `CONCLUIDA` |
 | M-ML-009 | Política ML assistivo (ADR-042 / ADR-009) | `agent_ml` | `CONCLUIDA` |
 
