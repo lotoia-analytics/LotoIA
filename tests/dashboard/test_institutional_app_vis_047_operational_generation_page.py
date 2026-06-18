@@ -15,7 +15,7 @@ def _page_source() -> str:
 
 
 def test_institutional_app_build_v23() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v29"
+    assert BUILD_MARKER == "institutional-adm-runtime-v30"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
