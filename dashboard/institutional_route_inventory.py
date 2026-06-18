@@ -1,4 +1,4 @@
-"""Inventário de rotas do Painel ADM — órfãs, legadas e aliases (M-PLAT-040)."""
+"""Inventário de rotas do Painel ADM — órfãs, legadas e aliases (M-PLAT-040 / M-VIS-057)."""
 
 from __future__ import annotations
 
@@ -12,16 +12,44 @@ ROUTE_INVENTORY_ALERT = (
 )
 
 ROUTE_INVENTORY_MISSION = "M-PLAT-040"
+MENU_CLEANUP_MISSION = "M-VIS-057"
 
+# Fallbacks seguros — rotas removidas do menu (M-VIS-057).
 LEGACY_PAGE_ALIASES: dict[str, str] = {
     "generation": "clean_law15_generation",
     "clear_histories": "restricted_controlled_cleanup",
     "delete_history": "restricted_controlled_cleanup",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
+    "Central ML Assistiva": "central_ml_diagnostics",
     "central_ml": "central_ml_diagnostics",
     "ml_diagnostics": "central_ml_diagnostics",
     "institutional_supervised_ml": "central_ml_diagnostics",
     "ml_assistive": "central_ml_diagnostics",
+    "core_002_read_only": "governance_read_only",
+    "Núcleo Lei 15 — CORE_002": "governance_read_only",
+    "comparative_history": "structural_coverage",
+    "Comparativos histórico": "structural_coverage",
+    "audit": "fallback",
+    "Auditoria Runtime": "fallback",
+    "audit_monitoring_conference": "conference",
+    "Conferência por concurso": "conference",
+    "audit_monitoring_missing_numbers": "structural_coverage",
+    "Dezenas faltantes": "structural_coverage",
+    "audit_monitoring_extra_numbers": "structural_coverage",
+    "Dezenas sobrando": "structural_coverage",
+    "summary_benchmark": "structural_coverage",
+    "Benchmark resumido": "structural_coverage",
+    "hb_metrics": "structural_coverage",
+    "Métricas HB": "structural_coverage",
+    "institutional_simulation_backtesting": "simulation",
+    "Simulação Institucional / Backtesting": "simulation",
+    "audit_monitoring_side_leak": "central_ml_diagnostics",
+    "Vazamento Lateral Constitucional": "central_ml_diagnostics",
+    "Vazamento lateral": "central_ml_diagnostics",
+    "audit_monitoring_13_to_14": "central_ml_diagnostics",
+    "Evolução 13 -> 14": "central_ml_diagnostics",
+    "audit_monitoring_14_to_15": "central_ml_diagnostics",
+    "Evolução 14 -> 15": "central_ml_diagnostics",
 }
 
 INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
@@ -29,56 +57,54 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
         "home",
         "fallback",
         "governance_read_only",
-        "core_002_read_only",
         "clean_law15_generation",
         "conference",
         "simulation",
         "history_analytical",
         "history_institutional",
-        "comparative_history",
-        "audit",
-        "audit_monitoring_conference",
-        "audit_monitoring_missing_numbers",
-        "audit_monitoring_extra_numbers",
-        "summary_benchmark",
-        "hb_metrics",
         "structural_coverage",
-        "institutional_simulation_backtesting",
-        "audit_monitoring_side_leak",
-        "audit_monitoring_13_to_14",
-        "audit_monitoring_14_to_15",
         "central_ml_diagnostics",
         "restricted_controlled_cleanup",
     }
 )
 
-ACTIVE_ROUTE_ROWS: tuple[dict[str, str], ...] = (
-    {"page_id": "governance_read_only", "label": "Governança Institucional — read-only", "grupo": "Governança"},
-    {"page_id": "core_002_read_only", "label": "Núcleo Lei 15 — CORE_002", "grupo": "Governança"},
-    {"page_id": "home", "label": "Painel Inicial Institucional", "grupo": "Núcleo Operacional"},
-    {
-        "page_id": "conference",
-        "label": "Conferir Resultados — Auditoria de Lotes Persistidos",
-        "grupo": "Núcleo Operacional",
-    },
-    {"page_id": "simulation", "label": "Simular Resultados", "grupo": "Núcleo Operacional"},
-    {"page_id": "structural_coverage", "label": "Cobertura Estrutural", "grupo": "Analítico observacional"},
-    {
-        "page_id": "institutional_simulation_backtesting",
-        "label": "Simulação Institucional / Backtesting",
-        "grupo": "Analítico observacional",
-    },
-    {"page_id": "central_ml_diagnostics", "label": "Central ML — Calibração Supervisionada", "grupo": "Diagnósticos ML"},
-    {
-        "page_id": "audit_monitoring_side_leak",
-        "label": "Vazamento Lateral Constitucional",
-        "grupo": "Diagnósticos ML",
-    },
-    {
-        "page_id": "restricted_controlled_cleanup",
-        "label": "Área Restrita — Limpeza Controlada",
-        "grupo": "Área Restrita",
-    },
+OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "Núcleo Operacional",
+        (
+            ("Painel Inicial Institucional", "home"),
+            ("Gerador ADM CORE_002 — Geração Soberana Controlada", "clean_law15_generation"),
+            ("Conferir Resultados — Auditoria de Lotes Persistidos", "conference"),
+            ("Simular Resultados", "simulation"),
+        ),
+    ),
+    (
+        "Históricos e Rastreabilidade",
+        (
+            ("Histórico Analítico", "history_analytical"),
+            ("Histórico Institucional", "history_institutional"),
+            ("Cobertura Estrutural", "structural_coverage"),
+        ),
+    ),
+    (
+        "ML",
+        (
+            ("Central ML — Calibração Supervisionada", "central_ml_diagnostics"),
+        ),
+    ),
+    (
+        "Governança / Restrito",
+        (
+            ("Governança Institucional — read-only", "governance_read_only"),
+            ("Área Restrita — Limpeza Controlada", "restricted_controlled_cleanup"),
+        ),
+    ),
+)
+
+ACTIVE_ROUTE_ROWS: tuple[dict[str, str], ...] = tuple(
+    {"page_id": page_id, "label": label, "grupo": group_name}
+    for group_name, entries in OFFICIAL_SIDEBAR_MENU
+    for label, page_id in entries
 )
 
 BLOCKED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
@@ -126,14 +152,49 @@ ALIAS_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "motivo": "Label legado — Central ML operacional supervisionada (M-ML-VIS-053B)",
     },
     {
+        "alias": "Central ML Assistiva",
+        "destino": "central_ml_diagnostics",
+        "motivo": "M-VIS-057 — redireciona para Central ML Calibração Supervisionada",
+    },
+    {
         "alias": "ml_diagnostics",
         "destino": "central_ml_diagnostics",
-        "motivo": "Alias legado — Central ML Assistiva",
+        "motivo": "Alias legado — Central ML",
     },
     {
         "alias": "institutional_supervised_ml",
         "destino": "central_ml_diagnostics",
         "motivo": "Módulo interno — rota de menu central_ml_diagnostics",
+    },
+    {
+        "alias": "institutional_simulation_backtesting",
+        "destino": "simulation",
+        "motivo": "M-VIS-057 — Simulação Institucional → Simular Resultados",
+    },
+    {
+        "alias": "summary_benchmark",
+        "destino": "structural_coverage",
+        "motivo": "M-VIS-057 — Benchmark → Cobertura Estrutural",
+    },
+    {
+        "alias": "hb_metrics",
+        "destino": "structural_coverage",
+        "motivo": "M-VIS-057 — Métricas HB → Cobertura Estrutural",
+    },
+    {
+        "alias": "comparative_history",
+        "destino": "structural_coverage",
+        "motivo": "M-VIS-057 — Comparativos → Cobertura Estrutural",
+    },
+    {
+        "alias": "audit_monitoring_conference",
+        "destino": "conference",
+        "motivo": "M-VIS-057 — Conferência por concurso → Conferir Resultados",
+    },
+    {
+        "alias": "core_002_read_only",
+        "destino": "governance_read_only",
+        "motivo": "M-VIS-057 — Núcleo Lei 15 standalone → Governança Institucional",
     },
 )
 
@@ -144,7 +205,7 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
     {"page_id": "institutional_replay", "label": "Replay institucional", "estado": "REMOVIDA DO MENU — fallback"},
     {"page_id": "operational_statistics", "label": "Estatísticas operacionais", "estado": "REMOVIDA DO MENU — fallback"},
     {"page_id": "hb_geometry", "label": "HB Geometry", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "audit_monitoring", "label": "Auditoria e Monitoramento", "estado": "REMOVIDA DO MENU — sub-rotas ativas"},
+    {"page_id": "audit_monitoring", "label": "Auditoria e Monitoramento", "estado": "REMOVIDA DO MENU — sub-rotas redirecionadas"},
     {
         "page_id": "audit_monitoring_group_performance",
         "label": "Desempenho por grupo",
@@ -154,6 +215,46 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "page_id": "audit_monitoring_offline_hypotheses",
         "label": "Hipóteses para teste offline",
         "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {"page_id": "audit", "label": "Auditoria Runtime", "estado": "M-VIS-057 — removida do menu → fallback"},
+    {"page_id": "core_002_read_only", "label": "Núcleo Lei 15 — CORE_002", "estado": "M-VIS-057 — removida → Governança Institucional"},
+    {"page_id": "comparative_history", "label": "Comparativos histórico", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
+    {"page_id": "summary_benchmark", "label": "Benchmark resumido", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
+    {"page_id": "hb_metrics", "label": "Métricas HB", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
+    {
+        "page_id": "institutional_simulation_backtesting",
+        "label": "Simulação Institucional / Backtesting",
+        "estado": "M-VIS-057 — removida → Simular Resultados",
+    },
+    {
+        "page_id": "audit_monitoring_conference",
+        "label": "Conferência por concurso",
+        "estado": "M-VIS-057 — removida → Conferir Resultados",
+    },
+    {
+        "page_id": "audit_monitoring_missing_numbers",
+        "label": "Dezenas faltantes",
+        "estado": "M-VIS-057 — removida → Cobertura Estrutural",
+    },
+    {
+        "page_id": "audit_monitoring_extra_numbers",
+        "label": "Dezenas sobrando",
+        "estado": "M-VIS-057 — removida → Cobertura Estrutural",
+    },
+    {
+        "page_id": "audit_monitoring_side_leak",
+        "label": "Vazamento Lateral Constitucional",
+        "estado": "M-VIS-057 — removida → Central ML",
+    },
+    {
+        "page_id": "audit_monitoring_13_to_14",
+        "label": "Evolução 13 → 14",
+        "estado": "M-VIS-057 — removida → Central ML",
+    },
+    {
+        "page_id": "audit_monitoring_14_to_15",
+        "label": "Evolução 14 → 15",
+        "estado": "M-VIS-057 — removida → Central ML",
     },
 )
 
@@ -166,16 +267,17 @@ PENDING_ROUTE_ROWS: tuple[dict[str, str], ...] = (
 )
 
 CONSTITUTIONAL_LABELS: tuple[str, ...] = (
-    "Governança Institucional — read-only",
-    "Núcleo Lei 15 — CORE_002",
-    "Cobertura Estrutural",
-    "Central ML Assistiva",
-    "Vazamento Lateral Constitucional",
-    "Simulação Institucional / Backtesting",
+    "Painel Inicial Institucional",
+    "Gerador ADM CORE_002 — Geração Soberana Controlada",
     "Conferir Resultados — Auditoria de Lotes Persistidos",
+    "Simular Resultados",
+    "Histórico Analítico",
+    "Histórico Institucional",
+    "Cobertura Estrutural",
+    "Central ML — Calibração Supervisionada",
+    "Governança Institucional — read-only",
     "Área Restrita — Limpeza Controlada",
     "Lei 15A — Camada futura inoperante (via Governança)",
-    "Gerador ADM CORE_002 — Geração Soberana Controlada",
 )
 
 ROUTE_GUARDS: tuple[str, ...] = (
@@ -184,7 +286,12 @@ ROUTE_GUARDS: tuple[str, ...] = (
     "batch_label=None rejeitado no path ADM (M-LEI15-003).",
     "Purge real bloqueado — aliases delete_history/clear_histories → Área Restrita.",
     "public_app fora do escopo deste inventário.",
+    "M-VIS-057 — menu lateral enxuto; rotas antigas redirecionam com fallback seguro.",
 )
+
+
+def official_sidebar_page_ids() -> frozenset[str]:
+    return frozenset(page_id for _group, entries in OFFICIAL_SIDEBAR_MENU for _label, page_id in entries)
 
 
 def resolve_institutional_page_id(page_id: str) -> str:
@@ -192,7 +299,10 @@ def resolve_institutional_page_id(page_id: str) -> str:
     normalized = str(page_id or "").strip()
     if not normalized:
         return "home"
-    return LEGACY_PAGE_ALIASES.get(normalized, normalized)
+    resolved = LEGACY_PAGE_ALIASES.get(normalized, normalized)
+    if resolved != normalized:
+        return resolve_institutional_page_id(resolved)
+    return resolved
 
 
 def is_allowed_institutional_page(page_id: str) -> bool:
@@ -205,6 +315,7 @@ def build_route_inventory_snapshot(*, app_build: str) -> dict[str, Any]:
     return {
         "read_only_alert": ROUTE_INVENTORY_ALERT,
         "mission_id": ROUTE_INVENTORY_MISSION,
+        "menu_cleanup_mission": MENU_CLEANUP_MISSION,
         "app_build": app_build,
         "active_routes": [dict(row) for row in ACTIVE_ROUTE_ROWS],
         "blocked_routes": [dict(row) for row in BLOCKED_ROUTE_ROWS],
@@ -214,6 +325,7 @@ def build_route_inventory_snapshot(*, app_build: str) -> dict[str, Any]:
         "constitutional_labels": list(CONSTITUTIONAL_LABELS),
         "route_guards": list(ROUTE_GUARDS),
         "allowed_pages_count": len(INSTITUTIONAL_ALLOWED_PAGES),
+        "official_sidebar_count": len(official_sidebar_page_ids()),
         "legacy_aliases": dict(LEGACY_PAGE_ALIASES),
         "inventory_doc": "docs/governance/INVENTARIO_ROTAS_PAINEL_ADM_M_PLAT_040.md",
     }
@@ -254,5 +366,6 @@ def render_route_inventory_section(*, app_build: str) -> None:
             st.markdown(f"- {guard}")
         st.success(
             f"Páginas permitidas no menu: `{payload['allowed_pages_count']}`. "
+            f"Itens oficiais no sidebar: `{payload['official_sidebar_count']}`. "
             "Rotas fora do conjunto caem em fallback institucional."
         )

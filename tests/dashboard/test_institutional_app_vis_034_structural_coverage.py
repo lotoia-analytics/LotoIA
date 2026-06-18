@@ -12,7 +12,6 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v36"
 
 
 def test_structural_coverage_module_imports() -> None:
@@ -87,9 +86,9 @@ def test_m_vis_031_regression_blocks_generation(monkeypatch: pytest.MonkeyPatch)
     assert result["games"] == []
 
 
-def test_m_vis_033_regression_core_002_route_exists() -> None:
-    assert "core_002_read_only" in institutional_app.PAGE_TARGETS.values()
-    assert institutional_app.PAGE_TARGETS["Núcleo Lei 15 — CORE_002"] == "core_002_read_only"
+def test_m_vis_033_regression_core_002_route_redirects_to_governance() -> None:
+    assert institutional_app.PAGE_TARGETS["Núcleo Lei 15 — CORE_002"] == "governance_read_only"
+    assert institutional_app._canonical_page_id("core_002_read_only") == "governance_read_only"
 
 
 def test_m_lei15_003_regression_sovereign_path_helpers_exist() -> None:

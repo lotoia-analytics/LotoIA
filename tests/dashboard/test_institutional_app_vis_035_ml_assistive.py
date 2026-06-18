@@ -12,7 +12,6 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v36"
 
 
 def test_ml_assistive_module_imports() -> None:
@@ -80,10 +79,8 @@ def test_ml_assistive_modules_are_read_only_without_operational_buttons() -> Non
 
 def test_central_ml_page_integrates_governance_section() -> None:
     source = inspect.getsource(institutional_app._render_central_ml_diagnostics_page)
+    assert "render_ml_calibration_cockpit" in source
     assert "render_ml_assistive_governance_section" in source
-    assert "Guardião Analítico Assistivo" not in source  # lives in module
-    assert "generation_cmd: `False`" in source
-    assert "recalibration_cmd: `False`" in source
     assert "Diagnóstico ML observacional" in source
 
 
@@ -109,8 +106,8 @@ def test_m_vis_034_regression_structural_coverage_module_exists() -> None:
     assert len(payload["six_bases_rows"]) == 6
 
 
-def test_m_vis_033_regression_core_002_route_exists() -> None:
-    assert "core_002_read_only" in institutional_app.PAGE_TARGETS.values()
+def test_m_vis_033_regression_core_002_route_redirects_to_governance() -> None:
+    assert institutional_app.PAGE_TARGETS["Núcleo Lei 15 — CORE_002"] == "governance_read_only"
 
 
 def test_m_lei15_003_regression_sovereign_helpers_exist() -> None:

@@ -13,7 +13,6 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v36"
 
 
 def test_route_inventory_module_imports() -> None:
@@ -41,7 +40,7 @@ def test_route_inventory_snapshot_lists_constitutional_pages() -> None:
     assert payload["mission_id"] == "M-PLAT-040"
     active_ids = {row["page_id"] for row in payload["active_routes"]}
     assert "governance_read_only" in active_ids
-    assert "core_002_read_only" in active_ids
+    assert "core_002_read_only" not in active_ids
     assert "structural_coverage" in active_ids
     assert "central_ml_diagnostics" in active_ids
     assert "restricted_controlled_cleanup" in active_ids

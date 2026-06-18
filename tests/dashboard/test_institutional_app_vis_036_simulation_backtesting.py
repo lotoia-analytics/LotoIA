@@ -5,6 +5,7 @@ import inspect
 import pytest
 
 import dashboard.institutional_app as institutional_app
+import dashboard.institutional_route_inventory as route_inventory
 import dashboard.institutional_simulation_backtesting as simulation_backtesting
 from dashboard.institutional_build import BUILD_MARKER
 from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
@@ -12,7 +13,6 @@ from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v36"
 
 
 def test_simulation_backtesting_module_imports() -> None:
@@ -71,11 +71,14 @@ def test_simulation_page_references_institutional_backtesting_separation() -> No
     assert "Session-only" in source
 
 
-def test_institutional_simulation_backtesting_route_registered() -> None:
-    assert "institutional_simulation_backtesting" in institutional_app.PAGE_TARGETS.values()
+def test_institutional_simulation_backtesting_route_redirects_to_simulation() -> None:
     assert (
         institutional_app.PAGE_TARGETS["Simulação Institucional / Backtesting"]
-        == "institutional_simulation_backtesting"
+        == "simulation"
+    )
+    assert (
+        route_inventory.resolve_institutional_page_id("institutional_simulation_backtesting")
+        == "simulation"
     )
 
 

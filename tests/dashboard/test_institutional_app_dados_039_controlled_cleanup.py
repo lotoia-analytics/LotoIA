@@ -7,13 +7,13 @@ import pytest
 import dashboard.institutional_app as institutional_app
 import dashboard.institutional_controlled_cleanup as controlled_cleanup
 import dashboard.institutional_governance as institutional_governance
+import dashboard.institutional_route_inventory as route_inventory
 from dashboard.institutional_build import BUILD_MARKER
 from lotoia.governance.lei15_core_002_sovereign import ENV_GENERATION_ENABLED
 
 
 def test_institutional_app_imports() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
-    assert institutional_app.APP_BUILD == "institutional-adm-runtime-v36"
 
 
 def test_controlled_cleanup_module_imports() -> None:
@@ -73,8 +73,11 @@ def test_restricted_cleanup_page_integrated_in_institutional_app() -> None:
 
 def test_sidebar_uses_restricted_controlled_cleanup_label() -> None:
     source = inspect.getsource(institutional_app._render_sidebar)
-    assert "Área Restrita — Limpeza Controlada" in source
-    assert "restricted_controlled_cleanup" in source
+    assert "OFFICIAL_SIDEBAR_MENU" in source
+    page_ids = [page_id for _group, entries in route_inventory.OFFICIAL_SIDEBAR_MENU for _label, page_id in entries]
+    labels = [label for _group, entries in route_inventory.OFFICIAL_SIDEBAR_MENU for label, _pid in entries]
+    assert "restricted_controlled_cleanup" in page_ids
+    assert "Área Restrita — Limpeza Controlada" in labels
 
 
 def test_delete_history_alias_routes_to_restricted_area() -> None:
