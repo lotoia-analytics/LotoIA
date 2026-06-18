@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
 from dashboard.institutional_supervised_ml import (
     AGGREGATE_SCOPE_LABEL,
     CALIBRATION_SUPERVISED_LABEL,
@@ -299,6 +300,7 @@ def _render_command_card(
     snapshot: dict[str, Any],
     *,
     supervised_active: bool,
+    db_path: Any,
 ) -> None:
     st.markdown("#### 5. Comando supervisionado")
     if not supervised_active:
@@ -331,6 +333,23 @@ def _render_command_card(
         st.rerun()
     if cmd_cols[2].button("Aplicar na próxima geração", key="cockpit_cmd_apply_next", use_container_width=True):
         decision_at = _cockpit_now_iso()
+        latest_event_id = int((snapshot.get("latest_event") or {}).get("generation_event_id", 0) or 0)
+        sovereign_ids = [int(value) for value in (snapshot.get("generation_event_ids") or []) if int(value or 0) > 0]
+        source_event_ids = [latest_event_id] if latest_event_id > 0 else ([sovereign_ids[-1]] if sovereign_ids else [])
+        calibration_plan = dict(snapshot.get("calibration_plan") or {})
+        scope_payload = (
+            mark_generation_events_superseded_by_calibration(
+                source_event_ids,
+                db_path=db_path,
+                reason="calibração autorizada — lote removido do escopo ativo (M-DADOS-ML-061)",
+                evidence=dict(snapshot.get("coverage_evidence") or {}),
+                authorized_plan=calibration_plan,
+                operator="cockpit_operador_adm",
+                calibration_source_only=True,
+            )
+            if source_event_ids
+            else {}
+        )
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_AUTHORIZED
         st.session_state[SESSION_APPLY_NEXT] = True
         st.session_state[SESSION_DECISION_AT] = decision_at
@@ -341,6 +360,11 @@ def _render_command_card(
             apply_next_generation=True,
             operator_decision="aplicar_proxima_geracao",
         )
+        if scope_payload.get("updated_generation_event_ids"):
+            st.success(
+                f"{len(scope_payload.get('updated_generation_event_ids') or [])} lote(s) marcado(s) "
+                "como calibration_source_only — removidos da leitura ativa."
+            )
         st.rerun()
     if cmd_cols[3].button("Rejeitar recomendação", key="cockpit_cmd_reject", use_container_width=True):
         decision_at = _cockpit_now_iso()
@@ -533,6 +557,13 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     chip_cols[1].caption(f"Purge: {constitutional.get('purge', 'PROTEGIDO')}")
     chip_cols[2].caption(f"public_app: {constitutional.get('public_app_ml', 'SEM ML OPERACIONAL')}")
     st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
+    excluded_count = int(snapshot.get("excluded_batches_count", 0) or 0)
+    if excluded_count > 0:
+        st.warning(str(snapshot.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
+        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
+            audit_rows = list(snapshot.get("excluded_batches_audit") or [])
+            if audit_rows:
+                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
 
     row1_col1, row1_col2 = st.columns(2)
     with row1_col1:
@@ -554,7 +585,7 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     row3_col1, row3_col2 = st.columns(2)
     with row3_col1:
         with st.container(border=True):
-            _render_command_card(snapshot, supervised_active=supervised_active)
+            _render_command_card(snapshot, supervised_active=supervised_active, db_path=db_path)
     with row3_col2:
         with st.container(border=True):
             _render_result_card(dict(snapshot.get("result") or {}), snapshot)

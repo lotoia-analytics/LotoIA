@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, get_session
+from lotoia.governance.batch_operational_scope import (
+    is_generation_event_active_reading,
+    resolve_batch_operational_fields,
+)
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
 
 from dashboard.institutional_operational_generation import (
@@ -21,7 +25,7 @@ EMPTY_OPERATIONAL_MESSAGE = (
     "Nenhuma geração operacional CORE_002 persistida encontrada. "
     "Gere um lote no Gerador ADM CORE_002 para habilitar a Cobertura Estrutural operacional."
 )
-OPERATIONAL_GENERATION_ALL_LABEL = "Todos — todas as gerações operacionais CORE_002"
+OPERATIONAL_GENERATION_ALL_LABEL = "Todos — gerações ativas CORE_002"
 
 
 def is_all_operational_generations_selection(label: str | None) -> bool:
@@ -97,7 +101,11 @@ def _resolve_card_format_from_event(event: GenerationEvent, game_rows: list[Gene
     return 15
 
 
-def load_operational_core_002_generations(db_path: Any = DEFAULT_DATABASE_PATH) -> list[dict[str, Any]]:
+def load_operational_core_002_generations(
+    db_path: Any = DEFAULT_DATABASE_PATH,
+    *,
+    active_reading_only: bool = True,
+) -> list[dict[str, Any]]:
     """Lista gerações operacionais CORE_002 persistidas (generation_events + generated_games)."""
     generations: list[dict[str, Any]] = []
     with get_session(db_path) as session:
@@ -115,12 +123,15 @@ def load_operational_core_002_generations(db_path: Any = DEFAULT_DATABASE_PATH) 
             }
             for event in events
             if is_sovereign_core_label(str(getattr(event, "analysis_batch_label", "") or ""))
+            and (not active_reading_only or is_generation_event_active_reading(event))
         ]
         index_map = build_operational_generation_index(event_dicts)
 
         for event in events:
             batch_label = str(getattr(event, "analysis_batch_label", "") or "")
             if not is_sovereign_core_label(batch_label):
+                continue
+            if active_reading_only and not is_generation_event_active_reading(event):
                 continue
             ge_id = int(event.id or 0)
             if ge_id <= 0:
@@ -137,6 +148,8 @@ def load_operational_core_002_generations(db_path: Any = DEFAULT_DATABASE_PATH) 
             op_index = int(index_map.get(ge_id, 0) or 0)
             op_label = format_operational_generation_number(op_index)
             games_count = len(game_rows)
+            event_context = dict(getattr(event, "context_json", {}) or {})
+            status_fields = resolve_batch_operational_fields(event_context)
             generations.append(
                 {
                     "generation_event_id": ge_id,
@@ -149,6 +162,8 @@ def load_operational_core_002_generations(db_path: Any = DEFAULT_DATABASE_PATH) 
                     "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
                     "origin": str(getattr(event, "strategy", "") or "institutional"),
                     "persistence_status": "Persistido",
+                    "operational_status": status_fields["operational_status"],
+                    "active_reading_scope": True,
                     "dropdown_label": (
                         f"Geração {op_label} — GE {ge_id} — {card_format}D — CORE_002 — {games_count} jogos"
                     ),
