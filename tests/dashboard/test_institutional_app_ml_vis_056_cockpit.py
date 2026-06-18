@@ -54,7 +54,7 @@ def test_cockpit_render_module_has_required_sections() -> None:
     assert "Diagnosticar saída geral" in module_source
     assert "Autorizar calibração" in module_source
     assert "Detalhes por lote" in module_source
-    assert "Bloqueios constitucionais" in module_source
+    assert "Proteções constitucionais ativas" in module_source
     assert "expanded=False" in module_source
     assert "Lote analisado" not in module_source
     assert "selectbox" not in module_source

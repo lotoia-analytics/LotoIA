@@ -24,7 +24,7 @@ from lotoia.observability.coverage_evidence_interpreter import (
 
 
 def test_build_marker_v39() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v46"
+    assert BUILD_MARKER == "institutional-adm-runtime-v48"
 
 
 def test_interpret_diversidade_baixa_generates_coherent_recommendation() -> None:
@@ -140,7 +140,7 @@ def test_cockpit_module_renders_decision_sections() -> None:
     assert "Evidência" in source
     assert "Impacto esperado" in source
     assert "Cobertura Estrutural" in source
-    assert "Snapshot Cobertura Estrutural" in source
+    assert "Leitura usada da Cobertura Estrutural" in source
 
 
 def test_cockpit_snapshot_includes_coverage_evidence(
