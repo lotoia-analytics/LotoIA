@@ -95,6 +95,11 @@ def test_central_ml_page_has_no_nested_expanders_in_source() -> None:
         assert _nested_expander_functions(source) == []
 
 
+def test_central_ml_page_still_uses_cockpit() -> None:
+    source = inspect.getsource(institutional_app._render_central_ml_diagnostics_page)
+    assert "render_ml_calibration_cockpit" in source
+
+
 def test_build_marker_bumped_for_fix03() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
