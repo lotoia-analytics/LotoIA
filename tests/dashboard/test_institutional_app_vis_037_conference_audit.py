@@ -83,7 +83,7 @@ def test_conference_audit_module_is_read_only_without_generation_or_purge() -> N
 def test_conference_page_integrates_governance_section() -> None:
     source = inspect.getsource(institutional_app._render_conference_page)
     assert "render_conference_governance_section" in source
-    assert "Auditoria de lote persistido" in source
+    assert "Conferência oficial" in source
     assert "generate_best_games" not in source
     assert "_generate_direct_15_games" not in source
 

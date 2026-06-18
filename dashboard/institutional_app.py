@@ -190,6 +190,16 @@ from lotoia.ml.ml_operational_verdict import (
     is_ml_official_release_allowed,
     is_ml_verdict_blocking,
 )
+from lotoia.operations.lot_operational_status import (
+    GENERATION_ORIGIN_GENERATOR,
+    GENERATION_ORIGIN_SIMULATION,
+    MISSION_ID as LOT_STATUS_MISSION_ID,
+    build_lot_status_context,
+    extract_lot_operational_status,
+    is_analytical_history_eligible,
+    is_official_conference_eligible,
+    supersede_status_update,
+)
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
     is_multidezena_persistence_supported,
@@ -2776,12 +2786,15 @@ def _classify_generation_visibility(
     base_conference_eligible = is_conference_eligible_scope(scope_payload)
     ml_verdict = str(generation.get("ml_verdict") or "").strip().upper()
     ml_verdict_reason = str(generation.get("ml_verdict_reason") or generation.get("motivo_principal") or "").strip()
+    lot_operational_status = str(generation.get("lot_operational_status") or "").strip().lower()
     official_release_allowed = generation.get("official_release_allowed")
-    if official_release_allowed is None and ml_verdict:
+    if official_release_allowed is None and lot_operational_status:
+        official_release_allowed = is_official_conference_eligible(generation)
+    elif official_release_allowed is None and ml_verdict:
         official_release_allowed = is_ml_official_release_allowed({"ml_verdict": ml_verdict})
     elif official_release_allowed is None:
         official_release_allowed = True
-    is_ml_verdict_rejected = bool(ml_verdict) and not bool(official_release_allowed)
+    is_ml_verdict_rejected = not bool(official_release_allowed)
     is_conferible = (
         base_conference_eligible
         and bool(official_release_allowed)
@@ -2865,6 +2878,7 @@ def _classify_generation_visibility(
         "is_calibration_only": is_calibration_only,
         "ml_verdict": ml_verdict or "-",
         "ml_verdict_reason": ml_verdict_reason or "-",
+        "lot_operational_status": lot_operational_status or "-",
         "official_release_allowed": bool(official_release_allowed),
         "is_ml_verdict_blocked": is_ml_verdict_rejected,
     }
@@ -6191,7 +6205,8 @@ def _load_persisted_generation_event_groups(
                 "ml_verdict": str(event_context.get("ml_verdict") or ""),
                 "official_release_allowed": event_context.get("official_release_allowed"),
             }
-            official_release_allowed = is_ml_official_release_allowed(ml_verdict_payload)
+            official_release_allowed = is_official_conference_eligible(event_context)
+            lot_status = extract_lot_operational_status(event_context)
             groups.append(
                 {
                     "generation_event_id": int(event.id or 0),
@@ -6206,6 +6221,9 @@ def _load_persisted_generation_event_groups(
                     "conference_status": "Conferido" if reconciliation_summary else "Nao conferido",
                     "is_conferida": bool(reconciliation_summary),
                     "official_release_allowed": official_release_allowed,
+                    "is_official_conference_eligible": official_release_allowed,
+                    "is_analytical_history_eligible": is_analytical_history_eligible(event_context),
+                    "lot_operational_status": lot_status,
                     "ml_verdict": str(event_context.get("ml_verdict") or ""),
                     "ml_verdict_reason": str(
                         event_context.get("ml_verdict_reason") or event_context.get("motivo_principal") or ""
@@ -6217,13 +6235,23 @@ def _load_persisted_generation_event_groups(
     return groups
 
 
-def _run_institutional_conference(contest_number: int | None = None, generation_event_id: int | None = None, batch_id: str | None = None) -> None:
+def _run_institutional_conference(
+    contest_number: int | None = None,
+    generation_event_id: int | None = None,
+    batch_id: str | None = None,
+    *,
+    conference_all_official: bool = False,
+) -> None:
     selected_contest = _safe_int(contest_number, default=None)
     selected_batch_id = str(batch_id or st.session_state.get("institutional_active_batch_id", "") or "").strip()
     selected_generation_event_id = _safe_int(generation_event_id, default=None) or _safe_int(
         st.session_state.get("active_reconciliation_generation_event_id"),
         default=None,
     )
+    if conference_all_official or selected_contest is None:
+        auto_contest = _resolve_latest_official_conference_contest()
+        if auto_contest is not None:
+            selected_contest = _safe_int(auto_contest.get("concurso"), default=selected_contest)
     official_contest = _get_conference_contest_from_imported(selected_contest)
     if official_contest is None:
         official_contest = _load_official_history_contest(selected_contest)
@@ -6251,7 +6279,7 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     grouped_generations = [
         group
         for group in all_persisted_groups
-        if bool(group.get("official_release_allowed", True))
+        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
     ]
     if not all_persisted_groups:
         st.session_state["institutional_check_result"] = {
@@ -6278,7 +6306,9 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     total_hits = 0
     best_hits_global = 0
     selected_generation_groups = grouped_generations
-    if selected_generation_event_id is not None:
+    if conference_all_official:
+        selected_generation_groups = grouped_generations
+    elif selected_generation_event_id is not None:
         selected_generation_groups = [
             group
             for group in grouped_generations
@@ -6290,7 +6320,7 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
             for group in grouped_generations
             if str(group.get("batch_id", "") or "").strip() == selected_batch_id
         ]
-    if not selected_generation_groups:
+    if not selected_generation_groups and grouped_generations and not conference_all_official:
         selected_generation_groups = grouped_generations[:1]
 
     for group in selected_generation_groups:
@@ -6496,6 +6526,77 @@ def _run_institutional_conference(contest_number: int | None = None, generation_
     }
 
 
+def _run_simulation_lot_generation(*, requested_count: int, selected_card_format: int) -> dict[str, Any]:
+    """Gera lote laboratorial com o mesmo motor CORE_002 + ML — não oficializa (M-OPS-062)."""
+    result = _run_clean_law15_generation(requested_count=requested_count)
+    result["selected_card_format"] = int(selected_card_format)
+    result["card_format_label"] = multidezena_format_label(selected_card_format)
+    result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
+    result["generation_origin"] = GENERATION_ORIGIN_SIMULATION
+    result["simulation_mode"] = True
+    result["display_games"] = _expand_generation_games_for_format(result.get("games") or [], selected_card_format)
+    if is_multidezena_persistence_supported(selected_card_format):
+        persisted = _persist_clean_law15_generation_history(
+            result=result,
+            selected_card_format=int(selected_card_format),
+        )
+        if persisted:
+            result.update(persisted)
+    else:
+        result["persistence_blocked"] = True
+        result["persistence_block_reason"] = f"Formato {selected_card_format}D fora do escopo CORE_002 (15–23)."
+    return result
+
+
+def _run_simulation_multicontest_lab(*, games: Sequence[dict[str, Any]], contests_limit: int = 50) -> dict[str, Any]:
+    """Compara lote laboratorial contra até 50 concursos importados — sem oficializar."""
+    records = sorted(
+        _list_all_imported_contest_records(),
+        key=lambda row: int(row.get("contest_number", 0) or 0),
+        reverse=True,
+    )[: max(1, int(contests_limit))]
+    contest_results: list[dict[str, Any]] = []
+    premium_rows: list[dict[str, Any]] = []
+    for record in records:
+        contest_payload = to_conference_contest_payload(record) or _normalize_contest_record(record)
+        if not contest_payload or not contest_payload.get("dezenas"):
+            continue
+        contest_numbers = set(_extract_int_numbers(contest_payload.get("dezenas", [])))
+        contest_number = int(contest_payload.get("concurso", record.get("contest_number", 0)) or 0)
+        game_rows: list[dict[str, Any]] = []
+        for index, game in enumerate(games, start=1):
+            numbers = _extract_int_numbers(game.get("numbers", game.get("final_card_numbers", [])))
+            matched = sorted(set(numbers) & contest_numbers)
+            hits = len(matched)
+            row = {
+                "concurso": contest_number,
+                "jogo": index,
+                "hits": hits,
+                "premiado": "sim" if hits >= 11 else "nao",
+                "dezenas": " ".join(f"{number:02d}" for number in numbers),
+                "matched_numbers": matched,
+            }
+            game_rows.append(row)
+            if hits >= 11:
+                premium_rows.append(row)
+        contest_results.append(
+            {
+                "contest_number": contest_number,
+                "total_games": len(game_rows),
+                "premium_games": sum(1 for row in game_rows if int(row.get("hits", 0) or 0) >= 11),
+                "best_hits": max((int(row.get("hits", 0) or 0) for row in game_rows), default=0),
+                "results": game_rows,
+            }
+        )
+    return {
+        "contests_compared": len(contest_results),
+        "premium_rows": premium_rows,
+        "contest_results": contest_results,
+        "generation_origin": GENERATION_ORIGIN_SIMULATION,
+        "officialization_blocked": True,
+    }
+
+
 def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
     st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
     try:
@@ -6511,8 +6612,22 @@ def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> 
             source = "latest_persisted_generation"
             games = _institutional_generation_games()
         if not games:
+            source = "simulation_lab_non_official"
+            lab_groups = [
+                group
+                for group in _load_persisted_generation_event_groups()
+                if str(group.get("lot_operational_status", "")) in {"not_officialized", "calibration_source_only", ""}
+                or not bool(group.get("is_official_conference_eligible", False))
+            ]
+            games = [game for group in lab_groups[:3] for game in list(group.get("games") or [])]
+        if not games:
             source = "all_persisted_games"
-            games = [game for group in _load_persisted_generation_event_groups() for game in list(group.get("games") or [])]
+            games = [
+                game
+                for group in _load_persisted_generation_event_groups()
+                for game in list(group.get("games") or [])
+                if not bool(group.get("is_official_conference_eligible", False))
+            ]
         simulation_rows: list[dict[str, Any]] = []
         for index, game in enumerate(games, start=1):
             numbers = sorted(int(number) for number in game.get("numbers", []))
@@ -6813,7 +6928,10 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                         or first_context.get("ml_verdict_reason")
                         or ""
                     ),
-                    "official_release_allowed": event_context.get("official_release_allowed"),
+                    "lot_operational_status": str(
+                        event_context.get("lot_operational_status") or first_context.get("lot_operational_status") or ""
+                    ),
+                    "official_release_allowed": is_analytical_history_eligible(event_context),
                 },
                 scientific_decision=scientific_decisions.get(str(merged_context.get("batch_id", "") or "").strip(), {}),
                 scientific_memory=scientific_memories.get(str(merged_context.get("batch_id", "") or "").strip(), {}),
@@ -7039,7 +7157,7 @@ def _load_institutional_timeline_light(limit: int = 25) -> list[dict[str, Any]]:
 def _load_analytical_timeline(limit: int = 30) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for entry in _load_generation_history(limit=limit):
-        if not bool(entry.get("official_release_allowed", True)):
+        if not is_analytical_history_eligible(entry):
             continue
         top_game = (entry.get("top_games") or [{}])[0] if entry.get("top_games") else {}
         top_numbers = " ".join(f"{number:02d}" for number in top_game.get("numbers", [])[:15]) if top_game else "-"
@@ -7159,7 +7277,7 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=25):
-        if not bool(generation.get("official_release_allowed", True)):
+        if not is_analytical_history_eligible({"lot_operational_status": generation.get("lot_operational_status"), "official_release_allowed": generation.get("official_release_allowed")}):
             continue
         if not bool(generation.get("is_active_reading", True)):
             continue
@@ -7178,7 +7296,7 @@ def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, A
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=limit):
-        if not bool(generation.get("official_release_allowed", True)):
+        if not is_analytical_history_eligible({"lot_operational_status": generation.get("lot_operational_status"), "official_release_allowed": generation.get("official_release_allowed")}):
             continue
         if not bool(generation.get("is_active_reading", True)):
             continue
@@ -11187,6 +11305,59 @@ def _validate_core_002_multidezena_persistence_allowed(
     }
 
 
+def _supersede_prior_lots_for_calibration(
+    *,
+    new_generation_event_id: int,
+    selected_card_format: int,
+    reason: str = "calibration_new_lot_generated",
+) -> int:
+    """Marca lotes anteriores não oficiais como superseded_by_calibration (M-OPS-062)."""
+    superseded = 0
+    target_format = int(selected_card_format or 15)
+    with get_session(DB_PATH) as session:
+        events = (
+            session.query(GenerationEvent)
+            .filter(GenerationEvent.id != int(new_generation_event_id))
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .limit(50)
+            .all()
+        )
+        for event in events:
+            context = dict(getattr(event, "context_json", {}) or {})
+            event_format = int(context.get("selected_card_format", context.get("card_format", 15)) or 15)
+            if event_format != target_format:
+                continue
+            if is_official_conference_eligible(context):
+                continue
+            context.update(supersede_status_update(superseded_by_event_id=int(new_generation_event_id), reason=reason))
+            event.context_json = context
+            superseded += 1
+        if superseded:
+            session.commit()
+    return superseded
+
+
+def _resolve_latest_official_conference_contest() -> dict[str, Any] | None:
+    """Último concurso oficial disponível no PostgreSQL (imported_contests)."""
+    records = _list_all_imported_contest_records()
+    if records:
+        latest = max(records, key=lambda row: int(row.get("contest_number", 0) or 0))
+        return to_conference_contest_payload(latest) or _normalize_contest_record(latest)
+    latest_official = get_latest_official_contest()
+    if latest_official:
+        return to_conference_contest_payload(latest_official) or _normalize_contest_record(latest_official)
+    return None
+
+
+def _load_official_conference_generation_groups() -> list[dict[str, Any]]:
+    """Grupos elegíveis para Conferir Resultados — apenas lotes oficializados/aprovados."""
+    return [
+        group
+        for group in _load_persisted_generation_event_groups(batch_id=None)
+        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
+    ]
+
+
 def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
@@ -11248,10 +11419,19 @@ def _persist_clean_law15_generation_history(
     )
     cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
     calibration_authorized = bool(cockpit_bundle.get("calibration_authorized"))
+    generation_origin = str(result.get("generation_origin") or GENERATION_ORIGIN_GENERATOR)
+    simulation_mode = bool(result.get("simulation_mode")) or generation_origin == GENERATION_ORIGIN_SIMULATION
     ml_verdict_payload = evaluate_batch_ml_verdict_from_games(
         formatted_games,
         calibration_applied=bool(ml_bundle.get("calibration_applied")),
         calibration_authorized=calibration_authorized,
+    )
+    lot_status_context = build_lot_status_context(
+        ml_verdict_payload=ml_verdict_payload,
+        generation_origin=generation_origin,
+        calibration_applied=bool(ml_bundle.get("calibration_applied")),
+        calibration_authorized=calibration_authorized,
+        simulation_mode=simulation_mode,
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])
@@ -11341,6 +11521,9 @@ def _persist_clean_law15_generation_history(
         "batch_status_counts": dict(ml_bundle.get("batch_status_counts") or {}),
         "action_taken": str(ml_bundle.get("action_taken") or ""),
         "cockpit_calibration_workflow": dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {}),
+        "generation_origin": str(result.get("generation_origin") or GENERATION_ORIGIN_GENERATOR),
+        "simulation_mode": bool(result.get("simulation_mode")),
+        "validation_flow": ["generated", "structural_coverage_evaluated", "ml_verdict_emitted"],
         "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
         "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
         "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
@@ -11350,7 +11533,11 @@ def _persist_clean_law15_generation_history(
         "officialization_status": str(ml_verdict_payload.get("officialization_status") or ""),
         "ml_verdict_trace": dict(ml_verdict_payload.get("trace") or {}),
         "ml_verdict_next_action": str(ml_verdict_payload.get("next_action") or ""),
-        "is_evaluated_non_official": not bool(ml_verdict_payload.get("official_release_allowed")),
+        "is_evaluated_non_official": not bool(lot_status_context.get("official_release_allowed")),
+        "lot_operational_status_mission_id": LOT_STATUS_MISSION_ID,
+        **lot_status_context,
+        "structural_validation_completed": True,
+        "structural_validation_at": datetime.now(UTC).isoformat(),
         "historical_deduplication_mode": str(result.get("historical_deduplication_mode", "AUDIT_ONLY") or "AUDIT_ONLY"),
         "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
@@ -11368,14 +11555,23 @@ def _persist_clean_law15_generation_history(
                 analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
             )
         )
+        new_event_id = int(persisted.get("generation_event_id", 0) or 0)
+        if new_event_id > 0 and (calibration_authorized or bool(ml_bundle.get("calibration_applied"))):
+            _supersede_prior_lots_for_calibration(
+                new_generation_event_id=new_event_id,
+                selected_card_format=int(selected_card_format),
+            )
         return {
             **persisted,
             "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
             "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
-            "official_release_allowed": bool(ml_verdict_payload.get("official_release_allowed")),
+            "official_release_allowed": bool(lot_status_context.get("official_release_allowed")),
             "official_release_label": str(ml_verdict_payload.get("official_release_label") or ""),
-            "ml_verdict_blocked": not bool(ml_verdict_payload.get("official_release_allowed")),
+            "ml_verdict_blocked": not bool(lot_status_context.get("official_release_allowed")),
             "ml_verdict_next_action": str(ml_verdict_payload.get("next_action") or ""),
+            "lot_operational_status": str(lot_status_context.get("lot_operational_status") or ""),
+            "generation_origin": generation_origin,
+            "simulation_mode": simulation_mode,
         }
     except RuntimeError as exc:
         return {
@@ -12290,235 +12486,75 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         reconciliation_runs=int(live_counts.get("reconciliation_runs", 0) or 0),
     )
     st.divider()
-    st.markdown("### Auditoria de lote persistido")
-    st.write("Compare jogos persistidos no PostgreSQL com o concurso oficial selecionado.")
-    status_cols = st.columns([1, 1, 1, 1])
-    status_cols[0].metric("imported_contests", int(live_counts.get("imported_contests", 0)))
-    status_cols[1].metric("generated_games", int(live_counts.get("generated_games", 0)))
-    status_cols[2].metric("reconciliation_runs", int(live_counts.get("reconciliation_runs", 0)))
-
-    generation_group_by_id = {
-        int(group.get("generation_event_id", 0) or 0): group
-        for group in active_generation_groups
-        if int(group.get("generation_event_id", 0) or 0) > 0
-    }
-    selectable_generation_ids = list(active_generation_event_ids)
-    latest_unreconciled_generation_id = _get_latest_unreconciled_generation_event_id(batch_id=None)
-    if "active_reconciliation_generation_event_id" not in st.session_state:
-        st.session_state["active_reconciliation_generation_event_id"] = (
-            latest_unreconciled_generation_id if latest_unreconciled_generation_id is not None else (selectable_generation_ids[0] if selectable_generation_ids else None)
-        )
-    active_generation_event_id = _safe_int(st.session_state.get("active_reconciliation_generation_event_id"), default=None)
-    if selectable_generation_ids:
-        selected_generation_index = selectable_generation_ids.index(active_generation_event_id) if active_generation_event_id in selectable_generation_ids else 0
-        selected_generation_event_id = st.selectbox(
-            "Selecionar geração para conferência",
-            options=selectable_generation_ids,
-            index=selected_generation_index,
-            help="Por padrão usamos a geração mais recente sem conferência.",
-        )
-        st.session_state["active_reconciliation_generation_event_id"] = int(selected_generation_event_id)
-    else:
-        selected_generation_event_id = None
-    selected_generation_group = generation_group_by_id.get(int(selected_generation_event_id or 0), {}) if selected_generation_event_id else {}
-    selected_batch_id = str(selected_generation_group.get("batch_id", "") or "").strip()
-    st.session_state["institutional_active_batch_id"] = selected_batch_id
-
-    live_counts_imported_contests = int(live_counts.get("imported_contests", 0))
-    try:
-        with _get_engine_cached().begin() as connection:
-            runtime_query_imported_contests = int(
-                connection.execute(text('SELECT COUNT(*) FROM "imported_contests"')).scalar() or 0
-            )
-        runtime_query_error = ""
-    except Exception as exc:  # pragma: no cover - surfaced in UI
-        runtime_query_imported_contests = None
-        runtime_query_error = str(exc)
-
-    latest_generation = _load_latest_generated_games() or {}
-    official_diagnostics = _load_official_history_diagnostics()
-    official_history_max = int(official_diagnostics.get("contest_number_max", 0) or 0)
-    contest_selection = build_imported_contests_selection_context(
-        list_imported_contest_records=_list_all_imported_contest_records,
-        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
-        official_history_max=official_history_max or None,
-    )
-    valid_contest_numbers = list(contest_selection.get("valid_contest_numbers") or [])
-    min_contest = int(contest_selection.get("min_contest", 0) or 0)
-    max_contest = int(contest_selection.get("max_contest", 0) or 0)
-    default_contest = int(contest_selection.get("default_contest", 0) or 0)
-    session_contest = _safe_int(st.session_state.get("conference_selected_contest"), default=None)
-    selected_contest, session_reset_message = sanitize_conference_session_contest(
-        session_contest=session_contest,
-        valid_contest_numbers=valid_contest_numbers,
-        default_contest=default_contest,
-    )
-    if session_reset_message:
-        st.warning(session_reset_message)
-    if contest_selection.get("sync_status") == "SYNC_DIVERGENCE":
-        st.warning(str(contest_selection.get("sync_message") or ""))
-    if contest_selection.get("history_divergence_message"):
-        st.warning(str(contest_selection.get("history_divergence_message") or ""))
-    if contest_selection.get("outlier_message"):
-        st.warning(str(contest_selection.get("outlier_message") or ""))
-    if valid_contest_numbers:
-        selected_contest = int(
-            st.selectbox(
-                "Escolha o Concurso",
-                options=valid_contest_numbers,
-                index=valid_contest_numbers.index(selected_contest) if selected_contest in valid_contest_numbers else len(valid_contest_numbers) - 1,
-                key="conference_selected_contest",
-                help=f"Fonte: {MONITORED_CONTEST_SOURCE_LABEL}",
-            )
-        )
-    else:
-        selected_contest = 0
-        st.caption("Escolha o Concurso: aguardando concursos válidos (15 dezenas) em imported_contests.")
-    selected_official = _get_conference_contest_from_imported(selected_contest) if selected_contest else None
-    if selected_official:
-        st.caption(
-            f"Concurso escolhido: {selected_official.get('concurso', '-')} | "
-            f"dezenas oficiais: {' '.join(f'{number:02d}' for number in selected_official.get('dezenas', []) or []) or '-'} | "
-            f"origem: {MONITORED_CONTEST_SOURCE_LABEL}"
-        )
-    elif selected_contest:
-        st.warning("Concurso não encontrado ou inválido em imported_contests (requer 15 dezenas).")
-    if max_contest:
-        st.caption(f"Último concurso disponível no banco: {max_contest} ({MONITORED_CONTEST_SOURCE_LABEL})")
+    st.markdown("### Conferência oficial")
     st.caption(
-        " | ".join(
-            [
-                f"Geração ativa: {selected_generation_event_id or '-'}",
-                f"gerações ativas: {', '.join(str(value) for value in active_generation_event_ids) if active_generation_event_ids else '-'}",
-                f"concurso escolhido: {selected_contest or '-'}",
-            ]
-        )
+        "Conferir Resultados = **último concurso oficial** × **todas as gerações aprovadas/oficializadas**. "
+        "Exibe apenas jogos com 11 pontos ou mais."
     )
-    contest_buttons = st.columns([0.48, 0.62, 0.66])
-    if contest_buttons[0].button("Conferir Resultados", type="primary", disabled=not bool(selected_official)):
-        _run_institutional_conference(
-            contest_number=selected_contest if selected_official else None,
-            generation_event_id=selected_generation_event_id,
-            batch_id=selected_batch_id or None,
+    official_groups = _load_official_conference_generation_groups()
+    official_generation_event_ids = sorted(
+        {
+            int(group.get("generation_event_id", 0) or 0)
+            for group in official_groups
+            if int(group.get("generation_event_id", 0) or 0) > 0
+        },
+        reverse=True,
+    )
+    latest_official_contest = _resolve_latest_official_conference_contest()
+    latest_contest_number = _safe_int((latest_official_contest or {}).get("concurso"), default=0) or 0
+    conf_cols = st.columns(4)
+    conf_cols[0].metric("Último concurso oficial", latest_contest_number or "-")
+    conf_cols[1].metric("Gerações oficializadas", len(official_generation_event_ids))
+    conf_cols[2].metric("Jogos elegíveis", sum(int(group.get("total_games", 0) or 0) for group in official_groups))
+    conf_cols[3].metric("Modo", "Oficial")
+    if latest_official_contest:
+        st.caption(
+            f"Concurso automático: {latest_contest_number} | dezenas: "
+            f"{' '.join(f'{number:02d}' for number in latest_official_contest.get('dezenas', []) or []) or '-'}"
         )
-        st.rerun()
-    if contest_buttons[1].button("Sincronizar resultado oficial agora", type="primary"):
-        with st.status("Importando resultado oficial da Caixa...", expanded=True) as sync_status:
-            sync_payload = _sync_latest_official_result_now()
-            st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
-            st.session_state["institutional_sync_status"] = str(sync_payload.get("status", "unknown"))
-            st.session_state["institutional_sync_error"] = str(sync_payload.get("sync_error") or sync_payload.get("error_message") or "")
-            st.session_state["institutional_sync_timestamp"] = str(sync_payload.get("sync_timestamp") or datetime.now(UTC).isoformat())
-            st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
-            st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
-            st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
-            latest_contest_record = _normalize_contest_record(sync_payload.get("latest_contest_record"))
-            st.session_state["institutional_imported_numbers"] = list(latest_contest_record.get("dezenas", [])) if latest_contest_record else list(sync_payload.get("imported_numbers", []) or [])
-            _persist_official_sync_diagnostics(
-                {
-                    "sync_status": st.session_state.get("institutional_sync_status", "-"),
-                    "sync_error": st.session_state.get("institutional_sync_error", ""),
-                    "sync_timestamp": st.session_state.get("institutional_sync_timestamp", ""),
-                    "http_status": st.session_state.get("institutional_sync_http_status", None),
-                    "request_url": st.session_state.get("institutional_sync_request_url", ""),
-                    "imported_contest": st.session_state.get("institutional_imported_contest", None),
-                    "imported_numbers": st.session_state.get("institutional_imported_numbers", []),
-                    "payload": sync_payload,
-                }
-            )
-            if sync_payload.get("status") == "ok":
-                sync_status.update(label=f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}", state="complete")
-            else:
-                sync_status.update(label="Falha ao importar resultado oficial", state="error")
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        if sync_payload.get("status") == "ok":
-            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
-        else:
-            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
-            if sync_payload.get("traceback"):
-                st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
-        st.json(sync_payload)
-        st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
-        time.sleep(1.3)
-        st.rerun()
-    if contest_buttons[2].button("Importar último resultado oficial", type="primary"):
-        with st.status("Sincronizando o último resultado oficial...", expanded=True) as sync_status:
-            sync_payload = _sync_latest_official_result_now()
-            st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
-            st.session_state["institutional_sync_status"] = str(sync_payload.get("status", "unknown"))
-            st.session_state["institutional_sync_error"] = str(sync_payload.get("sync_error") or sync_payload.get("error_message") or "")
-            st.session_state["institutional_sync_timestamp"] = str(sync_payload.get("sync_timestamp") or datetime.now(UTC).isoformat())
-            st.session_state["institutional_sync_http_status"] = sync_payload.get("http_status")
-            st.session_state["institutional_sync_request_url"] = str(sync_payload.get("request_url") or "")
-            st.session_state["institutional_imported_contest"] = sync_payload.get("latest_contest")
-            latest_contest_record = _normalize_contest_record(sync_payload.get("latest_contest_record"))
-            st.session_state["institutional_imported_numbers"] = list(latest_contest_record.get("dezenas", [])) if latest_contest_record else list(sync_payload.get("imported_numbers", []) or [])
-            _persist_official_sync_diagnostics(
-                {
-                    "sync_status": st.session_state.get("institutional_sync_status", "-"),
-                    "sync_error": st.session_state.get("institutional_sync_error", ""),
-                    "sync_timestamp": st.session_state.get("institutional_sync_timestamp", ""),
-                    "http_status": st.session_state.get("institutional_sync_http_status", None),
-                    "request_url": st.session_state.get("institutional_sync_request_url", ""),
-                    "imported_contest": st.session_state.get("institutional_imported_contest", None),
-                    "imported_numbers": st.session_state.get("institutional_imported_numbers", []),
-                    "payload": sync_payload,
-                }
-            )
-            if sync_payload.get("status") == "ok":
-                sync_status.update(label=f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}", state="complete")
-            else:
-                sync_status.update(label="Falha ao importar resultado oficial", state="error")
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        if sync_payload.get("status") == "ok":
-            st.success(f"Resultado oficial importado: {sync_payload.get('latest_contest', '-')}")
-        else:
-            st.error(f"Falha ao importar resultado oficial: {sync_payload.get('error_message', '-')}")
-            if sync_payload.get("traceback"):
-                st.exception(RuntimeError(sync_payload.get("error_message", "Falha na sincronização")))
-        st.json(sync_payload)
-        st.session_state["institutional_sync_last_payload"] = dict(sync_payload)
-        time.sleep(1.3)
-        st.rerun()
-    latest_contest_record = contest_selection.get("latest_record") or {}
-    if latest_contest_record:
-        contest_buttons[0].caption(
-            f"Último concurso: {int(latest_contest_record.get('contest_number', 0) or 0)} | "
-            f"dezenas: {' '.join(f'{number:02d}' for number in latest_contest_record.get('dezenas', []) or []) or '-'} | "
-            f"origem: {MONITORED_CONTEST_SOURCE_LABEL}"
-        )
-    elif latest_generation.get("target_contest"):
-        contest_buttons[0].caption(f"Último concurso: {latest_generation.get('target_contest')}")
     else:
-        contest_buttons[0].caption("Último concurso: -")
+        st.warning("Último concurso oficial indisponível em imported_contests.")
+    if official_generation_event_ids:
+        st.caption(
+            "Gerações aprovadas: "
+            + ", ".join(str(value) for value in official_generation_event_ids[:20])
+            + ("…" if len(official_generation_event_ids) > 20 else "")
+        )
+    else:
+        st.info("Nenhuma geração oficializada disponível para conferência.")
 
-    diagnostic_state = _load_official_sync_diagnostics()
-    if diagnostic_state:
-        st.markdown("#### Diagnóstico da sincronização")
-        diag_cols = st.columns(4)
-        diag_cols[0].metric("sync_status", diagnostic_state.get("sync_status", "-"))
-        diag_cols[1].metric("http_status", diagnostic_state.get("http_status", "-"))
-        diag_cols[2].metric("imported_contest", diagnostic_state.get("imported_contest", "-"))
-        diag_cols[3].metric("timestamp", diagnostic_state.get("sync_timestamp", "-"))
-        st.caption(f"request_url: {diagnostic_state.get('request_url', '-')}")
-        st.caption(f"request_headers: {json.dumps(diagnostic_state.get('request_headers', {}), ensure_ascii=False)}")
-        st.caption(f"response_headers: {json.dumps(diagnostic_state.get('response_headers', {}), ensure_ascii=False)}")
-        preview = str(diagnostic_state.get("response_preview") or "")
-        if preview:
-            st.text_area("response_preview", preview[:500], height=160)
-        if diagnostic_state.get("sync_error"):
-            st.error(diagnostic_state.get("sync_error"))
-        imported_numbers = diagnostic_state.get("imported_numbers") or []
-        if imported_numbers:
-            st.caption("dezenas importadas: " + " ".join(f"{int(number):02d}" for number in imported_numbers))
+    action_cols = st.columns([0.5, 0.5])
+    if action_cols[0].button(
+        "Conferir Resultados",
+        type="primary",
+        disabled=not bool(latest_official_contest and official_generation_event_ids),
+        key="conference_run_all_official",
+    ):
+        _run_institutional_conference(
+            contest_number=latest_contest_number if latest_contest_number > 0 else None,
+            conference_all_official=True,
+        )
+        st.rerun()
+    if action_cols[1].button("Sincronizar último resultado oficial", key="conference_sync_latest"):
+        sync_payload = _sync_latest_official_result_now()
+        st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        st.rerun()
 
-    check_result = st.session_state.get("institutional_check_result")
+    st.divider()
+    with st.expander("Diagnóstico técnico (imported_contests / sync)", expanded=False):
+        try:
+            with _get_engine_cached().begin() as connection:
+                runtime_query_imported_contests = int(
+                    connection.execute(text('SELECT COUNT(*) FROM "imported_contests"')).scalar() or 0
+                )
+            st.caption(f"imported_contests={runtime_query_imported_contests}")
+        except Exception as exc:
+            st.caption(f"imported_contests=indisponível ({exc})")
+        diagnostic_state = _load_official_sync_diagnostics()
+        if diagnostic_state:
+            st.json(diagnostic_state)
+
+        check_result = st.session_state.get("institutional_check_result")
     if isinstance(check_result, dict) and check_result.get("warning"):
         st.warning(check_result["warning"])
     if isinstance(check_result, dict):
@@ -12567,11 +12603,16 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             )
             if not hit_counts_df.empty:
                 st.dataframe(hit_counts_df, hide_index=True, use_container_width=True)
-            st.markdown("#### Por geração")
+            st.markdown("#### Resultado oficial (11+ pontos)")
             for item in generation_results:
                 title = f"Geração #{item.get('generation_event_id', '-')}"
+                premium_rows = [
+                    row
+                    for row in list(item.get("results") or [])
+                    if int(row.get("hits", 0) or 0) >= 11
+                ]
                 with st.expander(
-                    f"{title} | jogos={item.get('total_games', '-') } | best_hits={item.get('best_hits', '-')}",
+                    f"{title} | jogos 11+={len(premium_rows)} | best_hits={item.get('best_hits', '-')}",
                     expanded=False,
                 ):
                     gen_cols = st.columns(4)
@@ -12584,24 +12625,18 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                             {
                                 "jogo": row["game_index"],
                                 "formato_cartao": row.get("formato_cartao", "-"),
-                                "nucleo_lei_15": row.get("nucleo_lei_15", "-"),
-                                "reservas_auditadas": row.get("reservas_auditadas", "-"),
                                 "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
-                                "dezenas_conferidas_count": row.get("dezenas_conferidas_count", "-"),
-                                "origem_dezenas_conferencia": row.get("origem_dezenas_conferencia", "-"),
-                                "expected_card_size": row.get("expected_card_size", "-"),
-                                "actual_card_size": row.get("actual_card_size", "-"),
                                 "hits": row["hits"],
                                 "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
                                 "premiado": row["prize_status"],
                             }
-                            for row in item.get("results", []) or []
+                            for row in premium_rows
                         ]
                     )
                     if not generation_df.empty:
                         st.dataframe(generation_df, hide_index=True, use_container_width=True)
                     else:
-                        st.info("Nenhum jogo encontrado para esta geração.")
+                        st.info("Nenhum jogo com 11 pontos ou mais nesta geração.")
             diagnostics = check_result.get("diagnostics") or {}
             if diagnostics:
                 st.markdown("#### Diagnóstico temporário")
@@ -12841,11 +12876,47 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
     st.info(
-        "Session-only — cenário hipotético. Para governança walk-forward e backtesting "
-        "institucional read-only, use **Simulação Institucional / Backtesting**. "
-        "Para confronto oficial persistido, use **Conferir Resultados**."
+        "Laboratório/calibração — usa o **mesmo motor CORE_002 + ML supervisionada** do Gerador. "
+        "Lotes gerados aqui **não são oficializados** automaticamente. "
+        "Para conferência oficial persistida, use **Conferir Resultados**."
     )
-    st.write("Digite as dezenas sorteadas para comparar com os jogos persistidos.")
+    lab_cols = st.columns([1, 1, 1])
+    sim_quantity = int(lab_cols[0].number_input("Quantidade de jogos (lab)", min_value=1, max_value=100, value=20, key="sim_lab_quantity"))
+    sim_format = int(lab_cols[1].selectbox("Formato", options=list(range(15, 24)), index=0, key="sim_lab_format"))
+    if lab_cols[2].button("Gerar lote laboratório", type="primary", key="sim_lab_generate"):
+        lab_result = _run_simulation_lot_generation(requested_count=sim_quantity, selected_card_format=sim_format)
+        st.session_state["institutional_simulation_lab_result"] = lab_result
+        st.session_state["institutional_last_ui_event"] = "operacional:simular_geracao_lab"
+        st.rerun()
+    lab_result = dict(st.session_state.get("institutional_simulation_lab_result") or {})
+    if lab_result:
+        st.caption(
+            f"Lote laboratório | status={lab_result.get('lot_operational_status', 'not_officialized')} | "
+            f"veredito={lab_result.get('ml_verdict', '-')} | oficialização={'bloqueada' if lab_result.get('ml_verdict_blocked') else 'não aplicável'}"
+        )
+        if lab_result.get("display_games") or lab_result.get("games"):
+            if st.button("Comparar lote contra até 50 concursos", key="sim_lab_multicontest"):
+                games = list(lab_result.get("display_games") or lab_result.get("games") or [])
+                multicontest = _run_simulation_multicontest_lab(games=games, contests_limit=50)
+                st.session_state["institutional_simulation_multicontest"] = multicontest
+                st.rerun()
+    multicontest = dict(st.session_state.get("institutional_simulation_multicontest") or {})
+    if multicontest.get("contest_results"):
+        st.markdown("#### Comparação laboratorial (até 50 concursos)")
+        st.caption(f"Concursos comparados: {multicontest.get('contests_compared', 0)} | Jogos 11+: {len(multicontest.get('premium_rows') or [])}")
+        for contest_block in multicontest.get("contest_results") or []:
+            premium = [row for row in list(contest_block.get("results") or []) if int(row.get("hits", 0) or 0) >= 11]
+            if not premium:
+                continue
+            with st.expander(
+                f"Concurso {contest_block.get('contest_number')} | best_hits={contest_block.get('best_hits')} | 11+={contest_block.get('premium_games')}",
+                expanded=False,
+            ):
+                st.dataframe(pd.DataFrame(premium), hide_index=True, use_container_width=True)
+
+    st.divider()
+    st.markdown("#### Simulação manual (session-only)")
+    st.write("Digite 15 dezenas para comparar com lote laboratorial recente.")
     status_cols = st.columns([1, 1, 1, 1])
     status_cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
     status_cols[1].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))

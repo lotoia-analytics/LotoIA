@@ -66,9 +66,9 @@ def test_simulation_backtesting_module_is_read_only_without_generation_or_purge(
 
 def test_simulation_page_references_institutional_backtesting_separation() -> None:
     source = inspect.getsource(institutional_app._render_simulation_page)
-    assert "Simulação Institucional / Backtesting" in source
+    assert "CORE_002 + ML" in source
     assert "Conferir Resultados" in source
-    assert "Session-only" in source
+    assert "_run_simulation_lot_generation" in source
 
 
 def test_institutional_simulation_backtesting_route_redirects_to_simulation() -> None:

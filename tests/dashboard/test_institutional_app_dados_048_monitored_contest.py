@@ -160,8 +160,10 @@ def test_operator_expected_contest_comes_from_env_not_hardcode(
 
 def test_conference_page_uses_imported_contests_not_official_history_max() -> None:
     source = inspect.getsource(institutional_app._render_conference_page)
-    assert "build_imported_contests_selection_context" in source
-    assert "_get_conference_contest_from_imported" in source
+    assert "_resolve_latest_official_conference_contest" in source
+    assert "_list_all_imported_contest_records" in inspect.getsource(
+        institutional_app._resolve_latest_official_conference_contest
+    )
     assert "get_latest_official_contest()" not in source
     assert "get_official_contest(selected_contest)" not in source
     assert "5000" not in source
