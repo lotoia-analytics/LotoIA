@@ -137,6 +137,7 @@ from dashboard.institutional_controlled_cleanup import render_restricted_control
 from dashboard.institutional_monitored_contest import (
     SOVEREIGN_SOURCE_LABEL as MONITORED_CONTEST_SOURCE_LABEL,
     build_imported_contests_selection_context,
+    is_valid_lotofacil_contest_record,
     sanitize_conference_session_contest,
     to_conference_contest_payload,
     validate_expected_contest_numbers,
@@ -6248,6 +6249,20 @@ def _load_persisted_generation_event_groups(
     return groups
 
 
+def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
+    """Concurso oficial válido para conferência (M-OPS-062-FIX-03 / Lei 001).
+
+    Exige número de concurso > 0 e exatamente 15 dezenas oficiais persistidas.
+    Bloqueia concurso 0, concurso nulo, dezenas vazias e dezenas incompletas/fake.
+    """
+    if not isinstance(contest, dict):
+        return False
+    number = _safe_int(contest.get("concurso", contest.get("contest_number")), default=None)
+    if number is None or number <= 0:
+        return False
+    return is_valid_lotofacil_contest_record(contest)
+
+
 def _run_institutional_conference(
     contest_number: int | None = None,
     generation_event_id: int | None = None,
@@ -6266,28 +6281,20 @@ def _run_institutional_conference(
         if auto_contest is not None:
             selected_contest = _safe_int(auto_contest.get("concurso"), default=selected_contest)
     official_contest = _get_conference_contest_from_imported(selected_contest)
-    if official_contest is None:
+    if not _is_valid_conference_contest(official_contest):
         official_contest = _load_official_history_contest(selected_contest)
-    if official_contest is None:
-        imported_fallback = _load_imported_contest(selected_contest)
-        fallback_contest = to_conference_contest_payload(imported_fallback) or _normalize_contest_record(imported_fallback)
-        if fallback_contest is not None and not fallback_contest.get("dezenas"):
-            fallback_contest["dezenas"] = _extract_int_numbers(
-                imported_fallback.get("numbers", imported_fallback.get("dezenas", [])) if isinstance(imported_fallback, dict) else []
-            )
-        if fallback_contest is not None:
-            official_contest = fallback_contest
-            st.session_state["institutional_check_result"] = {
-                "status": "fallback_imported_contest",
-                "warning": "Concurso inválido ou incompleto em imported_contests.",
-                "selected_contest": int(selected_contest or 0),
-            }
-        else:
-            st.session_state["institutional_check_result"] = {
-                "status": "waiting_contest",
-                "warning": "Concurso não encontrado em imported_contests. Escolha um concurso válido persistido.",
-            }
-            return
+    if not _is_valid_conference_contest(official_contest):
+        # Lei 001 / M-OPS-062-FIX-03: sem concurso oficial válido a conferência é
+        # bloqueada — nunca usa fallback fake/incompleto nem dezenas parciais.
+        st.session_state["institutional_check_result"] = {
+            "status": "waiting_contest",
+            "warning": (
+                "Nenhum concurso oficial válido encontrado no PostgreSQL. "
+                "Sincronize o último resultado oficial da Caixa."
+            ),
+            "selected_contest": int(selected_contest or 0),
+        }
+        return
     all_persisted_groups = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
     grouped_generations = [
         group
@@ -11427,15 +11434,22 @@ def _supersede_prior_lots_for_calibration(
 
 
 def _resolve_latest_official_conference_contest() -> dict[str, Any] | None:
-    """Último concurso oficial disponível no PostgreSQL (imported_contests)."""
-    records = _list_all_imported_contest_records()
-    if records:
-        latest = max(records, key=lambda row: int(row.get("contest_number", 0) or 0))
-        return to_conference_contest_payload(latest) or _normalize_contest_record(latest)
-    latest_official = get_latest_official_contest()
-    if latest_official:
-        return to_conference_contest_payload(latest_official) or _normalize_contest_record(latest_official)
-    return None
+    """Último concurso OFICIAL VÁLIDO em imported_contests (PostgreSQL — Lei 001).
+
+    Válido = contest_number > 0 e exatamente 15 dezenas oficiais persistidas
+    (M-OPS-062-FIX-03). Não usa fallback fake/incompleto, não usa normalização
+    parcial de registro e não usa session_state/cache como verdade. Retorna
+    ``None`` quando não há concurso válido — a tela deve bloquear a conferência
+    e orientar a sincronização.
+    """
+    valid_payloads = [
+        payload
+        for record in _list_all_imported_contest_records()
+        if (payload := to_conference_contest_payload(record)) is not None
+    ]
+    if not valid_payloads:
+        return None
+    return max(valid_payloads, key=lambda payload: int(payload.get("contest_number", 0) or 0))
 
 
 def _load_official_conference_generation_groups() -> list[dict[str, Any]]:
@@ -12550,6 +12564,32 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         st.caption("Último concurso: -")
 
 
+def _render_official_sync_feedback() -> None:
+    """Mensagem clara de sucesso/falha da última sincronização oficial (M-OPS-062-FIX-03)."""
+    summary = st.session_state.get("institutional_last_official_sync_summary")
+    if not isinstance(summary, dict) or not summary:
+        return
+    status = str(summary.get("status") or "").lower()
+    if status == "ok":
+        synced = int(summary.get("synced_contests_count", 0) or 0)
+        persisted = int(summary.get("persisted_contests", 0) or 0)
+        latest_record = _normalize_contest_record(summary.get("latest_contest_record"))
+        latest_number = int(
+            (latest_record or {}).get("contest_number", summary.get("latest_contest", 0) or 0) or 0
+        )
+        st.success(
+            "Sincronização concluída com sucesso — "
+            f"{synced} concurso(s) sincronizado(s), {persisted} persistido(s)/atualizado(s) "
+            "em imported_contests (PostgreSQL). Último concurso oficial: "
+            f"{latest_number if latest_number > 0 else '-'}."
+        )
+    else:
+        st.error(
+            "Falha ao sincronizar o último resultado oficial da Caixa: "
+            f"{summary.get('error_message') or summary.get('sync_error') or 'erro desconhecido'}."
+        )
+
+
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
@@ -12591,18 +12631,26 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     )
     latest_official_contest = _resolve_latest_official_conference_contest()
     latest_contest_number = _safe_int((latest_official_contest or {}).get("concurso"), default=0) or 0
+    has_valid_official_contest = bool(latest_official_contest) and latest_contest_number > 0
     conf_cols = st.columns(4)
-    conf_cols[0].metric("Último concurso oficial", latest_contest_number or "-")
+    conf_cols[0].metric("Último concurso oficial", latest_contest_number if has_valid_official_contest else "-")
     conf_cols[1].metric("Gerações oficializadas", len(official_generation_event_ids))
     conf_cols[2].metric("Jogos elegíveis", sum(int(group.get("total_games", 0) or 0) for group in official_groups))
     conf_cols[3].metric("Modo", "Oficial")
-    if latest_official_contest:
+    if has_valid_official_contest:
         st.caption(
-            f"Concurso automático: {latest_contest_number} | dezenas: "
+            f"Concurso oficial: {latest_contest_number} | data: "
+            f"{latest_official_contest.get('data') or '-'} | origem: PostgreSQL / imported_contests"
+        )
+        st.caption(
+            "Dezenas oficiais: "
             f"{' '.join(f'{number:02d}' for number in latest_official_contest.get('dezenas', []) or []) or '-'}"
         )
     else:
-        st.warning("Último concurso oficial indisponível em imported_contests.")
+        st.warning(
+            "Nenhum concurso oficial válido encontrado no PostgreSQL. "
+            "Sincronize o último resultado oficial da Caixa."
+        )
     if official_generation_event_ids:
         st.caption(
             "Gerações aprovadas: "
@@ -12612,11 +12660,17 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     else:
         st.info("Nenhuma geração oficializada disponível para conferência.")
 
+    if not has_valid_official_contest:
+        st.info(
+            "Conferência bloqueada: nenhum concurso oficial válido em imported_contests. "
+            "Use **Sincronizar último resultado oficial** para buscar e persistir o resultado da Caixa."
+        )
+
     action_cols = st.columns([0.5, 0.5])
     if action_cols[0].button(
         "Conferir Resultados",
         type="primary",
-        disabled=not bool(latest_official_contest and official_generation_event_ids),
+        disabled=not bool(has_valid_official_contest and official_generation_event_ids),
         key="conference_run_all_official",
     ):
         _run_institutional_conference(
@@ -12628,6 +12682,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         sync_payload = _sync_latest_official_result_now()
         st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
         st.rerun()
+
+    _render_official_sync_feedback()
 
     st.divider()
     with st.expander("Diagnóstico técnico (imported_contests / sync)", expanded=False):
@@ -12777,8 +12833,11 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
     elif isinstance(check_result, dict) and check_result.get("status") == "checked":
         st.info("Conferência executada, mas nenhum resultado foi renderizado.")
-    elif not latest_contest_record:
-        st.info("Último concurso ainda não veio do banco. Use a sincronização oficial quando disponível.")
+    elif not has_valid_official_contest:
+        st.info(
+            "Nenhum concurso oficial válido encontrado no PostgreSQL. "
+            "Sincronize o último resultado oficial da Caixa."
+        )
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
