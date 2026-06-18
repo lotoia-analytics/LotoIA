@@ -1,9 +1,4 @@
-"""M-ML-VIS-058-FIX-03 — Central ML sem expander aninhado.
-
-Garante que _render_central_ml_observational_alerts não usa st.expander
-(quando chamada dentro do expander observacional da página) e que a auditoria
-de lotes excluídos permanece acessível via seção markdown.
-"""
+"""M-ML-VIS-058-FIX-03 — Central ML sem expander aninhado."""
 
 from __future__ import annotations
 
@@ -51,35 +46,53 @@ def _nested_expander_functions(source: str) -> list[str]:
     return sorted(set(offenders))
 
 
-CENTRAL_ML_SOURCES = (
-    inspect.getsource(institutional_app._render_central_ml_diagnostics_page),
-    inspect.getsource(institutional_app._render_central_ml_observational_alerts),
-    inspect.getsource(institutional_app._render_central_ml_observational_history),
-    inspect.getsource(cockpit._render_technical_expanders),
-    inspect.getsource(cockpit.render_ml_calibration_cockpit),
+CENTRAL_ML_CALLEES_INSIDE_EXPANDERS = (
+    "_render_central_ml_observational_alerts",
+    "_render_central_ml_observational_history",
+    "render_ml_assistive_governance_section",
 )
-
-
-def test_central_ml_functions_have_no_intra_function_nested_expanders() -> None:
-    for source in CENTRAL_ML_SOURCES:
-        assert _nested_expander_functions(source) == []
 
 
 def test_observational_alerts_has_no_expander() -> None:
     source = inspect.getsource(institutional_app._render_central_ml_observational_alerts)
-    assert "st.expander" not in source
+    assert "st.expander(" not in source
 
 
-def test_observational_alerts_keeps_excluded_batches_audit_section() -> None:
-    source = inspect.getsource(institutional_app._render_central_ml_observational_alerts)
-    assert "Lotes excluídos da leitura ativa — auditoria técnica" in source
-    assert "excluded_batches_audit" in source
+def test_excluded_batches_audit_uses_inline_section() -> None:
+    source = inspect.getsource(institutional_app._render_excluded_batches_audit_inline)
+    assert "EXCLUDED_BATCHES_AUDIT_SECTION_TITLE" in source
+    assert institutional_app.EXCLUDED_BATCHES_AUDIT_SECTION_TITLE.endswith("auditoria técnica")
+    assert "st.expander(" not in source
+    assert "st.markdown" in source
+    assert "st.dataframe" in source
 
 
-def test_central_ml_page_wraps_observational_in_sibling_expander() -> None:
-    source = inspect.getsource(institutional_app._render_central_ml_diagnostics_page)
-    assert 'st.expander("Diagnóstico ML observacional (alertas vazamento lateral)"' in source
-    assert "_render_central_ml_observational_alerts" in source
+def test_central_ml_expanders_do_not_call_nested_expanders() -> None:
+    page_source = inspect.getsource(institutional_app._render_central_ml_diagnostics_page)
+    assert "Diagnóstico ML observacional (alertas vazamento lateral)" in page_source
+    for callee in CENTRAL_ML_CALLEES_INSIDE_EXPANDERS:
+        assert callee in page_source
+        if callee.startswith("_render_"):
+            fn = getattr(institutional_app, callee)
+        else:
+            from dashboard import institutional_ml_assistive
+
+            fn = getattr(institutional_ml_assistive, callee)
+        callee_source = inspect.getsource(fn)
+        assert "st.expander" not in callee_source, callee
+
+
+def test_central_ml_page_has_no_nested_expanders_in_source() -> None:
+    sources = [
+        inspect.getsource(institutional_app._render_central_ml_diagnostics_page),
+        inspect.getsource(institutional_app._render_central_ml_observational_alerts),
+        inspect.getsource(institutional_app._render_central_ml_observational_history),
+        inspect.getsource(institutional_app._render_excluded_batches_audit_inline),
+        inspect.getsource(cockpit._render_technical_expanders),
+        inspect.getsource(cockpit.render_ml_calibration_cockpit),
+    ]
+    for source in sources:
+        assert _nested_expander_functions(source) == []
 
 
 def test_central_ml_page_still_uses_cockpit() -> None:
@@ -91,4 +104,5 @@ def test_build_marker_bumped_for_fix03() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
     assert BUILD_MARKER == "institutional-adm-runtime-v50"
+    assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
     assert "institutional-adm-runtime-v49" in DEPRECATED_BUILD_MARKERS
