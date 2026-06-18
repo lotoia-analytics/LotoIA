@@ -41,6 +41,13 @@ _PLACEHOLDER_MARKERS: tuple[str, ...] = (
     "changeme",
 )
 
+_CURSOR_PLACEHOLDER_HOSTS: frozenset[str] = frozenset(
+    {
+        "cursor.com",
+        "www.cursor.com",
+    }
+)
+
 
 def is_placeholder_database_url(url: str) -> bool:
     lowered = normalize_database_url(url).lower()
@@ -52,6 +59,8 @@ def is_placeholder_database_url(url: str) -> bool:
         return True
     parsed = urlparse(lowered)
     host = (parsed.hostname or "").lower()
+    if host in _CURSOR_PLACEHOLDER_HOSTS:
+        return True
     username = (parsed.username or "").lower()
     password = (parsed.password or "").lower()
     if host == "host" and username == "user" and password == "pass":
@@ -128,3 +137,43 @@ def database_url_resolution_issue(url: str, *, source: str = "") -> str | None:
     if not is_postgresql_database_url(url):
         return f"{source or 'DATABASE_URL'} deve ser PostgreSQL (scheme atual inválido)"
     return None
+
+
+def mask_database_url(database_url: str) -> str:
+    text = normalize_database_url(database_url)
+    if not text or "@" not in text:
+        return text or "-"
+    scheme, remainder = text.split("://", maxsplit=1) if "://" in text else ("", text)
+    credentials, host_part = remainder.split("@", maxsplit=1)
+    username = credentials.split(":", maxsplit=1)[0] if ":" in credentials else "***"
+    prefix = f"{scheme}://" if scheme else ""
+    return f"{prefix}{username}:***@{host_part}"
+
+
+def audit_database_env_from_os() -> dict[str, object]:
+    present: dict[str, bool] = {}
+    misconfigured: list[str] = []
+    resolved_url, resolved_source = resolve_institutional_database_url_from_env()
+
+    for env_name in (*PRIMARY_DATABASE_ENV_VARS, COMPAT_DATABASE_PUBLIC_URL_ENV):
+        value = _read_env_value(env_name)
+        present[env_name] = bool(value)
+        if value and (
+            is_invalid_database_url_literal(value)
+            or is_placeholder_database_url(value)
+            or not is_postgresql_database_url(value)
+        ):
+            misconfigured.append(env_name)
+
+    sovereign_sources = {"DATABASE_URL", "LOTOIA_DATABASE_URL", "STREAMLIT_DATABASE_URL"}
+    return {
+        "present": present,
+        "misconfigured": misconfigured,
+        "resolved_source": resolved_source or None,
+        "resolved_url_masked": mask_database_url(resolved_url) if resolved_url else None,
+        "compat_fallback_active": resolved_source == COMPAT_DATABASE_PUBLIC_URL_ENV,
+        "sovereign_database_url_active": resolved_source in sovereign_sources,
+        "status": "PASS"
+        if resolved_url and resolved_source in sovereign_sources
+        else ("WARN" if resolved_url else "FAIL"),
+    }
