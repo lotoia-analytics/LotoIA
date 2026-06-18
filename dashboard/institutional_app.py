@@ -21,7 +21,7 @@ from collections import Counter
 from functools import lru_cache
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -8485,18 +8485,30 @@ def _render_structural_coverage_ranking_tables(
 
 
 
+EXCLUDED_BATCHES_AUDIT_SECTION_TITLE = "Lotes excluídos da leitura ativa — auditoria técnica"
+
+
+def _render_excluded_batches_audit_inline(payload: Mapping[str, Any]) -> None:
+    """Auditoria de lotes excluídos — seção interna sem st.expander (M-ML-VIS-058-FIX-03)."""
+    excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
+    if excluded_count <= 0:
+        return
+    st.warning(
+        str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa.")
+    )
+    audit_rows = list(payload.get("excluded_batches_audit") or [])
+    if not audit_rows:
+        return
+    st.markdown(f"#### {EXCLUDED_BATCHES_AUDIT_SECTION_TITLE}")
+    st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+
+
 def _render_central_ml_observational_alerts(snapshot: dict[str, Any]) -> None:
     """Conteúdo observacional — sem expander (wrapper fica na página)."""
     _render_diagnostic_observational_caption()
     payload = build_central_ml_diagnostics_payload(DB_PATH)
     _render_ml_diagnostic_source_caption(payload)
-    excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
-    if excluded_count > 0:
-        st.warning(str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
-        with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
-            audit_rows = list(payload.get("excluded_batches_audit") or [])
-            if audit_rows:
-                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+    _render_excluded_batches_audit_inline(payload)
     header_cols = st.columns(3)
     header_cols[0].metric("Alertas ativos", int(payload.get("total_alertas_ativos", 0) or 0))
     header_cols[1].metric("Última atualização", str(payload.get("ultima_atualizacao", ""))[:19])

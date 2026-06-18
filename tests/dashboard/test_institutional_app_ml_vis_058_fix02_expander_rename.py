@@ -75,5 +75,5 @@ def test_traceability_sources_preserved() -> None:
 def test_build_marker_bumped() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v49"
+    assert BUILD_MARKER == "institutional-adm-runtime-v50"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
