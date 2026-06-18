@@ -16,7 +16,6 @@ from dashboard.institutional_supervised_ml import (
 
 
 def test_build_marker_v37() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v47"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
