@@ -162,6 +162,7 @@ from dashboard.institutional_supervised_ml import (
     is_adm_supervised_ml_active,
     is_supervised_output_calibration_active,
     resolve_adm_ml_enabled,
+    resolve_authorized_calibration_plan,
     resolve_institutional_ml_status_line,
     resolve_recalibration_display_status,
     supervised_ml_status_label,
@@ -715,6 +716,7 @@ def _invoke_sovereign_adm_generate_best_games(
     pool_size: int | None = None,
     seed: int | None = None,
     ml_enabled: bool | None = None,
+    calibration_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Único path preparado para geração ADM Lei 15 (LEI15_CORE_002 / ADR-047)."""
     resolved_label = _resolve_adm_sovereign_batch_label(batch_label or SOVEREIGN_BATCH_LABEL)
@@ -723,6 +725,10 @@ def _invoke_sovereign_adm_generate_best_games(
         requested_count=requested_count,
         pool_size=pool_size,
     )
+    authorized_plan = calibration_plan
+    if authorized_plan is None:
+        cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
+        authorized_plan = resolve_authorized_calibration_plan(cockpit_bundle)
     from lotoia.generator.basic_generator import generate_best_games
 
     payload = dict(
@@ -732,10 +738,13 @@ def _invoke_sovereign_adm_generate_best_games(
             batch_label=resolved_label,
             ml_enabled=effective_ml,
             seed=seed,
+            calibration_plan=authorized_plan,
         )
     )
     payload["ml_enabled"] = effective_ml
     payload["analysis_batch_label"] = resolved_label
+    if authorized_plan:
+        payload["authorized_calibration_plan"] = authorized_plan
     return payload
 
 

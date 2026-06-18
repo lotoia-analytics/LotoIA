@@ -12,6 +12,7 @@ from lotoia.observability.card_structure_diagnostics import (
 )
 
 MISSION_ID = "M-ML-VIS-058"
+FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 SCOPE_RECENT_OFFICIAL = "recent_official_generations"
 DEFAULT_EVENTS_LIMIT = 10
 
@@ -62,13 +63,18 @@ def _extract_metrics_from_structural_payload(payload: Mapping[str, Any]) -> dict
     suffix_freq = _safe_int(suffix_top.get("frequencia"))
     total_jogos = max(1, _safe_int(summary.get("total_jogos")))
 
-    subcovered = len(list(redundancy.get("dezenas_fora_em_muitos_jogos") or []))
+    subcovered_rows = list(redundancy.get("dezenas_fora_em_muitos_jogos") or [])
+    subcovered = len(subcovered_rows)
+    subcovered_list = [
+        str(row.get("dezena") or "")
+        for row in subcovered_rows
+        if isinstance(row, Mapping) and row.get("dezena")
+    ]
     excessive = len(list(redundancy.get("ausencias_recorrentes_no_GP") or []))
 
-    prefix_suffix_viciados = (
-        prefix_freq >= max(3, int(total_jogos * 0.14))
-        or suffix_freq >= max(3, int(total_jogos * 0.14))
-    )
+    prefix_viciado = prefix_freq >= max(3, int(total_jogos * 0.14))
+    suffix_viciado = suffix_freq >= max(3, int(total_jogos * 0.14))
+    prefix_suffix_viciados = prefix_viciado or suffix_viciado
 
     hits_13 = len(list(travamento.get("jogos_com_13_hits") or []))
     hits_14 = len(list(travamento.get("jogos_com_14_hits") or []))
@@ -81,9 +87,12 @@ def _extract_metrics_from_structural_payload(payload: Mapping[str, Any]) -> dict
         "quase_repetidos": quase_repetidos,
         "redundancia_geral": "alta" if quase_repetidos >= NEAR_DUP_HIGH_THRESHOLD or similaridade >= SIMILARITY_HIGH_THRESHOLD else "normal",
         "prefixos_sufixos_viciados": prefix_suffix_viciados,
+        "prefixo_viciado": prefix_viciado,
+        "sufixo_viciado": suffix_viciado,
         "prefixo_mais_gerado": str(prefix_top.get("estrutura") or "—"),
         "sufixo_mais_gerado": str(suffix_top.get("estrutura") or "—"),
         "dezenas_subcobertas": subcovered,
+        "dezenas_subcobertas_list": subcovered_list,
         "dezenas_excessivas": excessive,
         "diversidade_global": "baixa" if diversity_score < DIVERSITY_LOW_THRESHOLD else "adequada",
         "diversity_score": diversity_score,
@@ -155,6 +164,138 @@ def _build_decision_block(
         "status": "detectado",
         "parametros_sugeridos": dict(parametros_sugeridos or {}),
         "trace": {"mission_id": MISSION_ID, "issue_type": issue_type, "severidade": severidade},
+    }
+
+
+def build_calibration_plan(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """Transforma métricas estruturais em plano operacional de calibração (M-ML-VIS-058-FIX-01)."""
+    m = dict(metrics)
+    plan_items: list[str] = []
+    impact_items: list[str] = []
+    parametros_sugeridos: dict[str, Any] = {}
+
+    similaridade = _safe_float(m.get("similaridade_media"))
+    sobreposicao_max = _safe_int(m.get("sobreposicao_maxima"))
+    quase_repetidos = _safe_int(m.get("quase_repetidos"))
+    diversity_score = _safe_float(m.get("diversity_score"))
+    subcovered = _safe_int(m.get("dezenas_subcobertas"))
+    subcovered_list = [
+        str(value)
+        for value in list(m.get("dezenas_subcobertas_list") or [])
+        if str(value).strip()
+    ]
+    prefix = str(m.get("prefixo_mais_gerado") or "—")
+    suffix = str(m.get("sufixo_mais_gerado") or "—")
+    prefix_viciado = bool(m.get("prefixo_viciado") or m.get("prefixos_sufixos_viciados"))
+    suffix_viciado = bool(m.get("sufixo_viciado") or m.get("prefixos_sufixos_viciados"))
+    game_size = 15
+
+    if similaridade >= SIMILARITY_HIGH_THRESHOLD:
+        plan_items.append("Aumentar penalidade de similaridade/overlap.")
+        impact_items.append("Reduzir jogos parecidos.")
+        parametros_sugeridos["redundancy_penalty_boost"] = max(
+            _safe_float(parametros_sugeridos.get("redundancy_penalty_boost"), 1.0),
+            1.2,
+        )
+
+    if sobreposicao_max >= max(MAX_OVERLAP_HIGH_DEFAULT, game_size - 2):
+        plan_items.append("Reduzir sobreposição máxima entre cartões.")
+        impact_items.append("Diminuir pares com overlap excessivo.")
+        parametros_sugeridos["max_overlap_penalty"] = max(
+            _safe_float(parametros_sugeridos.get("max_overlap_penalty"), 1.0),
+            1.15,
+        )
+
+    if quase_repetidos >= NEAR_DUP_HIGH_THRESHOLD:
+        plan_items.append("Penalizar clones estruturais e quase repetidos.")
+        impact_items.append("Diminuir quase repetidos.")
+        parametros_sugeridos["near_duplicate_penalty"] = max(
+            _safe_float(parametros_sugeridos.get("near_duplicate_penalty"), 1.0),
+            1.25,
+        )
+
+    if prefix_viciado and prefix not in {"—", ""}:
+        plan_items.append(f"Penalizar prefixo viciado {prefix}.")
+        impact_items.append("Reduzir vício de prefixo/sufixo.")
+        parametros_sugeridos["prefix_penalty"] = max(
+            _safe_float(parametros_sugeridos.get("prefix_penalty"), 1.0),
+            1.1,
+        )
+        parametros_sugeridos["prefixo_alvo"] = prefix
+
+    if suffix_viciado and suffix not in {"—", ""}:
+        plan_items.append(f"Penalizar sufixo viciado {suffix}.")
+        if "Reduzir vício de prefixo/sufixo." not in impact_items:
+            impact_items.append("Reduzir vício de prefixo/sufixo.")
+        parametros_sugeridos["suffix_penalty"] = max(
+            _safe_float(parametros_sugeridos.get("suffix_penalty"), 1.0),
+            1.1,
+        )
+        parametros_sugeridos["sufixo_alvo"] = suffix
+
+    if subcovered > 0 or "dezena_subcoberta" in set(m.get("issue_types") or []):
+        dezenas_label = ", ".join(subcovered_list[:12]) if subcovered_list else f"{subcovered} dezena(s)"
+        plan_items.append(
+            "Reforçar dezenas subcobertas identificadas pela Cobertura Estrutural "
+            f"({dezenas_label})."
+        )
+        impact_items.append("Melhorar distribuição das dezenas.")
+        impact_items.append("Aumentar cobertura estrutural.")
+        parametros_sugeridos["missing_numbers_boost"] = max(
+            _safe_float(parametros_sugeridos.get("missing_numbers_boost"), 1.0),
+            1.2,
+        )
+        parametros_sugeridos["critical_coverage_boost"] = max(
+            _safe_float(parametros_sugeridos.get("critical_coverage_boost"), 1.0),
+            1.1,
+        )
+        if subcovered_list:
+            parametros_sugeridos["dezenas_subcobertas"] = subcovered_list
+
+    if diversity_score < DIVERSITY_LOW_THRESHOLD:
+        plan_items.append("Elevar diversidade mínima da saída e redistribuir padrões estruturais.")
+        impact_items.append("Preparar próxima geração com maior diversidade e menor redundância.")
+        parametros_sugeridos["diversity_floor_boost"] = max(
+            _safe_float(parametros_sugeridos.get("diversity_floor_boost"), 1.0),
+            1.2,
+        )
+
+    hits_13 = _safe_int(m.get("desempenho_13_hits"))
+    hits_14 = _safe_int(m.get("desempenho_14_hits"))
+    if hits_13 == 0 and hits_14 == 0 and _safe_int(m.get("total_jogos")) >= 5:
+        combo = (
+            "Combinar elevação de diversidade, reforço de dezenas subcobertas "
+            "e redução de redundância para captura 13/14."
+        )
+        if combo not in plan_items:
+            plan_items.append(combo)
+        impact_items.append("Melhorar leitura das 6 bases.")
+        parametros_sugeridos.setdefault("diversity_floor_boost", 1.1)
+        parametros_sugeridos.setdefault("missing_numbers_boost", 1.1)
+        parametros_sugeridos.setdefault("redundancy_penalty_boost", 1.1)
+
+    if plan_items:
+        rerank_action = "Reranquear candidatos antes da persistência oficial."
+        if rerank_action not in plan_items:
+            plan_items.append(rerank_action)
+        parametros_sugeridos["rerank_before_persist"] = True
+
+    # Impacto transversal quando há plano estrutural
+    if plan_items:
+        for item in (
+            "Melhorar leitura das 6 bases.",
+            "Preparar próxima geração com maior diversidade e menor redundância.",
+        ):
+            if item not in impact_items:
+                impact_items.append(item)
+
+    return {
+        "mission_id": FIX01_MISSION_ID,
+        "plan_items": plan_items,
+        "impact_items": impact_items,
+        "parametros_sugeridos": parametros_sugeridos,
+        "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
+        "has_plan": bool(plan_items),
     }
 
 
@@ -312,7 +453,13 @@ def interpret_coverage_evidence(
         )
 
     primary = blocks[0] if blocks else None
-    recommendations = [str(block.get("acao_recomendada") or "") for block in blocks if block.get("acao_recomendada")]
+    calibration_plan = build_calibration_plan(m)
+    plan_items = list(calibration_plan.get("plan_items") or [])
+    recommendations = plan_items if plan_items else [
+        str(block.get("acao_recomendada") or "")
+        for block in blocks
+        if block.get("issue_type") != "calibracao_pendente" and block.get("acao_recomendada")
+    ]
     if not recommendations and not calibration_applied:
         recommendations = [
             "Calibração pendente — autorizar após revisar evidências da Cobertura Estrutural."
@@ -322,11 +469,20 @@ def interpret_coverage_evidence(
             "Calibração aplicada — validar diversidade e cobertura na próxima geração."
         ]
 
+    impacto_detalhado = list(calibration_plan.get("impact_items") or [])
+    if not impacto_detalhado and primary:
+        impacto_detalhado = [str(primary.get("impacto_esperado") or "")]
+
     return {
         "mission_id": MISSION_ID,
+        "fix_mission_id": FIX01_MISSION_ID,
         "problemas_detectados": [block["problema_detectado"] for block in blocks],
         "evidencias": [block["evidencia"] for block in blocks],
         "acoes_recomendadas": recommendations,
+        "calibration_plan": calibration_plan,
+        "plan_items": plan_items,
+        "impacto_detalhado": impacto_detalhado,
+        "parametros_sugeridos": dict(calibration_plan.get("parametros_sugeridos") or {}),
         "decision_blocks": blocks,
         "primary_decision": primary,
         "impacto_esperado": primary.get("impacto_esperado") if primary else "",
@@ -386,6 +542,10 @@ def get_structural_coverage_evidence(
         "problemas_detectados": list(interpretation.get("problemas_detectados") or []),
         "evidencias": list(interpretation.get("evidencias") or []),
         "acoes_recomendadas": list(interpretation.get("acoes_recomendadas") or []),
+        "calibration_plan": dict(interpretation.get("calibration_plan") or {}),
+        "plan_items": list(interpretation.get("plan_items") or []),
+        "impacto_detalhado": list(interpretation.get("impacto_detalhado") or []),
+        "parametros_sugeridos": dict(interpretation.get("parametros_sugeridos") or {}),
         "impacto_esperado": str(interpretation.get("impacto_esperado") or ""),
         "generation_event_ids": list(metrics.get("generation_event_ids") or []),
         "events_limit": int(events_limit),

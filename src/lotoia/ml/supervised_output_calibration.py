@@ -171,12 +171,22 @@ def analyze_pool_structural_issues(
     }
 
 
+def _plan_scale(params: Mapping[str, Any] | None, key: str, default: float = 1.0) -> float:
+    if not isinstance(params, Mapping):
+        return default
+    try:
+        return float(params.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
 def _compute_game_calibration_adjustment(
     game: dict[str, Any],
     *,
     diagnostics: Mapping[str, Any],
     pool_size: int,
     all_cards: Sequence[list[int]],
+    plan_params: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     card = _game_card(game)
     if not card:
@@ -195,10 +205,18 @@ def _compute_game_calibration_adjustment(
         overlaps.append(len(card_set & set(other)))
     if overlaps:
         avg_overlap = sum(overlaps) / len(overlaps)
-        if avg_overlap >= 10:
+        overlap_threshold = 10.0
+        if avg_overlap >= overlap_threshold:
             delta = (avg_overlap - 9.0) * 0.35
+            delta *= _plan_scale(plan_params, "redundancy_penalty_boost")
+            delta *= _plan_scale(plan_params, "max_overlap_penalty")
             penalty += delta
             actions.append(f"penalidade_redundancia_media={delta:.3f}")
+        max_overlap = max(overlaps)
+        if max_overlap >= 13:
+            overlap_delta = (max_overlap - 12) * 0.25 * _plan_scale(plan_params, "max_overlap_penalty")
+            penalty += overlap_delta
+            actions.append(f"penalidade_overlap_maximo={overlap_delta:.3f}")
 
     prefix3 = format_dezena_group(compute_prefix(card, 3))
     suffix3 = format_dezena_group(compute_suffix(card, 3))
@@ -213,21 +231,56 @@ def _compute_game_calibration_adjustment(
         if row.get("tipo") == "sufixo_excessivo"
     }
     if prefix3 in excessive_prefixes:
-        penalty += 1.2
+        prefix_scale = _plan_scale(plan_params, "prefix_penalty")
+        penalty += 1.2 * prefix_scale
         actions.append(f"penalidade_prefixo_excessivo={prefix3}")
+    elif plan_params and str(plan_params.get("prefixo_alvo") or "") == prefix3:
+        prefix_scale = _plan_scale(plan_params, "prefix_penalty")
+        penalty += 1.0 * prefix_scale
+        actions.append(f"penalidade_prefixo_autorizado={prefix3}")
     if suffix3 in excessive_suffixes:
-        penalty += 1.0
+        suffix_scale = _plan_scale(plan_params, "suffix_penalty")
+        penalty += 1.0 * suffix_scale
         actions.append(f"penalidade_sufixo_excessivo={suffix3}")
+    elif plan_params and str(plan_params.get("sufixo_alvo") or "") == suffix3:
+        suffix_scale = _plan_scale(plan_params, "suffix_penalty")
+        penalty += 0.9 * suffix_scale
+        actions.append(f"penalidade_sufixo_autorizado={suffix3}")
 
     number_presence = diagnostics.get("number_presence") or {}
+    authorized_subcovered = {
+        int(str(value).lstrip("0") or "0")
+        for value in list((plan_params or {}).get("dezenas_subcobertas") or [])
+        if str(value).strip().isdigit()
+    }
+    missing_boost_scale = _plan_scale(plan_params, "missing_numbers_boost")
+    critical_boost_scale = _plan_scale(plan_params, "critical_coverage_boost")
     for issue in diagnostics.get("issues", []):
         if issue.get("tipo") != "dezena_subcoberta":
             continue
         number = int(issue.get("dezena", 0) or 0)
         if number in card_set:
-            weight = 0.9 if number in CRITICAL_DEZENAS else 0.45
+            weight = (0.9 if number in CRITICAL_DEZENAS else 0.45) * missing_boost_scale
+            if number in CRITICAL_DEZENAS:
+                weight *= critical_boost_scale
+            if authorized_subcovered and number not in authorized_subcovered:
+                continue
             boost += weight
             actions.append(f"reforco_dezena_{number:02d}={weight:.2f}")
+
+    diversity_scale = _plan_scale(plan_params, "diversity_floor_boost")
+    if diversity_scale > 1.0 and overlaps:
+        avg_overlap = sum(overlaps) / len(overlaps)
+        if avg_overlap <= 8.5:
+            diversity_boost = 0.25 * (diversity_scale - 1.0 + 1.0)
+            boost += diversity_boost
+            actions.append(f"reforco_diversidade={diversity_boost:.3f}")
+
+    near_dup_scale = _plan_scale(plan_params, "near_duplicate_penalty")
+    if near_dup_scale > 1.0 and overlaps and max(overlaps) >= 12:
+        near_dup_delta = 0.4 * near_dup_scale
+        penalty += near_dup_delta
+        actions.append(f"penalidade_quase_repetido={near_dup_delta:.3f}")
 
     score_ml = float(game.get("score_ml", 0) or 0)
     ml_factor = min(max(score_ml / 100.0, 0.0), 1.0) * 0.15
@@ -257,6 +310,7 @@ def apply_supervised_output_calibration(
     *,
     game_size: int = 15,
     ml_enabled: bool = True,
+    calibration_plan: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Aplica calibração supervisionada no pool antes de compose_sovereign_gp."""
     empty_bundle = {
@@ -266,6 +320,9 @@ def apply_supervised_output_calibration(
         "calibration_engine_role": "DISABLED",
         "status": "inactive",
     }
+    plan = dict(calibration_plan or {})
+    plan_params = dict(plan.get("parametros_sugeridos") or {})
+    plan_authorized = bool(plan.get("authorized"))
     if not ml_enabled or not is_output_calibration_enabled() or not games:
         return games, empty_bundle
 
@@ -288,6 +345,7 @@ def apply_supervised_output_calibration(
             diagnostics=diagnostics,
             pool_size=pool_size,
             all_cards=all_cards,
+            plan_params=plan_params if plan_authorized else None,
         )
         base_profile = float(enriched.get("profile_score", 0) or 0)
         net = float(adjustment.get("net_adjustment", 0) or 0)
@@ -367,4 +425,14 @@ def apply_supervised_output_calibration(
         "lei15_core_002_preserved": True,
         "lei15a_applied": False,
     }
+    if plan_authorized:
+        bundle["authorized_calibration_plan"] = {
+            "mission_id": plan.get("mission_id"),
+            "plan_items": list(plan.get("plan_items") or []),
+            "impact_items": list(plan.get("impact_items") or []),
+            "parametros_sugeridos": plan_params,
+            "trace": dict(plan.get("trace") or {}),
+            "operador": plan.get("operador"),
+            "timestamp": plan.get("timestamp"),
+        }
     return calibrated, bundle
