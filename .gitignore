@@ -1,6 +1,11 @@
 # Ambiente virtual
 .venv/
 
+# Secrets locais (nunca commitar)
+.env
+.env.local
+.env.*.local
+
 # Python
 __pycache__/
 *.pyc
