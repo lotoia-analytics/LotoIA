@@ -1,13 +1,29 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from lotoia.database.database import GenerationEvent, create_database, get_session
 from lotoia.governance.analysis_batch_labels import build_batch_metadata
 
-from dashboard.institutional_app import _coerce_analysis_batch_created_at, _persist_generation_snapshot
+from dashboard.institutional_app import (
+    _coerce_analysis_batch_created_at,
+    _ensure_unique_institutional_batch_id,
+    _persist_generation_snapshot,
+)
+
+
+def test_ensure_unique_institutional_batch_id_appends_suffix_when_batch_exists(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dashboard.institutional_app.load_batch_output_signatures",
+        lambda batch_id, db_path=None: {"01-02-03-04-05-06-07-08-09-10-11-12-13-14-15"}
+        if batch_id == "collision-batch"
+        else set(),
+    )
+    assert _ensure_unique_institutional_batch_id("fresh-batch") == "fresh-batch"
+    reassigned = _ensure_unique_institutional_batch_id("collision-batch")
+    assert reassigned != "collision-batch"
+    assert reassigned.startswith("collision-batch-")
 
 
 def test_persist_generation_snapshot_sanitizes_struct_test_batch_metadata(monkeypatch) -> None:
