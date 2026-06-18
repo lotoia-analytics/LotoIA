@@ -12590,37 +12590,158 @@ def _render_official_sync_feedback() -> None:
         )
 
 
+def _render_conference_summary_and_premium(
+    check_result: dict[str, Any],
+    generation_results: list[dict[str, Any]],
+    status_by_event: dict[int, str],
+) -> None:
+    """Resumo da conferência + resultados oficiais 11+ (M-VIS-064).
+
+    Tela principal mostra apenas distribuição 11..15 e gerações que tiveram pelo
+    menos um jogo com 11+ pontos. Gerações com 0 jogos 11+ ou best_hits < 11 não
+    aparecem aqui (auditoria completa fica no expansor técnico).
+    """
+    hit_totals: Counter[int] = Counter()
+    for item in generation_results:
+        for row in item.get("results", []) or []:
+            hit_totals[int(row.get("hits", 0) or 0)] += 1
+    total_games_reconciled = sum(int(item.get("total_games", 0) or 0) for item in generation_results)
+    best_hits = max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0)
+
+    st.markdown("### Resumo da conferência")
+    summary_top = st.columns(3)
+    summary_top[0].metric("Concurso", check_result.get("contest_number", "-"))
+    summary_top[1].metric("Total de jogos conferidos", total_games_reconciled)
+    summary_top[2].metric("Melhor acerto", best_hits)
+    summary_dist = st.columns(5)
+    summary_dist[0].metric("Jogos com 11", int(hit_totals.get(11, 0)))
+    summary_dist[1].metric("Jogos com 12", int(hit_totals.get(12, 0)))
+    summary_dist[2].metric("Jogos com 13", int(hit_totals.get(13, 0)))
+    summary_dist[3].metric("Jogos com 14", int(hit_totals.get(14, 0)))
+    summary_dist[4].metric("Jogos com 15", int(hit_totals.get(15, 0)))
+
+    st.markdown("### Resultados oficiais (11+ pontos)")
+    premium_generations: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+    for item in generation_results:
+        premium_rows = [
+            row for row in (item.get("results") or [])
+            if int(row.get("hits", 0) or 0) >= 11
+        ]
+        if not premium_rows or int(item.get("best_hits", 0) or 0) < 11:
+            continue
+        premium_generations.append((item, premium_rows))
+
+    if not premium_generations:
+        st.info("Nenhum jogo com 11 pontos ou mais nas gerações oficializadas conferidas.")
+        return
+
+    for item, premium_rows in premium_generations:
+        event_id = item.get("generation_event_id", "-")
+        formato = item.get("formato_cartao", "-")
+        status = status_by_event.get(int(event_id) if str(event_id).isdigit() else -1, "") or "oficializado"
+        st.markdown(
+            f"**Geração #{event_id}** — jogos 11+: {len(premium_rows)} | "
+            f"melhor acerto: {item.get('best_hits', '-')} | formato: {formato} | status: {status}"
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "geração": event_id,
+                        "jogo": row["game_index"],
+                        "formato": row.get("formato_cartao", formato),
+                        "dezenas": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
+                        "hits": row["hits"],
+                        "acertou": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
+                        "premiado": row["prize_status"],
+                        "status": status,
+                    }
+                    for row in sorted(premium_rows, key=lambda r: -int(r.get("hits", 0) or 0))
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def _render_conference_technical_audit(check_result: Any) -> None:
+    """Auditoria técnica detalhada da conferência (dentro do expansor técnico — M-VIS-064)."""
+    if not isinstance(check_result, dict):
+        return
+    if check_result.get("warning"):
+        st.warning(check_result["warning"])
+    st.caption(
+        " | ".join(
+            [
+                f"generation_event_id={check_result.get('generation_event_id', '-')}",
+                f"formato_cartao={check_result.get('formato_cartao', '-')}",
+                f"dezenas_conferidas_count={check_result.get('dezenas_conferidas_count', '-')}",
+                f"origem_dezenas_conferencia={check_result.get('origem_dezenas_conferencia', '-')}",
+                f"expected_card_size={check_result.get('expected_card_size', '-')}",
+                f"actual_card_size={check_result.get('actual_card_size', '-')}",
+            ]
+        )
+    )
+    st.markdown("##### Auditoria PostgreSQL — últimas reconciliações")
+    reconciliations = _load_reconciliation_history(limit=10)
+    if reconciliations:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "concurso": row.get("contest_id", "-"),
+                        "data": row.get("created_at", "-"),
+                        "jogos conferidos": row.get("games_count", "-"),
+                        "melhor acerto": row.get("best_hits", "-"),
+                        "prêmios": row.get("prize_count", "-"),
+                    }
+                    for row in reconciliations
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.info("Ainda não há reconciliações persistidas nesta instância.")
+    generation_results = list(check_result.get("generation_results") or [])
+    if generation_results:
+        st.markdown("##### Conferência completa (todos os jogos)")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "geração": generation.get("generation_event_id", "-"),
+                        "jogo": row["game_index"],
+                        "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
+                        "hits": row["hits"],
+                        "premiado": row["prize_status"],
+                    }
+                    for generation in generation_results
+                    for row in generation.get("results", []) or []
+                ]
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     live_counts = _database_snapshot()["counts"]
     st.subheader("Conferir Resultados")
 
-    active_generation_groups = _load_persisted_generation_event_groups(
-        batch_id=None,
-        conference_eligible_only=True,
-    )
-    active_generation_event_ids = sorted(
-        {
-            int(group.get("generation_event_id", 0) or 0)
-            for group in active_generation_groups
-            if int(group.get("generation_event_id", 0) or 0) > 0
-        },
-        reverse=True,
-    )
-    render_conference_governance_section(
-        generation_blocked=_is_sovereign_generation_blocked(),
-        has_persisted_batches=bool(active_generation_event_ids),
-        persisted_generation_events=len(active_generation_event_ids),
-        persisted_games=int(live_counts.get("generated_games", 0) or 0),
-        reconciliation_runs=int(live_counts.get("reconciliation_runs", 0) or 0),
-    )
-    st.divider()
+    # M-VIS-064: tela abre direto na Conferência oficial. Governança/detalhes técnicos
+    # ficam recolhidos no expansor "Detalhes técnicos e governança" no final.
     st.markdown("### Conferência oficial")
     st.caption(
-        "Conferir Resultados = **último concurso oficial** × **todas as gerações aprovadas/oficializadas**. "
+        "Conferir Resultados = **último concurso oficial** × **gerações aprovadas/oficializadas**. "
         "Exibe apenas jogos com 11 pontos ou mais."
     )
     official_groups = _load_official_conference_generation_groups()
+    status_by_event = {
+        int(group.get("generation_event_id", 0) or 0): str(group.get("lot_operational_status", "") or "")
+        for group in official_groups
+    }
     official_generation_event_ids = sorted(
         {
             int(group.get("generation_event_id", 0) or 0)
@@ -12685,8 +12806,34 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     _render_official_sync_feedback()
 
+    check_result = st.session_state.get("institutional_check_result")
+
+    if isinstance(check_result, dict) and list(check_result.get("generation_results") or []):
+        _render_conference_summary_and_premium(
+            check_result,
+            list(check_result.get("generation_results") or []),
+            status_by_event,
+        )
+    elif isinstance(check_result, dict) and check_result.get("warning"):
+        st.info(check_result["warning"])
+    elif isinstance(check_result, dict) and check_result.get("status") == "checked":
+        st.info("Conferência executada sem jogos com 11 pontos ou mais nas gerações oficializadas.")
+    elif not has_valid_official_contest:
+        st.info(
+            "Nenhum concurso oficial válido encontrado no PostgreSQL. "
+            "Sincronize o último resultado oficial da Caixa."
+        )
+
     st.divider()
-    with st.expander("Diagnóstico técnico (imported_contests / sync)", expanded=False):
+    with st.expander("Detalhes técnicos e governança", expanded=False):
+        render_conference_governance_section(
+            generation_blocked=_is_sovereign_generation_blocked(),
+            has_persisted_batches=bool(official_generation_event_ids),
+            persisted_generation_events=len(official_generation_event_ids),
+            persisted_games=int(live_counts.get("generated_games", 0) or 0),
+            reconciliation_runs=int(live_counts.get("reconciliation_runs", 0) or 0),
+        )
+        st.markdown("##### Diagnóstico de sincronização (imported_contests)")
         try:
             with _get_engine_cached().begin() as connection:
                 runtime_query_imported_contests = int(
@@ -12698,146 +12845,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         diagnostic_state = _load_official_sync_diagnostics()
         if diagnostic_state:
             st.json(diagnostic_state)
-
-        check_result = st.session_state.get("institutional_check_result")
-    if isinstance(check_result, dict) and check_result.get("warning"):
-        st.warning(check_result["warning"])
-    if isinstance(check_result, dict):
-        st.caption(
-            " | ".join(
-                [
-                    f"generation_event_id={check_result.get('generation_event_id', '-')}",
-                    f"formato_cartao={check_result.get('formato_cartao', '-')}",
-                    f"dezenas_conferidas_count={check_result.get('dezenas_conferidas_count', '-')}",
-                    f"origem_dezenas_conferencia={check_result.get('origem_dezenas_conferencia', '-')}",
-                    f"expected_card_size={check_result.get('expected_card_size', '-')}",
-                    f"actual_card_size={check_result.get('actual_card_size', '-')}",
-                ]
-            )
-        )
-        generation_results = list(check_result.get("generation_results") or [])
-        if generation_results:
-            st.markdown("#### Resumo geral")
-            total_games_reconciled = sum(int(item.get("total_games", 0) or 0) for item in generation_results)
-            total_runs = len(generation_results)
-            best_hits = max((int(item.get("best_hits", 0) or 0) for item in generation_results), default=0)
-            total_hits = int(check_result.get("total_hits", 0) or 0)
-            prize_count = int(check_result.get("prize_count", 0) or 0)
-            st.write(total_runs)
-            st.write(total_games_reconciled)
-            st.write(best_hits)
-            st.write(f"total_runs={total_runs}")
-            st.write(f"total_games_reconciled={total_games_reconciled}")
-            st.write(f"best_hits={best_hits}")
-            summary_cols = st.columns(5)
-            summary_cols[0].metric("Concurso", check_result.get("contest_number", "-"))
-            summary_cols[1].metric("Total jogos conferidos", total_games_reconciled)
-            summary_cols[2].metric("Melhor acerto", best_hits)
-            summary_cols[3].metric("Prêmios", prize_count)
-            summary_cols[4].metric("Total hits", total_hits)
-            hit_totals: Counter[int] = Counter()
-            for item in generation_results:
-                for row in item.get("results", []) or []:
-                    hit_totals[int(row.get("hits", 0) or 0)] += 1
-            hit_counts_df = pd.DataFrame(
-                [
-                    {"faixa": f"{hits} acertos", "quantidade": count}
-                    for hits, count in sorted(hit_totals.items(), key=lambda item: (-item[0], item[1]))
-                    if hits >= 10
-                ]
-            )
-            if not hit_counts_df.empty:
-                st.dataframe(hit_counts_df, hide_index=True, use_container_width=True)
-            st.markdown("#### Resultado oficial (11+ pontos)")
-            for item in generation_results:
-                title = f"Geração #{item.get('generation_event_id', '-')}"
-                premium_rows = [
-                    row
-                    for row in list(item.get("results") or [])
-                    if int(row.get("hits", 0) or 0) >= 11
-                ]
-                with st.expander(
-                    f"{title} | jogos 11+={len(premium_rows)} | best_hits={item.get('best_hits', '-')}",
-                    expanded=False,
-                ):
-                    gen_cols = st.columns(4)
-                    gen_cols[0].metric("seed", item.get("seed", "-"))
-                    gen_cols[1].metric("contest", item.get("contest_number", "-"))
-                    gen_cols[2].metric("best_hits", item.get("best_hits", "-"))
-                    gen_cols[3].metric("prize_count", item.get("prize_count", "-"))
-                    generation_df = pd.DataFrame(
-                        [
-                            {
-                                "jogo": row["game_index"],
-                                "formato_cartao": row.get("formato_cartao", "-"),
-                                "cartao_final": " ".join(f"{number:02d}" for number in row.get("cartao_final", row["numbers"])),
-                                "hits": row["hits"],
-                                "matched_numbers": " ".join(f"{number:02d}" for number in row.get("matched_numbers", [])),
-                                "premiado": row["prize_status"],
-                            }
-                            for row in premium_rows
-                        ]
-                    )
-                    if not generation_df.empty:
-                        st.dataframe(generation_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.info("Nenhum jogo com 11 pontos ou mais nesta geração.")
-            diagnostics = check_result.get("diagnostics") or {}
-            if diagnostics:
-                st.markdown("#### Diagnóstico temporário")
-                st.write(f"Resultado oficial: {diagnostics.get('official_numbers', [])}")
-                st.write(f"Tipo resultado: {type(diagnostics.get('official_numbers', []))}")
-                st.write(f"Primeiro jogo: {diagnostics.get('first_game', [])}")
-                st.write(f"Tipo jogo: {type(diagnostics.get('first_game', []))}")
-                st.write(f"Interseção: {set(int(number) for number in diagnostics.get('first_intersection', []) or [])}")
-                st.write(f"Hits: {diagnostics.get('first_game_hits', 0)}")
-            st.markdown("#### Últimas reconciliações")
-            reconciliations = _load_reconciliation_history(limit=10)
-            if reconciliations:
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                "concurso": row.get("contest_id", "-"),
-                                "data": row.get("created_at", "-"),
-                                "jogos conferidos": row.get("games_count", "-"),
-                                "melhor acerto": row.get("best_hits", "-"),
-                                "prêmios": row.get("prize_count", "-"),
-                            }
-                            for row in reconciliations
-                        ]
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
-                )
-            else:
-                st.info("Ainda não há reconciliações persistidas nesta instância.")
-            st.markdown("#### Conferência")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "jogo": row["game_index"],
-                            "dezenas": " ".join(f"{number:02d}" for number in row["numbers"]),
-                            "hits": row["hits"],
-                            "premiado": row["prize_status"],
-                        }
-                        for generation in generation_results
-                        for row in generation.get("results", []) or []
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
-        elif check_result.get("status") == "waiting_contest":
-            st.info("A conferência está pronta, mas ainda falta o concurso oficial em imported_contests.")
-    elif isinstance(check_result, dict) and check_result.get("status") == "checked":
-        st.info("Conferência executada, mas nenhum resultado foi renderizado.")
-    elif not has_valid_official_contest:
-        st.info(
-            "Nenhum concurso oficial válido encontrado no PostgreSQL. "
-            "Sincronize o último resultado oficial da Caixa."
-        )
+        _render_conference_technical_audit(check_result)
 
 
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
