@@ -185,6 +185,8 @@ def test_render_conference_page_no_latest_contest_fallback_without_name_error(
         lambda: {"counts": {"imported_contests": 0, "generated_games": 0, "reconciliation_runs": 0}},
     )
     monkeypatch.setattr(admin_app, "_load_persisted_generation_event_groups", lambda **_kwargs: [])
+    monkeypatch.setattr(admin_app, "_load_official_conference_generation_groups", lambda: [])
+    monkeypatch.setattr(admin_app, "_resolve_latest_official_conference_contest", lambda: None)
     monkeypatch.setattr(admin_app, "_get_latest_unreconciled_generation_event_id", lambda **_kwargs: None)
     monkeypatch.setattr(admin_app, "_load_latest_generated_games", lambda: {})
     monkeypatch.setattr(admin_app, "_load_official_history_diagnostics", lambda: {})
@@ -244,11 +246,14 @@ def test_render_conference_page_no_latest_contest_fallback_without_name_error(
         def __exit__(self, *_args):
             return False
 
+        def expander(self, *_args, **_kwargs):
+            return self
+
     monkeypatch.setattr(admin_app, "st", _StreamlitStub())
     monkeypatch.setattr(admin_app, "render_conference_governance_section", lambda **_kwargs: None)
 
     admin_app._render_conference_page({})
-    assert any("Último concurso ainda não veio do banco" in message for message in info_messages)
+    assert any("Nenhum concurso oficial disponível para conferência." in message for message in info_messages)
 
 
 def test_render_conference_page_does_not_reference_undefined_latest_contest() -> None:
