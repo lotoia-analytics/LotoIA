@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""M-DADOS-066 — reset absoluto operacional da LotoIA (nova fase 001).
+"""M-DADOS-066 — reset absoluto operacional (psycopg-only, Railway console safe).
 
-Etapas:
-  1. inventário (padrão / --json)
-  2. backup lógico JSON (--execute)
-  3. --execute — apaga camada operacional + reinicia sequences
+Não importa lotoia.governance (evita sqlalchemy no console Railway).
 
 Uso:
   python scripts/ops/m_dados_066_absolute_operational_reset.py --json
-  python scripts/ops/m_dados_066_absolute_operational_reset.py --json-out reports/m_dados_066_dry_run.json
-
   LOTOIA_M_DADOS_066_RESET_CONFIRM=M_DADOS_066_ABSOLUTE_OPERATIONAL_RESET \\
     python scripts/ops/m_dados_066_absolute_operational_reset.py --execute --json
 """
@@ -17,6 +12,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -25,37 +21,59 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
-_OPS = ROOT / "scripts" / "ops"
-if str(_OPS) not in sys.path:
-    sys.path.insert(0, str(_OPS))
 
-from lotoia.governance.m_dados_066_absolute_operational_reset import (  # noqa: E402
-    CONFIRMATION_TOKEN,
-    INVENTORY_TABLES,
-    MISSION_ID,
-    OPERATIONAL_DELETE_ORDER,
-    OPERATIONAL_SEQUENCES,
-    PRESERVED_COUNT_TABLES,
-    assert_m_dados_066_confirmation,
-    assert_preserved_table_not_in_scope,
-    build_dry_run_report,
-    build_inventory_report,
-    build_post_reset_report,
-)
-
+MISSION_ID = "M-DADOS-066"
+CONFIRMATION_TOKEN = "M_DADOS_066_ABSOLUTE_OPERATIONAL_RESET"
 BACKUP_DIR = ROOT / "data" / "backups"
 
 
-def _resolve_url() -> str:
-    from cloud_env_bootstrap import ensure_database_url, resolve_database_url
+def _load_governance_constants() -> Any:
+    """Carrega módulo de governança sem passar por lotoia.governance.__init__."""
+    module_path = ROOT / "src/lotoia/governance/m_dados_066_absolute_operational_reset.py"
+    spec = importlib.util.spec_from_file_location("m_dados_066_gov", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"[{MISSION_ID}] Não foi possível carregar {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-    ensure_database_url(root=ROOT)
-    url, _ = resolve_database_url()
-    if "sqlite" in url.lower():
-        raise RuntimeError(f"[{MISSION_ID}] SQLite proibido — use PostgreSQL Railway.")
-    return url.replace("postgresql+psycopg://", "postgresql://")
+
+_GOV = _load_governance_constants()
+OPERATIONAL_DELETE_ORDER = _GOV.OPERATIONAL_DELETE_ORDER
+OPERATIONAL_SEQUENCES = _GOV.OPERATIONAL_SEQUENCES
+INVENTORY_TABLES = _GOV.INVENTORY_TABLES
+PRESERVED_COUNT_TABLES = _GOV.PRESERVED_COUNT_TABLES
+assert_m_dados_066_confirmation = _GOV.assert_m_dados_066_confirmation
+assert_preserved_table_not_in_scope = _GOV.assert_preserved_table_not_in_scope
+build_dry_run_report = _GOV.build_dry_run_report
+build_inventory_report = _GOV.build_inventory_report
+build_post_reset_report = _GOV.build_post_reset_report
+
+
+def _resolve_url() -> str:
+    """Resolve PostgreSQL URL sem importar lotoia (Lei No 001)."""
+    candidates = (
+        "DATABASE_URL",
+        "LOTOIA_DATABASE_URL",
+        "STREAMLIT_DATABASE_URL",
+        "DATABASE_PUBLIC_URL",
+        "LOTOIA_DATABASE_POOLER_URL",
+    )
+    for key in candidates:
+        raw = os.environ.get(key, "").strip()
+        if not raw or raw == "DATABASE_URL":
+            continue
+        lowered = raw.lower()
+        if "sqlite" in lowered:
+            continue
+        if "postgres" in lowered or lowered.startswith("postgresql://"):
+            return (
+                raw.replace("postgresql+psycopg://", "postgresql://")
+                .replace("postgresql+psycopg2://", "postgresql://")
+            )
+    raise RuntimeError(
+        f"[{MISSION_ID}] PostgreSQL não configurado. Defina DATABASE_URL no Railway."
+    )
 
 
 def _count_table(cur, table: str) -> int | str:
@@ -122,12 +140,8 @@ def _delete_all_operational(cur) -> dict[str, int]:
     deleted: dict[str, int] = {}
     for table in OPERATIONAL_DELETE_ORDER:
         assert_preserved_table_not_in_scope(table)
-        try:
-            cur.execute(f'DELETE FROM "{table}"')
-            deleted[table] = int(cur.rowcount)
-        except Exception as exc:
-            deleted[table] = -1
-            raise RuntimeError(f"[{MISSION_ID}] Falha ao apagar {table}: {exc}") from exc
+        cur.execute(f'DELETE FROM "{table}"')
+        deleted[table] = int(cur.rowcount)
     return deleted
 
 
