@@ -111,6 +111,10 @@ from dashboard.institutional_monitored_contest import (
     to_conference_contest_payload,
     validate_expected_contest_numbers,
 )
+from dashboard.institutional_operational_generation import (
+    build_operational_generation_index,
+    resolve_operational_generation_label,
+)
 from dashboard.institutional_route_inventory import (
     INSTITUTIONAL_ALLOWED_PAGES,
     resolve_institutional_page_id,
@@ -1648,6 +1652,40 @@ def _get_conference_contest_from_imported(contest_number: int | None) -> dict[st
     if selected is None:
         return None
     return to_conference_contest_payload(_load_imported_contest(selected))
+
+
+def _load_sovereign_generation_event_rows(limit: int | None = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with get_session(DB_PATH) as session:
+        query = session.query(GenerationEvent).order_by(GenerationEvent.created_at.asc(), GenerationEvent.id.asc())
+        if limit is not None and int(limit) > 0:
+            query = query.limit(int(limit))
+        for event in query.all():
+            rows.append(
+                {
+                    "id": int(event.id or 0),
+                    "generation_event_id": int(event.id or 0),
+                    "analysis_batch_label": str(getattr(event, "analysis_batch_label", "") or ""),
+                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                }
+            )
+    return rows
+
+
+def _attach_operational_generation_label(snapshot: dict[str, Any]) -> dict[str, Any]:
+    ge_id = int(snapshot.get("generation_event_id", 0) or 0)
+    if ge_id <= 0:
+        return snapshot
+    event_rows = _load_sovereign_generation_event_rows()
+    index_map = build_operational_generation_index(event_rows)
+    return {
+        **snapshot,
+        "operational_generation_label": resolve_operational_generation_label(
+            ge_id,
+            operational_index=index_map,
+        ),
+        "operational_generation_index": int(index_map.get(ge_id, 0) or 0),
+    }
 
 
 def _normalize_contest_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -10968,7 +11006,8 @@ def _persist_clean_law15_generation_history(
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
         "card_format": int(selected_card_format),
     }
-    return _persist_generation_snapshot(
+    return _attach_operational_generation_label(
+        _persist_generation_snapshot(
         games=payload_games,
         seed=int(result.get("seed", 0) or 0),
         target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
@@ -10976,6 +11015,7 @@ def _persist_clean_law15_generation_history(
         generation_context=generation_context,
         analysis_batch_label=str(result.get("analysis_batch_label") or SOVEREIGN_BATCH_LABEL),
         analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
+        )
     )
 
 
@@ -12354,6 +12394,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             )
             if persisted_snapshot:
                 result.update(persisted_snapshot)
+                result = _attach_operational_generation_label(result)
                 st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
         else:
             result["persistence_blocked"] = True
@@ -12962,6 +13003,8 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
+    sovereign_events = _load_sovereign_generation_event_rows()
+    operational_index = build_operational_generation_index(sovereign_events)
     analytic_labels = {
         "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
         "TOTAL_JOGOS_HISTORICOS_CARREGADOS": "Jogos históricos carregados",
@@ -13007,6 +13050,13 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
+    if generation_options:
+        latest_ge = max(generation_options)
+        st.caption(
+            f"Última geração operacional: "
+            f"{resolve_operational_generation_label(latest_ge, operational_index=operational_index)} "
+            f"(generation_event_id={latest_ge})"
+        )
     strategy_options = sorted(str(value) for value in games_df["estratégia"].dropna().astype(str).unique().tolist())
     contest_options = sorted(
         int(value)

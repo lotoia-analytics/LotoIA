@@ -25,6 +25,13 @@ GESTAO_PROJETOS_DIR = GOVERNANCE_DOCS / "gestao_projetos"
 
 MISSION_ROWS: tuple[dict[str, str], ...] = (
     {
+        "id": "M-DADOS-049",
+        "titulo": "Reset Controlado das Gerações Antigas + Validação Histórico/Cobertura",
+        "status": "CONCLUIDA",
+        "agentes": "agent_dados + agent_geracao + agent_qualidade + agent_governanca + agent_estatistico + agent_visual",
+        "evidencia": "M-DADOS-049 — dry-run + reset controlado + numeração operacional 001",
+    },
+    {
         "id": "M-DADOS-048",
         "titulo": "Card Último concurso monitorado — PostgreSQL imported_contests",
         "status": "CONCLUIDA",

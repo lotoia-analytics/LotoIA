@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-DADOS-049](#m-dados-049--reset-controlado-das-gerações-antigas) | Reset controlado gerações antigas | `CONCLUIDA` | `NOVA FASE 001 / POSTGRESQL VALIDADO` |
 | [M-DADOS-048](#m-dados-048--card-último-concurso-monitorado--postgresql-imported_contests) | Último concurso monitorado | `CONCLUIDA` | `POSTGRESQL imported_contests / SEM RESÍDUO 5000` |
 | [M-VIS-047](#m-vis-047--simplificação-operacional-da-página-de-geração-adm-core_002) | Geração ADM — simplificação operacional | `CONCLUIDA` | `PÁGINA LIMPA / JOGOS 1–100 / DEZENAS 15–23` |
 | [M-VIS-046](#m-vis-046--corrigir-resíduo-visual-lei-15a-operacional-no-runtime-limpo-adm-15) | Runtime Limpo — resíduo Lei 15A | `CONCLUIDA` | `VISUAL CORRIGIDO / CORE_002 15D PRESERVADO` |
@@ -40,6 +41,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-DADOS-049 — Reset Controlado das Gerações Antigas + Validação Histórico Analítico e Cobertura Estrutural
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-17 |
+| Agentes | `agent_dados` + `agent_geracao` + `agent_qualidade` + `agent_governanca` + `agent_estatistico` + `agent_visual` |
+| Status | `CONCLUIDA` |
+| Tipo | Limpeza controlada operacional / validação recepção |
+
+**Correção:** Dry-run + reset controlado de gerações/lotes operacionais antigos; preservação de `imported_contests`, memória científica/institucional e GE 114/115. Numeração operacional 001/002 via rótulo (sem reset de sequence). Validação Histórico Analítico e Cobertura Estrutural via PostgreSQL.
+
+**Build:** `institutional-adm-runtime-v25`
+
+**Veredicto:** **M-DADOS-049 CONCLUÍDA — RESET CONTROLADO EXECUTADO, NOVA FASE OPERACIONAL 001 PRONTA**
+
+**Cartão:** `cartoes/M-DADOS-049_RESET_CONTROLADO_GERACOES.md`
+
+---
 
 ### M-DADOS-048 — Card Último concurso monitorado — PostgreSQL imported_contests
 
