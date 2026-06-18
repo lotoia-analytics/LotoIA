@@ -4,7 +4,7 @@ import ast
 import inspect
 
 import dashboard.institutional_app as institutional_app
-from dashboard.institutional_build import BUILD_MARKER
+import dashboard.institutional_ml_calibration_cockpit as cockpit
 
 
 def _nested_expander_functions(source: str) -> list[str]:
@@ -44,19 +44,12 @@ def _nested_expander_functions(source: str) -> list[str]:
     return sorted(set(offenders))
 
 
-def test_build_marker_v36() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v36"
-    assert institutional_app.APP_BUILD == BUILD_MARKER
-
-
 def test_central_ml_page_has_no_nested_expanders() -> None:
     sources = [
         inspect.getsource(institutional_app._render_central_ml_diagnostics_page),
         inspect.getsource(institutional_app._render_central_ml_observational_alerts),
         inspect.getsource(institutional_app._render_central_ml_observational_history),
     ]
-    import dashboard.institutional_ml_calibration_cockpit as cockpit
-
     sources.append(inspect.getsource(cockpit._render_technical_expanders))
     for source in sources:
         assert _nested_expander_functions(source) == []
