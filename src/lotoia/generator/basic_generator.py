@@ -3,7 +3,7 @@ import logging
 import os
 from random import Random
 
-from lotoia.data.loader import load_draws_csv
+from lotoia.data.loader import load_draws
 from lotoia.ml.rerank import rerank_games
 from lotoia.statistics.advanced import (
     CENTER_NUMBERS,
@@ -550,7 +550,7 @@ def generate_best_games(
         new_legacy_events=1,
     )
 
-    history = load_draws_csv()
+    history = load_draws()
     games: list[dict[str, object]] = []
     seen_games: set[tuple[int, ...]] = set()
     max_attempts = pool_size * 1500
