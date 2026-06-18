@@ -1,4 +1,8 @@
-"""Numeração operacional de gerações — nova fase CORE_002 (M-DADOS-049)."""
+"""Numeração operacional de gerações — nova fase CORE_002 (M-DADOS-049 / M-DADOS-066).
+
+M-DADOS-066: após reset absoluto com sequences reiniciadas, generation_event_id=1
+corresponde a Geração 001 real (sem mapeamento visual falso).
+"""
 
 from __future__ import annotations
 

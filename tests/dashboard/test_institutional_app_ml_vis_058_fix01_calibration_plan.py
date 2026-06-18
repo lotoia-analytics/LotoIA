@@ -39,7 +39,7 @@ def _rich_metrics() -> dict[str, object]:
 
 
 def test_build_marker_v40() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v50"
+    assert BUILD_MARKER == "institutional-adm-runtime-v51"
 
 
 def test_build_calibration_plan_lists_specific_actions() -> None:
