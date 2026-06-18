@@ -27,11 +27,16 @@ from lotoia.ml.supervised_output_calibration import (
     STATUS_ACTIVE as CALIBRATION_STATUS_ACTIVE,
     is_output_calibration_enabled,
 )
+from lotoia.observability.coverage_evidence_interpreter import (
+    get_structural_coverage_evidence,
+    interpret_coverage_evidence,
+)
 
 MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
+VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 AGGREGATE_SCOPE_LABEL = "Escopo analisado: visão geral das gerações oficiais recentes"
 AGGREGATE_DIAGNOSIS_HEADLINE = "Diagnóstico geral da saída CORE_002 + ML"
 DEFAULT_AGGREGATE_EVENTS_LIMIT = 10
@@ -752,9 +757,55 @@ def _issue_types_from_event(event: Mapping[str, Any] | None) -> set[str]:
     }
 
 
-def build_ml_calibration_recommendations(source: Mapping[str, Any] | None) -> list[str]:
+def build_ml_calibration_recommendations(
+    source: Mapping[str, Any] | None,
+    *,
+    coverage_evidence: Mapping[str, Any] | None = None,
+) -> list[str]:
+    if isinstance(coverage_evidence, Mapping) and coverage_evidence.get("available"):
+        recs = list(coverage_evidence.get("acoes_recomendadas") or [])
+        if recs:
+            return recs[:6]
+        interpretation = dict(coverage_evidence.get("interpretation") or {})
+        recs = list(interpretation.get("acoes_recomendadas") or [])
+        if recs:
+            return recs[:6]
+
     if not isinstance(source, Mapping):
         return ["Gerar lote CORE_002 com ML ativo para obter diagnóstico estrutural."]
+
+    metrics = dict(source.get("metrics") or {})
+    raw_diversity = metrics.get("diversity_score", source.get("diversity_score"))
+    diversity_score = float(raw_diversity) if raw_diversity is not None else None
+    diversidade = str(metrics.get("diversidade") or metrics.get("diversidade_global") or "")
+    has_negative = (
+        diversidade == "baixa"
+        or (diversity_score is not None and diversity_score < 0.55)
+        or str(metrics.get("redundancia") or metrics.get("redundancia_geral") or "") == "alta"
+        or int(metrics.get("quase_repetidos", 0) or 0) >= 20
+        or int(metrics.get("dezenas_subcobertas", 0) or 0) > 0
+        or str(metrics.get("prefixos_sufixos") or "") == "viciados"
+        or bool(source.get("issues_preview"))
+        or bool(source.get("issue_types"))
+        or bool(_issue_types_from_event(source))
+    )
+    if (
+        has_negative
+        and not source.get("calibration_applied")
+        and (metrics or source.get("aggregate_available"))
+    ):
+        interpreted = interpret_coverage_evidence(
+            metrics if metrics else {"diversity_score": diversity_score or 0.0},
+            calibration_applied=bool(source.get("calibration_applied")),
+            trace_persistido=False,
+        )
+        recs = list(interpreted.get("acoes_recomendadas") or [])
+        if recs:
+            return recs[:6]
+        return [
+            "Calibração pendente — revisar evidências da Cobertura Estrutural e autorizar ajuste supervisionado."
+        ]
+
     issue_types = set(source.get("issue_types") or []) or _issue_types_from_event(source)
     if not issue_types and source.get("aggregate_available"):
         issue_types = set(source.get("aggregate_issue_types") or [])
@@ -767,6 +818,7 @@ def build_ml_calibration_recommendations(source: Mapping[str, Any] | None) -> li
         "sufixo_excessivo": "Penalizar sufixos repetidos (faixa 22–25)",
         "dezena_subcoberta": "Reforçar dezenas ausentes e subcobertas (7/15/23 críticas)",
         "padrao_ausencia_recorrente": "Equilibrar padrões de ausência recorrentes",
+        "diversidade_baixa": "Aumentar diversidade mínima e redistribuir padrões no rerank",
     }
     for issue_type, text in mapping.items():
         if issue_type in issue_types:
@@ -777,7 +829,7 @@ def build_ml_calibration_recommendations(source: Mapping[str, Any] | None) -> li
         recommendations.append(
             "Calibração aplicada em gerações recentes — validar diversidade global na próxima geração."
         )
-    elif not recommendations:
+    elif not recommendations and not has_negative:
         recommendations.append("Estrutura estável — manter calibração supervisionada ativa na geração.")
     return recommendations[:6]
 
@@ -1040,9 +1092,27 @@ def build_ml_calibration_cockpit_snapshot(
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
     aggregate = build_ml_calibration_aggregate_context(event_details)
+    event_ids = [
+        int(row.get("generation_event_id", 0) or 0)
+        for row in event_details
+        if int(row.get("generation_event_id", 0) or 0) > 0
+    ]
+    coverage_evidence = get_structural_coverage_evidence(
+        db_path,
+        generation_event_ids=event_ids,
+        events_limit=events_limit,
+        ml_aggregate=aggregate if aggregate.get("available") else None,
+    )
     recalibration = resolve_recalibration_display_status()
     diagnosis = build_ml_calibration_aggregate_diagnosis_card(aggregate)
-    recommendations = build_ml_calibration_recommendations(aggregate if aggregate.get("available") else None)
+    if coverage_evidence.get("available"):
+        cov_metrics = dict(coverage_evidence.get("metrics") or {})
+        diagnosis["metrics"] = {**dict(diagnosis.get("metrics") or {}), **cov_metrics}
+        diagnosis["coverage_source"] = "cobertura_estrutural"
+    recommendations = build_ml_calibration_recommendations(
+        aggregate if aggregate.get("available") else None,
+        coverage_evidence=coverage_evidence if coverage_evidence.get("available") else None,
+    )
     result = build_ml_calibration_aggregate_result_card(
         aggregate,
         workflow_status=workflow_status,
@@ -1050,9 +1120,12 @@ def build_ml_calibration_cockpit_snapshot(
         apply_next_generation=apply_next_generation,
     )
     latest_event = dict(event_details[0]) if event_details else {}
+    primary_decision = dict(coverage_evidence.get("primary_decision") or {})
+    decision_blocks = list(coverage_evidence.get("decision_blocks") or [])
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
+        "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
@@ -1073,6 +1146,9 @@ def build_ml_calibration_cockpit_snapshot(
         "diagnosis": diagnosis,
         "recommendations": recommendations,
         "result": result,
+        "coverage_evidence": coverage_evidence,
+        "primary_decision": primary_decision,
+        "decision_blocks": decision_blocks,
         "aggregate": aggregate,
         "lot_details": list(aggregate.get("lot_rows") or []),
         "panel": panel,
@@ -1088,14 +1164,31 @@ def build_cockpit_persist_bundle(
     apply_next_generation: bool,
     recommendations: list[str],
     scope: str = "aggregate",
+    coverage_evidence: Mapping[str, Any] | None = None,
+    primary_decision: Mapping[str, Any] | None = None,
+    operator_decision: str = "",
 ) -> dict[str, Any]:
+    evidence = dict(coverage_evidence or {})
+    decision = dict(primary_decision or evidence.get("primary_decision") or {})
+    calibration_authorized = workflow_status == COCKPIT_WORKFLOW_AUTHORIZED
     return {
         "mission_id": VIS_COCKPIT_MISSION_ID,
         "fix_mission_id": VIS_COCKPIT_FIX02_MISSION_ID,
+        "coverage_evidence_mission": VIS_COVERAGE_EVIDENCE_MISSION_ID,
         "cockpit_scope": scope,
         "cockpit_workflow_status": workflow_status,
         "cockpit_decision_at": decision_at,
         "cockpit_apply_next_generation": bool(apply_next_generation),
         "cockpit_recommendations": list(recommendations),
         "supervised_calibration_active": is_supervised_output_calibration_active(),
+        "coverage_evidence_snapshot": dict(evidence.get("coverage_evidence_snapshot") or {}),
+        "problemas_detectados": list(evidence.get("problemas_detectados") or []),
+        "evidencias": list(evidence.get("evidencias") or []),
+        "acoes_recomendadas": list(recommendations),
+        "impacto_esperado": str(decision.get("impacto_esperado") or evidence.get("impacto_esperado") or ""),
+        "decisao_operador": operator_decision or workflow_status,
+        "calibration_authorized": calibration_authorized,
+        "calibration_applied": workflow_status == COCKPIT_WORKFLOW_APPLIED,
+        "trace": dict(decision.get("trace") or {"mission_id": VIS_COVERAGE_EVIDENCE_MISSION_ID}),
+        "timestamp": decision_at,
     }
