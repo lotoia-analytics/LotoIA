@@ -105,6 +105,18 @@ from dashboard.institutional_ml_assistive import (
     render_ml_assistive_governance_section,
 )
 from dashboard.institutional_simulation_backtesting import render_institutional_simulation_backtesting_page
+from dashboard.institutional_simulation_contests import (
+    MISSION_ID as SIMULATION_CONTESTS_MISSION_ID,
+    SELECTION_MODE_LABELS,
+    SELECTION_MODE_LAST_10,
+    SELECTION_MODE_MANUAL_RANGE,
+    SIMULATION_MAX_CONTESTS,
+    build_simulation_central_ml_evidence,
+    build_simulation_contests_context,
+    compare_lab_games_against_contests,
+    merge_simulation_evidence_into_context,
+    resolve_simulation_contest_selection,
+)
 from dashboard.institutional_conference_audit import render_conference_governance_section
 from dashboard.institutional_lei15a_governance import LEI15A_FORMAL_STATUS
 from dashboard.institutional_controlled_cleanup import render_restricted_controlled_cleanup_page
@@ -6484,53 +6496,104 @@ def _run_simulation_lot_generation(*, requested_count: int, selected_card_format
     return result
 
 
-def _run_simulation_multicontest_lab(*, games: Sequence[dict[str, Any]], contests_limit: int = 50) -> dict[str, Any]:
-    """Compara lote laboratorial contra até 50 concursos importados — sem oficializar."""
-    records = sorted(
-        _list_all_imported_contest_records(),
-        key=lambda row: int(row.get("contest_number", 0) or 0),
-        reverse=True,
-    )[: max(1, int(contests_limit))]
-    contest_results: list[dict[str, Any]] = []
-    premium_rows: list[dict[str, Any]] = []
-    for record in records:
-        contest_payload = to_conference_contest_payload(record) or _normalize_contest_record(record)
-        if not contest_payload or not contest_payload.get("dezenas"):
-            continue
-        contest_numbers = set(_extract_int_numbers(contest_payload.get("dezenas", [])))
-        contest_number = int(contest_payload.get("concurso", record.get("contest_number", 0)) or 0)
-        game_rows: list[dict[str, Any]] = []
-        for index, game in enumerate(games, start=1):
-            numbers = _extract_int_numbers(game.get("numbers", game.get("final_card_numbers", [])))
-            matched = sorted(set(numbers) & contest_numbers)
-            hits = len(matched)
-            row = {
-                "concurso": contest_number,
-                "jogo": index,
-                "hits": hits,
-                "premiado": "sim" if hits >= 11 else "nao",
-                "dezenas": " ".join(f"{number:02d}" for number in numbers),
-                "matched_numbers": matched,
-            }
-            game_rows.append(row)
-            if hits >= 11:
-                premium_rows.append(row)
-        contest_results.append(
-            {
-                "contest_number": contest_number,
-                "total_games": len(game_rows),
-                "premium_games": sum(1 for row in game_rows if int(row.get("hits", 0) or 0) >= 11),
-                "best_hits": max((int(row.get("hits", 0) or 0) for row in game_rows), default=0),
-                "results": game_rows,
-            }
-        )
-    return {
-        "contests_compared": len(contest_results),
-        "premium_rows": premium_rows,
-        "contest_results": contest_results,
-        "generation_origin": GENERATION_ORIGIN_SIMULATION,
-        "officialization_blocked": True,
+def _persist_simulation_central_ml_evidence(
+    *,
+    generation_event_id: int,
+    evidence: dict[str, Any],
+) -> bool:
+    """Registra evidência de simulação multicontest no context_json — Central ML (M-OPS-062-FIX-02)."""
+    event_id = int(generation_event_id or 0)
+    if event_id <= 0:
+        return False
+    with get_session(DB_PATH) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == event_id).first()
+        if event is None:
+            return False
+        context = dict(getattr(event, "context_json", {}) or {})
+        event.context_json = merge_simulation_evidence_into_context(context, evidence)
+        session.commit()
+    return True
+
+
+def _run_simulation_multicontest_lab(
+    *,
+    games: Sequence[dict[str, Any]],
+    selection_mode: str = SELECTION_MODE_LAST_10,
+    manual_start: int | None = None,
+    manual_end: int | None = None,
+    lab_result: dict[str, Any] | None = None,
+    contests_limit: int = SIMULATION_MAX_CONTESTS,
+) -> dict[str, Any]:
+    """Compara lote laboratorial contra concursos oficiais selecionados — até 50, sem oficializar."""
+    contests_context = build_simulation_contests_context(
+        list_imported_contest_records=_list_all_imported_contest_records,
+        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+    )
+    selection = resolve_simulation_contest_selection(
+        context=contests_context,
+        selection_mode=selection_mode,
+        manual_start=manual_start,
+        manual_end=manual_end,
+    )
+    if selection.get("blocked") and not selection.get("contest_numbers"):
+        return {
+            "blocked": True,
+            "block_reason": str(selection.get("block_reason") or "Seleção de concursos inválida."),
+            "selection": selection,
+            "contests_compared": 0,
+            "contest_results": [],
+            "generation_origin": GENERATION_ORIGIN_SIMULATION,
+            "officialization_blocked": True,
+            "mission_id": SIMULATION_CONTESTS_MISSION_ID,
+        }
+    selected_numbers = set(int(number) for number in (selection.get("contest_numbers") or []))
+    if len(selected_numbers) > max(1, int(contests_limit)):
+        return {
+            "blocked": True,
+            "block_reason": f"Seleção excede o limite de {int(contests_limit)} concursos.",
+            "selection": selection,
+            "contests_compared": 0,
+            "contest_results": [],
+            "generation_origin": GENERATION_ORIGIN_SIMULATION,
+            "officialization_blocked": True,
+            "mission_id": SIMULATION_CONTESTS_MISSION_ID,
+        }
+    records_by_number = {
+        int(record.get("contest_number", 0) or 0): record
+        for record in (contests_context.get("valid_records") or [])
     }
+    selected_records = [records_by_number[number] for number in sorted(selected_numbers) if number in records_by_number]
+    comparison = compare_lab_games_against_contests(
+        games=games,
+        contest_records=selected_records,
+        normalize_contest_record=_normalize_contest_record,
+    )
+    payload = {
+        **comparison,
+        "selection": selection,
+        "source": contests_context.get("source"),
+        "latest_contest_available": int(contests_context.get("latest_contest_available") or 0),
+        "selection_mode": selection_mode,
+        "contest_initial": int(selection.get("contest_initial", 0) or 0),
+        "contest_final": int(selection.get("contest_final", 0) or 0),
+        "total_selected": int(selection.get("total_selected", 0) or 0),
+        "blocked": bool(selection.get("blocked")),
+        "block_reason": str(selection.get("block_reason") or ""),
+    }
+    if lab_result:
+        central_ml_evidence = build_simulation_central_ml_evidence(
+            multicontest_payload=payload,
+            lab_result=lab_result,
+            selection=selection,
+        )
+        payload["central_ml_evidence"] = central_ml_evidence
+        event_id = int(lab_result.get("generation_event_id", 0) or 0)
+        if event_id > 0:
+            payload["central_ml_evidence_persisted"] = _persist_simulation_central_ml_evidence(
+                generation_event_id=event_id,
+                evidence=central_ml_evidence,
+            )
+    return payload
 
 
 def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
@@ -12763,117 +12826,246 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
             f"Lote laboratório | status={lab_result.get('lot_operational_status', 'not_officialized')} | "
             f"veredito={lab_result.get('ml_verdict', '-')} | oficialização={'bloqueada' if lab_result.get('ml_verdict_blocked') else 'não aplicável'}"
         )
-        if lab_result.get("display_games") or lab_result.get("games"):
-            if st.button("Comparar lote contra até 50 concursos", key="sim_lab_multicontest"):
-                games = list(lab_result.get("display_games") or lab_result.get("games") or [])
-                multicontest = _run_simulation_multicontest_lab(games=games, contests_limit=50)
-                st.session_state["institutional_simulation_multicontest"] = multicontest
-                st.rerun()
+
+    st.markdown("#### Concursos para simulação")
+    try:
+        sim_contests_context = build_simulation_contests_context(
+            list_imported_contest_records=_list_all_imported_contest_records,
+            load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+        )
+    except Exception as exc:
+        logger.warning("simulation contests context unavailable: %s", exc)
+        sim_contests_context = {
+            "valid_contest_numbers": [],
+            "max_contest": 0,
+            "source": DB_UNAVAILABLE_LABEL,
+        }
+    selection_mode = st.radio(
+        "Modo de seleção",
+        options=list(SELECTION_MODE_LABELS.keys()),
+        format_func=lambda key: SELECTION_MODE_LABELS.get(str(key), str(key)),
+        index=0,
+        key="sim_contest_selection_mode",
+        horizontal=False,
+    )
+    manual_start = int(sim_contests_context.get("min_contest") or 1)
+    manual_end = int(sim_contests_context.get("max_contest") or 1)
+    if selection_mode == SELECTION_MODE_MANUAL_RANGE:
+        range_cols = st.columns(2)
+        manual_start = int(
+            range_cols[0].number_input(
+                "Concurso inicial",
+                min_value=int(sim_contests_context.get("min_contest") or 1),
+                max_value=int(sim_contests_context.get("max_contest") or 999999),
+                value=int(sim_contests_context.get("min_contest") or 1),
+                step=1,
+                key="sim_contest_manual_start",
+            )
+        )
+        manual_end = int(
+            range_cols[1].number_input(
+                "Concurso final",
+                min_value=int(sim_contests_context.get("min_contest") or 1),
+                max_value=int(sim_contests_context.get("max_contest") or 999999),
+                value=int(sim_contests_context.get("max_contest") or 1),
+                step=1,
+                key="sim_contest_manual_end",
+            )
+        )
+    preview_selection = resolve_simulation_contest_selection(
+        context=sim_contests_context,
+        selection_mode=str(selection_mode),
+        manual_start=manual_start if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
+        manual_end=manual_end if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
+    )
+    preview_cols = st.columns(4)
+    preview_cols[0].metric("Concurso inicial", int(preview_selection.get("contest_initial") or 0) or "—")
+    preview_cols[1].metric("Concurso final", int(preview_selection.get("contest_final") or 0) or "—")
+    preview_cols[2].metric("Total selecionado", int(preview_selection.get("total_selected") or 0))
+    preview_cols[3].metric("Último disponível", int(sim_contests_context.get("latest_contest_available") or 0) or "—")
+    st.caption(
+        f"Fonte: {sim_contests_context.get('source', MONITORED_CONTEST_SOURCE_LABEL)} | "
+        f"Limite máximo: {SIMULATION_MAX_CONTESTS} concursos"
+    )
+    if sim_contests_context.get("outlier_message"):
+        st.warning(str(sim_contests_context.get("outlier_message") or ""))
+    if preview_selection.get("blocked"):
+        st.error(str(preview_selection.get("block_reason") or "Seleção de concursos bloqueada."))
+    selected_preview = list(preview_selection.get("contest_numbers") or [])
+    if selected_preview:
+        preview_label = ", ".join(str(number) for number in selected_preview[:12])
+        if len(selected_preview) > 12:
+            preview_label = f"{preview_label}, … (+{len(selected_preview) - 12})"
+        st.caption(f"Concursos selecionados: {preview_label}")
+
+    compare_disabled = (
+        not lab_result
+        or bool(preview_selection.get("blocked"))
+        or int(preview_selection.get("total_selected") or 0) <= 0
+    )
+    if st.button(
+        "Comparar lote contra concursos selecionados",
+        type="primary",
+        key="sim_lab_multicontest",
+        disabled=bool(compare_disabled),
+    ):
+        games = list(lab_result.get("display_games") or lab_result.get("games") or [])
+        multicontest = _run_simulation_multicontest_lab(
+            games=games,
+            selection_mode=str(selection_mode),
+            manual_start=manual_start if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
+            manual_end=manual_end if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
+            lab_result=lab_result,
+            contests_limit=SIMULATION_MAX_CONTESTS,
+        )
+        st.session_state["institutional_simulation_multicontest"] = multicontest
+        if multicontest.get("central_ml_evidence"):
+            st.session_state["institutional_simulation_central_ml_evidence"] = multicontest.get("central_ml_evidence")
+        st.session_state["institutional_last_ui_event"] = "operacional:simular_multicontest_lab"
+        st.rerun()
+    if not lab_result:
+        st.info("Gere um lote laboratório antes de comparar contra concursos oficiais.")
+
     multicontest = dict(st.session_state.get("institutional_simulation_multicontest") or {})
-    if multicontest.get("contest_results"):
-        st.markdown("#### Comparação laboratorial (até 50 concursos)")
-        st.caption(f"Concursos comparados: {multicontest.get('contests_compared', 0)} | Jogos 11+: {len(multicontest.get('premium_rows') or [])}")
+    if multicontest.get("contest_results") or multicontest.get("blocked"):
+        st.markdown("#### Resultado da comparação laboratorial")
+        aggregate = dict(multicontest.get("aggregate_summary") or {})
+        agg_cols = st.columns(5)
+        agg_cols[0].metric("Jogos c/ 11 hits", int(aggregate.get("count_11_exact", 0) or 0))
+        agg_cols[1].metric("Jogos c/ 12 hits", int(aggregate.get("count_12_exact", 0) or 0))
+        agg_cols[2].metric("Jogos c/ 13 hits", int(aggregate.get("count_13_exact", 0) or 0))
+        agg_cols[3].metric("Jogos c/ 14 hits", int(aggregate.get("count_14_exact", 0) or 0))
+        agg_cols[4].metric("Jogos c/ 15 hits", int(aggregate.get("count_15_exact", 0) or 0))
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("Concursos comparados", int(multicontest.get("contests_compared", 0) or 0))
+        summary_cols[1].metric("Jogos no lote", int(multicontest.get("total_games", 0) or 0))
+        best_overall = dict(multicontest.get("best_overall") or {})
+        summary_cols[2].metric(
+            "Melhor resultado",
+            f"{best_overall.get('best_hits', 0)} hits (jogo {best_overall.get('best_game_index', '-')})",
+        )
+        best_game = dict(multicontest.get("best_game_of_batch") or {})
+        summary_cols[3].metric(
+            "Melhor jogo do lote",
+            f"jogo {best_game.get('game_index', '-')} | {best_game.get('best_hits_across_window', 0)} hits",
+        )
+        st.caption(
+            f"Janela: {multicontest.get('contest_initial', '-')} → {multicontest.get('contest_final', '-')} | "
+            f"Fonte: {multicontest.get('source', MONITORED_CONTEST_SOURCE_LABEL)} | "
+            f"13/14 presentes: {'sim' if aggregate.get('has_13_or_14') else 'não'}"
+        )
+        central_ml_evidence = dict(
+            multicontest.get("central_ml_evidence")
+            or st.session_state.get("institutional_simulation_central_ml_evidence")
+            or {}
+        )
+        if central_ml_evidence:
+            st.success(
+                "Evidência registrada para Central ML — status "
+                f"{central_ml_evidence.get('lot_operational_status', 'not_officialized')} "
+                f"(persistido={'sim' if multicontest.get('central_ml_evidence_persisted') else 'session'})"
+            )
         for contest_block in multicontest.get("contest_results") or []:
             premium = [row for row in list(contest_block.get("results") or []) if int(row.get("hits", 0) or 0) >= 11]
-            if not premium:
-                continue
             with st.expander(
                 f"Concurso {contest_block.get('contest_number')} | best_hits={contest_block.get('best_hits')} | 11+={contest_block.get('premium_games')}",
                 expanded=False,
             ):
-                st.dataframe(pd.DataFrame(premium), hide_index=True, use_container_width=True)
+                if premium:
+                    st.dataframe(pd.DataFrame(premium), hide_index=True, use_container_width=True)
+                else:
+                    st.caption("Nenhum jogo com 11+ hits neste concurso.")
 
     st.divider()
-    st.markdown("#### Simulação manual (session-only)")
-    st.write("Digite 15 dezenas para comparar com lote laboratorial recente.")
-    status_cols = st.columns([1, 1, 1, 1])
-    status_cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-    status_cols[1].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-    status_cols[2].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
-    status_cols[3].metric("runtime", st.session_state.get("institutional_simulation", {}).get("runtime_status", "idle"))
+    with st.expander("Simulação manual avulsa (secundária)", expanded=False):
+        st.write("Digite 15 dezenas para comparar com lote laboratorial recente — fluxo secundário.")
+        status_cols = st.columns([1, 1, 1, 1])
+        status_cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
+        status_cols[1].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
+        status_cols[2].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
+        status_cols[3].metric("runtime", st.session_state.get("institutional_simulation", {}).get("runtime_status", "idle"))
 
-    draw_input = st.text_input(
-        "Dezenas sorteadas",
-        value=st.session_state.get("institutional_draw_input", ""),
-        placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
-    )
-    st.session_state["institutional_draw_input"] = draw_input
-    if st.button("Simular Resultados", type="primary"):
-        parsed_draw = _parse_draw_numbers(draw_input)
-        if len(parsed_draw) != 15:
-            st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
-        else:
-            _run_institutional_simulation(drawn_numbers=parsed_draw)
-            st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado"
-            st.rerun()
-    st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
+        draw_input = st.text_input(
+            "Dezenas sorteadas",
+            value=st.session_state.get("institutional_draw_input", ""),
+            placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
+            key="sim_manual_draw_input",
+        )
+        st.session_state["institutional_draw_input"] = draw_input
+        if st.button("Simular Resultados", type="primary", key="sim_manual_run"):
+            parsed_draw = _parse_draw_numbers(draw_input)
+            if len(parsed_draw) != 15:
+                st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
+            else:
+                _run_institutional_simulation(drawn_numbers=parsed_draw)
+                st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado_manual"
+                st.rerun()
+        st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
 
-    simulation_state = st.session_state.get("institutional_simulation") or {}
-    if simulation_state:
-        sim_diag_cols = st.columns([1, 1, 1, 1])
-        sim_diag_cols[0].metric("source", str(simulation_state.get("source", "-") or "-"))
-        sim_diag_cols[1].metric("loaded_games", int(simulation_state.get("loaded_games", 0) or 0))
-        sim_diag_cols[2].metric("compared_games", int(simulation_state.get("compared_games", 0) or 0))
-        sim_diag_cols[3].metric("premium_games", int(simulation_state.get("premium_games", 0) or 0))
-        with st.expander("Diagnóstico da simulação", expanded=False):
-            st.json(simulation_state.get("summary") or {})
-            st.write("Jogos carregados:", int(simulation_state.get("loaded_games", 0) or 0))
-            st.write("Jogos comparados:", int(simulation_state.get("compared_games", 0) or 0))
-            error_payload = st.session_state.get("institutional_simulation_error")
-            if error_payload:
-                st.error(error_payload.get("error", "Erro desconhecido"))
+        simulation_state = st.session_state.get("institutional_simulation") or {}
+        if simulation_state:
+            sim_diag_cols = st.columns([1, 1, 1, 1])
+            sim_diag_cols[0].metric("source", str(simulation_state.get("source", "-") or "-"))
+            sim_diag_cols[1].metric("loaded_games", int(simulation_state.get("loaded_games", 0) or 0))
+            sim_diag_cols[2].metric("compared_games", int(simulation_state.get("compared_games", 0) or 0))
+            sim_diag_cols[3].metric("premium_games", int(simulation_state.get("premium_games", 0) or 0))
+            with st.expander("Diagnóstico da simulação manual", expanded=False):
+                st.json(simulation_state.get("summary") or {})
+                st.write("Jogos carregados:", int(simulation_state.get("loaded_games", 0) or 0))
+                st.write("Jogos comparados:", int(simulation_state.get("compared_games", 0) or 0))
+                error_payload = st.session_state.get("institutional_simulation_error")
+                if error_payload:
+                    st.error(error_payload.get("error", "Erro desconhecido"))
 
-    cover_result = st.session_state.get("institutional_simulation_result")
-    if cover_result:
-        st.markdown("#### Resultado da simulação")
-        st.caption("Apenas os jogos premiados com 11 pontos ou mais aparecem abaixo.")
-        rows_html = []
-        premium_rows = [row for row in cover_result if int(row.get("hits", 0)) >= 11]
-        for row in premium_rows:
-            rows_html.append(
-                "<tr>"
-                f"<td>{row.get('jogo', '-')}</td>"
-                f"<td>{row.get('resultado', '-')}</td>"
-                f"<td>{row.get('hits', '-')}</td>"
-                f"<td>{row.get('premiado', '-')}</td>"
-                "</tr>"
-            )
-        if premium_rows:
-            st.markdown(
-                """
-                <table class="lotoia-sim-table">
-                    <thead>
-                        <tr>
-                            <th>jogo</th>
-                            <th>resultado</th>
-                            <th>hits</th>
-                            <th>premiado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                + "".join(rows_html)
-                + """
-                    </tbody>
-                </table>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.info("Nenhum jogo premiado com 11 pontos ou mais nesta simulação.")
-            st.dataframe(
-                pd.DataFrame(cover_result)[
-                    ["jogo", "dezenas", "hits", "premiado"]
-                ]
-                if cover_result
-                else pd.DataFrame(columns=["jogo", "dezenas", "hits", "premiado"]),
-                hide_index=True,
-                use_container_width=True,
-            )
-    elif simulation_state.get("runtime_status") == "error":
-        st.error("A simulação encontrou um erro. Veja o diagnóstico acima.")
-    else:
-        st.info("Nenhum jogo encontrado para simulação.")
+        cover_result = st.session_state.get("institutional_simulation_result")
+        if cover_result:
+            st.markdown("##### Resultado da simulação manual")
+            st.caption("Apenas os jogos premiados com 11 pontos ou mais aparecem abaixo.")
+            rows_html = []
+            premium_rows = [row for row in cover_result if int(row.get("hits", 0)) >= 11]
+            for row in premium_rows:
+                rows_html.append(
+                    "<tr>"
+                    f"<td>{row.get('jogo', '-')}</td>"
+                    f"<td>{row.get('resultado', '-')}</td>"
+                    f"<td>{row.get('hits', '-')}</td>"
+                    f"<td>{row.get('premiado', '-')}</td>"
+                    "</tr>"
+                )
+            if premium_rows:
+                st.markdown(
+                    """
+                    <table class="lotoia-sim-table">
+                        <thead>
+                            <tr>
+                                <th>jogo</th>
+                                <th>resultado</th>
+                                <th>hits</th>
+                                <th>premiado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                    """
+                    + "".join(rows_html)
+                    + """
+                        </tbody>
+                    </table>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("Nenhum jogo premiado com 11 pontos ou mais nesta simulação.")
+                st.dataframe(
+                    pd.DataFrame(cover_result)[
+                        ["jogo", "dezenas", "hits", "premiado"]
+                    ]
+                    if cover_result
+                    else pd.DataFrame(columns=["jogo", "dezenas", "hits", "premiado"]),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+        elif simulation_state.get("runtime_status") == "error":
+            st.error("A simulação encontrou um erro. Veja o diagnóstico acima.")
 
 
 def _render_history_page(snapshot: dict[str, Any]) -> None:
