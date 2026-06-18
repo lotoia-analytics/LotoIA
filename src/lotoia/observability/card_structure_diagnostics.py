@@ -20,7 +20,6 @@ from lotoia.database.database import (
 )
 from lotoia.governance.analysis_batch_labels import batch_label_game_size
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
-from lotoia.observability.hb_metrics import resolve_official_numbers_for_contest, resolve_reconciliation_game_hits
 from lotoia.statistics.card_structure import (
     analyze_stuck_games,
     compare_structure_profiles,
@@ -120,6 +119,40 @@ def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str 
     return len(game.get("numbers") or [])
 
 
+def _event_eligible_for_active_structural_reading(context: Mapping[str, Any]) -> bool:
+    """Lotes ativos na leitura padrão da Cobertura Estrutural (M-OPS-062)."""
+    status = str(context.get("lot_operational_status") or "").strip().lower()
+    active_statuses = {
+        "pending_structural_review",
+        "approved_for_officialization",
+        "officialized",
+        "approved_with_warning",
+    }
+    inactive_statuses = {
+        "needs_calibration",
+        "rejected",
+        "blocked_for_officialization",
+        "calibration_source_only",
+        "superseded_by_calibration",
+        "not_officialized",
+        "calibration_authorized",
+        "calibration_applied",
+    }
+    if status in inactive_statuses:
+        return False
+    if status in active_statuses:
+        return True
+    if context.get("official_release_allowed") is False:
+        return False
+    verdict = str(context.get("ml_verdict") or "").strip().upper()
+    if verdict in {"PRECISA CALIBRAR", "REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
+        return False
+    lot_origin = str(context.get("generation_origin") or "").strip().lower()
+    if lot_origin == "simulation" or bool(context.get("simulation_mode")):
+        return False
+    return True
+
+
 def load_operational_card_structure_diagnostics_from_db(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -165,6 +198,9 @@ def load_operational_card_structure_diagnostics_from_db(
         for event in sovereign_events:
             ge_id = int(event.id or 0)
             if ge_id <= 0:
+                continue
+            event_context = dict(getattr(event, "context_json", {}) or {})
+            if not _event_eligible_for_active_structural_reading(event_context):
                 continue
             rows = (
                 session.query(GeneratedGame)
