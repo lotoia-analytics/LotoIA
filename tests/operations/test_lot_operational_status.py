@@ -7,7 +7,6 @@ from lotoia.operations.lot_operational_status import (
     GENERATION_ORIGIN_SIMULATION,
     MISSION_ID,
     STATUS_BLOCKED_FOR_OFFICIALIZATION,
-    STATUS_NOT_OFFICIALIZED,
     STATUS_OFFICIALIZED,
     build_lot_status_context,
     is_active_structural_reading_status,
@@ -18,7 +17,7 @@ from lotoia.operations.lot_operational_status import (
 
 
 def test_build_marker_v44() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v48"
+    assert BUILD_MARKER == "institutional-adm-runtime-v49"
 
 
 def test_mission_id() -> None:
@@ -45,24 +44,25 @@ def test_approved_officialized() -> None:
     assert is_analytical_history_eligible({"lot_operational_status": status})
 
 
-def test_simulation_not_officialized() -> None:
+def test_simulation_pending_structural_review_not_conference_eligible() -> None:
     status = resolve_lot_operational_status(
         ml_verdict=VERDICT_APROVADO,
         official_release_allowed=True,
         generation_origin=GENERATION_ORIGIN_SIMULATION,
         simulation_mode=True,
     )
-    assert status == STATUS_NOT_OFFICIALIZED
+    assert status == "pending_structural_review"
+    assert is_active_structural_reading_status(status)
     assert not is_official_conference_eligible({"lot_operational_status": status})
     assert not is_analytical_history_eligible({"lot_operational_status": status})
 
 
-def test_needs_calibration_not_in_active_structural_after_blocked() -> None:
+def test_needs_calibration_in_active_structural_reading() -> None:
     status = resolve_lot_operational_status(
         ml_verdict=VERDICT_PRECISA_CALIBRAR,
         official_release_allowed=False,
     )
-    assert not is_active_structural_reading_status(status)
+    assert is_active_structural_reading_status(status)
 
 
 def test_build_lot_status_context_persist_fields() -> None:

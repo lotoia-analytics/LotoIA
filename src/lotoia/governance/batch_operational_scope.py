@@ -25,6 +25,8 @@ OPERATIONAL_STATUS_APPROVED_WITH_WARNING = "approved_with_warning"
 ACTIVE_READING_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
     {
         OPERATIONAL_STATUS_PENDING,
+        OPERATIONAL_STATUS_NEEDS_CALIBRATION,
+        OPERATIONAL_STATUS_CALIBRATION_AUTHORIZED,
         OPERATIONAL_STATUS_APPROVED,
         OPERATIONAL_STATUS_OFFICIALIZED,
         OPERATIONAL_STATUS_APPROVED_WITH_WARNING,
@@ -33,8 +35,6 @@ ACTIVE_READING_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
 
 INACTIVE_READING_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
     {
-        OPERATIONAL_STATUS_NEEDS_CALIBRATION,
-        OPERATIONAL_STATUS_CALIBRATION_AUTHORIZED,
         OPERATIONAL_STATUS_REJECTED,
         OPERATIONAL_STATUS_DISCARDED,
         OPERATIONAL_STATUS_SUPERSEDED,
@@ -49,6 +49,7 @@ CONFERENCE_ELIGIBLE_OPERATIONAL_STATUSES: frozenset[str] = frozenset(
     {
         OPERATIONAL_STATUS_APPROVED,
         OPERATIONAL_STATUS_OFFICIALIZED,
+        OPERATIONAL_STATUS_APPROVED_WITH_WARNING,
     }
 )
 
@@ -111,11 +112,23 @@ def resolve_operational_status_from_context(payload: Mapping[str, Any]) -> str:
         excluded_reason = _safe_str(payload.get("excluded_from_active_reading_reason"))
         if "calibra" in excluded_reason.lower():
             return OPERATIONAL_STATUS_SUPERSEDED
+        if "legacy" in excluded_reason.lower():
+            return OPERATIONAL_STATUS_NOT_OFFICIALIZED
         return OPERATIONAL_STATUS_NOT_OFFICIALIZED
     if explicit != OPERATIONAL_STATUS_PENDING or not lot_status:
         return explicit
-    if payload.get("simulation_mode") or _safe_str(payload.get("generation_origin")).lower() == "simulation":
+    if payload.get("legacy_excluded_from_active_coverage"):
         return OPERATIONAL_STATUS_NOT_OFFICIALIZED
+    if payload.get("simulation_mode") or _safe_str(payload.get("generation_origin")).lower() == "simulation":
+        lot_trace = payload.get("lot_status_trace") or {}
+        if isinstance(lot_trace, dict) and lot_trace.get("lot_operational_status"):
+            mapped = LOT_OPERATIONAL_STATUS_ALIASES.get(
+                _safe_str(lot_trace.get("lot_operational_status")).lower(),
+                _safe_str(lot_trace.get("lot_operational_status")).lower(),
+            )
+            if mapped in ACTIVE_READING_OPERATIONAL_STATUSES:
+                return mapped
+        return OPERATIONAL_STATUS_PENDING
     return explicit
 
 
@@ -486,3 +499,139 @@ def filter_generation_event_ids_active_reading(
         rows = session.query(GenerationEvent).filter(GenerationEvent.id.in_(normalized)).all()
         active_ids = {int(event.id) for event in rows if is_generation_event_active_reading(event)}
     return [value for value in normalized if value in active_ids]
+
+
+def _is_legacy_generation_without_operational_status(context: Mapping[str, Any]) -> bool:
+    if _safe_str(context.get("lot_operational_status")):
+        return False
+    if _safe_str(context.get("lot_operational_status_mission_id")):
+        return False
+    lot_trace = context.get("lot_status_trace")
+    if isinstance(lot_trace, Mapping) and lot_trace.get("mission_id"):
+        return False
+    explicit = _safe_str(context.get("operational_status")).lower()
+    if explicit and explicit != OPERATIONAL_STATUS_PENDING:
+        return False
+    return True
+
+
+def evaluate_active_coverage_exclusion(context: Mapping[str, Any]) -> str | None:
+    """Retorna motivo de exclusão da leitura ativa ou None se elegível."""
+    if context.get("legacy_excluded_from_active_coverage"):
+        return "legacy_excluded_from_active_coverage"
+    if context.get("active_reading_scope") is False:
+        return _safe_str(context.get("excluded_from_active_reading_reason") or "active_reading_scope_false")
+    status = resolve_operational_status_from_context(context)
+    if status in INACTIVE_READING_OPERATIONAL_STATUSES:
+        return f"inactive_status:{status}"
+    if _is_legacy_generation_without_operational_status(context):
+        return "legacy_without_operational_status"
+    if not is_active_reading_scope(context):
+        return f"not_active_reading:{status}"
+    return None
+
+
+def dry_run_active_coverage_cleanup(
+    db_path: Any,
+    *,
+    limit: int = 500,
+) -> dict[str, Any]:
+    """Lista lotes que seriam removidos da leitura ativa (sem purge)."""
+    from lotoia.governance.lei15_core_002_sovereign import is_sovereign_core_label
+
+    candidates: list[dict[str, Any]] = []
+    with get_session(db_path) as session:
+        events = (
+            session.query(GenerationEvent)
+            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+        for event in events:
+            batch_label = _safe_str(getattr(event, "analysis_batch_label", ""))
+            if not is_sovereign_core_label(batch_label):
+                continue
+            context = generation_event_context(event)
+            if context.get("active_reading_scope") is False and context.get("legacy_excluded_from_active_coverage"):
+                continue
+            reason = evaluate_active_coverage_exclusion(context)
+            if not reason:
+                continue
+            if reason.startswith("inactive_status:") or reason == "legacy_without_operational_status":
+                game_count = (
+                    session.query(GeneratedGame)
+                    .filter(GeneratedGame.generation_event_id == event.id)
+                    .count()
+                )
+                fields = resolve_batch_operational_fields(context)
+                candidates.append(
+                    {
+                        "generation_event_id": int(event.id or 0),
+                        "analysis_batch_label": batch_label,
+                        "operational_status": fields["operational_status"],
+                        "lot_operational_status": _safe_str(context.get("lot_operational_status")),
+                        "games_count": int(game_count),
+                        "exclusion_reason": reason,
+                        "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    }
+                )
+    return {
+        "mission_id": "M-OPS-062-FIX-04",
+        "dry_run": True,
+        "purge": False,
+        "candidates_count": len(candidates),
+        "candidates": candidates,
+    }
+
+
+def apply_active_coverage_logical_cleanup(
+    db_path: Any,
+    *,
+    dry_run: bool = True,
+    limit: int = 500,
+    operator: str = "",
+) -> dict[str, Any]:
+    """Marca lotes legados/inativos como fora da leitura ativa (sem apagar linhas)."""
+    report = dry_run_active_coverage_cleanup(db_path, limit=limit)
+    if dry_run:
+        return report
+
+    updated_event_ids: list[int] = []
+    for row in report.get("candidates") or []:
+        ge_id = int(row.get("generation_event_id", 0) or 0)
+        if ge_id <= 0:
+            continue
+        reason = str(row.get("exclusion_reason") or "active_coverage_cleanup")
+        if reason == "legacy_without_operational_status":
+            result = mark_generation_events_superseded_by_calibration(
+                [ge_id],
+                db_path=db_path,
+                reason="legacy_excluded_from_active_coverage",
+                operator=operator,
+                calibration_source_only=False,
+            )
+            with get_session(db_path) as session:
+                event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).first()
+                if event is not None:
+                    merged = dict(event.context_json or {})
+                    merged["legacy_excluded_from_active_coverage"] = True
+                    merged["excluded_from_active_reading_reason"] = "legacy_without_operational_status"
+                    event.context_json = merged
+                    session.commit()
+        else:
+            status = OPERATIONAL_STATUS_SUPERSEDED
+            if reason.startswith("inactive_status:"):
+                status = reason.split(":", maxsplit=1)[1]
+            result = mark_generation_events_superseded_by_calibration(
+                [ge_id],
+                db_path=db_path,
+                reason=reason,
+                operator=operator,
+                calibration_source_only=status == OPERATIONAL_STATUS_CALIBRATION_SOURCE,
+            )
+        updated_event_ids.extend(list(result.get("updated_generation_event_ids") or []))
+    return {
+        **report,
+        "dry_run": False,
+        "updated_generation_event_ids": sorted(set(updated_event_ids)),
+    }

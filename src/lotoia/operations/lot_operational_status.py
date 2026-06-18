@@ -32,6 +32,8 @@ GENERATION_ORIGIN_SIMULATION = "simulation"
 ACTIVE_STRUCTURAL_READING_STATUSES: frozenset[str] = frozenset(
     {
         STATUS_PENDING_STRUCTURAL_REVIEW,
+        STATUS_NEEDS_CALIBRATION,
+        STATUS_CALIBRATION_AUTHORIZED,
         STATUS_APPROVED_FOR_OFFICIALIZATION,
         STATUS_OFFICIALIZED,
         STATUS_APPROVED_WITH_WARNING,
@@ -56,13 +58,11 @@ ANALYTICAL_HISTORY_STATUSES: frozenset[str] = frozenset(
 
 INACTIVE_AUDIT_ONLY_STATUSES: frozenset[str] = frozenset(
     {
-        STATUS_NEEDS_CALIBRATION,
         STATUS_REJECTED,
         STATUS_BLOCKED_FOR_OFFICIALIZATION,
         STATUS_CALIBRATION_SOURCE_ONLY,
         STATUS_SUPERSEDED_BY_CALIBRATION,
         STATUS_NOT_OFFICIALIZED,
-        STATUS_CALIBRATION_AUTHORIZED,
         STATUS_CALIBRATION_APPLIED,
     }
 )
@@ -90,9 +90,11 @@ def resolve_lot_operational_status(
     origin = str(generation_origin or GENERATION_ORIGIN_GENERATOR).strip().lower()
 
     if simulation_mode or origin == GENERATION_ORIGIN_SIMULATION:
-        if calibration_applied or calibration_authorized:
+        if calibration_applied:
             return STATUS_CALIBRATION_SOURCE_ONLY
-        return STATUS_NOT_OFFICIALIZED
+        if calibration_authorized:
+            return STATUS_CALIBRATION_AUTHORIZED
+        return STATUS_PENDING_STRUCTURAL_REVIEW
 
     if calibration_applied and not official_release_allowed:
         return STATUS_CALIBRATION_APPLIED

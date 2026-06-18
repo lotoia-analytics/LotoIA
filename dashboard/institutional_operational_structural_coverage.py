@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, get_session
 from lotoia.governance.batch_operational_scope import (
@@ -183,3 +183,34 @@ def resolve_operational_generation_by_id(
         if int(row.get("generation_event_id", 0) or 0) == selected:
             return row
     return None
+
+
+def build_active_coverage_scope_summary(
+    generations: list[dict[str, Any]],
+    *,
+    exclusions_summary: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resumo do escopo ativo da Cobertura Estrutural (M-OPS-062-FIX-04)."""
+    exclusions = dict(exclusions_summary or {})
+    latest = generations[-1] if generations else {}
+    latest_ge_id = int(latest.get("generation_event_id", 0) or 0)
+    return {
+        "mission_id": "M-OPS-062-FIX-04",
+        "active_lots_count": len(generations),
+        "excluded_lots_count": int(exclusions.get("excluded_batches_count", 0) or 0),
+        "excluded_message": str(exclusions.get("message") or ""),
+        "latest_generation_event_id": latest_ge_id,
+        "latest_operational_generation_label": str(latest.get("operational_generation_label") or "-"),
+        "latest_card_format": int(latest.get("card_format", 0) or 0),
+        "latest_games_count": int(latest.get("games_count", 0) or 0),
+        "latest_operational_status": str(latest.get("operational_status") or "-"),
+        "latest_batch_label": str(latest.get("analysis_batch_label") or "-"),
+        "latest_created_at": str(latest.get("created_at") or "-"),
+        "latest_summary": (
+            f"GE {latest_ge_id} — {int(latest.get('card_format', 0) or 0)}D — "
+            f"{int(latest.get('games_count', 0) or 0)} jogos — "
+            f"{str(latest.get('operational_status') or '-')}"
+            if latest_ge_id > 0
+            else ""
+        ),
+    }
