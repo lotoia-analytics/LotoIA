@@ -553,6 +553,7 @@ def execute_ml_operational_hierarchy(
 
     pool = [dict(game) for game in games]
     structural_pool_bundle: dict[str, Any] = {}
+    diverse_top_slice_bundle: dict[str, Any] = {}
     pre_final_bundle: dict[str, Any] = {}
     stage_results: dict[str, Any] = {}
     stage_failures: list[str] = []
@@ -568,6 +569,19 @@ def execute_ml_operational_hierarchy(
         )
         if structural_pool_bundle.get("structural_pool_applied"):
             corrective_actions.append("pool_estrutural_15d_expandido")
+
+    diverse_top_slice_bundle: dict[str, Any] = {}
+    if is_structural_policy_15d_format(int(game_size)) and int(requested_count) > 0:
+        from lotoia.statistics.diverse_top_slice_selection import apply_diverse_top_slice_pre_gp
+
+        pool, diverse_top_slice_bundle = apply_diverse_top_slice_pre_gp(
+            pool,
+            game_size=int(game_size),
+            requested_count=int(requested_count),
+            batch_label=batch_label,
+        )
+        if diverse_top_slice_bundle.get("diverse_top_slice_applied"):
+            corrective_actions.append("selecao_top_slice_diversidade_m_stat_002")
 
     conformity = _evaluate_conformity_stage(
         pool,
@@ -690,12 +704,15 @@ def execute_ml_operational_hierarchy(
             "subordinate_missions": {
                 "structural_pool_15d": structural_pool_bundle,
                 "pre_final_pool_ml": pre_final_bundle,
+                "diverse_top_slice_m_stat_002": diverse_top_slice_bundle,
             },
+            "diverse_top_slice_m_stat_002": diverse_top_slice_bundle,
         }
     )
     mission_bundles = {
         "structural_pool": structural_pool_bundle,
         "pre_final": pre_final_bundle,
+        "diverse_top_slice": diverse_top_slice_bundle,
     }
     return pool, hierarchy_bundle, mission_bundles
 

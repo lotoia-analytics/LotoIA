@@ -194,6 +194,7 @@ src/lotoia/ml/explainability.py
 src/lotoia/ml/feature_lineage.py
 src/lotoia/ml/features.py
 src/lotoia/ml/governance.py
+src/lotoia/ml/gp_delivery_causal_diagnostic.py
 src/lotoia/ml/inference.py
 src/lotoia/ml/lei15_core_candidate_decision.py
 src/lotoia/ml/ml_operational_hierarchy.py
@@ -202,6 +203,7 @@ src/lotoia/ml/model_registry.py
 src/lotoia/ml/models.py
 src/lotoia/ml/overlap_format_thresholds.py
 src/lotoia/ml/pre_final_pool_ml_calibration.py
+src/lotoia/ml/pre_gp_deterministic_recovery.py
 src/lotoia/ml/rerank.py
 src/lotoia/ml/runtime_isolation.py
 src/lotoia/ml/score_ml.py
@@ -290,6 +292,8 @@ src/lotoia/statistics/advanced.py
 src/lotoia/statistics/basic.py
 src/lotoia/statistics/card_structure.py
 src/lotoia/statistics/combinations.py
+src/lotoia/statistics/diverse_top_slice_selection.py
+src/lotoia/statistics/diversity_remediation_audit.py
 src/lotoia/statistics/feature_store.py
 src/lotoia/statistics/generation_trace.py
 src/lotoia/statistics/historical_intelligence.py

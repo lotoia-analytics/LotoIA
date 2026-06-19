@@ -402,5 +402,5 @@ def test_block_after_recovery_exhaustion_in_generate_best_games(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v65"
+    assert BUILD_MARKER == "institutional-adm-runtime-v66"
     assert is_pre_gp_recovery_enabled() is True
