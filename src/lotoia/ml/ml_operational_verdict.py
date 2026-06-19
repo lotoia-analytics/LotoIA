@@ -18,6 +18,7 @@ from lotoia.observability.card_structure_diagnostics import (
 )
 
 MISSION_ID = "M-ML-060-FIX-01"
+HITS_SEPARATION_MISSION_ID = "M-ML-076-FIX-01"
 
 VERDICT_APROVADO = "APROVADO"
 VERDICT_APROVADO_COM_ALERTA = "APROVADO COM ALERTA"
@@ -63,6 +64,17 @@ SIMILARITY_REPROVED_MIN = 0.70
 SIMILARITY_HIGH_THRESHOLD = 0.55
 
 NEXT_ACTION_CALIBRATION = "Autorizar calibração supervisionada."
+
+
+def build_structural_verdict_hits_separation_trace() -> dict[str, Any]:
+    """Rastreabilidade M-ML-076-FIX-01 — hits fora do veredito estrutural."""
+    return {
+        "structural_verdict_ignores_hits": True,
+        "hits_evaluation_scope": "historical_analytics_only",
+        "hit_metrics_excluded_from_release": True,
+        "m_ml_076_fix_01_applied": True,
+        "hits_separation_mission_id": HITS_SEPARATION_MISSION_ID,
+    }
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -198,11 +210,6 @@ def evaluate_ml_operational_verdict(
         verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
         rule_triggers.append("alerta_com_quase_repetidos")
 
-    if hits_13 == 0 and hits_14 == 0 and hits_15 == 0 and total_jogos >= 5 and high_redundancy:
-        verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
-        reason_parts.append("ausência de captura 13/14/15 com redundância alta")
-        rule_triggers.append("captura_ausente_redundancia")
-
     primary_analysis = per_format[0] if len(per_format) == 1 else None
     if primary_analysis and str(primary_analysis.get("level")) == LEVEL_ATENCAO:
         if similarity_reading["band"] in {"atencao", "alta_redundancia", "critico"} and pares_atencao >= 10:
@@ -275,6 +282,7 @@ def evaluate_ml_operational_verdict(
     trace = {
         "mission_id": MISSION_ID,
         "ml_verdict": verdict,
+        **build_structural_verdict_hits_separation_trace(),
         "similaridade_media": similaridade,
         "sobreposicao_maxima": _safe_int(m.get("sobreposicao_maxima")),
         "quase_repetidos": quase_repetidos,
@@ -295,6 +303,7 @@ def evaluate_ml_operational_verdict(
     return {
         "mission_id": MISSION_ID,
         "ml_verdict": verdict,
+        **build_structural_verdict_hits_separation_trace(),
         "ml_verdict_reason": primary_reason,
         "motivo_principal": primary_reason,
         "official_release_allowed": official_release_allowed,

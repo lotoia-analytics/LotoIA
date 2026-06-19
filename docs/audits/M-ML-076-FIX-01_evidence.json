@@ -1,0 +1,37 @@
+{
+  "mission_id": "M-ML-076-FIX-01",
+  "build_marker": "institutional-adm-runtime-v78",
+  "rule_removed": "captura_ausente_redundancia",
+  "decision_block_removed": "captura_13_14_ausente",
+  "counterfactual_edge_case": {
+    "label": "GP:20 15D limítrofe — redundância leve + zero hits",
+    "metrics": {
+      "similaridade_media": 0.56,
+      "quase_repetidos_criticos": 2,
+      "desempenho_13_hits": 0
+    },
+    "before_fix": {
+      "hits_zero": {"ml_verdict": "PRECISA CALIBRAR", "official_release_allowed": false},
+      "hits_positive": {"ml_verdict": "APROVADO", "official_release_allowed": true}
+    },
+    "after_fix": {
+      "hits_zero": {"ml_verdict": "APROVADO", "official_release_allowed": true},
+      "hits_positive": {"ml_verdict": "APROVADO", "official_release_allowed": true},
+      "verdict_differs": false,
+      "release_differs": false
+    }
+  },
+  "separation_trace": {
+    "structural_verdict_ignores_hits": true,
+    "hits_evaluation_scope": "historical_analytics_only",
+    "hit_metrics_excluded_from_release": true,
+    "m_ml_076_fix_01_applied": true
+  },
+  "functional_integrity": {
+    "core_002_intact": true,
+    "lei_15_intact": true,
+    "lei_15a_intact": true,
+    "public_app_intact": true,
+    "purge_executed": false
+  }
+}

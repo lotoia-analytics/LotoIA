@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
 
+from lotoia.ml.ml_operational_verdict import build_structural_verdict_hits_separation_trace
+
 MISSION_ID = "M-OPS-062"
 DEFERRED_COVERAGE_MISSION_ID = "M-OPS-062-FIX-06"
 POST_CALIBRATION_PROMOTION_MISSION_ID = "M-OPS-064-FIX-01"
@@ -467,6 +469,7 @@ def build_lot_status_context(
         "is_official_conference_eligible": lot_status in OFFICIAL_CONFERENCE_STATUSES,
         "is_analytical_history_eligible": lot_status in ANALYTICAL_HISTORY_STATUSES,
         "official_release_allowed": official_release_allowed and lot_status in OFFICIAL_CONFERENCE_STATUSES,
+        **build_structural_verdict_hits_separation_trace(),
     }
 
 

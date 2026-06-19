@@ -23,6 +23,7 @@ MOVED_TO_AUDIT_MARKERS = (
     "_render_structural_policy_15d_card",
     "_render_agent_responsible_card",
     "_render_overlap_format_verdict",
+    "_render_historical_hit_analytics_card",
     "_render_impact_card",
     "_render_result_card",
     "_render_technical_expanders",
@@ -30,7 +31,7 @@ MOVED_TO_AUDIT_MARKERS = (
 
 
 def test_build_marker_v76() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v77"
+    assert BUILD_MARKER == "institutional-adm-runtime-v78"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
 
 
