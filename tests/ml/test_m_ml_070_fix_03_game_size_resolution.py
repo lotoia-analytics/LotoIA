@@ -159,7 +159,8 @@ def test_gp_15d_generates_without_error(
     assert result["count"] == requested_count
     assert result["requested_count"] == requested_count
     assert result["game_size"] == 15
-    assert compose_calls == [15]
+    assert all(size == 15 for size in compose_calls)
+    assert compose_calls[-1] == 15
     calibration = dict(result.get("calibration_bundle") or {})
     assert calibration.get("game_size") == 15
 
@@ -172,7 +173,7 @@ def test_basic_generator_sovereign_path_uses_resolved_game_size() -> None:
     import inspect
 
     source = inspect.getsource(generate_best_games)
-    sovereign_block = source.split("if _apply_sovereign and ml_enabled:")[1].split("elif _apply_v4:")[0]
-    assert "resolve_pool_game_size" in source
+    sovereign_block = source.split("if _apply_sovereign and ml_enabled:")[1].split("if _apply_sovereign:")[0]
+    assert "apply_pre_final_pool_ml_calibration" in sovereign_block
     assert "game_size=_sovereign_game_size" in sovereign_block
     assert "game_size=count" not in sovereign_block

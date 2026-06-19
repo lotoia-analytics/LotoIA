@@ -24,6 +24,7 @@ from lotoia.ml.structural_auto_calibration import (
     build_auto_calibration_plan,
     is_structural_auto_calibration_format,
 )
+from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
     analyze_games_from_context_or_records,
@@ -532,6 +533,23 @@ def interpret_coverage_evidence(
     }
 
 
+def _load_pre_final_pool_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))
+
+
 def get_structural_coverage_evidence(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -736,6 +754,16 @@ def get_structural_coverage_evidence(
             "auto_structural_calibration": True,
         }
 
+    ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
+    pre_final_pool_ml_calibration = _load_pre_final_pool_evidence(db_path, ge_ids)
+    if pre_final_pool_ml_calibration:
+        metrics["pre_final_calibration_applied"] = bool(
+            pre_final_pool_ml_calibration.get("pre_final_calibration_applied")
+        )
+        metrics["final_gp_changed_by_ml"] = bool(
+            pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")
+        )
+
     return {
         "available": True,
         "mission_id": MISSION_ID,
@@ -806,4 +834,7 @@ def get_structural_coverage_evidence(
         "structural_policy_applied": bool(metrics.get("structural_policy_applied")),
         "policy_compliance_status": str(metrics.get("policy_compliance_status") or ""),
         "policy_violations": list(metrics.get("policy_violations") or []),
+        "pre_final_pool_ml_calibration": pre_final_pool_ml_calibration,
+        "pre_final_calibration_applied": bool(pre_final_pool_ml_calibration.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")),
     }

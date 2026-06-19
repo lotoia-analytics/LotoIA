@@ -687,6 +687,7 @@ def generate_best_games(
     _structural_policy_bundle = None
     _sovereign_game_size = 15
     _game_size_contract: dict[str, object] = {}
+    _baseline_gp_for_trace: list[dict[str, object]] = []
     if _apply_sovereign:
         from lotoia.ml.supervised_output_calibration import resolve_pool_game_size
 
@@ -696,18 +697,36 @@ def generate_best_games(
             requested_count=count,
         )
     if _apply_sovereign and ml_enabled:
-        from lotoia.ml.supervised_output_calibration import apply_supervised_output_calibration
+        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
+        from lotoia.ml.pre_final_pool_ml_calibration import (
+            apply_pre_final_pool_ml_calibration,
+        )
 
-        games, _calibration_bundle = apply_supervised_output_calibration(
+        _pre_final_baseline_pool = [dict(game) for game in games]
+        try:
+            _baseline_gp_for_trace = compose_sovereign_gp(
+                _pre_final_baseline_pool,
+                count,
+                _sovereign_cfg,
+                game_size=_sovereign_game_size,
+            )
+        except Exception:  # noqa: BLE001 — baseline opcional para rastreabilidade
+            _baseline_gp_for_trace = []
+        games, _calibration_bundle = apply_pre_final_pool_ml_calibration(
             games,
             game_size=_sovereign_game_size,
+            requested_count=count,
             ml_enabled=True,
+            batch_label=batch_label,
             calibration_plan=calibration_plan,
             event_context={
                 "batch_label": batch_label,
                 "requested_count": count,
                 "game_size_contract": _game_size_contract,
             },
+            baseline_pool=_pre_final_baseline_pool,
+            compose_gp=compose_sovereign_gp,
+            compose_config=_sovereign_cfg,
         )
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp
@@ -740,6 +759,15 @@ def generate_best_games(
                 pool_games=games,
                 history=history,
                 required_count=count,
+            )
+        if _calibration_bundle and ml_enabled:
+            from lotoia.ml.pre_final_pool_ml_calibration import finalize_pre_final_gp_outcome
+
+            _calibration_bundle = finalize_pre_final_gp_outcome(
+                _calibration_bundle,
+                baseline_gp=_baseline_gp_for_trace,
+                final_gp=best_games,
+                structural_policy_bundle=_structural_policy_bundle,
             )
     elif _apply_v4:
         from lotoia.generation.core_realignment_v4 import compose_gp_v4
@@ -945,6 +973,7 @@ def generate_best_games(
         "count": len(best_games),
         "requested_count": int(count),
         "game_size": int(_sovereign_game_size) if _apply_sovereign else None,
+        "pre_final_pool_ml_calibration": dict(_calibration_bundle or {}),
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {

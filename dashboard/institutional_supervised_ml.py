@@ -21,6 +21,10 @@ from lotoia.governance.lei15_core_002_sovereign import (
 )
 from lotoia.governance.batch_operational_scope import is_generation_event_active_reading, summarize_active_reading_exclusions
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
+from lotoia.ml.pre_final_pool_ml_calibration import (
+    MISSION_ID as PRE_FINAL_POOL_MISSION_ID,
+    build_pre_final_pool_trace,
+)
 from lotoia.ml.supervised_output_calibration import (
     CALIBRATION_ENGINE_ROLE,
     CALIBRATION_VERSION,
@@ -53,6 +57,7 @@ OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
 OVERLAP_FORMAT_MISSION_ID_067 = "M-ML-067"
 STRUCTURAL_AUTO_CALIBRATION_MISSION_ID = "M-ML-069"
 STRUCTURAL_POLICY_15D_MISSION_ID = "M-ML-070"
+PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID = PRE_FINAL_POOL_MISSION_ID
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
@@ -378,6 +383,10 @@ def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None
             "critical_coverage_boost_count": int(bundle.get("critical_coverage_boost", 0) or 0),
         },
         "six_bases_summary": build_calibration_six_bases_summary(diagnostics),
+        "pre_final_pool_ml_calibration": build_pre_final_pool_trace(bundle),
+        "pre_final_calibration_applied": bool(bundle.get("pre_final_calibration_applied")),
+        "pre_final_pool_ml_enabled": bool(bundle.get("pre_final_pool_ml_enabled")),
+        "final_gp_changed_by_ml": bool(bundle.get("final_gp_changed_by_ml")),
     }
 
 
@@ -661,6 +670,11 @@ def build_supervised_ml_operational_event_detail(
         "final_ml_score_avg": float(context.get("final_ml_score_avg", 0.0) or 0.0),
         "issues_detected": list(context.get("issues_detected") or []),
         "batch_status_counts": dict(context.get("batch_status_counts") or {}),
+        "pre_final_pool_ml_calibration": build_pre_final_pool_trace(
+            dict(context.get("pre_final_pool_ml_calibration") or {})
+        ),
+        "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(context.get("final_gp_changed_by_ml")),
     }
     return {
         "generation_event_id": selected_id,
@@ -1067,6 +1081,10 @@ def build_sovereign_coverage_diagnosis_card(
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
+        "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
+        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1362,6 +1380,10 @@ def build_ml_calibration_cockpit_snapshot(
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
+        "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
+        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,

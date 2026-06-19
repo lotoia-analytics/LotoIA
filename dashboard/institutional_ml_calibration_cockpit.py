@@ -204,6 +204,46 @@ def _format_parity_pairs(pairs: Any) -> str:
     return " • ".join(formatted) if formatted else "—"
 
 
+def _render_pre_final_pool_ml_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Pool pré-final calibrado pela ML (M-ML-071)")
+    pre_final = dict(
+        snapshot.get("pre_final_pool_ml_calibration")
+        or dict(snapshot.get("coverage_evidence") or {}).get("pre_final_pool_ml_calibration")
+        or {}
+    )
+    if not pre_final:
+        st.caption("Sem evidência de calibração pré-final para o escopo atual.")
+        return
+    applied = bool(pre_final.get("pre_final_calibration_applied"))
+    st.caption(
+        f"GP final veio de pool calibrado pela ML: {'SIM' if applied else 'NÃO'} | "
+        f"GP alterado pela ML: {'SIM' if pre_final.get('final_gp_changed_by_ml') else 'NÃO'}"
+    )
+    cols = st.columns(4)
+    cols[0].metric("Pool pré-final", int(pre_final.get("pre_final_pool_size", 0) or 0))
+    cols[1].metric("Pool deduplicado", int(pre_final.get("pre_final_pool_deduped_size", 0) or 0))
+    cols[2].metric("Reordenados", int(pre_final.get("candidates_reordered", 0) or 0))
+    cols[3].metric("Substituídos", int(pre_final.get("candidates_replaced", 0) or 0))
+    st.caption(
+        f"Formato: {pre_final.get('pre_final_calibration_format', '—')} | "
+        f"Política: {pre_final.get('pre_final_calibration_policy', '—')}"
+    )
+    metrics_before = dict(pre_final.get("metrics_before") or {})
+    metrics_after = dict(pre_final.get("metrics_after") or {})
+    if metrics_before or metrics_after:
+        st.caption(
+            "Diversidade "
+            f"{metrics_before.get('diversity_score', '—')} → {metrics_after.get('diversity_score', '—')} | "
+            "Similaridade "
+            f"{metrics_before.get('similarity_score', '—')} → {metrics_after.get('similarity_score', '—')}"
+        )
+    actions = list(pre_final.get("actions_applied") or [])
+    if actions:
+        with st.expander("Ações aplicadas no pool pré-final", expanded=False):
+            for action in actions[:20]:
+                st.markdown(f"- {action}")
+
+
 def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Política estrutural soberana 15D (M-ML-070)")
     memory = normalize_structural_policy_15d_memory(
@@ -842,6 +882,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             render_cockpit_block_safe(
                 "overlap_format",
                 lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "pre_final_pool_ml",
+                lambda: _render_pre_final_pool_ml_card(snapshot),
             )
             render_cockpit_block_safe(
                 "politica_15d",
