@@ -11988,6 +11988,45 @@ def _persist_clean_law15_generation_history(
                 _diverse_top_slice_trace.get("diversity_score_after", 0.0) or 0.0
             ),
             "diverse_top_slice_criteria_met": bool(_diverse_top_slice_trace.get("criteria_met")),
+            "similarity_decomposition_before_top_slice": dict(
+                _diverse_top_slice_trace.get("similarity_decomposition_before") or {}
+            ),
+            "similarity_decomposition_after_top_slice": dict(
+                _diverse_top_slice_trace.get("similarity_decomposition_after") or {}
+            ),
+            "structural_triplet_010203_count": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_count", 0) or 0
+            ),
+            "structural_triplet_010203_cap": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_cap", 0) or 0
+            ),
+            "structural_triplet_010203_excess": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_excess", 0) or 0
+            ),
+            "structural_triplet_010203_swaps": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_swaps", 0) or 0
+            ),
+            "structural_triplet_policy": str(
+                _diverse_top_slice_trace.get("structural_triplet_policy")
+                or "allowed_until_cap_penalize_excess_only"
+            ),
+            "pool_insufficient_non_triplet_reserve": bool(
+                _diverse_top_slice_trace.get("pool_insufficient_non_triplet_reserve")
+            ),
+            "responsible_agent": str(_diverse_top_slice_trace.get("responsible_agent") or ""),
+            "next_mission_hint": str(_diverse_top_slice_trace.get("next_mission_hint") or ""),
+            "non_triplet_pool_count": int(
+                _diverse_top_slice_trace.get("non_triplet_pool_count", 0) or 0
+            ),
+            "non_triplet_reserve_count": int(
+                _diverse_top_slice_trace.get("non_triplet_reserve_count", 0) or 0
+            ),
+            "non_triplet_required_count_gp": int(
+                _diverse_top_slice_trace.get("non_triplet_required_count_gp", 0) or 0
+            ),
+            "non_triplet_ideal_count_gp": int(
+                _diverse_top_slice_trace.get("non_triplet_ideal_count_gp", 0) or 0
+            ),
         }
     )
     try:
