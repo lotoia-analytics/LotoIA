@@ -1,17 +1,13 @@
-"""M-ML-070-AUDIT-01 — auditoria da aplicação efetiva da Política Estrutural 15D.
+"""M-ML-070-AUDIT-01 — auditoria da Política Estrutural 15D (atualizada por M-ML-070-FIX-01).
 
-Estes testes CODIFICAM os achados da auditoria (comportamento atual verificado
-empiricamente), servindo como evidência reproduzível e guarda de regressão:
+A auditoria original constatou que a política era APENAS OBSERVACIONAL. A
+correção M-ML-070-FIX-01 fez a política GOVERNAR o lote final por conformidade.
+Estes testes refletem o comportamento corrigido:
 
 - a memória da política existe e bate com o catálogo M-ML-070-v1;
 - a validação por jogo detecta violações de repetição/paridade/sequência;
-- PORÉM a aplicação no lote soberano é APENAS OBSERVACIONAL: quando o GP já
-  entrega `required_count` jogos, `apply_structural_policy_15d_to_sovereign_batch`
-  mantém os jogos originais (mesma ordem) e NÃO remove os não conformes;
-- o bundle não expõe `structural_policy_applied` (artefato esperado ausente).
-
-Se a M-ML-070 for evoluída para aplicação efetiva (reordenar/bloquear não
-conformes), estes testes devem ser revisados junto com nova auditoria.
+- o bundle expõe `structural_policy_applied = True`;
+- não conformes só permanecem quando não há conformes suficientes (rastreado).
 """
 
 from __future__ import annotations
@@ -49,8 +45,8 @@ def test_validation_flags_violations() -> None:
     assert any("sequencia" in v for v in bad["violations"])
 
 
-def test_application_is_observational_not_governing(tmp_path: Path) -> None:
-    """Achado central: o lote final NÃO é alterado e os não conformes permanecem."""
+def test_non_compliant_kept_only_when_insufficient_compliant(tmp_path: Path) -> None:
+    """Pós-FIX-01: não conforme só permanece quando faltam conformes (rastreado)."""
     db_path = tmp_path / "audit_070.db"
     compliant = {"numbers": COMPLIANT, "final_card_numbers": COMPLIANT, "profile_score": 2.0,
                  "final_score": {"final_score": 90.0}}
@@ -66,23 +62,19 @@ def test_application_is_observational_not_governing(tmp_path: Path) -> None:
         db_path=db_path,
     )
 
-    selected_sigs = [tuple(sorted(g["final_card_numbers"])) for g in selected]
-    final_sigs = [tuple(sorted(g.get("final_card_numbers", g.get("numbers")))) for g in final_games]
-    # Lote final inalterado (mesma composição e ordem da seleção original do GP).
-    assert final_sigs == selected_sigs
-    # Não conforme permanece no lote (não houve bloqueio/remoção).
+    # Há só 1 conforme para 2 vagas → o não conforme entra para completar.
     assert any(
         not (g.get("structural_policy_15d_validation") or {}).get("approved")
         for g in final_games
     )
-    # Compliance é apenas medido/anotado.
     assert bundle["policy_compliance_status"] == "partial"
     assert bundle["games_compliant"] == 1
-    assert bundle["games_validated"] == 2
+    assert bundle["games_non_compliant"] == 1
+    assert bundle["non_compliant_kept_reason"] == "insufficient_compliant_pool"
 
 
-def test_bundle_lacks_structural_policy_applied_flag(tmp_path: Path) -> None:
-    """Critério #2 da auditoria espera structural_policy_applied=true — ausente."""
+def test_bundle_exposes_structural_policy_applied(tmp_path: Path) -> None:
+    """Pós-FIX-01: o bundle comprova aplicação efetiva (structural_policy_applied=True)."""
     db_path = tmp_path / "audit_070_flag.db"
     compliant = {"numbers": COMPLIANT, "final_card_numbers": COMPLIANT, "profile_score": 1.0,
                  "final_score": {"final_score": 50.0}}
@@ -93,6 +85,6 @@ def test_bundle_lacks_structural_policy_applied_flag(tmp_path: Path) -> None:
         required_count=1,
         db_path=db_path,
     )
-    assert "structural_policy_applied" not in bundle
-    # O bundle expõe memory_loaded, mas não o flag de aplicação efetiva.
+    assert bundle["structural_policy_applied"] is True
+    assert bundle["structural_policy_application_mode"] == "governing_by_compliance"
     assert bundle["structural_policy_memory_loaded"] is True
