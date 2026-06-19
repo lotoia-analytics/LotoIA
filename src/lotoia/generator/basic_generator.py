@@ -685,6 +685,7 @@ def generate_best_games(
     _v3_fallback_to_v1 = False
     _calibration_bundle = None
     _structural_policy_bundle = None
+    _structural_pool_bundle = None
     _sovereign_game_size = 15
     _game_size_contract: dict[str, object] = {}
     _baseline_gp_for_trace: list[dict[str, object]] = []
@@ -701,6 +702,16 @@ def generate_best_games(
         from lotoia.ml.pre_final_pool_ml_calibration import (
             apply_pre_final_pool_ml_calibration,
         )
+        from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
+
+        if is_structural_policy_15d_format(_sovereign_game_size):
+            from lotoia.ml.structural_pool_15d_generator import build_ml_structural_15d_pool
+
+            games, _structural_pool_bundle = build_ml_structural_15d_pool(
+                games,
+                history=history,
+                seed=seed_offset,
+            )
 
         _pre_final_baseline_pool = [dict(game) for game in games]
         try:
@@ -974,6 +985,7 @@ def generate_best_games(
         "requested_count": int(count),
         "game_size": int(_sovereign_game_size) if _apply_sovereign else None,
         "pre_final_pool_ml_calibration": dict(_calibration_bundle or {}),
+        "ml_structural_15d_pool": dict(_structural_pool_bundle or {}),
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {
@@ -982,8 +994,21 @@ def generate_best_games(
         },
         "generation_routing": _routing.to_dict(),
     }
+    if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+        payload["pool_origin"] = _structural_pool_bundle.get("pool_origin")
+        payload["structural_pool_size"] = _structural_pool_bundle.get("structural_pool_size")
+        payload["structural_compliant_pool_size"] = _structural_pool_bundle.get(
+            "structural_compliant_pool_size"
+        )
+        payload["structural_pool_compliance_rate"] = _structural_pool_bundle.get("compliance_rate")
+        merged_bundle = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
+        merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
+        payload["calibration_bundle"] = merged_bundle
     if _calibration_bundle and _calibration_bundle.get("calibration_applied"):
-        payload["calibration_bundle"] = _calibration_bundle
+        merged_calibration = dict(_calibration_bundle)
+        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+            merged_calibration["ml_structural_15d_pool"] = _structural_pool_bundle
+        payload["calibration_bundle"] = merged_calibration
         payload["calibration_applied"] = True
         payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
     if _structural_policy_bundle:
@@ -1002,6 +1027,8 @@ def generate_best_games(
         payload["compliance_rate"] = _structural_policy_bundle.get("compliance_rate")
         payload["lote_alterado"] = _structural_policy_bundle.get("lote_alterado")
         merged_bundle = dict(_calibration_bundle or {})
+        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+            merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
         merged_bundle["structural_policy_15d"] = _structural_policy_bundle
         payload["calibration_bundle"] = merged_bundle
     return payload

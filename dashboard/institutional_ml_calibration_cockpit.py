@@ -204,6 +204,43 @@ def _format_parity_pairs(pairs: Any) -> str:
     return " • ".join(formatted) if formatted else "—"
 
 
+def _render_structural_15d_pool_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Pool estrutural ML 15D (M-ML-072)")
+    structural_pool = dict(
+        snapshot.get("ml_structural_15d_pool")
+        or dict(snapshot.get("coverage_evidence") or {}).get("ml_structural_15d_pool")
+        or {}
+    )
+    if not structural_pool:
+        st.caption("Sem evidência de pool estrutural ML 15D para o escopo atual.")
+        return
+    st.caption(
+        f"Origem: {structural_pool.get('pool_origin', '—')} | "
+        f"Compliance atingido: {'SIM' if structural_pool.get('compliance_met') else 'NÃO'}"
+    )
+    cols = st.columns(4)
+    cols[0].metric("Pool estrutural", int(structural_pool.get("structural_pool_size", 0) or 0))
+    cols[1].metric("Conformes", int(structural_pool.get("structural_compliant_pool_size", 0) or 0))
+    cols[2].metric("Compliance", f"{float(structural_pool.get('compliance_rate', 0.0) or 0.0):.0%}")
+    cols[3].metric(
+        "Confronto",
+        int(structural_pool.get("reference_contest_window", 10) or 10),
+    )
+    confronto = dict(structural_pool.get("confronto_recent_contests") or {})
+    if confronto.get("available"):
+        st.caption(
+            f"Média de acertos/concurso: {confronto.get('avg_hits_per_contest', '—')} "
+            f"({int(confronto.get('reference_contests_count', 0) or 0)} concursos)"
+        )
+    metrics_before = dict(structural_pool.get("metrics_before") or {})
+    metrics_after = dict(structural_pool.get("metrics_after") or {})
+    if metrics_before or metrics_after:
+        st.caption(
+            "Diversidade estrutural "
+            f"{metrics_before.get('diversity_score', '—')} → {metrics_after.get('diversity_score', '—')}"
+        )
+
+
 def _render_pre_final_pool_ml_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Pool pré-final calibrado pela ML (M-ML-071)")
     pre_final = dict(
@@ -882,6 +919,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             render_cockpit_block_safe(
                 "overlap_format",
                 lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "structural_15d_pool",
+                lambda: _render_structural_15d_pool_card(snapshot),
             )
             render_cockpit_block_safe(
                 "pre_final_pool_ml",

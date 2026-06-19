@@ -25,6 +25,7 @@ from lotoia.ml.structural_auto_calibration import (
     is_structural_auto_calibration_format,
 )
 from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
     analyze_games_from_context_or_records,
@@ -550,6 +551,23 @@ def _load_pre_final_pool_evidence(
     return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))
 
 
+def _load_structural_15d_pool_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
+
+
 def get_structural_coverage_evidence(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -763,6 +781,15 @@ def get_structural_coverage_evidence(
         metrics["final_gp_changed_by_ml"] = bool(
             pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")
         )
+    ml_structural_15d_pool = _load_structural_15d_pool_evidence(db_path, ge_ids)
+    if ml_structural_15d_pool:
+        metrics["structural_pool_applied"] = bool(
+            ml_structural_15d_pool.get("structural_pool_applied")
+        )
+        metrics["pool_origin"] = str(ml_structural_15d_pool.get("pool_origin") or "")
+        metrics["structural_pool_size"] = int(
+            ml_structural_15d_pool.get("structural_pool_size", 0) or 0
+        )
 
     return {
         "available": True,
@@ -837,4 +864,8 @@ def get_structural_coverage_evidence(
         "pre_final_pool_ml_calibration": pre_final_pool_ml_calibration,
         "pre_final_calibration_applied": bool(pre_final_pool_ml_calibration.get("pre_final_calibration_applied")),
         "final_gp_changed_by_ml": bool(pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")),
+        "ml_structural_15d_pool": ml_structural_15d_pool,
+        "pool_origin": str(ml_structural_15d_pool.get("pool_origin") or ""),
+        "structural_pool_applied": bool(ml_structural_15d_pool.get("structural_pool_applied")),
+        "structural_pool_size": int(ml_structural_15d_pool.get("structural_pool_size", 0) or 0),
     }
