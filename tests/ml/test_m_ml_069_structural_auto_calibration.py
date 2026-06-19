@@ -178,7 +178,7 @@ def test_m_ml_067_overlap_rules_preserved() -> None:
 
 
 def test_build_marker_v58() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v72"
+    assert BUILD_MARKER == "institutional-adm-runtime-v73"
 
 
 def test_derive_actions_from_audit_report() -> None:

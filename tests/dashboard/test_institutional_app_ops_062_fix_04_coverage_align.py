@@ -170,7 +170,7 @@ def test_cobertura_page_loads_without_generation_list_cache() -> None:
     import dashboard.institutional_app as institutional_app
 
     source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
-    assert "load_operational_core_002_generations(DB_PATH)" in source
+    assert "_load_operational_generations_cached" in source
     assert "diagnose_operational_coverage_gap" in source
 
 

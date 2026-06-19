@@ -18,6 +18,15 @@ SESSION_LIGHT_MODE = "panel_light_mode_enabled"
 SESSION_LOAD_STRUCTURAL = "panel_light_load_structural_coverage"
 SESSION_LOAD_COMPARATIVE = "panel_light_load_comparative"
 SESSION_LOAD_HISTORY = "panel_light_load_history"
+SESSION_LOAD_ANALYTICAL = "panel_light_load_analytical"
+SESSION_LOAD_CONFERENCE = "panel_light_load_conference"
+SESSION_LOAD_CENTRAL_ML = "panel_light_load_central_ml"
+SESSION_LOAD_GENERATION = "panel_light_load_generation"
+
+# M-PERF-001 — limites operacionais padrão
+OPERATIONAL_EVENTS_LIMIT = 20
+ANALYTICAL_PAGE_SIZE = 20
+CONFERENCE_EVENTS_LIMIT = 20
 
 
 def light_mode_default_from_env() -> bool:

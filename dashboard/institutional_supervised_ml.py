@@ -1269,6 +1269,7 @@ def build_ml_calibration_cockpit_snapshot(
     apply_next_generation: bool = False,
     events_limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
 ) -> dict[str, Any]:
+    from dashboard.institutional_light_mode import OPERATIONAL_EVENTS_LIMIT
     from dashboard.institutional_operational_structural_coverage import (
         OPERATIONAL_GENERATION_ALL_LABEL,
         build_operational_generation_scope_caption,
@@ -1276,7 +1277,10 @@ def build_ml_calibration_cockpit_snapshot(
         resolve_operational_generation_selection,
     )
 
-    operational_generations = load_operational_core_002_generations(db_path)
+    operational_generations = load_operational_core_002_generations(
+        db_path,
+        limit=OPERATIONAL_EVENTS_LIMIT,
+    )
     if operational_selection is not None:
         selection = dict(operational_selection)
     else:
