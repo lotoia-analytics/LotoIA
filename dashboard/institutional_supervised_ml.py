@@ -12,6 +12,9 @@ from lotoia.database.database import (
     GenerationEvent,
     get_session,
 )
+from lotoia.governance.institutional_agent_routing_matrix import (
+    MISSION_ID as AGENT_ROUTING_MISSION_ID,
+)
 from lotoia.governance.lei15_core_002_sovereign import (
     BATCH_LABEL,
     ENV_GENERATION_ENABLED,
@@ -68,6 +71,7 @@ STRUCTURAL_POLICY_15D_MISSION_ID = "M-ML-070"
 PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID = PRE_FINAL_POOL_MISSION_ID
 STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID = STRUCTURAL_15D_POOL_MISSION_ID
 ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID = ML_OPERATIONAL_HIERARCHY_MISSION_ID
+AGENT_ROUTING_DASHBOARD_MISSION_ID = AGENT_ROUTING_MISSION_ID
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
@@ -1111,6 +1115,13 @@ def build_sovereign_coverage_diagnosis_card(
         "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
         "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
+        "agent_routing_mission_id": coverage_evidence.get(
+            "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
+        ),
+        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
+        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
+        "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
         "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
         "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
         "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
@@ -1417,6 +1428,13 @@ def build_ml_calibration_cockpit_snapshot(
         "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
         "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
+        "agent_routing_mission_id": coverage_evidence.get(
+            "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
+        ),
+        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
+        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
+        "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
         "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
         "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
         "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),

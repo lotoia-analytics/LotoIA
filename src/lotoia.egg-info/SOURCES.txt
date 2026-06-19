@@ -129,6 +129,7 @@ src/lotoia/governance/cloud_runtime_policy.py
 src/lotoia/governance/db_first_guards.py
 src/lotoia/governance/governance_risk_analysis.py
 src/lotoia/governance/history_preservation_policy.py
+src/lotoia/governance/institutional_agent_routing_matrix.py
 src/lotoia/governance/law15_structural_realignment_v1.py
 src/lotoia/governance/lei15_15a_core_realignment_v2.py
 src/lotoia/governance/lei15_15a_core_realignment_v3.py
@@ -195,6 +196,7 @@ src/lotoia/ml/features.py
 src/lotoia/ml/governance.py
 src/lotoia/ml/inference.py
 src/lotoia/ml/lei15_core_candidate_decision.py
+src/lotoia/ml/ml_operational_hierarchy.py
 src/lotoia/ml/ml_operational_verdict.py
 src/lotoia/ml/model_registry.py
 src/lotoia/ml/models.py

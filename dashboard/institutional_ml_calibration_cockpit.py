@@ -204,6 +204,66 @@ def _format_parity_pairs(pairs: Any) -> str:
     return " • ".join(formatted) if formatted else "—"
 
 
+def _format_agent_label(agent_id: str) -> str:
+    labels = {
+        "agent_governanca": "Governança",
+        "agent_estatistico": "Estatístico",
+        "agent_geracao": "Geração",
+        "agent_dados": "Dados",
+        "agent_ml": "ML",
+        "agent_qualidade": "Qualidade",
+        "agent_plataforma": "Plataforma",
+        "agent_visual": "Visual",
+    }
+    return labels.get(str(agent_id or "").strip(), str(agent_id or "—"))
+
+
+def _render_agent_responsible_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Agente responsável (M-GOV-AGENTS-002)")
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    primary = str(
+        snapshot.get("primary_responsible_agent")
+        or coverage.get("primary_responsible_agent")
+        or ""
+    )
+    agents = list(
+        dict.fromkeys(
+            list(snapshot.get("responsible_agents") or [])
+            + list(coverage.get("responsible_agents") or [])
+        )
+    )
+    matrix_version = str(
+        snapshot.get("agent_routing_matrix_version")
+        or coverage.get("agent_routing_matrix_version")
+        or "—"
+    )
+    if not primary and not agents:
+        st.caption("Sem roteamento de agente institucional para o escopo atual.")
+        return
+    cols = st.columns(3)
+    cols[0].metric("Agente principal", _format_agent_label(primary))
+    cols[1].metric("Agentes envolvidos", len(agents) or 1)
+    cols[2].metric("Matriz", matrix_version)
+    if agents:
+        st.caption(
+            "Roteamento: "
+            + " • ".join(_format_agent_label(agent) for agent in agents[:8])
+        )
+    decision_blocks = list(
+        snapshot.get("decision_blocks") or coverage.get("decision_blocks") or []
+    )
+    routed_blocks = [
+        block for block in decision_blocks if isinstance(block, dict) and block.get("responsible_agent")
+    ]
+    if routed_blocks:
+        with st.expander("Problema × agente", expanded=False):
+            for block in routed_blocks[:12]:
+                st.markdown(
+                    f"**{_format_agent_label(str(block.get('responsible_agent') or ''))}** — "
+                    f"{block.get('problema_detectado', '—')}"
+                )
+
+
 def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Hierarquia Operacional ML (M-ML-073)")
     hierarchy = dict(
@@ -245,7 +305,8 @@ def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
                     continue
                 status = str(row.get("status", "—"))
                 label = str(row.get("stage_label", stage_id))
-                st.markdown(f"**{label}** — `{status}`")
+                agent = _format_agent_label(str(row.get("responsible_agent") or ""))
+                st.markdown(f"**{label}** — `{status}` | Agente: **{agent}**")
                 failures = list(row.get("failures") or [])
                 if failures:
                     st.caption("Falhas: " + "; ".join(failures[:3]))
@@ -966,6 +1027,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             render_cockpit_block_safe(
                 "overlap_format",
                 lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "agent_responsible",
+                lambda: _render_agent_responsible_card(snapshot),
             )
             render_cockpit_block_safe(
                 "ml_operational_hierarchy",

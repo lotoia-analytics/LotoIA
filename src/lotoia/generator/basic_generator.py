@@ -1042,6 +1042,16 @@ def generate_best_games(
         payload["current_stage"] = _hierarchy_bundle.get("current_stage")
         payload["hierarchy_compliance"] = _hierarchy_bundle.get("hierarchy_compliance")
         payload["gp_closure_allowed"] = _hierarchy_bundle.get("gp_closure_allowed")
+        payload["agent_routing_mission_id"] = _hierarchy_bundle.get("agent_routing_mission_id")
+        payload["agent_routing_matrix_version"] = _hierarchy_bundle.get("agent_routing_matrix_version")
+        payload["primary_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent") or (
+            (_hierarchy_bundle.get("stage_responsible_agents") or [None])[0]
+        )
+        payload["responsible_agents"] = list(_hierarchy_bundle.get("stage_responsible_agents") or [])
+        payload["blocking_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent")
+        payload["institutional_agent_routing_matrix"] = _hierarchy_bundle.get(
+            "institutional_agent_routing_matrix"
+        )
         merged_hierarchy = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
         merged_hierarchy["ml_operational_hierarchy"] = _hierarchy_bundle
         payload["calibration_bundle"] = merged_hierarchy
