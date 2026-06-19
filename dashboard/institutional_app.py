@@ -167,6 +167,10 @@ from dashboard.institutional_operational_structural_coverage import (
     is_all_operational_generations_selection,
     diagnose_operational_coverage_gap,
     load_operational_core_002_generations,
+    load_pre_final_pool_coverage_summary,
+    load_structural_15d_pool_coverage_summary,
+    load_ml_operational_hierarchy_coverage_summary,
+    load_pre_gp_recovery_coverage_summary,
     sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
@@ -234,6 +238,12 @@ from dashboard.institutional_clean_law15_runtime import (
     render_governance_expander,
     render_six_bases_expander,
     render_technical_expander,
+)
+from dashboard.institutional_ml_hierarchy_block import (
+    build_hierarchy_blocked_generation_result,
+    persist_hierarchy_block_session_snapshot,
+    render_gp_quality_classification_panel,
+    render_ml_hierarchy_block_panel,
 )
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
@@ -757,7 +767,9 @@ def _sovereign_adm_pool_size(*, requested_count: int, pool_size: int | None = No
     count = max(1, int(requested_count))
     if pool_size is not None:
         return max(int(pool_size), count)
-    return max(count * 3, count, 30)
+    from lotoia.ml.structural_pool_15d_generator import MIN_COMPLIANT_POOL_SIZE
+
+    return max(count * 3, count, 30, MIN_COMPLIANT_POOL_SIZE)
 
 
 def _invoke_sovereign_adm_generate_best_games(
@@ -781,17 +793,44 @@ def _invoke_sovereign_adm_generate_best_games(
         cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
         authorized_plan = resolve_authorized_calibration_plan(cockpit_bundle)
     from lotoia.generator.basic_generator import generate_best_games
-
-    payload = dict(
-        generate_best_games(
-            count=int(requested_count),
-            pool_size=effective_pool,
-            batch_label=resolved_label,
-            ml_enabled=effective_ml,
-            seed=seed,
-            calibration_plan=authorized_plan,
-        )
+    from lotoia.ml.ml_operational_hierarchy import (
+        MlOperationalHierarchyBlockedError,
+        is_ml_operational_hierarchy_block_error,
     )
+
+    try:
+        payload = dict(
+            generate_best_games(
+                count=int(requested_count),
+                pool_size=effective_pool,
+                batch_label=resolved_label,
+                ml_enabled=effective_ml,
+                seed=seed,
+                calibration_plan=authorized_plan,
+            )
+        )
+    except MlOperationalHierarchyBlockedError as exc:
+        return {
+            "hierarchy_blocked": True,
+            "hierarchy_block_bundle": dict(exc.hierarchy_bundle),
+            "hierarchy_block_message": str(exc),
+            "games": [],
+            "ml_enabled": effective_ml,
+            "analysis_batch_label": resolved_label,
+            "authorized_calibration_plan": authorized_plan,
+        }
+    except RuntimeError as exc:
+        if is_ml_operational_hierarchy_block_error(exc):
+            return {
+                "hierarchy_blocked": True,
+                "hierarchy_block_bundle": {},
+                "hierarchy_block_message": str(exc),
+                "games": [],
+                "ml_enabled": effective_ml,
+                "analysis_batch_label": resolved_label,
+                "authorized_calibration_plan": authorized_plan,
+            }
+        raise
     payload["ml_enabled"] = effective_ml
     payload["analysis_batch_label"] = resolved_label
     if authorized_plan:
@@ -6563,6 +6602,13 @@ def _run_institutional_conference(
 def _run_simulation_lot_generation(*, requested_count: int, selected_card_format: int) -> dict[str, Any]:
     """Gera lote laboratorial com o mesmo motor CORE_002 + ML — não oficializa (M-OPS-062)."""
     result = _run_clean_law15_generation(requested_count=requested_count)
+    if result.get("hierarchy_blocked"):
+        result["selected_card_format"] = int(selected_card_format)
+        result["card_format_label"] = multidezena_format_label(selected_card_format)
+        result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
+        result["generation_origin"] = GENERATION_ORIGIN_SIMULATION
+        result["simulation_mode"] = True
+        return result
     result["selected_card_format"] = int(selected_card_format)
     result["card_format_label"] = multidezena_format_label(selected_card_format)
     result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
@@ -9070,6 +9116,73 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
         detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
         st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
+        pre_final_summary = load_pre_final_pool_coverage_summary(DB_PATH, selected_ge_id)
+        if pre_final_summary:
+            st.info(
+                "GP final veio de pool calibrado pela ML: "
+                f"{'SIM' if pre_final_summary.get('pre_final_calibration_applied') else 'NÃO'} | "
+                f"pool pré-final={int(pre_final_summary.get('pre_final_pool_size', 0) or 0)} | "
+                f"reordenados={int(pre_final_summary.get('candidates_reordered', 0) or 0)} | "
+                f"substituídos={int(pre_final_summary.get('candidates_replaced', 0) or 0)} | "
+                f"política={pre_final_summary.get('pre_final_calibration_policy', '—')}"
+            )
+        structural_pool_summary = load_structural_15d_pool_coverage_summary(DB_PATH, selected_ge_id)
+        if structural_pool_summary.get("structural_pool_applied"):
+            confronto = dict(structural_pool_summary.get("confronto_recent_contests") or {})
+            st.info(
+                "Pool estrutural ML 15D: "
+                f"origem={structural_pool_summary.get('pool_origin', '—')} | "
+                f"tamanho={int(structural_pool_summary.get('structural_pool_size', 0) or 0)} | "
+                f"conformes={int(structural_pool_summary.get('structural_compliant_pool_size', 0) or 0)} | "
+                f"compliance={float(structural_pool_summary.get('compliance_rate', 0.0) or 0.0):.2%} | "
+                f"confronto={int(confronto.get('reference_contest_window', 10) or 10)} concursos"
+            )
+        hierarchy_summary = load_ml_operational_hierarchy_coverage_summary(DB_PATH, selected_ge_id)
+        if hierarchy_summary.get("hierarchy_applied"):
+            stage_results = dict(hierarchy_summary.get("stage_results") or {})
+            stage_lines = []
+            for stage_id in (
+                "conformidade_estrutural",
+                "diversidade",
+                "cobertura",
+                "fechamento_gp",
+                "validacao_final",
+            ):
+                row = dict(stage_results.get(stage_id) or {})
+                if row:
+                    stage_lines.append(
+                        f"{row.get('stage_label', stage_id)}: {row.get('status', '—')}"
+                    )
+            st.info(
+                "Hierarquia Operacional ML: "
+                f"versão={hierarchy_summary.get('ml_hierarchy_version', '—')} | "
+                f"etapa atual={hierarchy_summary.get('current_stage', '—')} | "
+                f"compliance={'SIM' if hierarchy_summary.get('hierarchy_compliance') else 'NÃO'}"
+            )
+            if stage_lines:
+                st.caption(" • ".join(stage_lines))
+            if hierarchy_summary.get("blocking_reason"):
+                st.warning(
+                    f"Bloqueio hierárquico: {hierarchy_summary.get('blocking_reason')} | "
+                    f"Ação: {', '.join(hierarchy_summary.get('corrective_action_applied') or []) or '—'}"
+                )
+        recovery_summary = load_pre_gp_recovery_coverage_summary(DB_PATH, selected_ge_id)
+        if recovery_summary.get("internal_recovery_attempted"):
+            success_label = "SIM" if recovery_summary.get("internal_recovery_success") else "NÃO"
+            st.info(
+                "Recuperação pré-GP (M-ML-074): "
+                f"tentativas={int(recovery_summary.get('internal_recovery_attempts', 0) or 0)} | "
+                f"sucesso={success_label} | "
+                f"GP entregue={'SIM' if recovery_summary.get('final_gp_delivered') else 'NÃO'} | "
+                f"aprovada na tentativa={recovery_summary.get('successful_attempt_index', '—')}"
+            )
+            best_metrics = dict(recovery_summary.get("best_attempt_metrics") or {})
+            if best_metrics:
+                st.caption(
+                    "Melhor tentativa — "
+                    f"diversidade={float(best_metrics.get('diversity_score', 0.0) or 0.0):.4f} | "
+                    f"overlap={best_metrics.get('max_overlap', '—')}"
+                )
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
@@ -11749,6 +11862,176 @@ def _persist_clean_law15_generation_history(
         "violated_rules": list(result.get("violated_rules") or []),
         "policy_compliance_status": str(result.get("policy_compliance_status") or ""),
     }
+    from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+    from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+    from lotoia.ml.pre_gp_deterministic_recovery import build_pre_gp_recovery_trace
+    from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
+    from lotoia.governance.institutional_agent_routing_matrix import (
+        MISSION_ID as AGENT_ROUTING_MISSION_ID,
+        build_agent_routing_trace,
+    )
+
+    _pre_final_trace = build_pre_final_pool_trace(
+        dict(result.get("pre_final_pool_ml_calibration") or result.get("calibration_bundle") or {})
+    )
+    _structural_pool_trace = build_structural_15d_pool_trace(
+        dict(result.get("ml_structural_15d_pool") or {})
+    )
+    _hierarchy_trace = build_ml_operational_hierarchy_trace(
+        dict(result.get("ml_operational_hierarchy") or {})
+    )
+    _pre_gp_recovery_trace = build_pre_gp_recovery_trace(dict(result.get("pre_gp_recovery") or {}))
+    from lotoia.statistics.diverse_top_slice_selection import build_diverse_top_slice_trace
+
+    _diverse_top_slice_trace = build_diverse_top_slice_trace(
+        dict(result.get("diverse_top_slice_m_stat_002") or {})
+    )
+    generation_context.update(
+        {
+            "pre_final_pool_ml_calibration": _pre_final_trace,
+            "pre_final_pool_ml_enabled": bool(_pre_final_trace.get("pre_final_pool_ml_enabled")),
+            "pre_final_calibration_applied": bool(_pre_final_trace.get("pre_final_calibration_applied")),
+            "pre_final_pool_size": int(_pre_final_trace.get("pre_final_pool_size", 0) or 0),
+            "pre_final_pool_deduped_size": int(_pre_final_trace.get("pre_final_pool_deduped_size", 0) or 0),
+            "pre_final_calibration_format": str(_pre_final_trace.get("pre_final_calibration_format") or ""),
+            "pre_final_calibration_policy": str(_pre_final_trace.get("pre_final_calibration_policy") or ""),
+            "candidates_reordered": int(_pre_final_trace.get("candidates_reordered", 0) or 0),
+            "candidates_replaced": int(_pre_final_trace.get("candidates_replaced", 0) or 0),
+            "final_gp_changed_by_ml": bool(_pre_final_trace.get("final_gp_changed_by_ml")),
+            "final_compliance_rate": float(_pre_final_trace.get("final_compliance_rate", 0.0) or 0.0),
+            "final_diversity_score": float(_pre_final_trace.get("final_diversity_score", 0.0) or 0.0),
+            "final_similarity_score": float(_pre_final_trace.get("final_similarity_score", 0.0) or 0.0),
+            "pre_final_metrics_before": dict(_pre_final_trace.get("metrics_before") or {}),
+            "pre_final_metrics_after": dict(_pre_final_trace.get("metrics_after") or {}),
+            "pre_final_actions_applied": list(_pre_final_trace.get("actions_applied") or []),
+            "ml_structural_15d_pool": _structural_pool_trace,
+            "pool_origin": str(_structural_pool_trace.get("pool_origin") or ""),
+            "structural_pool_applied": bool(_structural_pool_trace.get("structural_pool_applied")),
+            "structural_pool_size": int(_structural_pool_trace.get("structural_pool_size", 0) or 0),
+            "structural_compliant_pool_size": int(
+                _structural_pool_trace.get("structural_compliant_pool_size", 0) or 0
+            ),
+            "structural_pool_compliance_rate": float(
+                _structural_pool_trace.get("compliance_rate", 0.0) or 0.0
+            ),
+            "structural_pool_compliance_met": bool(_structural_pool_trace.get("compliance_met")),
+            "structural_pool_reference_contest_window": int(
+                _structural_pool_trace.get("reference_contest_window", 10) or 10
+            ),
+            "structural_pool_confronto": dict(_structural_pool_trace.get("confronto_recent_contests") or {}),
+            "structural_pool_metrics_before": dict(_structural_pool_trace.get("metrics_before") or {}),
+            "structural_pool_metrics_after": dict(_structural_pool_trace.get("metrics_after") or {}),
+            "ml_operational_hierarchy": _hierarchy_trace,
+            "ml_hierarchy_version": str(_hierarchy_trace.get("ml_hierarchy_version") or ""),
+            "ml_hierarchy_status": str(_hierarchy_trace.get("ml_hierarchy_status") or ""),
+            "current_stage": str(_hierarchy_trace.get("current_stage") or ""),
+            "last_completed_stage": str(_hierarchy_trace.get("last_completed_stage") or ""),
+            "stage_results": dict(_hierarchy_trace.get("stage_results") or {}),
+            "stage_failures": list(_hierarchy_trace.get("stage_failures") or []),
+            "hierarchy_compliance": bool(_hierarchy_trace.get("hierarchy_compliance")),
+            "gp_closure_allowed": bool(_hierarchy_trace.get("gp_closure_allowed")),
+            "gp_quality_tier": str(_hierarchy_trace.get("gp_quality_tier") or ""),
+            "gp_quality_reasons": list(_hierarchy_trace.get("gp_quality_reasons") or []),
+            "hierarchy_blocking_reason": str(_hierarchy_trace.get("blocking_reason") or ""),
+            "hierarchy_corrective_action_applied": list(
+                _hierarchy_trace.get("corrective_action_applied") or []
+            ),
+            "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+            "agent_routing_matrix_version": str(
+                _hierarchy_trace.get("agent_routing_matrix_version")
+                or dict(result.get("institutional_agent_routing_matrix") or {}).get(
+                    "agent_routing_matrix_version"
+                )
+                or ""
+            ),
+            "primary_responsible_agent": str(
+                _hierarchy_trace.get("blocking_responsible_agent")
+                or result.get("primary_responsible_agent")
+                or ""
+            ),
+            "responsible_agents": list(
+                dict.fromkeys(
+                    list(_hierarchy_trace.get("stage_responsible_agents") or [])
+                    + list(result.get("responsible_agents") or [])
+                )
+            ),
+            "blocking_responsible_agent": str(
+                _hierarchy_trace.get("blocking_responsible_agent")
+                or result.get("blocking_responsible_agent")
+                or ""
+            ),
+            "agent_routing": build_agent_routing_trace(
+                {
+                    "agent_routing_matrix_version": _hierarchy_trace.get("agent_routing_matrix_version"),
+                    "primary_responsible_agent": _hierarchy_trace.get("blocking_responsible_agent"),
+                    "responsible_agents": list(_hierarchy_trace.get("stage_responsible_agents") or []),
+                    "blocking_responsible_agent": _hierarchy_trace.get("blocking_responsible_agent"),
+                }
+            ),
+            "pre_gp_recovery": _pre_gp_recovery_trace,
+            "internal_recovery_attempted": bool(_pre_gp_recovery_trace.get("internal_recovery_attempted")),
+            "internal_recovery_attempts": int(
+                _pre_gp_recovery_trace.get("internal_recovery_attempts", 0) or 0
+            ),
+            "internal_recovery_success": bool(_pre_gp_recovery_trace.get("internal_recovery_success")),
+            "internal_recovery_failed_reason": str(
+                _pre_gp_recovery_trace.get("internal_recovery_failed_reason") or ""
+            ),
+            "final_gp_delivered": bool(_pre_gp_recovery_trace.get("final_gp_delivered")),
+            "best_attempt_metrics": dict(_pre_gp_recovery_trace.get("best_attempt_metrics") or {}),
+            "attempt_results": list(_pre_gp_recovery_trace.get("attempt_results") or []),
+            "best_attempt_selected": _pre_gp_recovery_trace.get("best_attempt_selected"),
+            "successful_attempt_index": _pre_gp_recovery_trace.get("successful_attempt_index"),
+            "diverse_top_slice_m_stat_002": _diverse_top_slice_trace,
+            "diverse_top_slice_applied": bool(_diverse_top_slice_trace.get("diverse_top_slice_applied")),
+            "diversity_score_before_top_slice": float(
+                _diverse_top_slice_trace.get("diversity_score_before", 0.0) or 0.0
+            ),
+            "diversity_score_after_top_slice": float(
+                _diverse_top_slice_trace.get("diversity_score_after", 0.0) or 0.0
+            ),
+            "diverse_top_slice_criteria_met": bool(_diverse_top_slice_trace.get("criteria_met")),
+            "similarity_decomposition_before_top_slice": dict(
+                _diverse_top_slice_trace.get("similarity_decomposition_before") or {}
+            ),
+            "similarity_decomposition_after_top_slice": dict(
+                _diverse_top_slice_trace.get("similarity_decomposition_after") or {}
+            ),
+            "structural_triplet_010203_count": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_count", 0) or 0
+            ),
+            "structural_triplet_010203_cap": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_cap", 0) or 0
+            ),
+            "structural_triplet_010203_excess": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_excess", 0) or 0
+            ),
+            "structural_triplet_010203_swaps": int(
+                _diverse_top_slice_trace.get("structural_triplet_010203_swaps", 0) or 0
+            ),
+            "structural_triplet_policy": str(
+                _diverse_top_slice_trace.get("structural_triplet_policy")
+                or "allowed_until_cap_penalize_excess_only"
+            ),
+            "pool_insufficient_non_triplet_reserve": bool(
+                _diverse_top_slice_trace.get("pool_insufficient_non_triplet_reserve")
+            ),
+            "responsible_agent": str(_diverse_top_slice_trace.get("responsible_agent") or ""),
+            "next_mission_hint": str(_diverse_top_slice_trace.get("next_mission_hint") or ""),
+            "non_triplet_pool_count": int(
+                _diverse_top_slice_trace.get("non_triplet_pool_count", 0) or 0
+            ),
+            "non_triplet_reserve_count": int(
+                _diverse_top_slice_trace.get("non_triplet_reserve_count", 0) or 0
+            ),
+            "non_triplet_required_count_gp": int(
+                _diverse_top_slice_trace.get("non_triplet_required_count_gp", 0) or 0
+            ),
+            "non_triplet_ideal_count_gp": int(
+                _diverse_top_slice_trace.get("non_triplet_ideal_count_gp", 0) or 0
+            ),
+        }
+    )
     try:
         persisted = _attach_operational_generation_label(
             _persist_generation_snapshot(
@@ -12954,6 +13237,25 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         _render_conference_technical_audit(check_result)
 
 
+def _gp_quality_panel_from_payload(
+    sovereign_payload: Mapping[str, Any],
+    *,
+    delivered_count: int,
+) -> dict[str, Any]:
+    from lotoia.ml.ml_operational_hierarchy import build_gp_quality_operational_payload
+
+    hierarchy = dict(sovereign_payload.get("ml_operational_hierarchy") or {})
+    if not hierarchy.get("hierarchy_applied"):
+        return {}
+    panel = build_gp_quality_operational_payload(
+        hierarchy,
+        delivered_count=int(delivered_count),
+        requested_count=int(sovereign_payload.get("requested_count", delivered_count) or delivered_count),
+    )
+    panel["pre_gp_recovery"] = dict(sovereign_payload.get("pre_gp_recovery") or {})
+    return panel
+
+
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     total_games = int(requested_count)
     if _is_sovereign_generation_blocked():
@@ -12974,6 +13276,15 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         batch_label=analysis_batch_label,
         seed=seed,
     )
+    if sovereign_payload.get("hierarchy_blocked"):
+        return build_hierarchy_blocked_generation_result(
+            hierarchy_bundle=dict(sovereign_payload.get("hierarchy_block_bundle") or {}),
+            exception_message=str(sovereign_payload.get("hierarchy_block_message") or ""),
+            requested_count=total_games,
+            seed=seed,
+            analysis_batch_label=analysis_batch_label,
+            ml_enabled=bool(sovereign_payload.get("ml_enabled", False)),
+        )
     games = list(sovereign_payload.get("games") or [])
     ml_enabled = bool(sovereign_payload.get("ml_enabled", False))
     structural_policy_bundle = dict(sovereign_payload.get("structural_policy_15d_bundle") or {})
@@ -13084,6 +13395,20 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "sovereign_generation_path": "generate_best_games",
         "ml_enabled": ml_enabled,
         "ml_operational_status": supervised_ml_status_label() if ml_enabled else "ML_INATIVO",
+        "ml_operational_hierarchy": dict(sovereign_payload.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery": dict(sovereign_payload.get("pre_gp_recovery") or {}),
+        "pre_final_pool_ml_calibration": dict(sovereign_payload.get("pre_final_pool_ml_calibration") or {}),
+        "internal_recovery_attempted": bool(sovereign_payload.get("internal_recovery_attempted")),
+        "internal_recovery_attempts": int(sovereign_payload.get("internal_recovery_attempts", 0) or 0),
+        "internal_recovery_success": bool(sovereign_payload.get("internal_recovery_success")),
+        "final_gp_delivered": bool(sovereign_payload.get("final_gp_delivered")),
+        "best_attempt_metrics": dict(sovereign_payload.get("best_attempt_metrics") or {}),
+        "attempt_results": list(sovereign_payload.get("attempt_results") or []),
+        "primary_responsible_agent": sovereign_payload.get("primary_responsible_agent"),
+        "blocking_responsible_agent": sovereign_payload.get("blocking_responsible_agent"),
+        "gp_quality_tier": str(sovereign_payload.get("gp_quality_tier") or ""),
+        "gp_quality_reasons": list(sovereign_payload.get("gp_quality_reasons") or []),
+        "gp_quality": _gp_quality_panel_from_payload(sovereign_payload, delivered_count=len(games)),
     }
 
 
@@ -13110,6 +13435,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
         result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
+        if result.get("hierarchy_blocked"):
+            persist_hierarchy_block_session_snapshot(result)
+            st.session_state["clean_law15_generation_result"] = result
+            st.rerun()
         result["display_games"] = _expand_generation_games_for_format(
             result.get("games") or [],
             selected_card_format,
@@ -13146,7 +13475,11 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
     if result:
-        render_generation_result_summary(result)
+        if result.get("hierarchy_blocked"):
+            render_ml_hierarchy_block_panel(result)
+        else:
+            render_generation_result_summary(result)
+            render_gp_quality_classification_panel(result)
         games = list(
             result.get("display_games")
             or _expand_generation_games_for_format(
@@ -13154,12 +13487,13 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 int(result.get("selected_card_format", 15) or 15),
             )
         )
-        render_generation_games_table(
-            games,
-            card_format=int(result.get("selected_card_format", 15) or 15),
-            format_numbers=_format_numbers_for_history,
-            extract_numbers=_extract_int_numbers,
-        )
+        if games and not result.get("hierarchy_blocked"):
+            render_generation_games_table(
+                games,
+                card_format=int(result.get("selected_card_format", 15) or 15),
+                format_numbers=_format_numbers_for_history,
+                extract_numbers=_extract_int_numbers,
+            )
 
     render_governance_expander(render_constitutional_panel=_render_constitutional_status_panel)
     if result:

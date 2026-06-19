@@ -12,6 +12,9 @@ from lotoia.database.database import (
     GenerationEvent,
     get_session,
 )
+from lotoia.governance.institutional_agent_routing_matrix import (
+    MISSION_ID as AGENT_ROUTING_MISSION_ID,
+)
 from lotoia.governance.lei15_core_002_sovereign import (
     BATCH_LABEL,
     ENV_GENERATION_ENABLED,
@@ -21,6 +24,18 @@ from lotoia.governance.lei15_core_002_sovereign import (
 )
 from lotoia.governance.batch_operational_scope import is_generation_event_active_reading, summarize_active_reading_exclusions
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
+from lotoia.ml.pre_final_pool_ml_calibration import (
+    MISSION_ID as PRE_FINAL_POOL_MISSION_ID,
+    build_pre_final_pool_trace,
+)
+from lotoia.ml.structural_pool_15d_generator import (
+    MISSION_ID as STRUCTURAL_15D_POOL_MISSION_ID,
+    build_structural_15d_pool_trace,
+)
+from lotoia.ml.ml_operational_hierarchy import (
+    MISSION_ID as ML_OPERATIONAL_HIERARCHY_MISSION_ID,
+    build_ml_operational_hierarchy_trace,
+)
 from lotoia.ml.supervised_output_calibration import (
     CALIBRATION_ENGINE_ROLE,
     CALIBRATION_VERSION,
@@ -44,6 +59,8 @@ MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
+CARD_FORMAT_FILTER_MISSION_ID = "M-ML-071-FIX-01"
+OPERATIONAL_GENERATION_FILTER_MISSION_ID = CARD_FORMAT_FILTER_MISSION_ID
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
@@ -51,6 +68,10 @@ OVERLAP_FORMAT_MISSION_ID = "M-ML-060"
 OVERLAP_FORMAT_MISSION_ID_067 = "M-ML-067"
 STRUCTURAL_AUTO_CALIBRATION_MISSION_ID = "M-ML-069"
 STRUCTURAL_POLICY_15D_MISSION_ID = "M-ML-070"
+PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID = PRE_FINAL_POOL_MISSION_ID
+STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID = STRUCTURAL_15D_POOL_MISSION_ID
+ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID = ML_OPERATIONAL_HIERARCHY_MISSION_ID
+AGENT_ROUTING_DASHBOARD_MISSION_ID = AGENT_ROUTING_MISSION_ID
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
 SOVEREIGN_COVERAGE_SCOPE_LABEL = (
     "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
@@ -376,6 +397,16 @@ def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None
             "critical_coverage_boost_count": int(bundle.get("critical_coverage_boost", 0) or 0),
         },
         "six_bases_summary": build_calibration_six_bases_summary(diagnostics),
+        "pre_final_pool_ml_calibration": build_pre_final_pool_trace(bundle),
+        "ml_structural_15d_pool": build_structural_15d_pool_trace(
+            dict(bundle.get("ml_structural_15d_pool") or {})
+        ),
+        "ml_operational_hierarchy": build_ml_operational_hierarchy_trace(
+            dict(bundle.get("ml_operational_hierarchy") or {})
+        ),
+        "pre_final_calibration_applied": bool(bundle.get("pre_final_calibration_applied")),
+        "pre_final_pool_ml_enabled": bool(bundle.get("pre_final_pool_ml_enabled")),
+        "final_gp_changed_by_ml": bool(bundle.get("final_gp_changed_by_ml")),
     }
 
 
@@ -659,6 +690,17 @@ def build_supervised_ml_operational_event_detail(
         "final_ml_score_avg": float(context.get("final_ml_score_avg", 0.0) or 0.0),
         "issues_detected": list(context.get("issues_detected") or []),
         "batch_status_counts": dict(context.get("batch_status_counts") or {}),
+        "pre_final_pool_ml_calibration": build_pre_final_pool_trace(
+            dict(context.get("pre_final_pool_ml_calibration") or {})
+        ),
+        "ml_structural_15d_pool": build_structural_15d_pool_trace(
+            dict(context.get("ml_structural_15d_pool") or {})
+        ),
+        "ml_operational_hierarchy": build_ml_operational_hierarchy_trace(
+            dict(context.get("ml_operational_hierarchy") or {})
+        ),
+        "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(context.get("final_gp_changed_by_ml")),
     }
     return {
         "generation_event_id": selected_id,
@@ -1065,6 +1107,26 @@ def build_sovereign_coverage_diagnosis_card(
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
+        "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
+        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "structural_15d_pool_mission_id": STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID,
+        "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
+        "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
+        "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
+        "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
+        "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
+        "agent_routing_mission_id": coverage_evidence.get(
+            "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
+        ),
+        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
+        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
+        "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
+        "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
+        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1201,14 +1263,67 @@ def build_ml_calibration_result_card(
 def build_ml_calibration_cockpit_snapshot(
     db_path: Path | str,
     *,
+    operational_selection: Mapping[str, Any] | None = None,
     workflow_status: str = COCKPIT_WORKFLOW_PENDING,
     decision_at: str = "",
     apply_next_generation: bool = False,
     events_limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
 ) -> dict[str, Any]:
+    from dashboard.institutional_operational_structural_coverage import (
+        OPERATIONAL_GENERATION_ALL_LABEL,
+        build_operational_generation_scope_caption,
+        load_operational_core_002_generations,
+        resolve_operational_generation_selection,
+    )
+
+    operational_generations = load_operational_core_002_generations(db_path)
+    if operational_selection is not None:
+        selection = dict(operational_selection)
+    else:
+        selection = resolve_operational_generation_selection(
+            OPERATIONAL_GENERATION_ALL_LABEL,
+            operational_generations,
+        )
+    is_aggregate = bool(selection.get("is_aggregate"))
+    selected_ge_id = int(selection.get("generation_event_id", 0) or 0)
+    scoped_generation_event_ids = [
+        int(value)
+        for value in list(selection.get("generation_event_ids") or [])
+        if int(value) > 0
+    ]
+    selected_card_format = selection.get("card_format")
+    game_size = int(selected_card_format) if selected_card_format is not None and int(selected_card_format) > 0 else None
+    scope_caption = build_operational_generation_scope_caption(selection)
+    format_scope_label = (
+        scope_caption
+        if not is_aggregate
+        else SCOPE_LABEL_ALL_OPERATIONAL
+    )
+
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
+    if is_aggregate and scoped_generation_event_ids:
+        allowed_ids = set(scoped_generation_event_ids)
+        event_details = [
+            dict(row)
+            for row in event_details
+            if int(row.get("generation_event_id", 0) or 0) in allowed_ids
+        ]
+    elif not is_aggregate and selected_ge_id > 0:
+        event_details = [
+            dict(row)
+            for row in event_details
+            if int(row.get("generation_event_id", 0) or 0) == selected_ge_id
+        ]
     aggregate = build_ml_calibration_aggregate_context(event_details)
+    if not is_aggregate:
+        aggregate = {
+            **aggregate,
+            "scope_label": scope_caption,
+            "selected_generation_event_id": selected_ge_id,
+            "analyzed_card_format": game_size,
+            "analyzed_card_format_label": f"{game_size}D" if game_size else "—",
+        }
     if workflow_status in {COCKPIT_WORKFLOW_AUTHORIZED, COCKPIT_WORKFLOW_APPLIED}:
         aggregate = {**aggregate, "calibration_authorized": True}
     ml_event_ids = [
@@ -1219,14 +1334,17 @@ def build_ml_calibration_cockpit_snapshot(
     coverage_evidence = get_structural_coverage_evidence(
         db_path,
         scope=SCOPE_ALL_OPERATIONAL_CORE_002,
-        scope_label=SCOPE_LABEL_ALL_OPERATIONAL,
+        scope_label=format_scope_label,
         events_limit=events_limit,
+        generation_event_id=selected_ge_id if selected_ge_id > 0 and not is_aggregate else None,
+        generation_event_ids=scoped_generation_event_ids if is_aggregate and scoped_generation_event_ids else None,
+        game_size=game_size if not is_aggregate else None,
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
     sovereign_ids = list(coverage_evidence.get("generation_event_ids") or [])
     exclusions_summary = summarize_active_reading_exclusions(db_path)
     scope_comparison = compare_structural_coverage_scopes(sovereign_ids, ml_event_ids)
-    scope_comparison["metrics_scope_label"] = SCOPE_LABEL_ALL_OPERATIONAL
+    scope_comparison["metrics_scope_label"] = format_scope_label
     scope_comparison["ml_detail_scope_label"] = (
         f"Últimas {len(ml_event_ids)} gerações ML — detalhe operacional (não altera métricas)"
     )
@@ -1304,14 +1422,44 @@ def build_ml_calibration_cockpit_snapshot(
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
+        "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
+        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "structural_15d_pool_mission_id": STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID,
+        "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
+        "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
+        "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
+        "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
+        "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
+        "agent_routing_mission_id": coverage_evidence.get(
+            "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
+        ),
+        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
+        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
+        "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
+        "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
+        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
-        "scope_label": str(diagnosis.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL),
+        "scope_label": (
+            AGGREGATE_SCOPE_LABEL
+            if is_aggregate
+            else str(diagnosis.get("scope_label") or scope_caption)
+        ),
         "scope_comparison": dict(scope_comparison or {}),
-        "aggregate_mode": True,
+        "aggregate_mode": is_aggregate,
+        "operational_generation_selection": selection,
+        "operational_generation_filter_mission_id": OPERATIONAL_GENERATION_FILTER_MISSION_ID,
+        "selected_generation_event_id": selected_ge_id if not is_aggregate else 0,
+        "selected_card_format": game_size,
+        "analyzed_card_format_caption": scope_caption if not is_aggregate else "",
+        "scoped_generation_event_ids": list(scoped_generation_event_ids),
         "constitutional_summary": {
             "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",
             "lei_15": "ATIVA",
@@ -1351,7 +1499,19 @@ def build_ml_calibration_cockpit_snapshot(
         "excluded_batches_count": int(exclusions_summary.get("excluded_batches_count", 0) or 0),
         "excluded_batches_message": str(exclusions_summary.get("message") or ""),
         "excluded_batches_audit": list(exclusions_summary.get("excluded_batches") or []),
+        "pre_gp_hierarchy_block": _load_pre_gp_hierarchy_block_snapshot(),
     }
+
+
+def _load_pre_gp_hierarchy_block_snapshot() -> dict[str, Any]:
+    try:
+        import streamlit as st
+
+        from dashboard.institutional_ml_hierarchy_block import SESSION_HIERARCHY_BLOCK_KEY
+
+        return dict(st.session_state.get(SESSION_HIERARCHY_BLOCK_KEY) or {})
+    except Exception:  # noqa: BLE001 — snapshot fora de contexto Streamlit
+        return {}
 
 
 def build_cockpit_persist_bundle(

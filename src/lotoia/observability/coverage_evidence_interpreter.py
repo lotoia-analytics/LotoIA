@@ -24,6 +24,18 @@ from lotoia.ml.structural_auto_calibration import (
     build_auto_calibration_plan,
     is_structural_auto_calibration_format,
 )
+from lotoia.governance.institutional_agent_routing_matrix import (
+    MISSION_ID as AGENT_ROUTING_MISSION_ID,
+    build_agent_routing_trace,
+    build_institutional_agent_routing_matrix_memory,
+    enrich_calibration_plan,
+    enrich_decision_block,
+    summarize_responsible_agents,
+)
+from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
+from lotoia.ml.pre_gp_deterministic_recovery import build_pre_gp_recovery_trace
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
     analyze_games_from_context_or_records,
@@ -73,6 +85,43 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _normalize_format_size(value: Any) -> int | None:
+    """Normaliza um formato de cartão para o número de dezenas (M-ML-070-FIX-02).
+
+    Aceita ``15``, ``"15"``, ``"15D"``, ``"15d"``, ``" 15 "`` e rótulos como
+    ``"15 dezenas"`` (usa os dígitos iniciais). Retorna ``None`` para valores
+    inválidos e nunca levanta — evitando que payloads de snapshot/context_json/UI
+    quebrem a Central ML. NUNCA usar ``int(formato)`` direto nesses payloads.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        ivalue = int(value)
+        return ivalue if ivalue > 0 else None
+    digits = ""
+    for char in str(value or "").strip():
+        if char.isdigit():
+            digits += char
+        else:
+            break
+    if not digits:
+        return None
+    ivalue = int(digits)
+    return ivalue if ivalue > 0 else None
+
+
+def _normalize_format_sizes(values: Any) -> list[int]:
+    """Lista de formatos válidos (int de dezenas), ignorando entradas inválidas."""
+    if not isinstance(values, (list, tuple, set)):
+        return []
+    sizes: list[int] = []
+    for value in values:
+        size = _normalize_format_size(value)
+        if size is not None:
+            sizes.append(size)
+    return sizes
+
+
 def _extract_metrics_from_structural_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Compat: delega para fonte única da Cobertura Estrutural (M-ML-VIS-059)."""
     return extract_operational_structural_metrics(payload)
@@ -104,7 +153,7 @@ def _build_decision_block(
     severidade: str,
     parametros_sugeridos: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    block = {
         "issue_type": issue_type,
         "problema_detectado": problema_detectado,
         "evidencia": evidencia,
@@ -116,6 +165,7 @@ def _build_decision_block(
         "parametros_sugeridos": dict(parametros_sugeridos or {}),
         "trace": {"mission_id": MISSION_ID, "issue_type": issue_type, "severidade": severidade},
     }
+    return enrich_decision_block(block)
 
 
 def build_calibration_plan(
@@ -166,12 +216,14 @@ def build_calibration_plan(
     suffix = str(m.get("sufixo_mais_gerado") or "—")
     prefix_viciado = bool(m.get("prefixo_viciado") or m.get("prefixos_sufixos_viciados"))
     suffix_viciado = bool(m.get("sufixo_viciado") or m.get("prefixos_sufixos_viciados"))
-    primary_game_size = int(
-        (primary_format or {}).get("game_size")
-        or (m.get("formatos_analisados") or [15])[0]
-        if len(m.get("formatos_analisados") or []) == 1
-        else 15
-    )
+    # M-ML-070-FIX-02: normalização segura de formato (aceita 15/"15"/"15D"/"15d").
+    _formatos_norm = _normalize_format_sizes(m.get("formatos_analisados"))
+    if len(_formatos_norm) == 1:
+        primary_game_size = (
+            _normalize_format_size((primary_format or {}).get("game_size")) or _formatos_norm[0]
+        )
+    else:
+        primary_game_size = 15
     game_size = primary_game_size
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
@@ -281,18 +333,20 @@ def build_calibration_plan(
             if item not in impact_items:
                 impact_items.append(item)
 
-    return {
-        "mission_id": FIX01_MISSION_ID,
-        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
-        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
-        "plan_items": plan_items,
-        "impact_items": impact_items,
-        "parametros_sugeridos": parametros_sugeridos,
-        "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
-        "has_plan": bool(plan_items),
-        "primary_format_analysis": dict(primary_format or {}),
-        "format_analyses": per_format,
-    }
+    return enrich_calibration_plan(
+        {
+            "mission_id": FIX01_MISSION_ID,
+            "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+            "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
+            "plan_items": plan_items,
+            "impact_items": impact_items,
+            "parametros_sugeridos": parametros_sugeridos,
+            "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
+            "has_plan": bool(plan_items),
+            "primary_format_analysis": dict(primary_format or {}),
+            "format_analyses": per_format,
+        }
+    )
 
 
 def interpret_coverage_evidence(
@@ -311,8 +365,8 @@ def interpret_coverage_evidence(
     pares_atencao = _safe_int(m.get("pares_em_atencao"))
     diversity_score = _safe_float(m.get("diversity_score"))
     subcovered = _safe_int(m.get("dezenas_subcobertas"))
-    formatos = [int(value) for value in list(m.get("formatos_analisados") or []) if int(value) > 0]
-    game_size = int(formatos[0]) if len(formatos) == 1 else 15
+    formatos = _normalize_format_sizes(m.get("formatos_analisados"))
+    game_size = formatos[0] if len(formatos) == 1 else 15
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
         blocks.append(
@@ -476,6 +530,11 @@ def interpret_coverage_evidence(
     if not impacto_detalhado and primary:
         impacto_detalhado = [str(primary.get("impacto_esperado") or "")]
 
+    agent_summary = summarize_responsible_agents(
+        decision_blocks=blocks,
+        calibration_plan=calibration_plan,
+    )
+
     return {
         "mission_id": MISSION_ID,
         "fix_mission_id": FIX01_MISSION_ID,
@@ -490,7 +549,80 @@ def interpret_coverage_evidence(
         "primary_decision": primary,
         "impacto_esperado": primary.get("impacto_esperado") if primary else "",
         "has_structural_issues": bool(blocks),
+        "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+        "agent_routing_matrix_version": agent_summary.get("agent_routing_matrix_version"),
+        "primary_responsible_agent": agent_summary.get("primary_responsible_agent"),
+        "responsible_agents": list(agent_summary.get("responsible_agents") or []),
+        "institutional_agent_routing_matrix": build_institutional_agent_routing_matrix_memory(),
     }
+
+
+def _load_pre_final_pool_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))
+
+
+def _load_structural_15d_pool_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
+
+
+def _load_ml_operational_hierarchy_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
+
+
+def _load_pre_gp_recovery_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_gp_recovery_trace(dict(context.get("pre_gp_recovery") or {}))
 
 
 def get_structural_coverage_evidence(
@@ -539,11 +671,15 @@ def get_structural_coverage_evidence(
     calibration_authorized = bool((ml_aggregate or {}).get("calibration_authorized"))
     reading = dict(snapshot.get("reading") or {})
 
+    # M-ML-070-FIX-02: normaliza formato de forma segura (aceita 15/"15"/"15D"/"15d";
+    # ignora inválidos) — nunca usar int(formatos[0]) direto em payload de snapshot/UI.
+    formatos = _normalize_format_sizes(metrics.get("formatos_analisados"))
+
     structural_policy_15d_memory: dict[str, Any] = {}
     structural_policy_15d_application: dict[str, Any] = {"available": False}
     structural_policy_15d_analysis: dict[str, Any] = {}
     structural_policy_15d_calibration_plan: dict[str, Any] = {"has_plan": False}
-    if len(formatos) == 1 and is_structural_policy_15d_format(int(formatos[0])):
+    if len(formatos) == 1 and is_structural_policy_15d_format(formatos[0]):
         structural_policy_15d_memory = load_active_structural_policy_15d_memory(
             db_path,
             persist_if_missing=False,
@@ -636,7 +772,6 @@ def get_structural_coverage_evidence(
 
     structural_concentration_audit: dict[str, Any] = {"available": False}
     ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
-    formatos = [int(value) for value in list(metrics.get("formatos_analisados") or []) if int(value) > 0]
     if len(ge_ids) == 1 and formatos:
         try:
             structural_concentration_audit = audit_structural_concentration_from_db(
@@ -651,11 +786,11 @@ def get_structural_coverage_evidence(
     if (
         structural_concentration_audit.get("available")
         and len(formatos) == 1
-        and is_structural_auto_calibration_format(int(formatos[0]))
+        and is_structural_auto_calibration_format(formatos[0])
     ):
         occurrence = int(
             dict((structural or {}).get("context_json") or {}).get("structural_calibration_occurrences", {}).get(
-                f"{int(formatos[0])}D:{(structural_concentration_audit.get('diagnostico') or {}).get('problema_detectado')}",
+                f"{formatos[0]}D:{(structural_concentration_audit.get('diagnostico') or {}).get('problema_detectado')}",
                 0,
             )
             or 0
@@ -693,6 +828,40 @@ def get_structural_coverage_evidence(
             },
             "auto_structural_calibration": True,
         }
+
+    ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
+    pre_final_pool_ml_calibration = _load_pre_final_pool_evidence(db_path, ge_ids)
+    if pre_final_pool_ml_calibration:
+        metrics["pre_final_calibration_applied"] = bool(
+            pre_final_pool_ml_calibration.get("pre_final_calibration_applied")
+        )
+        metrics["final_gp_changed_by_ml"] = bool(
+            pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")
+        )
+    ml_structural_15d_pool = _load_structural_15d_pool_evidence(db_path, ge_ids)
+    if ml_structural_15d_pool:
+        metrics["structural_pool_applied"] = bool(
+            ml_structural_15d_pool.get("structural_pool_applied")
+        )
+        metrics["pool_origin"] = str(ml_structural_15d_pool.get("pool_origin") or "")
+        metrics["structural_pool_size"] = int(
+            ml_structural_15d_pool.get("structural_pool_size", 0) or 0
+        )
+    ml_operational_hierarchy = _load_ml_operational_hierarchy_evidence(db_path, ge_ids)
+    pre_gp_recovery = _load_pre_gp_recovery_evidence(db_path, ge_ids)
+    if ml_operational_hierarchy:
+        metrics["hierarchy_applied"] = bool(ml_operational_hierarchy.get("hierarchy_applied"))
+        metrics["hierarchy_compliance"] = bool(ml_operational_hierarchy.get("hierarchy_compliance"))
+        metrics["ml_hierarchy_version"] = str(
+            ml_operational_hierarchy.get("ml_hierarchy_version") or ""
+        )
+        metrics["current_stage"] = str(ml_operational_hierarchy.get("current_stage") or "")
+    if pre_gp_recovery.get("internal_recovery_attempted"):
+        metrics["internal_recovery_attempts"] = int(
+            pre_gp_recovery.get("internal_recovery_attempts", 0) or 0
+        )
+        metrics["internal_recovery_success"] = bool(pre_gp_recovery.get("internal_recovery_success"))
+        metrics["final_gp_delivered"] = bool(pre_gp_recovery.get("final_gp_delivered"))
 
     return {
         "available": True,
@@ -764,4 +933,59 @@ def get_structural_coverage_evidence(
         "structural_policy_applied": bool(metrics.get("structural_policy_applied")),
         "policy_compliance_status": str(metrics.get("policy_compliance_status") or ""),
         "policy_violations": list(metrics.get("policy_violations") or []),
+        "pre_final_pool_ml_calibration": pre_final_pool_ml_calibration,
+        "pre_final_calibration_applied": bool(pre_final_pool_ml_calibration.get("pre_final_calibration_applied")),
+        "final_gp_changed_by_ml": bool(pre_final_pool_ml_calibration.get("final_gp_changed_by_ml")),
+        "ml_structural_15d_pool": ml_structural_15d_pool,
+        "pool_origin": str(ml_structural_15d_pool.get("pool_origin") or ""),
+        "structural_pool_applied": bool(ml_structural_15d_pool.get("structural_pool_applied")),
+        "structural_pool_size": int(ml_structural_15d_pool.get("structural_pool_size", 0) or 0),
+        "ml_operational_hierarchy": ml_operational_hierarchy,
+        "pre_gp_recovery_mission_id": "M-ML-074",
+        "pre_gp_recovery": pre_gp_recovery,
+        "internal_recovery_attempted": bool(pre_gp_recovery.get("internal_recovery_attempted")),
+        "internal_recovery_attempts": int(pre_gp_recovery.get("internal_recovery_attempts", 0) or 0),
+        "internal_recovery_success": bool(pre_gp_recovery.get("internal_recovery_success")),
+        "final_gp_delivered": bool(pre_gp_recovery.get("final_gp_delivered")),
+        "ml_hierarchy_version": str(ml_operational_hierarchy.get("ml_hierarchy_version") or ""),
+        "ml_hierarchy_status": str(ml_operational_hierarchy.get("ml_hierarchy_status") or ""),
+        "hierarchy_compliance": bool(ml_operational_hierarchy.get("hierarchy_compliance")),
+        "current_stage": str(ml_operational_hierarchy.get("current_stage") or ""),
+        "stage_results": dict(ml_operational_hierarchy.get("stage_results") or {}),
+        "stage_failures": list(ml_operational_hierarchy.get("stage_failures") or []),
+        "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+        "agent_routing_matrix_version": str(
+            ml_operational_hierarchy.get("agent_routing_matrix_version")
+            or interpretation.get("agent_routing_matrix_version")
+            or ""
+        ),
+        "primary_responsible_agent": str(
+            ml_operational_hierarchy.get("blocking_responsible_agent")
+            or interpretation.get("primary_responsible_agent")
+            or ""
+        ),
+        "responsible_agents": list(
+            dict.fromkeys(
+                list(ml_operational_hierarchy.get("stage_responsible_agents") or [])
+                + list(interpretation.get("responsible_agents") or [])
+            )
+        ),
+        "institutional_agent_routing_matrix": dict(
+            interpretation.get("institutional_agent_routing_matrix")
+            or build_institutional_agent_routing_matrix_memory()
+        ),
+        "agent_routing": build_agent_routing_trace(
+            {
+                **dict(interpretation),
+                "blocking_responsible_agent": ml_operational_hierarchy.get(
+                    "blocking_responsible_agent"
+                ),
+                "responsible_agents": list(
+                    dict.fromkeys(
+                        list(ml_operational_hierarchy.get("stage_responsible_agents") or [])
+                        + list(interpretation.get("responsible_agents") or [])
+                    )
+                ),
+            }
+        ),
     }

@@ -129,7 +129,7 @@ def test_central_ml_exposes_structural_policy_15d_card() -> None:
 
 
 def test_build_marker_v59() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v60"
+    assert BUILD_MARKER == "institutional-adm-runtime-v69"
 
 
 def test_canonical_memory_catalog() -> None:
@@ -138,6 +138,8 @@ def test_canonical_memory_catalog() -> None:
     assert memory["repeticao_ultimo_concurso_min"] == 7
     assert memory["repeticao_ultimo_concurso_max"] == 10
     assert memory["sequencia_maxima"] == 6
+    assert memory["paridade_preferencial"] == [[7, 8], [8, 7]]
+    assert memory["paridade_permitida"] == [[7, 8], [8, 7]]
 
 
 def test_resolve_policy_compliance_labels() -> None:

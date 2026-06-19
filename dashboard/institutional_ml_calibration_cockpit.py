@@ -5,10 +5,20 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
+from dashboard.institutional_ml_hierarchy_block import (
+    build_central_ml_pre_gp_block_notice,
+    build_central_ml_quality_delivered_notice,
+    build_central_ml_recovery_success_notice,
+    format_agent_label,
+)
 from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
+from lotoia.ml.structural_policy_15d import (
+    NON_COMPLIANT_PARITY_PAIRS,
+    PREFERRED_PARITY_PAIRS,
+    normalize_structural_policy_15d_memory,
+)
 from dashboard.institutional_supervised_ml import (
     AGGREGATE_SCOPE_LABEL,
     CALIBRATION_SUPERVISED_LABEL,
@@ -23,6 +33,22 @@ from dashboard.institutional_supervised_ml import (
     build_ml_six_bases_operational_summary,
     build_supervised_ml_operational_event_detail,
     is_supervised_output_calibration_active,
+)
+from dashboard.institutional_ml_cockpit_render_guard import (
+    MISSION_ID as VIS_COCKPIT_RENDER_GUARD_MISSION_ID,
+    detect_mixed_format_aggregate,
+    display_cockpit_dataframe,
+    display_cockpit_json,
+    render_cockpit_block_safe,
+    summarize_coverage_snapshot_for_ui,
+)
+from dashboard.institutional_operational_structural_coverage import (
+    build_operational_generation_dropdown_options,
+    build_operational_generation_scope_caption,
+    is_all_operational_generations_selection,
+    load_operational_core_002_generations,
+    OPERATIONAL_GENERATION_SELECTOR_KEY,
+    resolve_operational_generation_selection,
 )
 
 SESSION_WORKFLOW = "central_ml_cockpit_workflow_status"
@@ -184,12 +210,226 @@ def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
         )
 
 
+def _format_parity_pairs(pairs: Any) -> str:
+    formatted: list[str] = []
+    for pair in pairs or []:
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+    return " • ".join(formatted) if formatted else "—"
+
+
+def _format_agent_label(agent_id: str) -> str:
+    labels = {
+        "agent_governanca": "Governança",
+        "agent_estatistico": "Estatístico",
+        "agent_geracao": "Geração",
+        "agent_dados": "Dados",
+        "agent_ml": "ML",
+        "agent_qualidade": "Qualidade",
+        "agent_plataforma": "Plataforma",
+        "agent_visual": "Visual",
+    }
+    return labels.get(str(agent_id or "").strip(), str(agent_id or "—"))
+
+
+def _render_agent_responsible_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Agente responsável (M-GOV-AGENTS-002)")
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    primary = str(
+        snapshot.get("primary_responsible_agent")
+        or coverage.get("primary_responsible_agent")
+        or ""
+    )
+    agents = list(
+        dict.fromkeys(
+            list(snapshot.get("responsible_agents") or [])
+            + list(coverage.get("responsible_agents") or [])
+        )
+    )
+    matrix_version = str(
+        snapshot.get("agent_routing_matrix_version")
+        or coverage.get("agent_routing_matrix_version")
+        or "—"
+    )
+    if not primary and not agents:
+        st.caption("Sem roteamento de agente institucional para o escopo atual.")
+        return
+    cols = st.columns(3)
+    cols[0].metric("Agente principal", _format_agent_label(primary))
+    cols[1].metric("Agentes envolvidos", len(agents) or 1)
+    cols[2].metric("Matriz", matrix_version)
+    if agents:
+        st.caption(
+            "Roteamento: "
+            + " • ".join(_format_agent_label(agent) for agent in agents[:8])
+        )
+    decision_blocks = list(
+        snapshot.get("decision_blocks") or coverage.get("decision_blocks") or []
+    )
+    routed_blocks = [
+        block for block in decision_blocks if isinstance(block, dict) and block.get("responsible_agent")
+    ]
+    if routed_blocks:
+        with st.expander("Problema × agente", expanded=False):
+            for block in routed_blocks[:12]:
+                st.markdown(
+                    f"**{_format_agent_label(str(block.get('responsible_agent') or ''))}** — "
+                    f"{block.get('problema_detectado', '—')}"
+                )
+
+
+def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Hierarquia Operacional ML (M-ML-073)")
+    hierarchy = dict(
+        snapshot.get("ml_operational_hierarchy")
+        or dict(snapshot.get("coverage_evidence") or {}).get("ml_operational_hierarchy")
+        or {}
+    )
+    if not hierarchy:
+        st.caption("Sem evidência de hierarquia operacional ML para o escopo atual.")
+        return
+    cols = st.columns(4)
+    cols[0].metric("Versão", str(hierarchy.get("ml_hierarchy_version", "—")))
+    cols[1].metric("Etapa atual", str(hierarchy.get("current_stage", "—")))
+    cols[2].metric(
+        "Última concluída",
+        str(hierarchy.get("last_completed_stage", "—")),
+    )
+    cols[3].metric(
+        "Compliance",
+        "SIM" if hierarchy.get("hierarchy_compliance") else "NÃO",
+    )
+    if hierarchy.get("blocking_reason"):
+        st.warning(
+            f"Motivo de bloqueio: {hierarchy.get('blocking_reason')} | "
+            f"Ação corretiva: {', '.join(hierarchy.get('corrective_action_applied') or []) or '—'}"
+        )
+    recovery = dict(
+        snapshot.get("pre_gp_recovery")
+        or dict(snapshot.get("coverage_evidence") or {}).get("pre_gp_recovery")
+        or hierarchy.get("pre_gp_recovery")
+        or {}
+    )
+    if recovery.get("internal_recovery_attempted"):
+        success = bool(recovery.get("internal_recovery_success"))
+        attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+        st.info(
+            f"Recuperação pré-GP (M-ML-074): {attempts} tentativa(s) | "
+            f"sucesso={'SIM' if success else 'NÃO'} | "
+            f"GP entregue={'SIM' if recovery.get('final_gp_delivered') else 'NÃO'}"
+        )
+        if success:
+            st.success(
+                build_central_ml_recovery_success_notice(recovery).get("message")
+                or "GP entregue após recuperação interna pré-GP."
+            )
+    stage_results = dict(hierarchy.get("stage_results") or {})
+    if stage_results:
+        with st.expander("Etapas da hierarquia", expanded=True):
+            for stage_id in (
+                "conformidade_estrutural",
+                "diversidade",
+                "cobertura",
+                "fechamento_gp",
+                "validacao_final",
+            ):
+                row = dict(stage_results.get(stage_id) or {})
+                if not row:
+                    continue
+                status = str(row.get("status", "—"))
+                label = str(row.get("stage_label", stage_id))
+                agent = _format_agent_label(str(row.get("responsible_agent") or ""))
+                st.markdown(f"**{label}** — `{status}` | Agente: **{agent}**")
+                failures = list(row.get("failures") or [])
+                if failures:
+                    st.caption("Falhas: " + "; ".join(failures[:3]))
+
+
+def _render_structural_15d_pool_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Pool estrutural ML 15D (M-ML-072)")
+    structural_pool = dict(
+        snapshot.get("ml_structural_15d_pool")
+        or dict(snapshot.get("coverage_evidence") or {}).get("ml_structural_15d_pool")
+        or {}
+    )
+    if not structural_pool:
+        st.caption("Sem evidência de pool estrutural ML 15D para o escopo atual.")
+        return
+    st.caption(
+        f"Origem: {structural_pool.get('pool_origin', '—')} | "
+        f"Compliance atingido: {'SIM' if structural_pool.get('compliance_met') else 'NÃO'}"
+    )
+    cols = st.columns(4)
+    cols[0].metric("Pool estrutural", int(structural_pool.get("structural_pool_size", 0) or 0))
+    cols[1].metric("Conformes", int(structural_pool.get("structural_compliant_pool_size", 0) or 0))
+    cols[2].metric("Compliance", f"{float(structural_pool.get('compliance_rate', 0.0) or 0.0):.0%}")
+    cols[3].metric(
+        "Confronto",
+        int(structural_pool.get("reference_contest_window", 10) or 10),
+    )
+    confronto = dict(structural_pool.get("confronto_recent_contests") or {})
+    if confronto.get("available"):
+        st.caption(
+            f"Média de acertos/concurso: {confronto.get('avg_hits_per_contest', '—')} "
+            f"({int(confronto.get('reference_contests_count', 0) or 0)} concursos)"
+        )
+    metrics_before = dict(structural_pool.get("metrics_before") or {})
+    metrics_after = dict(structural_pool.get("metrics_after") or {})
+    if metrics_before or metrics_after:
+        st.caption(
+            "Diversidade estrutural "
+            f"{metrics_before.get('diversity_score', '—')} → {metrics_after.get('diversity_score', '—')}"
+        )
+
+
+def _render_pre_final_pool_ml_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Pool pré-final calibrado pela ML (M-ML-071)")
+    pre_final = dict(
+        snapshot.get("pre_final_pool_ml_calibration")
+        or dict(snapshot.get("coverage_evidence") or {}).get("pre_final_pool_ml_calibration")
+        or {}
+    )
+    if not pre_final:
+        st.caption("Sem evidência de calibração pré-final para o escopo atual.")
+        return
+    applied = bool(pre_final.get("pre_final_calibration_applied"))
+    st.caption(
+        f"GP final veio de pool calibrado pela ML: {'SIM' if applied else 'NÃO'} | "
+        f"GP alterado pela ML: {'SIM' if pre_final.get('final_gp_changed_by_ml') else 'NÃO'}"
+    )
+    cols = st.columns(4)
+    cols[0].metric("Pool pré-final", int(pre_final.get("pre_final_pool_size", 0) or 0))
+    cols[1].metric("Pool deduplicado", int(pre_final.get("pre_final_pool_deduped_size", 0) or 0))
+    cols[2].metric("Reordenados", int(pre_final.get("candidates_reordered", 0) or 0))
+    cols[3].metric("Substituídos", int(pre_final.get("candidates_replaced", 0) or 0))
+    st.caption(
+        f"Formato: {pre_final.get('pre_final_calibration_format', '—')} | "
+        f"Política: {pre_final.get('pre_final_calibration_policy', '—')}"
+    )
+    metrics_before = dict(pre_final.get("metrics_before") or {})
+    metrics_after = dict(pre_final.get("metrics_after") or {})
+    if metrics_before or metrics_after:
+        st.caption(
+            "Diversidade "
+            f"{metrics_before.get('diversity_score', '—')} → {metrics_after.get('diversity_score', '—')} | "
+            "Similaridade "
+            f"{metrics_before.get('similarity_score', '—')} → {metrics_after.get('similarity_score', '—')}"
+        )
+    actions = list(pre_final.get("actions_applied") or [])
+    if actions:
+        with st.expander("Ações aplicadas no pool pré-final", expanded=False):
+            for action in actions[:20]:
+                st.markdown(f"- {action}")
+
+
 def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Política estrutural soberana 15D (M-ML-070)")
-    memory = dict(
-        snapshot.get("structural_policy_15d_memory")
-        or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_memory")
-        or {}
+    memory = normalize_structural_policy_15d_memory(
+        dict(
+            snapshot.get("structural_policy_15d_memory")
+            or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_memory")
+            or {}
+        )
     )
     application = dict(
         snapshot.get("structural_policy_15d_application")
@@ -216,6 +456,10 @@ def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
         rules = list(memory.get("regras_aplicadas") or [])
         if rules:
             st.caption("Regras: " + ", ".join(str(rule) for rule in rules))
+        st.markdown(
+            f"**Conforme:** {_format_parity_pairs(memory.get('paridade_preferencial') or PREFERRED_PARITY_PAIRS)}"
+        )
+        st.markdown(f"**Violação:** {_format_parity_pairs(NON_COMPLIANT_PARITY_PAIRS)}")
     applied = bool(
         snapshot.get("structural_policy_applied")
         or application.get("structural_policy_applied")
@@ -254,7 +498,7 @@ def _render_overlap_composition(metrics: dict[str, Any], *, primary_format: dict
     st.markdown("##### Composição de pares por overlap (M-ML-067)")
     formato = f"{game_size}D" if game_size else str((primary_format or {}).get("formato") or "—")
     st.caption(f"Formato analisado: {formato} | Pares possíveis: {int(metrics.get('pares_possiveis', 0) or 0)}")
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    display_cockpit_dataframe(rows, max_rows=64)
     criticos = int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0)
     atencao = int(metrics.get("pares_em_atencao", 0) or 0)
     st.caption(f"Quase repetidos críticos (overlap N + N-1): {criticos}")
@@ -578,7 +822,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
             coverage_rows = list((audit.get("cobertura_dezenas") or {}).get("tabela_dezenas") or [])[:10]
             if coverage_rows:
                 st.markdown("**Top desvios de cobertura (dezenas)**")
-                st.dataframe(pd.DataFrame(coverage_rows), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(coverage_rows, max_rows=10)
             st.markdown(f"**Causa provável:** {diag.get('problema_detectado', '—')}")
             for action in list(diag.get("acoes_recomendadas") or [])[:5]:
                 st.caption(f"→ {action}")
@@ -594,7 +838,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         overlap_memory = dict(memory.get("overlap_memory") or memory)
         thresholds = list(overlap_memory.get("thresholds") or memory.get("thresholds") or [])
         if thresholds:
-            st.dataframe(pd.DataFrame(thresholds), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(thresholds, max_rows=24)
             st.caption(str(overlap_memory.get("rule_summary") or memory.get("rule_summary") or ""))
         similarity_memory = dict(memory.get("similarity_memory") or {})
         if similarity_memory.get("format_thresholds"):
@@ -603,7 +847,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                 {"formato": fmt, **bands}
                 for fmt, bands in dict(similarity_memory.get("format_thresholds") or {}).items()
             ]
-            st.dataframe(pd.DataFrame(similarity_rows), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(similarity_rows, max_rows=24)
         legacy = dict(memory.get("legacy_rule") or {})
         if legacy:
             st.caption(f"Régua legada: overlap fixo >= {legacy.get('near_duplicate_overlap_fixed')} — {legacy.get('status')}")
@@ -612,38 +856,40 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
 
     with st.expander("Detalhes por lote", expanded=False):
         if lot_details:
-            st.dataframe(pd.DataFrame(lot_details), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(lot_details, max_rows=50)
         else:
             st.caption(EMPTY_ML_EVENTS_MESSAGE)
 
     with st.expander("Leitura usada da Cobertura Estrutural", expanded=False):
         if coverage.get("available"):
-            st.json(dict(coverage.get("coverage_evidence_snapshot") or {}))
+            display_cockpit_json(
+                "Resumo seguro da leitura (payload bruto omitido)",
+                summarize_coverage_snapshot_for_ui(coverage.get("coverage_evidence_snapshot") or {}),
+            )
         else:
             st.caption("Snapshot indisponível.")
 
     with st.expander("Registro completo da decisão ML", expanded=False):
         blocks = list(snapshot.get("decision_blocks") or [])
         if blocks:
-            st.dataframe(pd.DataFrame(blocks), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(blocks, max_rows=40)
         else:
             st.caption("Nenhum bloco decisório gerado.")
 
     with st.expander("Proteções constitucionais ativas", expanded=False):
-        st.dataframe(
-            pd.DataFrame([{"bloqueio": code} for code in panel.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS]),
-            hide_index=True,
-            use_container_width=True,
+        display_cockpit_dataframe(
+            [{"bloqueio": code} for code in panel.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS],
+            max_rows=20,
         )
 
     with st.expander("Rastreamento da decisão", expanded=False):
         trace = dict(latest_event.get("decision_trace") or {})
         persist = dict(st.session_state.get(SESSION_PERSIST) or {})
         if persist.get("trace"):
-            st.json(dict(persist.get("trace") or {}))
+            display_cockpit_json("Trace persistido", dict(persist.get("trace") or {}))
         elif trace.get("status") == "persistido":
             st.caption("Amostra da geração mais recente — visão geral acima.")
-            st.json(dict(trace.get("sample") or {}))
+            display_cockpit_json("Amostra decision trace", dict(trace.get("sample") or {}))
         else:
             st.caption("Decision trace ausente nas gerações recentes.")
 
@@ -652,35 +898,32 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         if attribution.get("status") == "persistido":
             st.caption("Amostra da geração mais recente — visão geral acima.")
             if attribution.get("sample"):
-                st.json(dict(attribution.get("sample") or {}))
+                display_cockpit_json("Amostra feature attribution", dict(attribution.get("sample") or {}))
             top_factors = list(attribution.get("top_factors") or [])
             if top_factors:
-                st.dataframe(pd.DataFrame(top_factors), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(top_factors, max_rows=20)
         else:
             st.caption("Feature attribution ausente nas gerações recentes.")
 
     with st.expander("Leitura ML pelas 6 Bases", expanded=False):
         six_bases = list(latest_event.get("ml_six_bases_reading") or build_ml_six_bases_operational_summary())
-        st.dataframe(pd.DataFrame(six_bases), hide_index=True, use_container_width=True)
+        display_cockpit_dataframe(six_bases, max_rows=12)
 
     with st.expander("Histórico e auditoria PostgreSQL", expanded=False):
         events = list(snapshot.get("events") or [])
         if events:
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "evento": row.get("generation_event_id"),
-                            "batch": row.get("batch_label"),
-                            "jogos": row.get("persisted_games"),
-                            "calibracao": row.get("calibration_applied"),
-                            "criado": row.get("created_at"),
-                        }
-                        for row in events
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
+            display_cockpit_dataframe(
+                [
+                    {
+                        "evento": row.get("generation_event_id"),
+                        "batch": row.get("batch_label"),
+                        "jogos": row.get("persisted_games"),
+                        "calibracao": row.get("calibration_applied"),
+                        "criado": row.get("created_at"),
+                    }
+                    for row in events
+                ],
+                max_rows=50,
             )
         else:
             st.caption(EMPTY_ML_EVENTS_MESSAGE)
@@ -692,10 +935,10 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                 cal_attr = dict(detail.get("calibration_feature_attribution") or {})
                 if cal_trace:
                     st.markdown("**Trace de calibração (geração mais recente)**")
-                    st.json(cal_trace)
+                    display_cockpit_json("Trace calibração", cal_trace)
                 if cal_attr:
                     st.markdown("**Feature attribution — calibração (geração mais recente)**")
-                    st.json(cal_attr)
+                    display_cockpit_json("Feature attribution calibração", cal_attr)
 
 
 def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
@@ -706,17 +949,71 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     st.markdown(f"### {COCKPIT_TITLE}")
     st.caption(COCKPIT_SUBTITLE)
 
-    snapshot = build_ml_calibration_cockpit_snapshot(
-        db_path,
-        workflow_status=str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING),
-        decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
-        apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
+    operational_generations = load_operational_core_002_generations(db_path)
+    dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
+    default_index = max(0, len(dropdown_labels) - 1) if dropdown_labels else 0
+    selected_label = st.selectbox(
+        "Geração operacional",
+        options=dropdown_labels or ["—"],
+        index=default_index,
+        key=OPERATIONAL_GENERATION_SELECTOR_KEY,
     )
+    operational_selection = resolve_operational_generation_selection(
+        selected_label if dropdown_labels else None,
+        operational_generations,
+    )
+    selected_generation = dict(operational_selection.get("selected_generation") or {})
+    selected_ge_id = int(operational_selection.get("generation_event_id", 0) or 0)
+    selected_card_format = operational_selection.get("card_format")
+
+    try:
+        snapshot = build_ml_calibration_cockpit_snapshot(
+            db_path,
+            operational_selection=operational_selection,
+            workflow_status=str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING),
+            decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
+            apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
+        )
+        pre_gp_notice = build_central_ml_pre_gp_block_notice(snapshot)
+        if pre_gp_notice.get("available"):
+            snapshot = {**snapshot, "pre_gp_hierarchy_block": dict(pre_gp_notice)}
+    except Exception as exc:  # noqa: BLE001 — fallback seguro de snapshot
+        st.error(
+            f"Central ML não pôde montar o snapshot completo ({VIS_COCKPIT_RENDER_GUARD_MISSION_ID}). "
+            "Selecione uma Geração operacional específica no seletor acima."
+        )
+        st.caption(str(exc)[:320])
+        snapshot = {
+            "mission_id": VIS_COCKPIT_RENDER_GUARD_MISSION_ID,
+            "aggregate_mode": bool(operational_selection.get("is_aggregate")),
+            "coverage_evidence": {"available": False, "headline": "Snapshot indisponível"},
+            "diagnosis": {"available": False, "headline": "Snapshot indisponível"},
+            "constitutional_summary": {},
+            "recommendations": [],
+            "plan_items": [],
+            "result": {},
+        }
 
     if supervised_active:
         st.success(CALIBRATION_SUPERVISED_LABEL)
     else:
         st.warning("Calibração supervisionada inativa — verifique ML operacional CORE_002.")
+
+    pre_gp_notice = build_central_ml_pre_gp_block_notice(snapshot)
+    if pre_gp_notice.get("available"):
+        st.warning(
+            f"{pre_gp_notice.get('message')} | "
+            f"Etapa: {pre_gp_notice.get('failed_stage') or '—'} | "
+            f"Agente: {format_agent_label(str(pre_gp_notice.get('responsible_agent') or ''))}"
+        )
+    else:
+        quality_notice = build_central_ml_quality_delivered_notice(snapshot)
+        if quality_notice.get("available"):
+            tier = str(quality_notice.get("gp_quality_tier") or "")
+            if tier == "REPROVADO":
+                st.error(quality_notice.get("message"))
+            else:
+                st.warning(quality_notice.get("message"))
 
     constitutional = dict(snapshot.get("constitutional_summary") or {})
     status_cols = st.columns(4)
@@ -734,43 +1031,130 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     chip_cols[0].caption(f"Lei 15A: {constitutional.get('lei_15a', 'INOPERANTE')}")
     chip_cols[1].caption(f"Purge: {constitutional.get('purge', 'PROTEGIDO')}")
     chip_cols[2].caption(f"public_app: {constitutional.get('public_app_ml', 'SEM ML OPERACIONAL')}")
-    st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
+    if operational_generations:
+        meta_cols = st.columns(4)
+        if is_all_operational_generations_selection(selected_label):
+            meta_cols[0].metric(
+                "Geração operacional",
+                f"Todos ({int(selected_generation.get('generation_events_count', 0) or 0)})",
+            )
+            meta_cols[1].metric(
+                "generation_event_id",
+                f"{int(selected_generation.get('generation_events_count', 0) or 0)} IDs",
+            )
+            meta_cols[2].metric(
+                "Formato cartão",
+                str(selected_generation.get("card_format_label") or "-"),
+            )
+            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+        else:
+            meta_cols[0].metric(
+                "Geração operacional",
+                str(selected_generation.get("operational_generation_label") or "-"),
+            )
+            meta_cols[1].metric("generation_event_id", str(selected_ge_id or "-"))
+            meta_cols[2].metric(
+                "Formato cartão",
+                f"{int(selected_card_format or 0)}D" if selected_card_format else "-",
+            )
+            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+
+    if operational_selection.get("is_aggregate"):
+        st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
+    else:
+        st.info(build_operational_generation_scope_caption(operational_selection))
+    if detect_mixed_format_aggregate(snapshot):
+        st.warning(
+            "Leitura agregada com múltiplos formatos (ex.: 15D + 17D). "
+            "Para evitar lentidão ou falha de renderização, selecione uma "
+            "**Geração operacional** específica no seletor acima."
+        )
     excluded_count = int(snapshot.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
         st.warning(str(snapshot.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
         with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
             audit_rows = list(snapshot.get("excluded_batches_audit") or [])
             if audit_rows:
-                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(audit_rows, max_rows=40)
 
     row1_col1, row1_col2 = st.columns(2)
     with row1_col1:
         with st.container(border=True):
-            _render_diagnosis_card(dict(snapshot.get("diagnosis") or {}))
-            _render_overlap_format_verdict(snapshot)
-            _render_structural_policy_15d_card(snapshot)
-            _render_structural_auto_calibration_card(snapshot)
+            render_cockpit_block_safe(
+                "diagnostico",
+                lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
+            )
+            render_cockpit_block_safe(
+                "overlap_format",
+                lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "agent_responsible",
+                lambda: _render_agent_responsible_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "ml_operational_hierarchy",
+                lambda: _render_ml_operational_hierarchy_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "structural_15d_pool",
+                lambda: _render_structural_15d_pool_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "pre_final_pool_ml",
+                lambda: _render_pre_final_pool_ml_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "politica_15d",
+                lambda: _render_structural_policy_15d_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "auto_calibracao",
+                lambda: _render_structural_auto_calibration_card(snapshot),
+            )
     with row1_col2:
         with st.container(border=True):
-            _render_decision_evidence_card(snapshot)
+            render_cockpit_block_safe(
+                "evidencias_decisao",
+                lambda: _render_decision_evidence_card(snapshot),
+            )
 
     row2_col1, row2_col2 = st.columns(2)
     with row2_col1:
         with st.container(border=True):
-            _render_recommendation_card(snapshot)
+            render_cockpit_block_safe(
+                "recomendacoes",
+                lambda: _render_recommendation_card(snapshot),
+            )
     with row2_col2:
         with st.container(border=True):
-            _render_impact_card(snapshot)
+            render_cockpit_block_safe(
+                "impacto",
+                lambda: _render_impact_card(snapshot),
+            )
 
     row3_col1, row3_col2 = st.columns(2)
     with row3_col1:
         with st.container(border=True):
-            _render_command_card(snapshot, supervised_active=supervised_active, db_path=db_path)
+            render_cockpit_block_safe(
+                "comando",
+                lambda: _render_command_card(
+                    snapshot,
+                    supervised_active=supervised_active,
+                    db_path=db_path,
+                ),
+            )
     with row3_col2:
         with st.container(border=True):
-            _render_result_card(dict(snapshot.get("result") or {}), snapshot)
+            render_cockpit_block_safe(
+                "resultado",
+                lambda: _render_result_card(dict(snapshot.get("result") or {}), snapshot),
+            )
 
     st.divider()
     st.markdown("### Detalhes técnicos")
-    _render_technical_expanders(db_path, snapshot)
+    render_cockpit_block_safe(
+        "detalhes_tecnicos",
+        lambda: _render_technical_expanders(db_path, snapshot),
+    )
     return snapshot

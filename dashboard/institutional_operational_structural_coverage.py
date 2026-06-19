@@ -17,6 +17,11 @@ from lotoia.operations.lot_operational_status import (
     should_defer_generator_persist_verdict_for_coverage,
 )
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
+from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+from lotoia.governance.institutional_agent_routing_matrix import build_agent_routing_trace
+from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
+from lotoia.ml.pre_gp_deterministic_recovery import build_pre_gp_recovery_trace
 
 from dashboard.institutional_operational_generation import (
     build_operational_generation_index,
@@ -34,10 +39,58 @@ EMPTY_OPERATIONAL_MESSAGE = (
     "Gere um lote no Gerador ADM CORE_002 para habilitar a Cobertura Estrutural operacional."
 )
 OPERATIONAL_GENERATION_ALL_LABEL = "Todos — gerações ativas CORE_002"
+OPERATIONAL_GENERATION_SELECTOR_KEY = "structural_coverage_operational_generation"
+OPERATIONAL_GENERATION_FILTER_MISSION_ID = "M-ML-071-FIX-01"
 
 
 def is_all_operational_generations_selection(label: str | None) -> bool:
     return str(label or "").strip() == OPERATIONAL_GENERATION_ALL_LABEL
+
+
+def resolve_operational_generation_selection(
+    selected_label: str | None,
+    generations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Resolve o mesmo seletor da Cobertura Estrutural para Central ML (M-ML-071-FIX-01)."""
+    label_to_generation = {
+        str(row.get("dropdown_label") or ""): dict(row) for row in generations
+    }
+    if is_all_operational_generations_selection(selected_label):
+        aggregate = build_operational_generations_aggregate_summary(generations)
+        return {
+            "is_aggregate": True,
+            "generation_event_id": 0,
+            "generation_event_ids": list(aggregate.get("generation_event_ids") or []),
+            "card_format": None,
+            "selected_generation": aggregate,
+            "operational_generation_label": OPERATIONAL_GENERATION_ALL_LABEL,
+            "dropdown_label": OPERATIONAL_GENERATION_ALL_LABEL,
+        }
+    selected = dict(
+        label_to_generation.get(str(selected_label or "").strip())
+        or (generations[-1] if generations else {})
+    )
+    ge_id = int(selected.get("generation_event_id", 0) or 0)
+    card_format = int(selected.get("card_format", 15) or 15) if selected else None
+    return {
+        "is_aggregate": False,
+        "generation_event_id": ge_id,
+        "generation_event_ids": [ge_id] if ge_id > 0 else [],
+        "card_format": card_format,
+        "selected_generation": selected,
+        "operational_generation_label": str(selected.get("operational_generation_label") or ""),
+        "dropdown_label": str(selected.get("dropdown_label") or selected_label or ""),
+    }
+
+
+def build_operational_generation_scope_caption(selection: Mapping[str, Any] | None) -> str:
+    payload = dict(selection or {})
+    if payload.get("is_aggregate"):
+        return OPERATIONAL_GENERATION_ALL_LABEL
+    card_format = int(payload.get("card_format", 0) or 0)
+    if card_format > 0:
+        return f"Formato analisado: {card_format}D"
+    return str(payload.get("dropdown_label") or payload.get("operational_generation_label") or "—")
 
 
 def build_operational_generation_dropdown_options(
@@ -305,3 +358,93 @@ def build_active_coverage_scope_summary(
             else ""
         ),
     }
+
+
+def load_pre_final_pool_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-071 — pool pré-final calibrado pela ML (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))
+
+
+def load_structural_15d_pool_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-072 — pool estrutural ML 15D (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
+
+
+def load_ml_operational_hierarchy_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-073 — hierarquia operacional ML (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
+
+
+def load_pre_gp_recovery_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-074 — recuperação determinística pré-GP (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_gp_recovery_trace(dict(context.get("pre_gp_recovery") or {}))
+
+
+def load_agent_routing_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-GOV-AGENTS-002 — roteamento agentes institucionais (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_agent_routing_trace(
+        {
+            "agent_routing_matrix_version": context.get("agent_routing_matrix_version"),
+            "primary_responsible_agent": context.get("primary_responsible_agent"),
+            "responsible_agents": list(context.get("responsible_agents") or []),
+            "blocking_responsible_agent": context.get("blocking_responsible_agent"),
+            "agent_assignments": list(
+                dict(context.get("calibration_plan") or {}).get("agent_assignments") or []
+            ),
+        }
+    )

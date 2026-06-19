@@ -685,19 +685,116 @@ def generate_best_games(
     _v3_fallback_to_v1 = False
     _calibration_bundle = None
     _structural_policy_bundle = None
-    if _apply_sovereign and ml_enabled:
-        from lotoia.ml.supervised_output_calibration import apply_supervised_output_calibration
+    _structural_pool_bundle = None
+    _diverse_top_slice_bundle = None
+    _hierarchy_bundle = None
+    _recovery_bundle = None
+    _sovereign_game_size = 15
+    _game_size_contract: dict[str, object] = {}
+    _baseline_gp_for_trace: list[dict[str, object]] = []
+    if _apply_sovereign:
+        from lotoia.ml.supervised_output_calibration import resolve_pool_game_size
 
-        games, _calibration_bundle = apply_supervised_output_calibration(
+        _sovereign_game_size, _game_size_contract = resolve_pool_game_size(
             games,
-            game_size=count,
-            ml_enabled=True,
-            calibration_plan=calibration_plan,
+            batch_label=batch_label,
+            requested_count=count,
         )
+    if _apply_sovereign and ml_enabled:
+        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
+        from lotoia.ml.ml_operational_hierarchy import (
+            execute_ml_operational_hierarchy,
+            is_ml_operational_hierarchy_enabled,
+            MlOperationalHierarchyBlockedError,
+        )
+
+        _pre_final_baseline_pool = [dict(game) for game in games]
+        try:
+            _baseline_gp_for_trace = compose_sovereign_gp(
+                _pre_final_baseline_pool,
+                count,
+                _sovereign_cfg,
+                game_size=_sovereign_game_size,
+            )
+        except Exception:  # noqa: BLE001 — baseline opcional para rastreabilidade
+            _baseline_gp_for_trace = []
+
+        _event_context = {
+            "batch_label": batch_label,
+            "requested_count": count,
+            "game_size_contract": _game_size_contract,
+        }
+        if is_ml_operational_hierarchy_enabled():
+            from lotoia.ml.pre_gp_deterministic_recovery import (
+                execute_pre_gp_recovery_cycle,
+                is_pre_gp_recovery_enabled,
+            )
+
+            _mission_bundles: dict[str, object] = {}
+            _recovery_bundle: dict[str, object] = {}
+            if is_pre_gp_recovery_enabled():
+                games, _hierarchy_bundle, _mission_bundles, _recovery_bundle = (
+                    execute_pre_gp_recovery_cycle(
+                        games,
+                        game_size=_sovereign_game_size,
+                        requested_count=count,
+                        history=history,
+                        seed=seed_offset,
+                        batch_label=batch_label,
+                        calibration_plan=calibration_plan,
+                        event_context=_event_context,
+                        compose_gp=compose_sovereign_gp,
+                        compose_config=_sovereign_cfg,
+                    )
+                )
+            else:
+                games, _hierarchy_bundle, _mission_bundles = execute_ml_operational_hierarchy(
+                    games,
+                    game_size=_sovereign_game_size,
+                    requested_count=count,
+                    history=history,
+                    seed=seed_offset,
+                    batch_label=batch_label,
+                    calibration_plan=calibration_plan,
+                    event_context=_event_context,
+                    compose_gp=compose_sovereign_gp,
+                    compose_config=_sovereign_cfg,
+                )
+            _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
+            _diverse_top_slice_bundle = dict(_mission_bundles.get("diverse_top_slice") or {})
+            _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
+            if _hierarchy_bundle.get("gp_delivery_blocked"):
+                raise MlOperationalHierarchyBlockedError.from_bundle(_hierarchy_bundle)
+        else:
+            from lotoia.ml.pre_final_pool_ml_calibration import (
+                apply_pre_final_pool_ml_calibration,
+            )
+            from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
+
+            if is_structural_policy_15d_format(_sovereign_game_size):
+                from lotoia.ml.structural_pool_15d_generator import build_ml_structural_15d_pool
+
+                games, _structural_pool_bundle = build_ml_structural_15d_pool(
+                    games,
+                    history=history,
+                    seed=seed_offset,
+                )
+            games, _calibration_bundle = apply_pre_final_pool_ml_calibration(
+                games,
+                game_size=_sovereign_game_size,
+                requested_count=count,
+                ml_enabled=True,
+                batch_label=batch_label,
+                calibration_plan=calibration_plan,
+                event_context=_event_context,
+                baseline_pool=_pre_final_baseline_pool,
+                compose_gp=compose_sovereign_gp,
+                compose_config=_sovereign_cfg,
+            )
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp
 
-        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=count)
+        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=_sovereign_game_size)
         if len(best_games) < count:
             raise RuntimeError(
                 f"[LEI15_CORE_002] compose_sovereign_gp retornou {len(best_games)}/{count} "
@@ -709,24 +806,43 @@ def generate_best_games(
             len(best_games),
             _sovereign_cfg.sovereign_core_status,
         )
+        # M-ML-070-FIX-01: gate por FORMATO do cartão (15 dezenas), não pela
+        # quantidade de jogos. GP:N em 15D sempre carrega e aplica a política.
         from lotoia.ml.structural_policy_15d import (
             apply_structural_policy_15d_to_sovereign_batch,
             is_structural_policy_15d_format,
-            resolve_sovereign_game_size,
         )
 
-        sovereign_game_size = resolve_sovereign_game_size(
-            games,
-            batch_label=batch_label,
-            requested_count=count,
+        _sovereign_card_size = (
+            len(best_games[0].get("numbers", []) or []) if best_games else 0
         )
-        if is_structural_policy_15d_format(sovereign_game_size):
+        if is_structural_policy_15d_format(_sovereign_card_size):
             best_games, _structural_policy_bundle = apply_structural_policy_15d_to_sovereign_batch(
                 best_games,
                 pool_games=games,
                 history=history,
                 required_count=count,
-                game_size=sovereign_game_size,
+            )
+        if _calibration_bundle and ml_enabled:
+            from lotoia.ml.pre_final_pool_ml_calibration import finalize_pre_final_gp_outcome
+
+            _calibration_bundle = finalize_pre_final_gp_outcome(
+                _calibration_bundle,
+                baseline_gp=_baseline_gp_for_trace,
+                final_gp=best_games,
+                structural_policy_bundle=_structural_policy_bundle,
+            )
+        if _hierarchy_bundle and ml_enabled:
+            from lotoia.ml.ml_operational_hierarchy import (
+                finalize_ml_operational_hierarchy_validation,
+            )
+
+            _hierarchy_bundle = finalize_ml_operational_hierarchy_validation(
+                _hierarchy_bundle,
+                final_gp=best_games,
+                structural_policy_bundle=_structural_policy_bundle,
+                pre_final_bundle=_calibration_bundle,
+                structural_pool_bundle=_structural_pool_bundle,
             )
     elif _apply_v4:
         from lotoia.generation.core_realignment_v4 import compose_gp_v4
@@ -930,6 +1046,13 @@ def generate_best_games(
         attach_routing_payload_to_games(best_games, _routing)
     payload = {
         "count": len(best_games),
+        "requested_count": int(count),
+        "game_size": int(_sovereign_game_size) if _apply_sovereign else None,
+        "pre_final_pool_ml_calibration": dict(_calibration_bundle or {}),
+        "ml_structural_15d_pool": dict(_structural_pool_bundle or {}),
+        "ml_operational_hierarchy": dict(_hierarchy_bundle or {}),
+        "pre_gp_recovery": dict(_recovery_bundle or {}),
+        "diverse_top_slice_m_stat_002": dict(_diverse_top_slice_bundle or {}),
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {
@@ -938,25 +1061,80 @@ def generate_best_games(
         },
         "generation_routing": _routing.to_dict(),
     }
+    if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
+        payload["ml_hierarchy_version"] = _hierarchy_bundle.get("ml_hierarchy_version")
+        payload["ml_hierarchy_status"] = _hierarchy_bundle.get("ml_hierarchy_status")
+        payload["current_stage"] = _hierarchy_bundle.get("current_stage")
+        payload["hierarchy_compliance"] = _hierarchy_bundle.get("hierarchy_compliance")
+        payload["gp_closure_allowed"] = _hierarchy_bundle.get("gp_closure_allowed")
+        payload["gp_quality_tier"] = _hierarchy_bundle.get("gp_quality_tier")
+        payload["gp_quality_reasons"] = list(_hierarchy_bundle.get("gp_quality_reasons") or [])
+        payload["gp_delivery_blocked"] = bool(_hierarchy_bundle.get("gp_delivery_blocked"))
+        payload["agent_routing_mission_id"] = _hierarchy_bundle.get("agent_routing_mission_id")
+        payload["agent_routing_matrix_version"] = _hierarchy_bundle.get("agent_routing_matrix_version")
+        payload["primary_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent") or (
+            (_hierarchy_bundle.get("stage_responsible_agents") or [None])[0]
+        )
+        payload["responsible_agents"] = list(_hierarchy_bundle.get("stage_responsible_agents") or [])
+        payload["blocking_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent")
+        payload["institutional_agent_routing_matrix"] = _hierarchy_bundle.get(
+            "institutional_agent_routing_matrix"
+        )
+        if _recovery_bundle:
+            payload["internal_recovery_attempted"] = bool(
+                _recovery_bundle.get("internal_recovery_attempted")
+            )
+            payload["internal_recovery_attempts"] = int(
+                _recovery_bundle.get("internal_recovery_attempts", 0) or 0
+            )
+            payload["internal_recovery_success"] = bool(
+                _recovery_bundle.get("internal_recovery_success")
+            )
+            payload["final_gp_delivered"] = bool(_recovery_bundle.get("final_gp_delivered"))
+            payload["best_attempt_metrics"] = dict(_recovery_bundle.get("best_attempt_metrics") or {})
+            payload["attempt_results"] = list(_recovery_bundle.get("attempt_results") or [])
+        merged_hierarchy = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
+        merged_hierarchy["ml_operational_hierarchy"] = _hierarchy_bundle
+        payload["calibration_bundle"] = merged_hierarchy
+    if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+        payload["pool_origin"] = _structural_pool_bundle.get("pool_origin")
+        payload["structural_pool_size"] = _structural_pool_bundle.get("structural_pool_size")
+        payload["structural_compliant_pool_size"] = _structural_pool_bundle.get(
+            "structural_compliant_pool_size"
+        )
+        payload["structural_pool_compliance_rate"] = _structural_pool_bundle.get("compliance_rate")
+        merged_bundle = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
+        merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
+        payload["calibration_bundle"] = merged_bundle
     if _calibration_bundle and _calibration_bundle.get("calibration_applied"):
-        payload["calibration_bundle"] = _calibration_bundle
+        merged_calibration = dict(_calibration_bundle)
+        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+            merged_calibration["ml_structural_15d_pool"] = _structural_pool_bundle
+        if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
+            merged_calibration["ml_operational_hierarchy"] = _hierarchy_bundle
+        payload["calibration_bundle"] = merged_calibration
         payload["calibration_applied"] = True
         payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
     if _structural_policy_bundle:
         payload["structural_policy_15d_bundle"] = _structural_policy_bundle
-        payload["structural_policy_memory_loaded"] = bool(
-            _structural_policy_bundle.get("structural_policy_memory_loaded")
-        )
-        payload["structural_policy_format"] = _structural_policy_bundle.get("structural_policy_format")
+        payload["structural_policy_memory_loaded"] = True
+        payload["structural_policy_format"] = "15D"
         payload["structural_policy_version"] = _structural_policy_bundle.get("structural_policy_version")
-        payload["structural_policy_applied"] = bool(
-            _structural_policy_bundle.get("structural_policy_applied")
-        )
+        payload["structural_policy_applied"] = bool(_structural_policy_bundle.get("structural_policy_applied"))
+        payload["structural_policy_application_mode"] = _structural_policy_bundle.get("structural_policy_application_mode")
         payload["applied_rules"] = list(_structural_policy_bundle.get("applied_rules") or [])
         payload["violated_rules"] = list(_structural_policy_bundle.get("violated_rules") or [])
         payload["policy_violations"] = list(_structural_policy_bundle.get("policy_violations") or [])
         payload["policy_compliance_status"] = _structural_policy_bundle.get("policy_compliance_status")
+        payload["games_compliant"] = _structural_policy_bundle.get("games_compliant")
+        payload["games_non_compliant"] = _structural_policy_bundle.get("games_non_compliant")
+        payload["compliance_rate"] = _structural_policy_bundle.get("compliance_rate")
+        payload["lote_alterado"] = _structural_policy_bundle.get("lote_alterado")
         merged_bundle = dict(_calibration_bundle or {})
+        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+            merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
+        if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
+            merged_bundle["ml_operational_hierarchy"] = _hierarchy_bundle
         merged_bundle["structural_policy_15d"] = _structural_policy_bundle
         payload["calibration_bundle"] = merged_bundle
     return payload
