@@ -11736,9 +11736,31 @@ def _persist_clean_law15_generation_history(
         simulation_mode=simulation_mode,
         ml_verdict_payload=ml_verdict_payload,
     )
+    requested_count = int(result.get("requested_count", len(formatted_games)) or len(formatted_games))
+    hierarchy_source = dict(result.get("ml_operational_hierarchy") or {})
+    gp_quality_tier = str(
+        result.get("gp_quality_tier")
+        or hierarchy_source.get("gp_quality_tier")
+        or dict(hierarchy_source.get("gp_quality") or {}).get("gp_quality_tier")
+        or ""
+    )
     lot_status_context = promote_post_calibration_consumer_lot_visibility(
         lot_status_context,
         authorized_plan=authorized_plan,
+        promotion_context={
+            "generated_games_count": len(formatted_games),
+            "requested_count": requested_count,
+            "persistence_supported": True,
+            "persistence_blocked": False,
+            "runtime_contract_broken": False,
+            "gp_quality_tier": gp_quality_tier,
+            "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
+            "official_release_allowed": bool(ml_verdict_payload.get("official_release_allowed")),
+            "hierarchy_delivery_blocked": bool(
+                hierarchy_source.get("gp_delivery_blocked")
+                or result.get("hierarchy_blocked")
+            ),
+        },
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])
