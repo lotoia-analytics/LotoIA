@@ -1,0 +1,101 @@
+cycle_id,seed,generation_event_id_N,generation_event_id_N1,generated_games_count_N,generated_games_count_N1,calibration_plan_created,calibration_plan_loaded_from_db,calibration_plan_applied_to_generation,authorized_plan_loaded_from_db,authorized_plan_applied_to_generation,post_calibration_promotion_evaluated,lot_operational_status_N1,gp_quality_tier_N1,ml_verdict_N1,official_release_allowed_N1,is_analytical_history_eligible,is_official_conference_eligible,promoted_to_analytical_history,promoted_to_official_conference,persistence_blocked,promotion_block_reason,in_coverage,in_central_ml,in_analytical_history,in_conferir_resultados,technical_error,failure_stage
+1,10001,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+2,10002,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+3,10003,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+4,10004,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+5,10005,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+6,10006,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+7,10007,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+8,10008,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+9,10009,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+10,10010,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+11,10011,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+12,10012,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+13,10013,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+14,10014,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+15,10015,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+16,10016,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+17,10017,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+18,10018,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+19,10019,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+20,10020,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+21,10021,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+22,10022,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+23,10023,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+24,10024,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+25,10025,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+26,10026,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+27,10027,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+28,10028,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+29,10029,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+30,10030,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+31,10031,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+32,10032,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+33,10033,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+34,10034,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+35,10035,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+36,10036,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+37,10037,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+38,10038,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+39,10039,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+40,10040,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+41,10041,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+42,10042,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+43,10043,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+44,10044,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+45,10045,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+46,10046,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+47,10047,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+48,10048,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+49,10049,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+50,10050,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+51,10051,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+52,10052,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+53,10053,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+54,10054,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+55,10055,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+56,10056,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+57,10057,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+58,10058,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+59,10059,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+60,10060,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+61,10061,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+62,10062,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+63,10063,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+64,10064,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+65,10065,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+66,10066,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+67,10067,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+68,10068,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+69,10069,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+70,10070,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+71,10071,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+72,10072,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+73,10073,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+74,10074,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+75,10075,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+76,10076,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+77,10077,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+78,10078,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+79,10079,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+80,10080,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+81,10081,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+82,10082,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+83,10083,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+84,10084,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+85,10085,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+86,10086,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+87,10087,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+88,10088,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+89,10089,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+90,10090,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+91,10091,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+92,10092,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+93,10093,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+94,10094,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+95,10095,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
+96,10096,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+97,10097,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+98,10098,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+99,10099,1,2,20,20,True,True,True,True,True,True,needs_calibration,,PRECISA CALIBRAR,False,False,False,False,False,False,ml_verdict_precisa_calibrar_not_releasable,True,True,False,False,,I
+100,10100,1,2,20,20,True,True,True,True,True,True,pending_structural_review,,REPROVADO,False,False,False,False,False,False,ml_verdict_reprovado_not_releasable,True,True,False,False,,I
