@@ -22,6 +22,8 @@ from lotoia.ml.structural_policy_15d import (
     is_structural_policy_15d_format,
     validate_game_structural_policy_15d,
 )
+from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size
+from lotoia.ml.overlap_format_thresholds import MAX_FORMAT_SIZE, MIN_FORMAT_SIZE
 from lotoia.statistics.card_structure import (
     compute_gp_redundancy,
     compute_missing_dezenas,
@@ -32,6 +34,7 @@ from lotoia.statistics.card_structure import (
 )
 
 MISSION_ID = "M-ML-054"
+MISSION_ID_FIX_03 = "M-ML-070-FIX-03"
 CALIBRATION_VERSION = "M-ML-054-v1"
 CALIBRATION_ENGINE_ROLE = "SUPERVISED_OUTPUT_CALIBRATION"
 ENV_OUTPUT_CALIBRATION_ENABLED = "LOTOIA_ML_OUTPUT_CALIBRATION_ENABLED"
@@ -59,21 +62,110 @@ def _pool_cards(games: Sequence[Mapping[str, Any]]) -> list[list[int]]:
     return [card for card in (_game_card(game) for game in games) if card]
 
 
+def _is_supported_game_size(size: int) -> bool:
+    return MIN_FORMAT_SIZE <= int(size) <= MAX_FORMAT_SIZE
+
+
+def resolve_pool_game_size(
+    games: Sequence[Mapping[str, Any]],
+    *,
+    batch_label: str | None = None,
+    game_size: int | None = None,
+    requested_count: int | None = None,
+    default: int = 15,
+) -> tuple[int, dict[str, Any]]:
+    """Resolve dezenas por cartão — nunca inferir formato a partir de requested_count."""
+    contract: dict[str, Any] = {
+        "mission_id": MISSION_ID_FIX_03,
+        "requested_game_size": int(game_size) if game_size is not None else None,
+        "requested_count": int(requested_count) if requested_count is not None else None,
+        "contract_errors": [],
+        "resolved_from": None,
+    }
+
+    label_size = core_002_batch_label_game_size(batch_label)
+    cards = _pool_cards(games)
+    card_sizes = {len(card) for card in cards if card}
+    card_size = next(iter(card_sizes)) if len(card_sizes) == 1 and _is_supported_game_size(next(iter(card_sizes))) else None
+    if card_size is None and cards and _is_supported_game_size(len(cards[0])):
+        card_size = len(cards[0])
+        if len(card_sizes) > 1:
+            contract["contract_errors"].append("cartões com tamanhos mistos; usando primeiro cartão")
+
+    resolved: int | None = None
+    if label_size is not None and _is_supported_game_size(label_size):
+        resolved = int(label_size)
+        contract["resolved_from"] = "batch_label"
+    elif card_size is not None:
+        resolved = int(card_size)
+        contract["resolved_from"] = "card_numbers"
+
+    requested_size = int(game_size) if game_size is not None else None
+    requested_qty = int(requested_count) if requested_count is not None else None
+
+    if requested_size is not None:
+        if not _is_supported_game_size(requested_size):
+            contract["contract_errors"].append(
+                f"game_size={requested_size} fora de {MIN_FORMAT_SIZE}D–{MAX_FORMAT_SIZE}D "
+                "(provável confusão com requested_count)"
+            )
+        elif (
+            requested_qty is not None
+            and requested_size == requested_qty
+            and resolved is not None
+            and requested_size != resolved
+        ):
+            contract["contract_errors"].append(
+                f"game_size={requested_size} igual a requested_count; usando {resolved}D do formato/cartão"
+            )
+        elif resolved is None and _is_supported_game_size(requested_size):
+            if requested_qty is not None and requested_size == requested_qty:
+                contract["contract_errors"].append(
+                    f"game_size={requested_size} igual a requested_count sem batch_label/cartão; "
+                    f"usando default {default}D"
+                )
+                resolved = int(default)
+                contract["resolved_from"] = "default_count_guard"
+            else:
+                resolved = requested_size
+                contract["resolved_from"] = "explicit"
+        elif resolved is not None and requested_size != resolved:
+            contract["contract_errors"].append(
+                f"game_size={requested_size} contradiz formato resolvido {resolved}D"
+            )
+
+    if resolved is None:
+        resolved = int(default)
+        contract["resolved_from"] = contract.get("resolved_from") or "default"
+
+    contract["game_size"] = resolved
+    return resolved, contract
+
+
 def analyze_pool_structural_issues(
     games: Sequence[Mapping[str, Any]],
     *,
     game_size: int = 15,
+    batch_label: str | None = None,
+    requested_count: int | None = None,
 ) -> dict[str, Any]:
     """Diagnóstico estrutural do pool — somente leitura + detecção de problemas."""
+    resolved_size, size_contract = resolve_pool_game_size(
+        games,
+        batch_label=batch_label,
+        game_size=game_size,
+        requested_count=requested_count,
+    )
     cards = _pool_cards(games)
     pool_size = len(cards)
-    redundancy = compute_gp_redundancy(cards, game_size=int(game_size)) if pool_size >= 2 else {}
+    redundancy = compute_gp_redundancy(cards, game_size=int(resolved_size)) if pool_size >= 2 else {}
     issues: list[dict[str, Any]] = []
 
     if pool_size < 2:
         return {
             "pool_size": pool_size,
-            "game_size": int(game_size),
+            "game_size": int(resolved_size),
+            "game_size_contract": size_contract,
             "redundancy": redundancy,
             "issues": issues,
             "issue_count": 0,
@@ -100,7 +192,7 @@ def analyze_pool_structural_issues(
 
     avg_overlap = float(redundancy.get("sobreposicao_media", 0) or 0)
     max_overlap = int(redundancy.get("sobreposicao_maxima", 0) or 0)
-    size = int(game_size)
+    size = int(resolved_size)
     if avg_overlap >= size * 0.55:
         issues.append(
             {
@@ -181,7 +273,8 @@ def analyze_pool_structural_issues(
 
     return {
         "pool_size": pool_size,
-        "game_size": int(game_size),
+        "game_size": int(resolved_size),
+        "game_size_contract": size_contract,
         "redundancy": redundancy,
         "issues": issues,
         "issue_count": len(issues),
@@ -456,7 +549,16 @@ def apply_supervised_output_calibration(
     plan = dict(calibration_plan or {})
     plan_params = dict(plan.get("parametros_sugeridos") or {})
     plan_authorized = bool(plan.get("authorized"))
-    size = int(game_size)
+    context_payload = dict(event_context or {})
+    batch_label = context_payload.get("batch_label") or context_payload.get("analysis_batch_label")
+    requested_count = context_payload.get("requested_count") or context_payload.get("selected_quantity")
+    resolved_size, size_contract = resolve_pool_game_size(
+        games,
+        batch_label=str(batch_label) if batch_label else None,
+        game_size=game_size,
+        requested_count=int(requested_count) if requested_count is not None else None,
+    )
+    size = int(resolved_size)
 
     auto_plan: dict[str, Any] = {}
     policy_15d: dict[str, Any] = {}
@@ -476,7 +578,6 @@ def apply_supervised_output_calibration(
     if is_structural_policy_15d_format(size):
         db_path = _resolve_policy_db_path(event_context)
         policy_15d = ensure_structural_policy_15d_memory(db_path) if db_path else ensure_structural_policy_15d_memory()
-        context_payload = dict(event_context or {})
         previous_contest_numbers = list(context_payload.get("previous_contest_numbers") or [])
         bundle_ctx = dict(context_payload.get("structural_policy_15d_bundle") or {})
         if not previous_contest_numbers:
@@ -494,7 +595,12 @@ def apply_supervised_output_calibration(
     if not ml_enabled or not is_output_calibration_enabled() or not games:
         return games, empty_bundle
 
-    diagnostics = analyze_pool_structural_issues(games, game_size=size)
+    diagnostics = analyze_pool_structural_issues(
+        games,
+        game_size=size,
+        batch_label=str(batch_label) if batch_label else None,
+        requested_count=int(requested_count) if requested_count is not None else None,
+    )
     all_cards = _pool_cards(games)
     pool_size = len(all_cards)
     if pool_size == 0:
@@ -604,6 +710,7 @@ def apply_supervised_output_calibration(
         "batch_status_counts": dict(status_counts),
         "pool_size": pool_size,
         "game_size": size,
+        "game_size_contract": size_contract,
         "lei15_core_002_preserved": True,
         "lei15a_applied": False,
     }
