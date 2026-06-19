@@ -685,19 +685,34 @@ def generate_best_games(
     _v3_fallback_to_v1 = False
     _calibration_bundle = None
     _structural_policy_bundle = None
+    _sovereign_game_size = 15
+    _game_size_contract: dict[str, object] = {}
+    if _apply_sovereign:
+        from lotoia.ml.supervised_output_calibration import resolve_pool_game_size
+
+        _sovereign_game_size, _game_size_contract = resolve_pool_game_size(
+            games,
+            batch_label=batch_label,
+            requested_count=count,
+        )
     if _apply_sovereign and ml_enabled:
         from lotoia.ml.supervised_output_calibration import apply_supervised_output_calibration
 
         games, _calibration_bundle = apply_supervised_output_calibration(
             games,
-            game_size=count,
+            game_size=_sovereign_game_size,
             ml_enabled=True,
             calibration_plan=calibration_plan,
+            event_context={
+                "batch_label": batch_label,
+                "requested_count": count,
+                "game_size_contract": _game_size_contract,
+            },
         )
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp
 
-        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=count)
+        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=_sovereign_game_size)
         if len(best_games) < count:
             raise RuntimeError(
                 f"[LEI15_CORE_002] compose_sovereign_gp retornou {len(best_games)}/{count} "
@@ -928,6 +943,8 @@ def generate_best_games(
         attach_routing_payload_to_games(best_games, _routing)
     payload = {
         "count": len(best_games),
+        "requested_count": int(count),
+        "game_size": int(_sovereign_game_size) if _apply_sovereign else None,
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {
