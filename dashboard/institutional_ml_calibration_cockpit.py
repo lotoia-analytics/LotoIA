@@ -204,6 +204,53 @@ def _format_parity_pairs(pairs: Any) -> str:
     return " • ".join(formatted) if formatted else "—"
 
 
+def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Hierarquia Operacional ML (M-ML-073)")
+    hierarchy = dict(
+        snapshot.get("ml_operational_hierarchy")
+        or dict(snapshot.get("coverage_evidence") or {}).get("ml_operational_hierarchy")
+        or {}
+    )
+    if not hierarchy:
+        st.caption("Sem evidência de hierarquia operacional ML para o escopo atual.")
+        return
+    cols = st.columns(4)
+    cols[0].metric("Versão", str(hierarchy.get("ml_hierarchy_version", "—")))
+    cols[1].metric("Etapa atual", str(hierarchy.get("current_stage", "—")))
+    cols[2].metric(
+        "Última concluída",
+        str(hierarchy.get("last_completed_stage", "—")),
+    )
+    cols[3].metric(
+        "Compliance",
+        "SIM" if hierarchy.get("hierarchy_compliance") else "NÃO",
+    )
+    if hierarchy.get("blocking_reason"):
+        st.warning(
+            f"Motivo de bloqueio: {hierarchy.get('blocking_reason')} | "
+            f"Ação corretiva: {', '.join(hierarchy.get('corrective_action_applied') or []) or '—'}"
+        )
+    stage_results = dict(hierarchy.get("stage_results") or {})
+    if stage_results:
+        with st.expander("Etapas da hierarquia", expanded=True):
+            for stage_id in (
+                "conformidade_estrutural",
+                "diversidade",
+                "cobertura",
+                "fechamento_gp",
+                "validacao_final",
+            ):
+                row = dict(stage_results.get(stage_id) or {})
+                if not row:
+                    continue
+                status = str(row.get("status", "—"))
+                label = str(row.get("stage_label", stage_id))
+                st.markdown(f"**{label}** — `{status}`")
+                failures = list(row.get("failures") or [])
+                if failures:
+                    st.caption("Falhas: " + "; ".join(failures[:3]))
+
+
 def _render_structural_15d_pool_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Pool estrutural ML 15D (M-ML-072)")
     structural_pool = dict(
@@ -919,6 +966,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             render_cockpit_block_safe(
                 "overlap_format",
                 lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "ml_operational_hierarchy",
+                lambda: _render_ml_operational_hierarchy_card(snapshot),
             )
             render_cockpit_block_safe(
                 "structural_15d_pool",

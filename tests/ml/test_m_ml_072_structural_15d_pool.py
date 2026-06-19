@@ -52,6 +52,7 @@ def _raw_pool(size: int = 20) -> list[dict[str, Any]]:
 @pytest.fixture(autouse=True)
 def _enable_structural_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOTOIA_ML_STRUCTURAL_15D_POOL_ENABLED", "1")
+    monkeypatch.setenv("LOTOIA_ML_OPERATIONAL_HIERARCHY_ENABLED", "0")
 
 
 @pytest.fixture(autouse=True)
@@ -173,5 +174,5 @@ def test_generate_best_games_uses_structural_pool_before_pre_final_calibration(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v61"
+    assert BUILD_MARKER == "institutional-adm-runtime-v62"
     assert MISSION_ID == "M-ML-072"

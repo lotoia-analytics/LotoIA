@@ -155,6 +155,7 @@ def test_generate_best_games_pre_final_path(
     monkeypatch.setenv("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "off")
     monkeypatch.setenv("LOTOIA_ML_OUTPUT_CALIBRATION_ENABLED", "1")
     monkeypatch.setenv("LOTOIA_ML_PRE_FINAL_POOL_ENABLED", "1")
+    monkeypatch.setenv("LOTOIA_ML_OPERATIONAL_HIERARCHY_ENABLED", "0")
 
     pool_size = max(requested_count + 10, 40)
 
@@ -212,5 +213,5 @@ def test_build_pre_final_pool_trace_omits_raw_pool() -> None:
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v61"
+    assert BUILD_MARKER == "institutional-adm-runtime-v62"
     assert MISSION_ID == "M-ML-071"

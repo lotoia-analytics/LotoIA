@@ -19,6 +19,7 @@ from lotoia.operations.lot_operational_status import (
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
 from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
 
 from dashboard.institutional_operational_generation import (
     build_operational_generation_index,
@@ -387,3 +388,19 @@ def load_structural_15d_pool_coverage_summary(
             return {}
         context = dict(getattr(event, "context_json", {}) or {})
     return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
+
+
+def load_ml_operational_hierarchy_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-073 — hierarquia operacional ML (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
