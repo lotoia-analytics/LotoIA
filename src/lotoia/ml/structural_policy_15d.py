@@ -39,18 +39,48 @@ RULE_SEQUENCE = "sequencia_maxima_6"
 APPLIED_RULES: tuple[str, ...] = (RULE_REPEAT, RULE_PARITY, RULE_SEQUENCE)
 
 PREFERRED_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((7, 8), (8, 7))
-ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = (
-    (7, 8),
-    (8, 7),
-    (6, 9),
-    (9, 6),
-)
+ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = PREFERRED_PARITY_PAIRS
+NON_COMPLIANT_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((6, 9), (9, 6))
 CORE_NUMBERS: tuple[int, ...] = (7, 12, 16, 23)
 DISCOURAGED_NUMBERS: tuple[int, ...] = (2, 4, 11, 15, 24, 25)
 
 
 def is_structural_policy_15d_format(game_size: int) -> bool:
     return int(game_size) == 15
+
+
+def _parity_pairs_as_lists(
+    pairs: Sequence[tuple[int, int]] | None = None,
+) -> list[list[int]]:
+    return [list(pair) for pair in (pairs or PREFERRED_PARITY_PAIRS)]
+
+
+def normalize_structural_policy_15d_memory(memory: Mapping[str, Any]) -> dict[str, Any]:
+    """Alinha paridade da memória à política soberana (somente 7/8 e 8/7)."""
+    normalized = dict(memory)
+    canonical = _parity_pairs_as_lists(PREFERRED_PARITY_PAIRS)
+    normalized["paridade_preferencial"] = canonical
+    normalized["paridade_permitida"] = canonical
+    return normalized
+
+
+def _stored_parity_pairs(memory: Mapping[str, Any], field: str) -> set[tuple[int, int]]:
+    stored: set[tuple[int, int]] = set()
+    for pair in memory.get(field) or []:
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            stored.add((int(pair[0]), int(pair[1])))
+    return stored
+
+
+def memory_needs_parity_alignment(memory: Mapping[str, Any]) -> bool:
+    canonical = set(PREFERRED_PARITY_PAIRS)
+    for field in ("paridade_preferencial", "paridade_permitida"):
+        stored = _stored_parity_pairs(memory, field)
+        if stored and stored != canonical:
+            return True
+        if stored & set(NON_COMPLIANT_PARITY_PAIRS):
+            return True
+    return False
 
 
 def build_structural_policy_15d_memory() -> dict[str, Any]:
@@ -67,8 +97,8 @@ def build_structural_policy_15d_memory() -> dict[str, Any]:
         "regras_aplicadas": list(APPLIED_RULES),
         "repeticao_ultimo_concurso_min": 7,
         "repeticao_ultimo_concurso_max": 10,
-        "paridade_preferencial": [list(pair) for pair in PREFERRED_PARITY_PAIRS],
-        "paridade_permitida": [list(pair) for pair in ALLOWED_PARITY_PAIRS],
+        "paridade_preferencial": _parity_pairs_as_lists(PREFERRED_PARITY_PAIRS),
+        "paridade_permitida": _parity_pairs_as_lists(ALLOWED_PARITY_PAIRS),
         "sequencia_maxima": 6,
         "core_numbers": list(CORE_NUMBERS),
         "discouraged_numbers": list(DISCOURAGED_NUMBERS),
@@ -225,7 +255,7 @@ def apply_structural_policy_15d_to_sovereign_batch(
     """Governa o lote final 15D pela conformidade estrutural (M-ML-070-FIX-01).
 
     A política deixa de ser observacional: o lote final prioriza cartões
-    conformes (repetição 7–10, paridade permitida, sequência ≤ 6). Cartões não
+    conformes (repetição 7–10, paridade 7/8 ou 8/7, sequência ≤ 6). Cartões não
     conformes só entram para completar ``required_count`` quando não há conformes
     suficientes, e essa exceção é rastreada em ``non_compliant_kept_reason``.
     """
@@ -330,7 +360,7 @@ def persist_structural_policy_15d_memory(
     db_path: Any = DEFAULT_DATABASE_PATH,
     memory: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    payload = dict(memory or build_structural_policy_15d_memory())
+    payload = normalize_structural_policy_15d_memory(dict(memory or build_structural_policy_15d_memory()))
     payload["updated_at"] = datetime.now(UTC).isoformat()
     create_database(db_path)
     with get_session(db_path) as session:
@@ -383,14 +413,17 @@ def load_active_structural_policy_15d_memory(
             .first()
         )
     if row is not None:
-        stored = dict(getattr(row, "policy_applied", {}) or {})
-        if stored:
+        raw_stored = dict(getattr(row, "policy_applied", {}) or {})
+        if raw_stored:
+            stored = normalize_structural_policy_15d_memory(raw_stored)
             stored.setdefault("memory_row_id", int(getattr(row, "id", 0) or 0))
             stored.setdefault(
                 "status",
                 str(getattr(row, "structural_status", MEMORY_STATUS_ACTIVE) or MEMORY_STATUS_ACTIVE),
             )
             stored.setdefault("updated_at", getattr(row, "created_at", datetime.now(UTC)).isoformat())
+            if memory_needs_parity_alignment(raw_stored):
+                persist_structural_policy_15d_memory(db_path, stored)
             return stored
     if persist_if_missing:
         return persist_structural_policy_15d_memory(db_path)
@@ -401,7 +434,7 @@ def ensure_structural_policy_15d_memory(db_path: Any = DEFAULT_DATABASE_PATH) ->
     canonical = build_structural_policy_15d_memory()
     active = load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
     if active and str(active.get("policy_version") or "") == canonical["policy_version"]:
-        return active
+        return normalize_structural_policy_15d_memory(active)
     return persist_structural_policy_15d_memory(db_path, canonical)
 
 

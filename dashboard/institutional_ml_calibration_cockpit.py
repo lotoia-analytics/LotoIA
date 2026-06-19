@@ -9,6 +9,11 @@ import pandas as pd
 import streamlit as st
 
 from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
+from lotoia.ml.structural_policy_15d import (
+    NON_COMPLIANT_PARITY_PAIRS,
+    PREFERRED_PARITY_PAIRS,
+    normalize_structural_policy_15d_memory,
+)
 from dashboard.institutional_supervised_ml import (
     AGGREGATE_SCOPE_LABEL,
     CALIBRATION_SUPERVISED_LABEL,
@@ -176,12 +181,22 @@ def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
         )
 
 
+def _format_parity_pairs(pairs: Any) -> str:
+    formatted: list[str] = []
+    for pair in pairs or []:
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+    return " • ".join(formatted) if formatted else "—"
+
+
 def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Política estrutural soberana 15D (M-ML-070)")
-    memory = dict(
-        snapshot.get("structural_policy_15d_memory")
-        or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_memory")
-        or {}
+    memory = normalize_structural_policy_15d_memory(
+        dict(
+            snapshot.get("structural_policy_15d_memory")
+            or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_memory")
+            or {}
+        )
     )
     application = dict(
         snapshot.get("structural_policy_15d_application")
@@ -200,6 +215,10 @@ def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
         rules = list(memory.get("regras_aplicadas") or [])
         if rules:
             st.caption("Regras: " + ", ".join(str(rule) for rule in rules))
+        st.markdown(
+            f"**Conforme:** {_format_parity_pairs(memory.get('paridade_preferencial') or PREFERRED_PARITY_PAIRS)}"
+        )
+        st.markdown(f"**Violação:** {_format_parity_pairs(NON_COMPLIANT_PARITY_PAIRS)}")
     applied = bool(
         snapshot.get("structural_policy_applied")
         or application.get("structural_policy_applied")
