@@ -1,7 +1,7 @@
 """Seleção estatística diversa do top slice pré-GP — M-STAT-002.
 
-Substitui o recorte requested_count×3 por score puro por seleção com teto
-de família estrutural (prefixo/sufixo/overlap) antes do portão M-ML-073.
+Substitui o recorte requested_count×3 por score puro por swap determinístico
+alinhado ao detector de conformidade (teto de sufixo + anti-clone por overlap).
 """
 
 from __future__ import annotations
@@ -12,7 +12,11 @@ from typing import Any, Mapping, Sequence
 
 from lotoia.ml.overlap_format_thresholds import DIVERSITY_LOW_THRESHOLD
 from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
-from lotoia.ml.supervised_output_calibration import analyze_pool_structural_issues
+from lotoia.ml.supervised_output_calibration import (
+    DOMINANCE_CALIBRATION_THRESHOLD,
+    DEFAULT_PREFIX_SHARE_LIMIT,
+    analyze_pool_structural_issues,
+)
 from lotoia.statistics.card_structure import (
     compute_prefix,
     compute_suffix,
@@ -21,17 +25,39 @@ from lotoia.statistics.card_structure import (
 )
 
 MISSION_ID = "M-STAT-002"
-SELECTION_VERSION = "M-STAT-002-v1"
+SELECTION_VERSION = "M-STAT-002-v3"
 ENV_DIVERSE_TOP_SLICE_ENABLED = "LOTOIA_DIVERSE_TOP_SLICE_ENABLED"
+ENV_MSTAT_002_SUFFIX_CAP = "LOTOIA_MSTAT_002_SUFFIX_CAP"
+ENV_MSTAT_002_MAX_OVERLAP = "LOTOIA_MSTAT_002_MAX_OVERLAP"
 MIN_MATERIAL_DIVERSITY_GAIN = 0.20
 MAX_PREFIX_SUFFIX_SHARE = 0.14
-NEAR_CLONE_OVERLAP_15D = 14
 MAX_FAMILY_SHARE = 0.10
+MAX_SWAP_ITERATIONS = 200
+DEFAULT_MAX_OVERLAP_15D = 12
 
 
 def is_diverse_top_slice_enabled() -> bool:
     raw = os.getenv(ENV_DIVERSE_TOP_SLICE_ENABLED, "1").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _suffix_cap_for_pool(pool_size: int) -> int:
+    raw = os.getenv(ENV_MSTAT_002_SUFFIX_CAP, str(DOMINANCE_CALIBRATION_THRESHOLD)).strip()
+    try:
+        configured = int(raw)
+    except ValueError:
+        configured = DOMINANCE_CALIBRATION_THRESHOLD
+    issue_limit = _structural_issue_limit(pool_size)
+    return max(3, min(configured, issue_limit - 1))
+
+
+def _max_overlap_for_game_size(game_size: int) -> int:
+    raw = os.getenv(ENV_MSTAT_002_MAX_OVERLAP, str(DEFAULT_MAX_OVERLAP_15D)).strip()
+    try:
+        configured = int(raw)
+    except ValueError:
+        configured = DEFAULT_MAX_OVERLAP_15D
+    return max(int(game_size) - 5, min(configured, int(game_size) - 2))
 
 
 def slice_limit(*, requested_count: int) -> int:
@@ -66,6 +92,10 @@ def _family_key(game: Mapping[str, Any]) -> str:
     return f"{prefix}|{suffix}"
 
 
+def _profile_score(game: Mapping[str, Any]) -> float:
+    return float(game.get("profile_score", 0.0) or 0.0)
+
+
 def _score_based_slice(
     pool: Sequence[Mapping[str, Any]],
     *,
@@ -73,7 +103,7 @@ def _score_based_slice(
 ) -> list[dict[str, Any]]:
     ranked = sorted(
         [dict(game) for game in pool],
-        key=lambda row: float(row.get("profile_score", 0.0) or 0.0),
+        key=_profile_score,
         reverse=True,
     )
     return ranked[: min(int(limit), len(ranked))]
@@ -112,73 +142,246 @@ def _measure_slice_diversity(
     }
 
 
+def _structural_issue_limit(pool_size: int) -> int:
+    size = max(int(pool_size), 1)
+    return max(DOMINANCE_CALIBRATION_THRESHOLD, int(size * DEFAULT_PREFIX_SHARE_LIMIT))
+
+
 def _family_caps(limit: int) -> dict[str, int]:
     size = max(int(limit), 1)
-    prefix_suffix_cap = max(3, int(size * MAX_PREFIX_SUFFIX_SHARE))
+    suffix_cap = _suffix_cap_for_pool(size)
     family_cap = max(2, int(size * MAX_FAMILY_SHARE))
     return {
-        "prefix_cap": prefix_suffix_cap,
-        "suffix_cap": prefix_suffix_cap,
+        "prefix_cap": suffix_cap,
+        "suffix_cap": suffix_cap,
         "family_cap": family_cap,
-        "overlap_limit": NEAR_CLONE_OVERLAP_15D,
+        "structural_issue_limit": _structural_issue_limit(size),
+        "max_overlap_permitted": DEFAULT_MAX_OVERLAP_15D,
     }
 
 
-def _is_near_clone(
-    card: Sequence[int],
-    selected_cards: Sequence[Sequence[int]],
-    *,
-    overlap_limit: int,
-) -> bool:
-    card_set = set(card)
-    return any(len(card_set & set(other)) >= int(overlap_limit) for other in selected_cards)
+def _overlap_between_cards(
+    left: Sequence[int],
+    right: Sequence[int],
+) -> int:
+    return len(set(left) & set(right))
 
 
-def _count_structural_families(
-    games: Sequence[Mapping[str, Any]],
-) -> tuple[Counter[str], Counter[str], Counter[str]]:
-    prefix_counts: Counter[str] = Counter()
-    suffix_counts: Counter[str] = Counter()
-    family_counts: Counter[str] = Counter()
-    for game in games:
-        prefix = _prefix_key(game)
+def _suffix_count_map(batch: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for game in batch:
         suffix = _suffix_key(game)
-        family = _family_key(game)
-        if prefix:
-            prefix_counts[prefix] += 1
         if suffix:
-            suffix_counts[suffix] += 1
+            counts[suffix] = counts.get(suffix, 0) + 1
+    return counts
+
+
+def _family_count_map(batch: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for game in batch:
+        family = _family_key(game)
         if family:
-            family_counts[family] += 1
-    return prefix_counts, suffix_counts, family_counts
+            counts[family] = counts.get(family, 0) + 1
+    return counts
 
 
-def _structural_cap_violations(
-    games: Sequence[Mapping[str, Any]],
+def _candidate_fits_structural_caps(
+    candidate: Mapping[str, Any],
     *,
-    prefix_cap: int,
+    suffix_counts: Mapping[str, int],
+    family_counts: Mapping[str, int],
     suffix_cap: int,
     family_cap: int,
-) -> list[tuple[str, str, int, int]]:
-    prefix_counts, suffix_counts, family_counts = _count_structural_families(games)
-    violations: list[tuple[str, str, int, int]] = []
-    for label, counter, cap in (
-        ("suffix", suffix_counts, suffix_cap),
-        ("prefix", prefix_counts, prefix_cap),
-        ("family", family_counts, family_cap),
-    ):
-        for key, count in counter.items():
-            if key and count > cap:
-                violations.append((label, key, count, cap))
-    violations.sort(
-        key=lambda row: (
-            row[0] == "suffix",
-            row[0] == "family",
-            row[2] - row[3],
-        ),
-        reverse=True,
+) -> bool:
+    suffix = _suffix_key(candidate)
+    family = _family_key(candidate)
+    if suffix and suffix_counts.get(suffix, 0) + 1 > suffix_cap:
+        return False
+    if family and family_counts.get(family, 0) + 1 > family_cap:
+        return False
+    return True
+
+
+def _candidate_fits_overlap(
+    candidate: Mapping[str, Any],
+    batch: Sequence[Mapping[str, Any]],
+    *,
+    max_overlap: int,
+    skip_index: int | None = None,
+) -> bool:
+    signature = _game_signature(candidate)
+    if not signature:
+        return False
+    for index, game in enumerate(batch):
+        if skip_index is not None and index == skip_index:
+            continue
+        other = _game_signature(game)
+        if other and _overlap_between_cards(signature, other) > max_overlap:
+            return False
+    return True
+
+
+def run_mstat_002_swap_engine(
+    pool: Sequence[Mapping[str, Any]],
+    *,
+    limit: int,
+    game_size: int = 15,
+    suffix_cap: int | None = None,
+    family_cap: int | None = None,
+    max_overlap: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Motor de swap M-STAT-002 — baseline por score + camadas sufixo/família e anti-clone."""
+    rows = [dict(game) for game in pool if _game_signature(game)]
+    target = min(int(limit), len(rows))
+    if not rows or target <= 0:
+        return [], {
+            "structural_swaps": 0,
+            "overlap_swaps": 0,
+            "iterations": 0,
+            "swap_exhausted": False,
+        }
+
+    effective_suffix_cap = int(suffix_cap if suffix_cap is not None else _suffix_cap_for_pool(target))
+    effective_family_cap = int(
+        family_cap if family_cap is not None else max(2, int(target * MAX_FAMILY_SHARE))
     )
-    return violations
+    effective_max_overlap = int(
+        max_overlap if max_overlap is not None else _max_overlap_for_game_size(int(game_size))
+    )
+
+    ranked = sorted(rows, key=_profile_score, reverse=True)
+    batch = [dict(game) for game in ranked[:target]]
+    reserve = [dict(game) for game in ranked[target:]]
+
+    structural_swaps = 0
+    overlap_swaps = 0
+    iteration = 0
+    executing_swaps = True
+
+    while executing_swaps and iteration < MAX_SWAP_ITERATIONS:
+        executing_swaps = False
+        iteration += 1
+
+        suffix_counts = _suffix_count_map(batch)
+        family_counts = _family_count_map(batch)
+        violating_suffixes = {suffix for suffix, count in suffix_counts.items() if count > effective_suffix_cap}
+        violating_families = {family for family, count in family_counts.items() if count > effective_family_cap}
+
+        if violating_suffixes or violating_families:
+            for batch_index in range(len(batch) - 1, -1, -1):
+                game = batch[batch_index]
+                suffix = _suffix_key(game)
+                family = _family_key(game)
+                if suffix not in violating_suffixes and family not in violating_families:
+                    continue
+
+                for reserve_index, candidate in enumerate(reserve):
+                    if not _candidate_fits_structural_caps(
+                        candidate,
+                        suffix_counts=suffix_counts,
+                        family_counts=family_counts,
+                        suffix_cap=effective_suffix_cap,
+                        family_cap=effective_family_cap,
+                    ):
+                        continue
+                    removed = batch.pop(batch_index)
+                    replacement = dict(candidate)
+                    replacement["m_stat_002_structural_swap"] = True
+                    removed.setdefault("m_stat_002_demoted_to_reserve", True)
+                    batch.append(replacement)
+                    reserve.pop(reserve_index)
+                    reserve.append(removed)
+                    reserve.sort(key=_profile_score, reverse=True)
+                    structural_swaps += 1
+                    executing_swaps = True
+                    break
+                if executing_swaps:
+                    break
+            continue
+
+        violator_candidates: list[int] = []
+        for left in range(len(batch)):
+            left_card = list(_game_signature(batch[left]))
+            if not left_card:
+                continue
+            for right in range(left + 1, len(batch)):
+                right_card = list(_game_signature(batch[right]))
+                if not right_card:
+                    continue
+                if _overlap_between_cards(left_card, right_card) <= effective_max_overlap:
+                    continue
+                if _profile_score(batch[right]) < _profile_score(batch[left]):
+                    violator_candidates.append(right)
+                else:
+                    violator_candidates.append(left)
+
+        swapped_overlap = False
+        for violator_index in sorted(set(violator_candidates), key=lambda idx: _profile_score(batch[idx])):
+            suffix_counts = _suffix_count_map(batch)
+            family_counts = _family_count_map(batch)
+            ejected = batch[violator_index]
+            ranked_reserve = sorted(
+                enumerate(reserve),
+                key=lambda item: (
+                    max(
+                        (
+                            _overlap_between_cards(list(_game_signature(item[1])), list(_game_signature(game)))
+                            for game in batch
+                            if _game_signature(item[1]) and _game_signature(game)
+                        ),
+                        default=int(game_size),
+                    ),
+                    -_profile_score(item[1]),
+                ),
+            )
+            for reserve_index, candidate in ranked_reserve:
+                if not _candidate_fits_structural_caps(
+                    candidate,
+                    suffix_counts=suffix_counts,
+                    family_counts=family_counts,
+                    suffix_cap=effective_suffix_cap,
+                    family_cap=effective_family_cap,
+                ):
+                    continue
+                if not _candidate_fits_overlap(
+                    candidate,
+                    batch,
+                    max_overlap=effective_max_overlap,
+                    skip_index=violator_index,
+                ):
+                    continue
+                batch.pop(violator_index)
+                replacement = dict(candidate)
+                replacement["m_stat_002_overlap_swap"] = True
+                ejected.setdefault("m_stat_002_demoted_to_reserve", True)
+                batch.append(replacement)
+                reserve.pop(reserve_index)
+                reserve.append(dict(ejected))
+                reserve.sort(key=_profile_score, reverse=True)
+                overlap_swaps += 1
+                executing_swaps = True
+                swapped_overlap = True
+                break
+            if swapped_overlap:
+                break
+
+        if not swapped_overlap and violator_candidates:
+            break
+
+    batch.sort(key=_profile_score, reverse=True)
+    for index, row in enumerate(batch):
+        row.setdefault("diverse_top_slice_selected", True)
+        row["m_stat_002_selection_rank"] = index + 1
+
+    return batch[:target], {
+        "structural_swaps": structural_swaps,
+        "overlap_swaps": overlap_swaps,
+        "iterations": iteration,
+        "swap_exhausted": iteration >= MAX_SWAP_ITERATIONS,
+        "suffix_cap": effective_suffix_cap,
+        "family_cap": effective_family_cap,
+        "max_overlap_permitted": effective_max_overlap,
+    }
 
 
 def select_diverse_pre_gp_top_slice(
@@ -190,132 +393,18 @@ def select_diverse_pre_gp_top_slice(
     requested_count: int | None = None,
     relax_level: int = 0,
 ) -> list[dict[str, Any]]:
-    """Seleciona top slice com diversidade obrigatória de famílias estruturais."""
-    _ = (batch_label, requested_count, game_size)
-    rows = [dict(game) for game in pool if _game_signature(game)]
-    if not rows:
-        return []
-    target = min(int(limit), len(rows))
-    caps = _family_caps(target)
-    relax = max(0, int(relax_level))
-    prefix_cap = caps["prefix_cap"] + relax
-    suffix_cap = caps["suffix_cap"] + relax
-    family_cap = caps["family_cap"] + max(0, relax // 2)
-
-    ranked = sorted(
-        rows,
-        key=lambda row: float(row.get("profile_score", 0.0) or 0.0),
-        reverse=True,
+    """Seleciona top slice com swap engine M-STAT-002."""
+    _ = (batch_label, requested_count, relax_level)
+    caps = _family_caps(limit)
+    selected, _stats = run_mstat_002_swap_engine(
+        pool,
+        limit=limit,
+        game_size=int(game_size),
+        suffix_cap=caps["suffix_cap"],
+        family_cap=caps["family_cap"] + max(0, int(relax_level) // 2),
+        max_overlap=_max_overlap_for_game_size(int(game_size)),
     )
-    selected = [dict(game) for game in _score_based_slice(ranked, limit=target)]
-    used_signatures = {_game_signature(game) for game in selected if _game_signature(game)}
-    reserve = [dict(game) for game in ranked if _game_signature(game) not in used_signatures]
-
-    distinct_prefixes = len({_prefix_key(game) for game in rows if _prefix_key(game)})
-    distinct_suffixes = len({_suffix_key(game) for game in rows if _suffix_key(game)})
-
-    def _replacement_allowed(
-        candidate: Mapping[str, Any],
-        *,
-        prefix_counts: Counter[str],
-        suffix_counts: Counter[str],
-        family_counts: Counter[str],
-    ) -> bool:
-        prefix = _prefix_key(candidate)
-        suffix = _suffix_key(candidate)
-        family = _family_key(candidate)
-        if distinct_prefixes > 1 and prefix and prefix_counts[prefix] >= prefix_cap:
-            return False
-        if distinct_suffixes > 1 and suffix and suffix_counts[suffix] >= suffix_cap:
-            return False
-        if family and family_counts[family] >= family_cap:
-            return False
-        return True
-
-    max_swaps = target * 3
-    swaps = 0
-    while swaps < max_swaps:
-        violations = _structural_cap_violations(
-            selected,
-            prefix_cap=prefix_cap,
-            suffix_cap=suffix_cap,
-            family_cap=family_cap,
-        )
-        if distinct_prefixes <= 1:
-            violations = [row for row in violations if row[0] != "prefix"]
-        if distinct_suffixes <= 1:
-            violations = [row for row in violations if row[0] != "suffix"]
-        if not violations:
-            break
-
-        prefix_counts, suffix_counts, family_counts = _count_structural_families(selected)
-        violation_type, violation_key, _count, _cap = violations[0]
-
-        removal_index: int | None = None
-        for index in range(len(selected) - 1, -1, -1):
-            game = selected[index]
-            if violation_type == "suffix" and _suffix_key(game) == violation_key:
-                removal_index = index
-                break
-            if violation_type == "prefix" and _prefix_key(game) == violation_key:
-                removal_index = index
-                break
-            if violation_type == "family" and _family_key(game) == violation_key:
-                removal_index = index
-                break
-        if removal_index is None:
-            break
-
-        removed = selected.pop(removal_index)
-        removed_signature = _game_signature(removed)
-        if removed_signature:
-            used_signatures.discard(removed_signature)
-            reserve.append(removed)
-
-        prefix_counts, suffix_counts, family_counts = _count_structural_families(selected)
-        replacement: dict[str, Any] | None = None
-        for candidate in sorted(
-            reserve,
-            key=lambda row: (
-                suffix_counts.get(_suffix_key(row), 0),
-                prefix_counts.get(_prefix_key(row), 0),
-                family_counts.get(_family_key(row), 0),
-                -float(row.get("profile_score", 0.0) or 0.0),
-            ),
-        ):
-            signature = _game_signature(candidate)
-            if not signature or signature in used_signatures:
-                continue
-            if not _replacement_allowed(
-                candidate,
-                prefix_counts=prefix_counts,
-                suffix_counts=suffix_counts,
-                family_counts=family_counts,
-            ):
-                continue
-            replacement = dict(candidate)
-            break
-
-        if replacement is None:
-            selected.insert(removal_index, removed)
-            if removed_signature:
-                used_signatures.add(removed_signature)
-            break
-
-        replacement_signature = _game_signature(replacement)
-        reserve = [game for game in reserve if _game_signature(game) != replacement_signature]
-        replacement["diverse_top_slice_selected"] = True
-        replacement["m_stat_002_selection_rank"] = removal_index + 1
-        replacement["m_stat_002_replacement_swap"] = True
-        selected.insert(removal_index, replacement)
-        if replacement_signature:
-            used_signatures.add(replacement_signature)
-        swaps += 1
-
-    for index, row in enumerate(selected):
-        row.setdefault("diverse_top_slice_selected", True)
-        row.setdefault("m_stat_002_selection_rank", index + 1)
-    return selected[:target]
+    return selected
 
 
 def reorder_pool_with_diverse_top_slice(
@@ -338,9 +427,7 @@ def reorder_pool_with_diverse_top_slice(
             continue
         tail.append(dict(game))
 
-    base_score = max(
-        float(row.get("profile_score", 0.0) or 0.0) for row in selected_rows + tail
-    )
+    base_score = max(_profile_score(row) for row in selected_rows + tail)
     for index, row in enumerate(selected_rows):
         row["profile_score"] = round(base_score + (len(selected_rows) - index) * 2.5, 4)
         row["diverse_top_slice_promoted"] = True
@@ -394,12 +481,10 @@ def apply_diverse_top_slice_pre_gp(
         requested_count=int(requested_count),
     )
 
-    selected_slice = select_diverse_pre_gp_top_slice(
+    selected_slice, swap_stats = run_mstat_002_swap_engine(
         pool,
         limit=limit,
         game_size=int(game_size),
-        batch_label=batch_label,
-        requested_count=int(requested_count),
     )
     if not selected_slice:
         return [dict(game) for game in pool], empty_bundle
@@ -423,14 +508,18 @@ def apply_diverse_top_slice_pre_gp(
         dominant_count = int(dominant_pair[1] or 0)
     else:
         dominant_label, dominant_count = "", 0
+    suffix_top = after_metrics.get("top_suffix") or ("", 0)
+    suffix_label = str(suffix_top[0] or "") if isinstance(suffix_top, (list, tuple)) else ""
+    suffix_share = int(suffix_top[1] or 0) if isinstance(suffix_top, (list, tuple)) and len(suffix_top) >= 2 else 0
     bundle: dict[str, Any] = {
         "mission_id": MISSION_ID,
         "selection_version": SELECTION_VERSION,
         "diverse_top_slice_applied": True,
         "requested_count": int(requested_count),
         "candidate_pool_size": limit,
-        "selection_mode": "family_capped_diversity",
+        "selection_mode": "mstat_002_swap_engine",
         "family_caps": caps,
+        "swap_stats": swap_stats,
         "metrics_before": before_metrics,
         "metrics_after": after_metrics,
         "criteria": criteria,
@@ -444,6 +533,9 @@ def apply_diverse_top_slice_pre_gp(
         "dominant_family_after": dominant_label,
         "dominant_family_share_after": dominant_count,
         "dominant_family_within_cap": dominant_count <= caps["family_cap"],
+        "dominant_suffix_after": suffix_label,
+        "dominant_suffix_share_after": suffix_share,
+        "dominant_suffix_within_cap": suffix_share <= caps["suffix_cap"],
     }
     return reordered_pool, bundle
 
@@ -451,6 +543,7 @@ def apply_diverse_top_slice_pre_gp(
 def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str, Any]:
     source = dict(bundle or {})
     criteria = dict(source.get("criteria") or {})
+    swap_stats = dict(source.get("swap_stats") or {})
     return {
         "mission_id": MISSION_ID,
         "selection_version": SELECTION_VERSION,
@@ -470,7 +563,14 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "criteria_met": bool(criteria.get("criteria_met")),
         "top_slice_changed": bool(source.get("top_slice_changed")),
         "candidates_replaced": int(source.get("candidates_replaced", 0) or 0),
+        "structural_swaps": int(swap_stats.get("structural_swaps", 0) or 0),
+        "overlap_swaps": int(swap_stats.get("overlap_swaps", 0) or 0),
+        "suffix_cap": int(swap_stats.get("suffix_cap", 0) or 0),
+        "max_overlap_permitted": int(swap_stats.get("max_overlap_permitted", 0) or 0),
         "dominant_family_after": str(source.get("dominant_family_after") or ""),
         "dominant_family_share_after": int(source.get("dominant_family_share_after", 0) or 0),
         "dominant_family_within_cap": bool(source.get("dominant_family_within_cap")),
+        "dominant_suffix_after": str(source.get("dominant_suffix_after") or ""),
+        "dominant_suffix_share_after": int(source.get("dominant_suffix_share_after", 0) or 0),
+        "dominant_suffix_within_cap": bool(source.get("dominant_suffix_within_cap")),
     }

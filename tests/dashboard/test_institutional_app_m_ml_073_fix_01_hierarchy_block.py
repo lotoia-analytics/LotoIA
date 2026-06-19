@@ -203,7 +203,7 @@ def test_central_ml_pre_gp_block_notice() -> None:
 
 
 def test_build_marker_v64() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v66"
+    assert BUILD_MARKER == "institutional-adm-runtime-v67"
 
 
 def test_session_snapshot_key_constant() -> None:
