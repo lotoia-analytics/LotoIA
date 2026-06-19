@@ -703,6 +703,7 @@ def generate_best_games(
         from lotoia.ml.ml_operational_hierarchy import (
             execute_ml_operational_hierarchy,
             is_ml_operational_hierarchy_enabled,
+            MlOperationalHierarchyBlockedError,
         )
 
         _pre_final_baseline_pool = [dict(game) for game in games]
@@ -738,10 +739,7 @@ def generate_best_games(
             _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
             _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
             if not _hierarchy_bundle.get("gp_closure_allowed"):
-                raise RuntimeError(
-                    "[M-ML-073] Fechamento GP bloqueado pela hierarquia operacional ML: "
-                    f"{_hierarchy_bundle.get('blocking_reason') or 'etapas 1–3 reprovadas'}"
-                )
+                raise MlOperationalHierarchyBlockedError.from_bundle(_hierarchy_bundle)
         else:
             from lotoia.ml.pre_final_pool_ml_calibration import (
                 apply_pre_final_pool_ml_calibration,

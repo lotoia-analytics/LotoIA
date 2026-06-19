@@ -7,6 +7,10 @@ from typing import Any
 
 import streamlit as st
 
+from dashboard.institutional_ml_hierarchy_block import (
+    build_central_ml_pre_gp_block_notice,
+    format_agent_label,
+)
 from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
 from lotoia.ml.structural_policy_15d import (
     NON_COMPLIANT_PARITY_PAIRS,
@@ -933,6 +937,9 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
             apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
         )
+        pre_gp_notice = build_central_ml_pre_gp_block_notice(snapshot)
+        if pre_gp_notice.get("available"):
+            snapshot = {**snapshot, "pre_gp_hierarchy_block": dict(pre_gp_notice)}
     except Exception as exc:  # noqa: BLE001 — fallback seguro de snapshot
         st.error(
             f"Central ML não pôde montar o snapshot completo ({VIS_COCKPIT_RENDER_GUARD_MISSION_ID}). "
@@ -954,6 +961,14 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
         st.success(CALIBRATION_SUPERVISED_LABEL)
     else:
         st.warning("Calibração supervisionada inativa — verifique ML operacional CORE_002.")
+
+    pre_gp_notice = build_central_ml_pre_gp_block_notice(snapshot)
+    if pre_gp_notice.get("available"):
+        st.warning(
+            f"{pre_gp_notice.get('message')} | "
+            f"Etapa: {pre_gp_notice.get('failed_stage') or '—'} | "
+            f"Agente: {format_agent_label(str(pre_gp_notice.get('responsible_agent') or ''))}"
+        )
 
     constitutional = dict(snapshot.get("constitutional_summary") or {})
     status_cols = st.columns(4)

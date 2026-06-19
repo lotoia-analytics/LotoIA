@@ -27,6 +27,7 @@ from lotoia.ml.ml_operational_hierarchy import (
     build_ml_operational_hierarchy_trace,
     execute_ml_operational_hierarchy,
     finalize_ml_operational_hierarchy_validation,
+    MlOperationalHierarchyBlockedError,
 )
 
 
@@ -221,10 +222,10 @@ def test_hierarchy_blocks_gp_closure_when_diversity_fails(
     monkeypatch.setenv(ENV_GENERATION_ENABLED, "1")
     monkeypatch.setenv("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "off")
 
-    with pytest.raises(RuntimeError, match="M-ML-073"):
+    with pytest.raises(MlOperationalHierarchyBlockedError, match="M-ML-073"):
         generate_best_games(count=5, pool_size=40, ml_enabled=True, batch_label=BATCH_LABEL)
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v63"
+    assert BUILD_MARKER == "institutional-adm-runtime-v64"
     assert MISSION_ID == "M-ML-073"

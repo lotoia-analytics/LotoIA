@@ -1495,7 +1495,19 @@ def build_ml_calibration_cockpit_snapshot(
         "excluded_batches_count": int(exclusions_summary.get("excluded_batches_count", 0) or 0),
         "excluded_batches_message": str(exclusions_summary.get("message") or ""),
         "excluded_batches_audit": list(exclusions_summary.get("excluded_batches") or []),
+        "pre_gp_hierarchy_block": _load_pre_gp_hierarchy_block_snapshot(),
     }
+
+
+def _load_pre_gp_hierarchy_block_snapshot() -> dict[str, Any]:
+    try:
+        import streamlit as st
+
+        from dashboard.institutional_ml_hierarchy_block import SESSION_HIERARCHY_BLOCK_KEY
+
+        return dict(st.session_state.get(SESSION_HIERARCHY_BLOCK_KEY) or {})
+    except Exception:  # noqa: BLE001 — snapshot fora de contexto Streamlit
+        return {}
 
 
 def build_cockpit_persist_bundle(
