@@ -204,11 +204,7 @@ def load_operational_card_structure_diagnostics_from_db(
             if not rows:
                 continue
             event_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
-            if event_label:
-                batch_labels_seen.add(event_label)
-                if selected_ge_id > 0:
-                    selected_batch_label = event_label
-            generation_event_ids.append(ge_id)
+            event_games: list[dict[str, Any]] = []
             for row in rows:
                 payload = _serialize_generated_game(row, generation_event_id=ge_id)
                 contest_id = int(payload.get("contest_id") or 0)
@@ -221,7 +217,15 @@ def load_operational_card_structure_diagnostics_from_db(
                 )
                 if effective_game_size is not None and card_size != effective_game_size:
                     continue
-                games.append(payload)
+                event_games.append(payload)
+            if not event_games:
+                continue
+            if event_label:
+                batch_labels_seen.add(event_label)
+                if selected_ge_id > 0:
+                    selected_batch_label = event_label
+            generation_event_ids.append(ge_id)
+            games.extend(event_games)
 
         if not games:
             return empty_operational_card_structure_payload()

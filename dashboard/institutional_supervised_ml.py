@@ -44,6 +44,7 @@ MISSION_ID = "M-ML-045"
 VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
+CARD_FORMAT_FILTER_MISSION_ID = "M-ML-071-FIX-01"
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
@@ -1201,14 +1202,48 @@ def build_ml_calibration_result_card(
 def build_ml_calibration_cockpit_snapshot(
     db_path: Path | str,
     *,
+    card_format_filter: int | None = None,
     workflow_status: str = COCKPIT_WORKFLOW_PENDING,
     decision_at: str = "",
     apply_next_generation: bool = False,
     events_limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
 ) -> dict[str, Any]:
+    from dashboard.institutional_operational_structural_coverage import (
+        build_analyzed_card_format_caption,
+        build_analyzed_card_format_label,
+        load_operational_core_002_generations,
+        resolve_generation_event_ids_for_card_format,
+    )
+
+    operational_generations = load_operational_core_002_generations(db_path)
+    scoped_generation_event_ids = resolve_generation_event_ids_for_card_format(
+        operational_generations,
+        card_format_filter,
+    )
+    analyzed_format_label = build_analyzed_card_format_label(card_format_filter)
+    analyzed_format_caption = build_analyzed_card_format_caption(card_format_filter)
+    format_scope_label = (
+        analyzed_format_caption
+        if card_format_filter is not None
+        else SCOPE_LABEL_ALL_OPERATIONAL
+    )
+
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
+    if card_format_filter is not None:
+        event_details = [
+            dict(row)
+            for row in event_details
+            if int(row.get("card_format", 0) or 0) == int(card_format_filter)
+        ]
     aggregate = build_ml_calibration_aggregate_context(event_details)
+    if card_format_filter is not None:
+        aggregate = {
+            **aggregate,
+            "scope_label": analyzed_format_caption,
+            "analyzed_card_format": int(card_format_filter),
+            "analyzed_card_format_label": analyzed_format_label,
+        }
     if workflow_status in {COCKPIT_WORKFLOW_AUTHORIZED, COCKPIT_WORKFLOW_APPLIED}:
         aggregate = {**aggregate, "calibration_authorized": True}
     ml_event_ids = [
@@ -1219,14 +1254,16 @@ def build_ml_calibration_cockpit_snapshot(
     coverage_evidence = get_structural_coverage_evidence(
         db_path,
         scope=SCOPE_ALL_OPERATIONAL_CORE_002,
-        scope_label=SCOPE_LABEL_ALL_OPERATIONAL,
+        scope_label=format_scope_label,
         events_limit=events_limit,
+        generation_event_ids=scoped_generation_event_ids if card_format_filter is not None else None,
+        game_size=card_format_filter,
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
     sovereign_ids = list(coverage_evidence.get("generation_event_ids") or [])
     exclusions_summary = summarize_active_reading_exclusions(db_path)
     scope_comparison = compare_structural_coverage_scopes(sovereign_ids, ml_event_ids)
-    scope_comparison["metrics_scope_label"] = SCOPE_LABEL_ALL_OPERATIONAL
+    scope_comparison["metrics_scope_label"] = format_scope_label
     scope_comparison["ml_detail_scope_label"] = (
         f"Últimas {len(ml_event_ids)} gerações ML — detalhe operacional (não altera métricas)"
     )
@@ -1309,9 +1346,18 @@ def build_ml_calibration_cockpit_snapshot(
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
-        "scope_label": str(diagnosis.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL),
+        "scope_label": (
+            AGGREGATE_SCOPE_LABEL
+            if card_format_filter is None
+            else str(diagnosis.get("scope_label") or analyzed_format_caption)
+        ),
         "scope_comparison": dict(scope_comparison or {}),
-        "aggregate_mode": True,
+        "aggregate_mode": card_format_filter is None,
+        "card_format_filter": card_format_filter,
+        "card_format_filter_mission_id": CARD_FORMAT_FILTER_MISSION_ID,
+        "analyzed_card_format_label": analyzed_format_label,
+        "analyzed_card_format_caption": analyzed_format_caption,
+        "scoped_generation_event_ids": list(scoped_generation_event_ids),
         "constitutional_summary": {
             "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",
             "lei_15": "ATIVA",

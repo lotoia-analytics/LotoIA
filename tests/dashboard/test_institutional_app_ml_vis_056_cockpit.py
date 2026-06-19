@@ -57,7 +57,7 @@ def test_cockpit_render_module_has_required_sections() -> None:
     assert "Proteções constitucionais ativas" in module_source
     assert "expanded=False" in module_source
     assert "Lote analisado" not in module_source
-    assert "selectbox" not in module_source
+    assert 'key="central_ml_card_format_filter"' in module_source
 
 
 def test_home_page_recalibration_status_not_generic_blocked() -> None:
@@ -215,6 +215,12 @@ def test_render_cockpit_without_name_error(
             return None
 
         def json(self, *_args, **_kwargs) -> None:
+            return None
+
+        def selectbox(self, _label, *, options, **kwargs):
+            return options[0] if options else None
+
+        def error(self, *_args, **_kwargs) -> None:
             return None
 
         def session_state(self):
