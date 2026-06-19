@@ -168,6 +168,7 @@ from dashboard.institutional_operational_structural_coverage import (
     diagnose_operational_coverage_gap,
     load_operational_core_002_generations,
     load_pre_final_pool_coverage_summary,
+    load_structural_15d_pool_coverage_summary,
     sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
@@ -758,7 +759,9 @@ def _sovereign_adm_pool_size(*, requested_count: int, pool_size: int | None = No
     count = max(1, int(requested_count))
     if pool_size is not None:
         return max(int(pool_size), count)
-    return max(count * 3, count, 30)
+    from lotoia.ml.structural_pool_15d_generator import MIN_COMPLIANT_POOL_SIZE
+
+    return max(count * 3, count, 30, MIN_COMPLIANT_POOL_SIZE)
 
 
 def _invoke_sovereign_adm_generate_best_games(
@@ -9081,6 +9084,17 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                 f"substituídos={int(pre_final_summary.get('candidates_replaced', 0) or 0)} | "
                 f"política={pre_final_summary.get('pre_final_calibration_policy', '—')}"
             )
+        structural_pool_summary = load_structural_15d_pool_coverage_summary(DB_PATH, selected_ge_id)
+        if structural_pool_summary.get("structural_pool_applied"):
+            confronto = dict(structural_pool_summary.get("confronto_recent_contests") or {})
+            st.info(
+                "Pool estrutural ML 15D: "
+                f"origem={structural_pool_summary.get('pool_origin', '—')} | "
+                f"tamanho={int(structural_pool_summary.get('structural_pool_size', 0) or 0)} | "
+                f"conformes={int(structural_pool_summary.get('structural_compliant_pool_size', 0) or 0)} | "
+                f"compliance={float(structural_pool_summary.get('compliance_rate', 0.0) or 0.0):.2%} | "
+                f"confronto={int(confronto.get('reference_contest_window', 10) or 10)} concursos"
+            )
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
@@ -11761,9 +11775,13 @@ def _persist_clean_law15_generation_history(
         "policy_compliance_status": str(result.get("policy_compliance_status") or ""),
     }
     from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+    from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
 
     _pre_final_trace = build_pre_final_pool_trace(
         dict(result.get("pre_final_pool_ml_calibration") or result.get("calibration_bundle") or {})
+    )
+    _structural_pool_trace = build_structural_15d_pool_trace(
+        dict(result.get("ml_structural_15d_pool") or {})
     )
     generation_context.update(
         {
@@ -11783,6 +11801,23 @@ def _persist_clean_law15_generation_history(
             "pre_final_metrics_before": dict(_pre_final_trace.get("metrics_before") or {}),
             "pre_final_metrics_after": dict(_pre_final_trace.get("metrics_after") or {}),
             "pre_final_actions_applied": list(_pre_final_trace.get("actions_applied") or []),
+            "ml_structural_15d_pool": _structural_pool_trace,
+            "pool_origin": str(_structural_pool_trace.get("pool_origin") or ""),
+            "structural_pool_applied": bool(_structural_pool_trace.get("structural_pool_applied")),
+            "structural_pool_size": int(_structural_pool_trace.get("structural_pool_size", 0) or 0),
+            "structural_compliant_pool_size": int(
+                _structural_pool_trace.get("structural_compliant_pool_size", 0) or 0
+            ),
+            "structural_pool_compliance_rate": float(
+                _structural_pool_trace.get("compliance_rate", 0.0) or 0.0
+            ),
+            "structural_pool_compliance_met": bool(_structural_pool_trace.get("compliance_met")),
+            "structural_pool_reference_contest_window": int(
+                _structural_pool_trace.get("reference_contest_window", 10) or 10
+            ),
+            "structural_pool_confronto": dict(_structural_pool_trace.get("confronto_recent_contests") or {}),
+            "structural_pool_metrics_before": dict(_structural_pool_trace.get("metrics_before") or {}),
+            "structural_pool_metrics_after": dict(_structural_pool_trace.get("metrics_after") or {}),
         }
     )
     try:

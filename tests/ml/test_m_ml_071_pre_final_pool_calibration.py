@@ -212,5 +212,5 @@ def test_build_pre_final_pool_trace_omits_raw_pool() -> None:
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v60"
+    assert BUILD_MARKER == "institutional-adm-runtime-v61"
     assert MISSION_ID == "M-ML-071"

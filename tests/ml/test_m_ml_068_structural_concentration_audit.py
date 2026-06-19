@@ -139,4 +139,4 @@ def test_dominance_thresholds_for_20_game_lot() -> None:
 def test_build_marker_v56() -> None:
     from dashboard.institutional_build import BUILD_MARKER
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v60"
+    assert BUILD_MARKER == "institutional-adm-runtime-v61"

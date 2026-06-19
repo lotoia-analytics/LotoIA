@@ -141,6 +141,7 @@ src/lotoia/governance/lei15_generation_routing_policy.py
 src/lotoia/governance/lei15_legacy_core_baseline.py
 src/lotoia/governance/lei15a_operational.py
 src/lotoia/governance/m_dados_049_controlled_reset.py
+src/lotoia/governance/m_dados_066_absolute_operational_reset.py
 src/lotoia/governance/m_ger_dados_051_controlled_ge_removal.py
 src/lotoia/governance/operational_policy_guard.py
 src/lotoia/governance/output_commander.py
@@ -198,9 +199,14 @@ src/lotoia/ml/ml_operational_verdict.py
 src/lotoia/ml/model_registry.py
 src/lotoia/ml/models.py
 src/lotoia/ml/overlap_format_thresholds.py
+src/lotoia/ml/pre_final_pool_ml_calibration.py
 src/lotoia/ml/rerank.py
 src/lotoia/ml/runtime_isolation.py
 src/lotoia/ml/score_ml.py
+src/lotoia/ml/structural_auto_calibration.py
+src/lotoia/ml/structural_concentration_audit.py
+src/lotoia/ml/structural_policy_15d.py
+src/lotoia/ml/structural_pool_15d_generator.py
 src/lotoia/ml/supervised_output_calibration.py
 src/lotoia/ml/walk_forward_validation.py
 src/lotoia/models/__init__.py
