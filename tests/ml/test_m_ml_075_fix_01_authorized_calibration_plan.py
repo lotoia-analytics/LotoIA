@@ -350,28 +350,39 @@ def test_m_ml_073b_uses_calibration_plan_evidence() -> None:
 
 
 def test_build_marker_v70() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v71"
+    assert BUILD_MARKER == "institutional-adm-runtime-v72"
 
 
-def test_promote_post_calibration_consumer_lot_visibility() -> None:
+def test_promote_post_calibration_consumer_lot_visibility_reprovado_not_forced_pending() -> None:
     from lotoia.operations.lot_operational_status import promote_post_calibration_consumer_lot_visibility
 
     promoted = promote_post_calibration_consumer_lot_visibility(
         {
-            "lot_operational_status": "calibration_applied",
+            "lot_operational_status": "rejected",
             "active_reading_scope": False,
             "ml_verdict": "REPROVADO",
         },
         authorized_plan={
             "calibration_plan_loaded_from_db": True,
+            "calibration_plan_applied_to_generation": True,
             "calibration_plan_source_generation_event_id": 10,
             "calibration_trace_id": "trace-abc",
         },
+        promotion_context={
+            "generated_games_count": 20,
+            "requested_count": 20,
+            "persistence_supported": True,
+            "gp_quality_tier": "REPROVADO",
+            "ml_verdict": "REPROVADO",
+            "official_release_allowed": False,
+        },
     )
-    assert promoted["lot_operational_status"] == "pending_structural_review"
+    assert promoted["lot_operational_status"] == "rejected"
     assert promoted["active_reading_scope"] is True
     assert promoted["calibration_plan_consumer_generation"] is True
-    assert promoted["ml_persist_verdict_deferred_for_coverage"] is True
+    assert promoted["post_calibration_promotion_evaluated"] is True
+    assert promoted["promoted_to_analytical_history"] is False
+    assert promoted["promotion_block_reason"]
 
 
 def test_plan_loaded_consumer_visible_in_operational_loaders(tmp_path: Path) -> None:

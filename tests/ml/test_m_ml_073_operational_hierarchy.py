@@ -362,6 +362,6 @@ def test_hierarchy_blocks_only_on_critical_delivery_failure(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v71"
+    assert BUILD_MARKER == "institutional-adm-runtime-v72"
     assert MISSION_ID == "M-ML-073"
     assert HIERARCHY_VERSION == "M-ML-073-v2"

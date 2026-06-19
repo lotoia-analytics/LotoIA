@@ -7,6 +7,12 @@ from typing import Any, Mapping, Sequence
 
 MISSION_ID = "M-OPS-062"
 DEFERRED_COVERAGE_MISSION_ID = "M-OPS-062-FIX-06"
+POST_CALIBRATION_PROMOTION_MISSION_ID = "M-OPS-064-FIX-01"
+
+QUALITY_TIER_APROVADO = "APROVADO"
+QUALITY_TIER_ATENCAO = "ATENÇÃO"
+QUALITY_TIER_REPROVADO = "REPROVADO"
+QUALITY_TIER_CRITICO = "CRÍTICO"
 
 VERDICT_APROVADO = "APROVADO"
 VERDICT_APROVADO_COM_ALERTA = "APROVADO COM ALERTA"
@@ -177,38 +183,185 @@ def should_defer_generator_persist_verdict_for_coverage(context: Mapping[str, An
     return bool(str(context.get("ml_verdict") or "").strip())
 
 
+def _normalize_quality_tier(value: Any) -> str:
+    tier = str(value or "").strip().upper()
+    if tier in {"ATENCAO", "ATENÇÃO"}:
+        return QUALITY_TIER_ATENCAO
+    if tier in {"CRITICO", "CRÍTICO"}:
+        return QUALITY_TIER_CRITICO
+    return tier
+
+
+def _post_calibration_promotion_prerequisites_met(
+    plan: Mapping[str, Any],
+    promo: Mapping[str, Any],
+) -> tuple[bool, str]:
+    if not bool(plan.get("calibration_plan_loaded_from_db")):
+        return False, "calibration_plan_not_loaded_from_db"
+    if not bool(plan.get("calibration_plan_applied_to_generation")):
+        return False, "calibration_plan_not_applied_to_generation"
+    games_count = int(promo.get("generated_games_count", 0) or 0)
+    if games_count <= 0:
+        return False, "no_generated_games"
+    requested_count = int(promo.get("requested_count", 0) or 0)
+    if requested_count > 0 and games_count != requested_count:
+        return False, "generated_games_count_mismatch"
+    if not _safe_bool(promo.get("persistence_supported"), default=True):
+        return False, "persistence_not_supported"
+    if _safe_bool(promo.get("persistence_blocked")):
+        return False, "persistence_blocked"
+    generation_event_id = int(promo.get("generation_event_id", 0) or 0)
+    if generation_event_id < 0:
+        return False, "invalid_generation_event_id"
+    if _safe_bool(promo.get("hierarchy_delivery_blocked")):
+        return False, "hierarchy_delivery_blocked"
+    if _safe_bool(promo.get("runtime_contract_broken")):
+        return False, "runtime_contract_broken"
+    return True, ""
+
+
+def _resolve_post_calibration_promoted_status(
+    *,
+    gp_quality_tier: str,
+    ml_verdict: str,
+    official_release_allowed: bool,
+    current_status: str,
+) -> tuple[str, bool, str]:
+    tier = _normalize_quality_tier(gp_quality_tier)
+    verdict = str(ml_verdict or "").strip().upper()
+
+    if tier in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}:
+        return current_status, False, f"gp_quality_tier_{tier.lower()}_not_releasable"
+    if verdict in {VERDICT_REPROVADO, VERDICT_BLOQUEADO}:
+        return current_status, False, f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable"
+    if verdict == VERDICT_PRECISA_CALIBRAR and tier not in {QUALITY_TIER_APROVADO, QUALITY_TIER_ATENCAO}:
+        return current_status, False, "ml_verdict_precisa_calibrar_not_releasable"
+
+    if current_status in OFFICIAL_CONFERENCE_STATUSES:
+        return current_status, True, ""
+
+    if tier == QUALITY_TIER_ATENCAO or verdict == VERDICT_APROVADO_COM_ALERTA:
+        return STATUS_APPROVED_WITH_WARNING, True, ""
+
+    if tier == QUALITY_TIER_APROVADO or verdict == VERDICT_APROVADO or official_release_allowed:
+        if verdict == VERDICT_APROVADO_COM_ALERTA:
+            return STATUS_APPROVED_WITH_WARNING, True, ""
+        if verdict == VERDICT_APROVADO:
+            return STATUS_OFFICIALIZED, True, ""
+        return STATUS_APPROVED_FOR_OFFICIALIZATION, True, ""
+
+    return current_status, False, "quality_tier_or_verdict_insufficient_for_promotion"
+
+
+def _apply_post_calibration_eligibility_flags(merged: dict[str, Any], *, lot_status: str) -> None:
+    conferivel = lot_status in OFFICIAL_CONFERENCE_STATUSES
+    merged["lot_operational_status"] = lot_status
+    merged["is_active_structural_reading"] = is_active_structural_reading_status(lot_status)
+    merged["active_reading_scope"] = merged["is_active_structural_reading"]
+    merged["is_official_conference_eligible"] = conferivel
+    merged["is_analytical_history_eligible"] = lot_status in ANALYTICAL_HISTORY_STATUSES
+    if conferivel:
+        merged["official_release_allowed"] = True
+
+
 def promote_post_calibration_consumer_lot_visibility(
     lot_status_context: Mapping[str, Any],
     *,
     authorized_plan: Mapping[str, Any] | None = None,
+    promotion_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Garante que a geração N+1 (consumidora do plano DB) permaneça visível na Cobertura/Central ML."""
+    """Visibilidade Cobertura/Central ML para N+1 — promove a conferível quando elegível (M-OPS-064-FIX-01)."""
     merged = dict(lot_status_context)
     plan = dict(authorized_plan or {})
+    promo = dict(promotion_context or {})
     if not bool(plan.get("calibration_plan_loaded_from_db")):
         return merged
-    verdict = str(merged.get("ml_persist_verdict") or merged.get("ml_verdict") or "").strip()
-    if not verdict:
-        verdict = str((merged.get("lot_status_trace") or {}).get("ml_verdict") or "").strip()
-    merged.update(
-        {
-            "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
-            "is_active_structural_reading": True,
-            "active_reading_scope": True,
-            "calibration_plan_consumer_generation": True,
-            "calibration_plan_loaded_from_db": True,
-            "calibration_plan_source_generation_event_id": int(
-                plan.get("calibration_plan_source_generation_event_id", 0) or 0
-            ),
-            "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
-            "calibration_plan_visibility_mission_id": "M-ML-075-FIX-01",
-            "excluded_from_active_reading_reason": "",
-        }
+
+    verdict = str(
+        promo.get("ml_verdict")
+        or merged.get("ml_persist_verdict")
+        or merged.get("ml_verdict")
+        or (merged.get("lot_status_trace") or {}).get("ml_verdict")
+        or ""
+    ).strip()
+    current_status = extract_lot_operational_status(merged) or str(
+        merged.get("lot_operational_status") or STATUS_PENDING_STRUCTURAL_REVIEW
     )
+    gp_quality_tier = str(promo.get("gp_quality_tier") or merged.get("gp_quality_tier") or "")
+    official_release_allowed = bool(
+        promo.get("official_release_allowed", merged.get("official_release_allowed"))
+    )
+
+    consumer_base: dict[str, Any] = {
+        "post_calibration_consumer_lot": True,
+        "calibration_plan_consumer_generation": True,
+        "calibration_plan_loaded_from_db": True,
+        "calibration_plan_applied_to_generation": bool(plan.get("calibration_plan_applied_to_generation")),
+        "calibration_plan_source_generation_event_id": int(
+            plan.get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
+        "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
+        "calibration_plan_visibility_mission_id": "M-ML-075-FIX-01",
+        "post_calibration_promotion_mission_id": POST_CALIBRATION_PROMOTION_MISSION_ID,
+        "post_calibration_promotion_evaluated": True,
+        "excluded_from_active_reading_reason": "",
+        "gp_quality_tier": gp_quality_tier or merged.get("gp_quality_tier"),
+    }
     if verdict:
-        merged["ml_persist_verdict_deferred_for_coverage"] = True
-        merged["ml_persist_verdict"] = verdict
-        merged["structural_coverage_defer_mission_id"] = DEFERRED_COVERAGE_MISSION_ID
+        consumer_base["ml_verdict"] = verdict
+
+    prereq_ok, prereq_reason = _post_calibration_promotion_prerequisites_met(plan, promo)
+    if not prereq_ok:
+        merged.update(consumer_base)
+        merged.update(
+            {
+                "post_calibration_promotion_status": "prerequisites_not_met",
+                "promoted_to_analytical_history": False,
+                "promoted_to_official_conference": False,
+                "promotion_block_reason": prereq_reason,
+            }
+        )
+        merged.setdefault("is_active_structural_reading", is_active_structural_reading_status(current_status))
+        merged.setdefault("active_reading_scope", bool(merged.get("is_active_structural_reading")))
+        return merged
+
+    promoted_status, promoted, block_reason = _resolve_post_calibration_promoted_status(
+        gp_quality_tier=gp_quality_tier,
+        ml_verdict=verdict,
+        official_release_allowed=official_release_allowed,
+        current_status=current_status,
+    )
+
+    merged.update(consumer_base)
+    if promoted:
+        _apply_post_calibration_eligibility_flags(merged, lot_status=promoted_status)
+        merged.update(
+            {
+                "post_calibration_promotion_status": promoted_status,
+                "promoted_to_analytical_history": True,
+                "promoted_to_official_conference": True,
+                "promotion_block_reason": "",
+            }
+        )
+    else:
+        if current_status:
+            _apply_post_calibration_eligibility_flags(merged, lot_status=current_status)
+        merged.update(
+            {
+                "post_calibration_promotion_status": current_status or "not_promoted",
+                "promoted_to_analytical_history": False,
+                "promoted_to_official_conference": False,
+                "promotion_block_reason": block_reason,
+                "post_calibration_consumer_not_released": True,
+            }
+        )
+        merged["is_active_structural_reading"] = True
+        merged["active_reading_scope"] = True
+        if verdict and current_status in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
+            merged["ml_persist_verdict_deferred_for_coverage"] = True
+            merged["ml_persist_verdict"] = verdict
+            merged["structural_coverage_defer_mission_id"] = DEFERRED_COVERAGE_MISSION_ID
+
     return merged
 
 
