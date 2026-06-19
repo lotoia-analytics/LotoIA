@@ -686,6 +686,7 @@ def generate_best_games(
     _calibration_bundle = None
     _structural_policy_bundle = None
     _structural_pool_bundle = None
+    _diverse_top_slice_bundle = None
     _hierarchy_bundle = None
     _recovery_bundle = None
     _sovereign_game_size = 15
@@ -760,6 +761,7 @@ def generate_best_games(
                     compose_config=_sovereign_cfg,
                 )
             _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
+            _diverse_top_slice_bundle = dict(_mission_bundles.get("diverse_top_slice") or {})
             _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
             if not _hierarchy_bundle.get("gp_closure_allowed"):
                 raise MlOperationalHierarchyBlockedError.from_bundle(_hierarchy_bundle)
@@ -1050,6 +1052,7 @@ def generate_best_games(
         "ml_structural_15d_pool": dict(_structural_pool_bundle or {}),
         "ml_operational_hierarchy": dict(_hierarchy_bundle or {}),
         "pre_gp_recovery": dict(_recovery_bundle or {}),
+        "diverse_top_slice_m_stat_002": dict(_diverse_top_slice_bundle or {}),
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {

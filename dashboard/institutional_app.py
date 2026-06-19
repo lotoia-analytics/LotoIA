@@ -11880,6 +11880,11 @@ def _persist_clean_law15_generation_history(
         dict(result.get("ml_operational_hierarchy") or {})
     )
     _pre_gp_recovery_trace = build_pre_gp_recovery_trace(dict(result.get("pre_gp_recovery") or {}))
+    from lotoia.statistics.diverse_top_slice_selection import build_diverse_top_slice_trace
+
+    _diverse_top_slice_trace = build_diverse_top_slice_trace(
+        dict(result.get("diverse_top_slice_m_stat_002") or {})
+    )
     generation_context.update(
         {
             "pre_final_pool_ml_calibration": _pre_final_trace,
@@ -11974,6 +11979,15 @@ def _persist_clean_law15_generation_history(
             "attempt_results": list(_pre_gp_recovery_trace.get("attempt_results") or []),
             "best_attempt_selected": _pre_gp_recovery_trace.get("best_attempt_selected"),
             "successful_attempt_index": _pre_gp_recovery_trace.get("successful_attempt_index"),
+            "diverse_top_slice_m_stat_002": _diverse_top_slice_trace,
+            "diverse_top_slice_applied": bool(_diverse_top_slice_trace.get("diverse_top_slice_applied")),
+            "diversity_score_before_top_slice": float(
+                _diverse_top_slice_trace.get("diversity_score_before", 0.0) or 0.0
+            ),
+            "diversity_score_after_top_slice": float(
+                _diverse_top_slice_trace.get("diversity_score_after", 0.0) or 0.0
+            ),
+            "diverse_top_slice_criteria_met": bool(_diverse_top_slice_trace.get("criteria_met")),
         }
     )
     try:
