@@ -45,7 +45,6 @@ from dashboard.institutional_light_mode import OPERATIONAL_EVENTS_LIMIT
 from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
     build_operational_generation_scope_caption,
-    is_all_operational_generations_selection,
     load_operational_core_002_generations,
     OPERATIONAL_GENERATION_SELECTOR_KEY,
     resolve_operational_generation_selection,
@@ -56,10 +55,9 @@ SESSION_DECISION_AT = "central_ml_cockpit_decision_at"
 SESSION_APPLY_NEXT = "central_ml_cockpit_apply_next_generation"
 SESSION_PERSIST = "central_ml_cockpit_persist_bundle"
 
-COCKPIT_TITLE = "Central ML — Calibração Supervisionada"
-COCKPIT_SUBTITLE = (
-    "Cobertura Estrutural → evidência → recomendação → autorização → calibração na próxima geração."
-)
+COCKPIT_TITLE = "Central ML"
+COCKPIT_SUBTITLE = "Diagnóstico → decisão → calibração supervisionada."
+MISSION_UI_ID = "M-UI-ML-001"
 
 
 def _init_cockpit_session() -> None:
@@ -114,14 +112,47 @@ def _build_persist_bundle(
     )
 
 
+def _primary_format_label(diagnosis: dict[str, Any]) -> str:
+    metrics = dict(diagnosis.get("metrics") or {})
+    size = int(metrics.get("primary_format_size", 0) or 0)
+    if size > 0:
+        return f"{size}D"
+    format_breakdown = list(diagnosis.get("format_breakdown") or metrics.get("format_breakdown") or [])
+    if format_breakdown:
+        return str(format_breakdown[0].get("formato") or "—")
+    return "—"
+
+
 def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     st.markdown("#### 1. Diagnóstico geral da saída")
-    scope_label = str(diagnosis.get("scope_label") or AGGREGATE_SCOPE_LABEL)
-    st.caption(scope_label)
     if not diagnosis.get("available"):
         st.info(str(diagnosis.get("headline") or "Aguardando gerações ML no PostgreSQL."))
         return
-    st.caption(str(diagnosis.get("headline") or ""))
+    headline = str(diagnosis.get("headline") or "").strip()
+    if headline:
+        st.caption(headline)
+    metrics = dict(diagnosis.get("metrics") or {})
+    row1 = st.columns(4)
+    row1[0].metric("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0))
+    row1[1].metric("Sobreposição máxima", int(metrics.get("sobreposicao_maxima", 0) or 0))
+    row1[2].metric(
+        "Quase repetidos críticos",
+        int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0),
+    )
+    row1[3].metric("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0))
+    row2 = st.columns(3)
+    row2[0].metric("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0))
+    row2[1].metric("Pares em atenção", int(metrics.get("pares_em_atencao", 0) or 0))
+    row2[2].metric("Formato", _primary_format_label(diagnosis))
+
+
+def _render_diagnosis_technical_details(diagnosis: dict[str, Any]) -> None:
+    st.markdown("##### Diagnóstico — detalhes técnicos")
+    scope_label = str(diagnosis.get("scope_label") or AGGREGATE_SCOPE_LABEL)
+    st.caption(scope_label)
+    if not diagnosis.get("available"):
+        st.caption("Diagnóstico indisponível.")
+        return
     if diagnosis.get("coverage_source") == "cobertura_estrutural":
         st.caption("Fonte decisória: Cobertura Estrutural / PostgreSQL")
     reading = dict(diagnosis.get("reading") or {})
@@ -154,22 +185,17 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     summary_cols[1].metric("Jogos agregados", int(diagnosis.get("total_games", 0) or 0))
     summary_cols[2].metric("Com calibração", int(diagnosis.get("calibrated_events", 0) or 0))
     metrics = dict(diagnosis.get("metrics") or {})
-    cols = st.columns(3)
-    cols[0].metric("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0))
-    cols[1].metric("Sobreposição máxima", int(metrics.get("sobreposicao_maxima", 0) or 0))
-    cols[2].metric("Quase repetidos críticos", int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0))
-    cols2 = st.columns(3)
-    cols2[0].metric("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0))
-    cols2[1].metric("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0))
-    cols2[2].metric("Pares em atenção", int(metrics.get("pares_em_atencao", 0) or 0))
-    cols2b = st.columns(3)
-    cols2b[0].metric("Risco 6 Bases", str(metrics.get("six_bases_risco", "—")))
-    cols2b[1].metric("Pares possíveis", int(metrics.get("pares_possiveis", 0) or 0))
-    cols2b[2].metric("Formato primário", f"{int(metrics.get('primary_format_size', 0) or 0)}D" if metrics.get("primary_format_size") else "—")
-    cols3 = st.columns(3)
-    cols3[0].metric("Jogos 13 hits", int(metrics.get("desempenho_13_hits", 0) or 0))
-    cols3[1].metric("Jogos 14 hits", int(metrics.get("desempenho_14_hits", 0) or 0))
-    cols3[2].metric("Jogos 15 hits", int(metrics.get("desempenho_15_hits", 0) or 0))
+    detail_cols = st.columns(3)
+    detail_cols[0].metric("Risco 6 Bases", str(metrics.get("six_bases_risco", "—")))
+    detail_cols[1].metric("Pares possíveis", int(metrics.get("pares_possiveis", 0) or 0))
+    detail_cols[2].metric(
+        "Jogos 13/14/15 hits",
+        (
+            f"{int(metrics.get('desempenho_13_hits', 0) or 0)}/"
+            f"{int(metrics.get('desempenho_14_hits', 0) or 0)}/"
+            f"{int(metrics.get('desempenho_15_hits', 0) or 0)}"
+        ),
+    )
     format_breakdown = list(diagnosis.get("format_breakdown") or metrics.get("format_breakdown") or [])
     if format_breakdown:
         st.caption(
@@ -208,14 +234,6 @@ def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
             f"**Intensidade:** {item.get('intensidade_label', item.get('intensidade', '—'))}  \n"
             f"**Impacto esperado:** {item.get('impacto_esperado', '—')}"
         )
-
-
-def _format_parity_pairs(pairs: Any) -> str:
-    formatted: list[str] = []
-    for pair in pairs or []:
-        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
-            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
-    return " • ".join(formatted) if formatted else "—"
 
 
 def _format_agent_label(agent_id: str) -> str:
@@ -325,7 +343,7 @@ def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
             )
     stage_results = dict(hierarchy.get("stage_results") or {})
     if stage_results:
-        with st.expander("Etapas da hierarquia", expanded=True):
+        with st.expander("Etapas da hierarquia", expanded=False):
             for stage_id in (
                 "conformidade_estrutural",
                 "diversidade",
@@ -539,8 +557,7 @@ def _render_overlap_format_verdict(snapshot: dict[str, Any]) -> None:
                 )
 
 
-def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
-    st.markdown("#### Veredito ML")
+def _render_ml_verdict_block(snapshot: dict[str, Any]) -> None:
     coverage = dict(snapshot.get("coverage_evidence") or {})
     verdict = str(
         snapshot.get("ml_verdict")
@@ -567,34 +584,40 @@ def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
         or "—"
     )
     if verdict in {"REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
-        st.error(f"**{verdict}**")
+        st.error(f"**Veredito ML:** {verdict}")
     elif verdict in {"PRECISA CALIBRAR", "APROVADO COM ALERTA"}:
-        st.warning(f"**{verdict}**")
+        st.warning(f"**Veredito ML:** {verdict}")
     else:
-        st.success(f"**{verdict}**")
-    st.markdown(f"**Motivo principal:**  \n{reason}")
-    st.markdown(f"**Liberação oficial:**  \n{release_label}")
-    st.markdown(f"**Próxima ação:**  \n{next_action}")
-    plan_items = list(snapshot.get("plan_items") or [])
-    if plan_items:
-        st.markdown("**Plano recomendado:**")
-        for index, item in enumerate(plan_items[:5], start=1):
-            st.markdown(f"{index}. {item}")
+        st.success(f"**Veredito ML:** {verdict}")
+    cols = st.columns(2)
+    cols[0].markdown(f"**Motivo principal**  \n{reason}")
+    cols[1].markdown(f"**Liberação oficial**  \n{release_label}")
+    st.markdown(f"**Próxima ação**  \n{next_action}")
+
+
+def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("#### Veredito ML")
+    _render_ml_verdict_block(snapshot)
 
 
 def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
     st.markdown("#### 2. Evidências e decisão")
     coverage = dict(snapshot.get("coverage_evidence") or {})
-    primary = dict(snapshot.get("primary_decision") or coverage.get("primary_decision") or {})
-    blocks = list(snapshot.get("decision_blocks") or coverage.get("decision_blocks") or [])
     workflow = str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING)
 
     if not coverage.get("available"):
         st.info("Aguardando evidências da Cobertura Estrutural no PostgreSQL.")
         return
 
-    _render_ml_verdict_card(snapshot)
+    _render_ml_verdict_block(snapshot)
+    st.caption(f"Decisão operador: {_decision_status_label(workflow)}")
 
+
+def _render_decision_evidence_technical_details(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Evidências — detalhes técnicos")
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    primary = dict(snapshot.get("primary_decision") or coverage.get("primary_decision") or {})
+    blocks = list(snapshot.get("decision_blocks") or coverage.get("decision_blocks") or [])
     if primary:
         st.markdown(f"**Problema detectado:**  \n{primary.get('problema_detectado', '—')}")
         st.markdown(f"**Evidência:**  \n{primary.get('evidencia', '—')}")
@@ -604,15 +627,12 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
         st.markdown(f"**Problema detectado:**  \n{first.get('problema_detectado', '—')}")
         st.markdown(f"**Evidência:**  \n{first.get('evidencia', '—')}")
     else:
-        st.success("Nenhum problema estrutural crítico detectado na janela recente.")
-
+        st.caption("Nenhum problema estrutural crítico detectado na janela recente.")
     if len(blocks) > 1:
-        with st.expander(f"Outros problemas detectados ({len(blocks) - 1})", expanded=False):
-            for block in blocks[1:]:
-                row = dict(block)
-                st.markdown(f"- **{row.get('problema_detectado', '—')}** — {row.get('evidencia', '—')}")
-
-    st.markdown(f"**Decisão operador:**  \n{_decision_status_label(workflow)}")
+        st.markdown("**Outros problemas detectados**")
+        for block in blocks[1:]:
+            row = dict(block)
+            st.markdown(f"- **{row.get('problema_detectado', '—')}** — {row.get('evidencia', '—')}")
     verdict = str(snapshot.get("ml_verdict") or coverage.get("ml_verdict") or "")
     policy_status = str(
         snapshot.get("policy_compliance_status")
@@ -650,7 +670,7 @@ def _render_recommendation_card(snapshot: dict[str, Any]) -> None:
 
 
 def _render_impact_card(snapshot: dict[str, Any]) -> None:
-    st.markdown("#### 4. Impacto esperado")
+    st.markdown("##### Impacto esperado")
     impact_items = list(snapshot.get("impacto_detalhado") or [])
     calibration_plan = dict(snapshot.get("calibration_plan") or {})
     if not impact_items:
@@ -674,7 +694,7 @@ def _render_command_card(
     supervised_active: bool,
     db_path: Any,
 ) -> None:
-    st.markdown("#### 5. Comando supervisionado")
+    st.markdown("#### 4. Comando supervisionado")
     if not supervised_active:
         st.warning("Calibração supervisionada inativa — ative ML operacional CORE_002 (M-ML-054).")
         return
@@ -848,7 +868,7 @@ def _render_authorized_plan_semantics_card(snapshot: dict[str, Any]) -> None:
 def _render_result_card(result: dict[str, Any], snapshot: dict[str, Any]) -> None:
     from lotoia.ml.authorized_ml_calibration_plan import build_calibration_semantics_ui_labels
 
-    st.markdown("#### 6. Resultado da calibração")
+    st.markdown("##### Resultado da calibração")
     latest = dict(snapshot.get("latest_event") or {})
     semantics_ctx = {**latest, **result}
     labels = build_calibration_semantics_ui_labels(semantics_ctx)
@@ -1071,8 +1091,122 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                     display_cockpit_json("Feature attribution calibração", cal_attr)
 
 
+def _render_operational_scope_audit(
+    snapshot: dict[str, Any],
+    *,
+    constitutional: dict[str, Any],
+    operational_selection: dict[str, Any],
+    selected_generation: dict[str, Any],
+    selected_ge_id: int,
+    selected_card_format: Any,
+) -> None:
+    st.markdown("##### Escopo operacional e constitucional")
+    st.caption(
+        f"Lei 15A: {constitutional.get('lei_15a', 'INOPERANTE')} | "
+        f"Purge: {constitutional.get('purge', 'PROTEGIDO')} | "
+        f"public_app: {constitutional.get('public_app_ml', 'SEM ML OPERACIONAL')}"
+    )
+    if operational_selection.get("is_aggregate"):
+        st.caption(
+            f"Geração: todos ({int(selected_generation.get('generation_events_count', 0) or 0)}) | "
+            f"IDs: {int(selected_generation.get('generation_events_count', 0) or 0)} | "
+            f"Formato: {selected_generation.get('card_format_label', '—')} | "
+            f"Jogos: {int(selected_generation.get('games_count', 0) or 0)}"
+        )
+    else:
+        st.caption(
+            f"Geração: {selected_generation.get('operational_generation_label', '—')} | "
+            f"GE: {selected_ge_id or '—'} | "
+            f"Formato: {f'{int(selected_card_format or 0)}D' if selected_card_format else '—'} | "
+            f"Jogos: {int(selected_generation.get('games_count', 0) or 0)}"
+        )
+    mission_id = str(snapshot.get("mission_id") or "")
+    if mission_id:
+        st.caption(f"Mission cockpit: {mission_id}")
+
+
+def _render_technical_audit_section(
+    db_path: Any,
+    snapshot: dict[str, Any],
+    *,
+    constitutional: dict[str, Any] | None = None,
+    operational_selection: dict[str, Any] | None = None,
+    selected_generation: dict[str, Any] | None = None,
+    selected_ge_id: int = 0,
+    selected_card_format: Any = None,
+) -> None:
+    with st.expander("Auditoria Técnica", expanded=False):
+        st.caption(
+            f"{MISSION_UI_ID} — hierarquia, pools, mission IDs, traces e payloads preservados para rastreabilidade."
+        )
+        if constitutional and operational_selection and selected_generation is not None:
+            render_cockpit_block_safe(
+                "auditoria_escopo_operacional",
+                lambda: _render_operational_scope_audit(
+                    snapshot,
+                    constitutional=constitutional,
+                    operational_selection=operational_selection,
+                    selected_generation=selected_generation,
+                    selected_ge_id=selected_ge_id,
+                    selected_card_format=selected_card_format,
+                ),
+            )
+        render_cockpit_block_safe(
+            "auditoria_diagnostico_tecnico",
+            lambda: _render_diagnosis_technical_details(dict(snapshot.get("diagnosis") or {})),
+        )
+        render_cockpit_block_safe(
+            "auditoria_evidencias_tecnicas",
+            lambda: _render_decision_evidence_technical_details(snapshot),
+        )
+        render_cockpit_block_safe(
+            "overlap_format",
+            lambda: _render_overlap_format_verdict(snapshot),
+        )
+        render_cockpit_block_safe(
+            "agent_responsible",
+            lambda: _render_agent_responsible_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "ml_operational_hierarchy",
+            lambda: _render_ml_operational_hierarchy_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "structural_15d_pool",
+            lambda: _render_structural_15d_pool_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "pre_final_pool_ml",
+            lambda: _render_pre_final_pool_ml_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "authorized_plan_n_plus_1",
+            lambda: _render_authorized_plan_semantics_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "politica_15d",
+            lambda: _render_structural_policy_15d_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "auto_calibracao",
+            lambda: _render_structural_auto_calibration_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "impacto",
+            lambda: _render_impact_card(snapshot),
+        )
+        render_cockpit_block_safe(
+            "resultado",
+            lambda: _render_result_card(dict(snapshot.get("result") or {}), snapshot),
+        )
+        render_cockpit_block_safe(
+            "detalhes_tecnicos",
+            lambda: _render_technical_expanders(db_path, snapshot),
+        )
+
+
 def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
-    """Cockpit operacional da Central ML — evidências da Cobertura Estrutural (M-ML-VIS-058)."""
+    """Cockpit operacional da Central ML — central de decisão (M-UI-ML-001)."""
     _init_cockpit_session()
     supervised_active = is_supervised_output_calibration_active()
 
@@ -1160,47 +1294,15 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     with status_cols[3]:
         _render_status_chip("ML livre", "BLOQUEADA", tone="danger")
 
-    chip_cols = st.columns(3)
-    chip_cols[0].caption(f"Lei 15A: {constitutional.get('lei_15a', 'INOPERANTE')}")
-    chip_cols[1].caption(f"Purge: {constitutional.get('purge', 'PROTEGIDO')}")
-    chip_cols[2].caption(f"public_app: {constitutional.get('public_app_ml', 'SEM ML OPERACIONAL')}")
-    if operational_generations:
-        meta_cols = st.columns(4)
-        if is_all_operational_generations_selection(selected_label):
-            meta_cols[0].metric(
-                "Geração operacional",
-                f"Todos ({int(selected_generation.get('generation_events_count', 0) or 0)})",
-            )
-            meta_cols[1].metric(
-                "generation_event_id",
-                f"{int(selected_generation.get('generation_events_count', 0) or 0)} IDs",
-            )
-            meta_cols[2].metric(
-                "Formato cartão",
-                str(selected_generation.get("card_format_label") or "-"),
-            )
-            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
-        else:
-            meta_cols[0].metric(
-                "Geração operacional",
-                str(selected_generation.get("operational_generation_label") or "-"),
-            )
-            meta_cols[1].metric("generation_event_id", str(selected_ge_id or "-"))
-            meta_cols[2].metric(
-                "Formato cartão",
-                f"{int(selected_card_format or 0)}D" if selected_card_format else "-",
-            )
-            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
-
-    if operational_selection.get("is_aggregate"):
-        st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
-    else:
-        st.info(build_operational_generation_scope_caption(operational_selection))
+    scope_caption = (
+        str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL)
+        if operational_selection.get("is_aggregate")
+        else build_operational_generation_scope_caption(operational_selection)
+    )
+    st.caption(scope_caption)
     if detect_mixed_format_aggregate(snapshot):
         st.warning(
-            "Leitura agregada com múltiplos formatos (ex.: 15D + 17D). "
-            "Para evitar lentidão ou falha de renderização, selecione uma "
-            "**Geração operacional** específica no seletor acima."
+            "Leitura agregada com múltiplos formatos — selecione uma geração operacional específica."
         )
     excluded_count = int(snapshot.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
@@ -1210,88 +1312,44 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             if audit_rows:
                 display_cockpit_dataframe(audit_rows, max_rows=40)
 
-    row1_col1, row1_col2 = st.columns(2)
-    with row1_col1:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "diagnostico",
-                lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
-            )
-            render_cockpit_block_safe(
-                "overlap_format",
-                lambda: _render_overlap_format_verdict(snapshot),
-            )
-            render_cockpit_block_safe(
-                "agent_responsible",
-                lambda: _render_agent_responsible_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "ml_operational_hierarchy",
-                lambda: _render_ml_operational_hierarchy_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "structural_15d_pool",
-                lambda: _render_structural_15d_pool_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "pre_final_pool_ml",
-                lambda: _render_pre_final_pool_ml_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "authorized_plan_n_plus_1",
-                lambda: _render_authorized_plan_semantics_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "politica_15d",
-                lambda: _render_structural_policy_15d_card(snapshot),
-            )
-            render_cockpit_block_safe(
-                "auto_calibracao",
-                lambda: _render_structural_auto_calibration_card(snapshot),
-            )
-    with row1_col2:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "evidencias_decisao",
-                lambda: _render_decision_evidence_card(snapshot),
-            )
+    with st.container(border=True):
+        render_cockpit_block_safe(
+            "diagnostico",
+            lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
+        )
 
-    row2_col1, row2_col2 = st.columns(2)
-    with row2_col1:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "recomendacoes",
-                lambda: _render_recommendation_card(snapshot),
-            )
-    with row2_col2:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "impacto",
-                lambda: _render_impact_card(snapshot),
-            )
+    with st.container(border=True):
+        render_cockpit_block_safe(
+            "evidencias_decisao",
+            lambda: _render_decision_evidence_card(snapshot),
+        )
 
-    row3_col1, row3_col2 = st.columns(2)
-    with row3_col1:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "comando",
-                lambda: _render_command_card(
-                    snapshot,
-                    supervised_active=supervised_active,
-                    db_path=db_path,
-                ),
-            )
-    with row3_col2:
-        with st.container(border=True):
-            render_cockpit_block_safe(
-                "resultado",
-                lambda: _render_result_card(dict(snapshot.get("result") or {}), snapshot),
-            )
+    with st.container(border=True):
+        render_cockpit_block_safe(
+            "recomendacoes",
+            lambda: _render_recommendation_card(snapshot),
+        )
 
-    st.divider()
-    st.markdown("### Detalhes técnicos")
+    with st.container(border=True):
+        render_cockpit_block_safe(
+            "comando",
+            lambda: _render_command_card(
+                snapshot,
+                supervised_active=supervised_active,
+                db_path=db_path,
+            ),
+        )
+
     render_cockpit_block_safe(
-        "detalhes_tecnicos",
-        lambda: _render_technical_expanders(db_path, snapshot),
+        "auditoria_tecnica",
+        lambda: _render_technical_audit_section(
+            db_path,
+            snapshot,
+            constitutional=constitutional,
+            operational_selection=operational_selection,
+            selected_generation=selected_generation,
+            selected_ge_id=selected_ge_id,
+            selected_card_format=selected_card_format,
+        ),
     )
     return snapshot
