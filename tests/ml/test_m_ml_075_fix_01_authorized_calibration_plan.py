@@ -350,7 +350,7 @@ def test_m_ml_073b_uses_calibration_plan_evidence() -> None:
 
 
 def test_build_marker_v70() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v76"
+    assert BUILD_MARKER == "institutional-adm-runtime-v77"
 
 
 def test_promote_post_calibration_consumer_lot_visibility_reprovado_not_forced_pending() -> None:

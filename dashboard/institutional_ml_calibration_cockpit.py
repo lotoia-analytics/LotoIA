@@ -20,7 +20,6 @@ from lotoia.ml.structural_policy_15d import (
 )
 from dashboard.institutional_supervised_ml import (
     AGGREGATE_SCOPE_LABEL,
-    CALIBRATION_SUPERVISED_LABEL,
     COCKPIT_WORKFLOW_APPLIED,
     COCKPIT_WORKFLOW_AUTHORIZED,
     COCKPIT_WORKFLOW_PENDING,
@@ -42,6 +41,17 @@ from dashboard.institutional_ml_cockpit_render_guard import (
     summarize_coverage_snapshot_for_ui,
 )
 from dashboard.institutional_light_mode import OPERATIONAL_EVENTS_LIMIT
+from dashboard.institutional_ml_cockpit_visual import (
+    begin_section_shell,
+    end_section_shell,
+    inject_central_ml_visual_styles,
+    render_central_ml_header,
+    render_constitutional_chip_row,
+    render_metric_grid,
+    render_plan_list,
+    render_section_header,
+    render_verdict_banner,
+)
 from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
     build_operational_generation_scope_caption,
@@ -124,7 +134,7 @@ def _primary_format_label(diagnosis: dict[str, Any]) -> str:
 
 
 def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
-    st.markdown("#### 1. Diagnóstico geral da saída")
+    render_section_header(1, "Diagnóstico geral da saída", "O lote está saudável?")
     if not diagnosis.get("available"):
         st.info(str(diagnosis.get("headline") or "Aguardando gerações ML no PostgreSQL."))
         return
@@ -132,18 +142,20 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     if headline:
         st.caption(headline)
     metrics = dict(diagnosis.get("metrics") or {})
-    row1 = st.columns(4)
-    row1[0].metric("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0))
-    row1[1].metric("Sobreposição máxima", int(metrics.get("sobreposicao_maxima", 0) or 0))
-    row1[2].metric(
-        "Quase repetidos críticos",
-        int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0),
+    render_metric_grid(
+        [
+            ("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0)),
+            ("Sobreposição máxima", int(metrics.get("sobreposicao_maxima", 0) or 0)),
+            (
+                "Quase repetidos críticos",
+                int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0),
+            ),
+            ("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0)),
+            ("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0)),
+            ("Pares em atenção", int(metrics.get("pares_em_atencao", 0) or 0)),
+            ("Formato", _primary_format_label(diagnosis)),
+        ]
     )
-    row1[3].metric("Dezenas subcobertas", int(metrics.get("dezenas_subcobertas", 0) or 0))
-    row2 = st.columns(3)
-    row2[0].metric("Score diversidade", float(metrics.get("diversity_score", 0.0) or 0.0))
-    row2[1].metric("Pares em atenção", int(metrics.get("pares_em_atencao", 0) or 0))
-    row2[2].metric("Formato", _primary_format_label(diagnosis))
 
 
 def _render_diagnosis_technical_details(diagnosis: dict[str, Any]) -> None:
@@ -557,7 +569,7 @@ def _render_overlap_format_verdict(snapshot: dict[str, Any]) -> None:
                 )
 
 
-def _render_ml_verdict_block(snapshot: dict[str, Any]) -> None:
+def _render_ml_verdict_block(snapshot: dict[str, Any], *, operator_decision: str = "") -> None:
     coverage = dict(snapshot.get("coverage_evidence") or {})
     verdict = str(
         snapshot.get("ml_verdict")
@@ -583,16 +595,13 @@ def _render_ml_verdict_block(snapshot: dict[str, Any]) -> None:
         or coverage.get("next_action")
         or "—"
     )
-    if verdict in {"REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
-        st.error(f"**Veredito ML:** {verdict}")
-    elif verdict in {"PRECISA CALIBRAR", "APROVADO COM ALERTA"}:
-        st.warning(f"**Veredito ML:** {verdict}")
-    else:
-        st.success(f"**Veredito ML:** {verdict}")
-    cols = st.columns(2)
-    cols[0].markdown(f"**Motivo principal**  \n{reason}")
-    cols[1].markdown(f"**Liberação oficial**  \n{release_label}")
-    st.markdown(f"**Próxima ação**  \n{next_action}")
+    render_verdict_banner(
+        verdict=verdict,
+        reason=reason,
+        release_label=release_label,
+        next_action=next_action,
+        operator_decision=operator_decision or "—",
+    )
 
 
 def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
@@ -601,7 +610,7 @@ def _render_ml_verdict_card(snapshot: dict[str, Any]) -> None:
 
 
 def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
-    st.markdown("#### 2. Evidências e decisão")
+    render_section_header(2, "Evidências e decisão", "Posso seguir ou preciso calibrar?")
     coverage = dict(snapshot.get("coverage_evidence") or {})
     workflow = str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING)
 
@@ -609,8 +618,7 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
         st.info("Aguardando evidências da Cobertura Estrutural no PostgreSQL.")
         return
 
-    _render_ml_verdict_block(snapshot)
-    st.caption(f"Decisão operador: {_decision_status_label(workflow)}")
+    _render_ml_verdict_block(snapshot, operator_decision=_decision_status_label(workflow))
 
 
 def _render_decision_evidence_technical_details(snapshot: dict[str, Any]) -> None:
@@ -651,7 +659,7 @@ def _render_decision_evidence_technical_details(snapshot: dict[str, Any]) -> Non
 
 
 def _render_recommendation_card(snapshot: dict[str, Any]) -> None:
-    st.markdown("#### 3. Plano de calibração recomendado")
+    render_section_header(3, "Plano de calibração recomendado", "O que devo fazer?")
     plan_items = list(snapshot.get("plan_items") or [])
     calibration_plan = dict(snapshot.get("calibration_plan") or {})
     if not plan_items:
@@ -662,11 +670,7 @@ def _render_recommendation_card(snapshot: dict[str, Any]) -> None:
     policy_items = list(policy_plan.get("plan_items") or [])
     if not plan_items and policy_items and list(snapshot.get("policy_violations") or []):
         plan_items = policy_items
-    if plan_items:
-        for index, item in enumerate(plan_items, start=1):
-            st.markdown(f"{index}. {item}")
-    else:
-        st.caption("Nenhum plano pendente — aguardando evidências da Cobertura Estrutural.")
+    render_plan_list([str(item) for item in plan_items])
 
 
 def _render_impact_card(snapshot: dict[str, Any]) -> None:
@@ -694,7 +698,7 @@ def _render_command_card(
     supervised_active: bool,
     db_path: Any,
 ) -> None:
-    st.markdown("#### 4. Comando supervisionado")
+    render_section_header(4, "Comando supervisionado", "O que quero executar?")
     if not supervised_active:
         st.warning("Calibração supervisionada inativa — ative ML operacional CORE_002 (M-ML-054).")
         return
@@ -1135,9 +1139,12 @@ def _render_technical_audit_section(
     selected_ge_id: int = 0,
     selected_card_format: Any = None,
 ) -> None:
-    with st.expander("Auditoria Técnica", expanded=False):
-        st.caption(
-            f"{MISSION_UI_ID} — hierarquia, pools, mission IDs, traces e payloads preservados para rastreabilidade."
+    with st.expander("🛡️ Auditoria Técnica", expanded=False):
+        st.markdown('<div class="lotoia-cml-audit-marker"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lotoia-cml-audit-hint">Hierarquia, pools, mission IDs, traces e payloads — '
+            "preservados para rastreabilidade.</div>",
+            unsafe_allow_html=True,
         )
         if constitutional and operational_selection and selected_generation is not None:
             render_cockpit_block_safe(
@@ -1209,9 +1216,8 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     """Cockpit operacional da Central ML — central de decisão (M-UI-ML-001)."""
     _init_cockpit_session()
     supervised_active = is_supervised_output_calibration_active()
-
-    st.markdown(f"### {COCKPIT_TITLE}")
-    st.caption(COCKPIT_SUBTITLE)
+    inject_central_ml_visual_styles()
+    render_central_ml_header(subtitle=COCKPIT_SUBTITLE, supervised_active=supervised_active)
 
     operational_generations = load_operational_core_002_generations(
         db_path,
@@ -1261,9 +1267,7 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             "result": {},
         }
 
-    if supervised_active:
-        st.success(CALIBRATION_SUPERVISED_LABEL)
-    else:
+    if not supervised_active:
         st.warning("Calibração supervisionada inativa — verifique ML operacional CORE_002.")
 
     pre_gp_notice = build_central_ml_pre_gp_block_notice(snapshot)
@@ -1283,16 +1287,18 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
                 st.warning(quality_notice.get("message"))
 
     constitutional = dict(snapshot.get("constitutional_summary") or {})
-    status_cols = st.columns(4)
-    with status_cols[0]:
-        _render_status_chip("CORE_002", constitutional.get("core_002", "—"), tone="success")
-    with status_cols[1]:
-        _render_status_chip("Lei 15", constitutional.get("lei_15", "—"), tone="success")
-    with status_cols[2]:
-        tone = "success" if constitutional.get("calibracao_supervisionada") == "ATIVA" else "danger"
-        _render_status_chip("Calibração ML", constitutional.get("calibracao_supervisionada", "—"), tone=tone)
-    with status_cols[3]:
-        _render_status_chip("ML livre", "BLOQUEADA", tone="danger")
+    render_constitutional_chip_row(
+        [
+            ("CORE_002", str(constitutional.get("core_002", "—")), "success"),
+            ("Lei 15", str(constitutional.get("lei_15", "—")), "success"),
+            (
+                "Calibração ML",
+                str(constitutional.get("calibracao_supervisionada", "—")),
+                "success" if constitutional.get("calibracao_supervisionada") == "ATIVA" else "danger",
+            ),
+            ("ML livre", "BLOQUEADA", "danger"),
+        ]
+    )
 
     scope_caption = (
         str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL)
@@ -1312,33 +1318,37 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             if audit_rows:
                 display_cockpit_dataframe(audit_rows, max_rows=40)
 
-    with st.container(border=True):
-        render_cockpit_block_safe(
-            "diagnostico",
-            lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
-        )
+    begin_section_shell()
+    render_cockpit_block_safe(
+        "diagnostico",
+        lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
+    )
+    end_section_shell()
 
-    with st.container(border=True):
-        render_cockpit_block_safe(
-            "evidencias_decisao",
-            lambda: _render_decision_evidence_card(snapshot),
-        )
+    begin_section_shell()
+    render_cockpit_block_safe(
+        "evidencias_decisao",
+        lambda: _render_decision_evidence_card(snapshot),
+    )
+    end_section_shell()
 
-    with st.container(border=True):
-        render_cockpit_block_safe(
-            "recomendacoes",
-            lambda: _render_recommendation_card(snapshot),
-        )
+    begin_section_shell()
+    render_cockpit_block_safe(
+        "recomendacoes",
+        lambda: _render_recommendation_card(snapshot),
+    )
+    end_section_shell()
 
-    with st.container(border=True):
-        render_cockpit_block_safe(
-            "comando",
-            lambda: _render_command_card(
-                snapshot,
-                supervised_active=supervised_active,
-                db_path=db_path,
-            ),
-        )
+    begin_section_shell()
+    render_cockpit_block_safe(
+        "comando",
+        lambda: _render_command_card(
+            snapshot,
+            supervised_active=supervised_active,
+            db_path=db_path,
+        ),
+    )
+    end_section_shell()
 
     render_cockpit_block_safe(
         "auditoria_tecnica",

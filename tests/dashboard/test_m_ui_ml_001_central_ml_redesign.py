@@ -9,10 +9,10 @@ from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
 
 MAIN_SECTIONS = (
-    "#### 1. Diagnóstico geral da saída",
-    "#### 2. Evidências e decisão",
-    "#### 3. Plano de calibração recomendado",
-    "#### 4. Comando supervisionado",
+    "Diagnóstico geral da saída",
+    "Evidências e decisão",
+    "Plano de calibração recomendado",
+    "Comando supervisionado",
 )
 
 MOVED_TO_AUDIT_MARKERS = (
@@ -30,7 +30,7 @@ MOVED_TO_AUDIT_MARKERS = (
 
 
 def test_build_marker_v76() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v76"
+    assert BUILD_MARKER == "institutional-adm-runtime-v77"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
 
 
@@ -51,7 +51,7 @@ def test_main_layout_is_single_column_decision_flow() -> None:
 
 def test_technical_content_moved_to_collapsed_audit() -> None:
     audit_source = inspect.getsource(cockpit._render_technical_audit_section)
-    assert 'st.expander("Auditoria Técnica", expanded=False)' in audit_source
+    assert 'st.expander("🛡️ Auditoria Técnica", expanded=False)' in audit_source
     for marker in MOVED_TO_AUDIT_MARKERS:
         assert marker in audit_source
 
@@ -71,7 +71,7 @@ def test_decision_section_shows_verdict_without_duplicate_plan() -> None:
     decision_source = inspect.getsource(cockpit._render_decision_evidence_card)
     assert "Veredito ML" in decision_source or "_render_ml_verdict_block" in decision_source
     assert "Plano recomendado" not in decision_source
-    assert "Liberação oficial" in inspect.getsource(cockpit._render_ml_verdict_block)
+    assert "render_verdict_banner" in inspect.getsource(cockpit._render_ml_verdict_block)
 
 
 def test_mission_ui_id_declared() -> None:
