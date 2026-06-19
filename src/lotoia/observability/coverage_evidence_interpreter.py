@@ -26,6 +26,7 @@ from lotoia.ml.structural_auto_calibration import (
 )
 from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
     analyze_games_from_context_or_records,
@@ -568,6 +569,23 @@ def _load_structural_15d_pool_evidence(
     return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
 
 
+def _load_ml_operational_hierarchy_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
+
+
 def get_structural_coverage_evidence(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -790,6 +808,14 @@ def get_structural_coverage_evidence(
         metrics["structural_pool_size"] = int(
             ml_structural_15d_pool.get("structural_pool_size", 0) or 0
         )
+    ml_operational_hierarchy = _load_ml_operational_hierarchy_evidence(db_path, ge_ids)
+    if ml_operational_hierarchy:
+        metrics["hierarchy_applied"] = bool(ml_operational_hierarchy.get("hierarchy_applied"))
+        metrics["hierarchy_compliance"] = bool(ml_operational_hierarchy.get("hierarchy_compliance"))
+        metrics["ml_hierarchy_version"] = str(
+            ml_operational_hierarchy.get("ml_hierarchy_version") or ""
+        )
+        metrics["current_stage"] = str(ml_operational_hierarchy.get("current_stage") or "")
 
     return {
         "available": True,
@@ -868,4 +894,11 @@ def get_structural_coverage_evidence(
         "pool_origin": str(ml_structural_15d_pool.get("pool_origin") or ""),
         "structural_pool_applied": bool(ml_structural_15d_pool.get("structural_pool_applied")),
         "structural_pool_size": int(ml_structural_15d_pool.get("structural_pool_size", 0) or 0),
+        "ml_operational_hierarchy": ml_operational_hierarchy,
+        "ml_hierarchy_version": str(ml_operational_hierarchy.get("ml_hierarchy_version") or ""),
+        "ml_hierarchy_status": str(ml_operational_hierarchy.get("ml_hierarchy_status") or ""),
+        "hierarchy_compliance": bool(ml_operational_hierarchy.get("hierarchy_compliance")),
+        "current_stage": str(ml_operational_hierarchy.get("current_stage") or ""),
+        "stage_results": dict(ml_operational_hierarchy.get("stage_results") or {}),
+        "stage_failures": list(ml_operational_hierarchy.get("stage_failures") or []),
     }

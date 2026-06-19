@@ -169,6 +169,7 @@ from dashboard.institutional_operational_structural_coverage import (
     load_operational_core_002_generations,
     load_pre_final_pool_coverage_summary,
     load_structural_15d_pool_coverage_summary,
+    load_ml_operational_hierarchy_coverage_summary,
     sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
@@ -9095,6 +9096,35 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                 f"compliance={float(structural_pool_summary.get('compliance_rate', 0.0) or 0.0):.2%} | "
                 f"confronto={int(confronto.get('reference_contest_window', 10) or 10)} concursos"
             )
+        hierarchy_summary = load_ml_operational_hierarchy_coverage_summary(DB_PATH, selected_ge_id)
+        if hierarchy_summary.get("hierarchy_applied"):
+            stage_results = dict(hierarchy_summary.get("stage_results") or {})
+            stage_lines = []
+            for stage_id in (
+                "conformidade_estrutural",
+                "diversidade",
+                "cobertura",
+                "fechamento_gp",
+                "validacao_final",
+            ):
+                row = dict(stage_results.get(stage_id) or {})
+                if row:
+                    stage_lines.append(
+                        f"{row.get('stage_label', stage_id)}: {row.get('status', '—')}"
+                    )
+            st.info(
+                "Hierarquia Operacional ML: "
+                f"versão={hierarchy_summary.get('ml_hierarchy_version', '—')} | "
+                f"etapa atual={hierarchy_summary.get('current_stage', '—')} | "
+                f"compliance={'SIM' if hierarchy_summary.get('hierarchy_compliance') else 'NÃO'}"
+            )
+            if stage_lines:
+                st.caption(" • ".join(stage_lines))
+            if hierarchy_summary.get("blocking_reason"):
+                st.warning(
+                    f"Bloqueio hierárquico: {hierarchy_summary.get('blocking_reason')} | "
+                    f"Ação: {', '.join(hierarchy_summary.get('corrective_action_applied') or []) or '—'}"
+                )
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
@@ -11776,12 +11806,16 @@ def _persist_clean_law15_generation_history(
     }
     from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
     from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+    from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
 
     _pre_final_trace = build_pre_final_pool_trace(
         dict(result.get("pre_final_pool_ml_calibration") or result.get("calibration_bundle") or {})
     )
     _structural_pool_trace = build_structural_15d_pool_trace(
         dict(result.get("ml_structural_15d_pool") or {})
+    )
+    _hierarchy_trace = build_ml_operational_hierarchy_trace(
+        dict(result.get("ml_operational_hierarchy") or {})
     )
     generation_context.update(
         {
@@ -11818,6 +11852,19 @@ def _persist_clean_law15_generation_history(
             "structural_pool_confronto": dict(_structural_pool_trace.get("confronto_recent_contests") or {}),
             "structural_pool_metrics_before": dict(_structural_pool_trace.get("metrics_before") or {}),
             "structural_pool_metrics_after": dict(_structural_pool_trace.get("metrics_after") or {}),
+            "ml_operational_hierarchy": _hierarchy_trace,
+            "ml_hierarchy_version": str(_hierarchy_trace.get("ml_hierarchy_version") or ""),
+            "ml_hierarchy_status": str(_hierarchy_trace.get("ml_hierarchy_status") or ""),
+            "current_stage": str(_hierarchy_trace.get("current_stage") or ""),
+            "last_completed_stage": str(_hierarchy_trace.get("last_completed_stage") or ""),
+            "stage_results": dict(_hierarchy_trace.get("stage_results") or {}),
+            "stage_failures": list(_hierarchy_trace.get("stage_failures") or []),
+            "hierarchy_compliance": bool(_hierarchy_trace.get("hierarchy_compliance")),
+            "gp_closure_allowed": bool(_hierarchy_trace.get("gp_closure_allowed")),
+            "hierarchy_blocking_reason": str(_hierarchy_trace.get("blocking_reason") or ""),
+            "hierarchy_corrective_action_applied": list(
+                _hierarchy_trace.get("corrective_action_applied") or []
+            ),
         }
     )
     try:
