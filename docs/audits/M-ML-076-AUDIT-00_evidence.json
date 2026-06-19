@@ -1,0 +1,380 @@
+{
+  "mission_id": "M-ML-076-AUDIT-00",
+  "generated_at": "2026-06-19T22:30:28.912111+00:00",
+  "classification": "D",
+  "classification_note": "Hits interferem no veredito/liberação quando combinados com redundância alta (similaridade ≥ 0,55 ou quase repetidos ≥ limiar).",
+  "hits_interfere_liberacao": true,
+  "institutional_rule_validated": "Veredito estrutural decide liberação operacional. Hits e capturas históricas devem ficar apenas para Histórico Analítico, Conferir Resultados e Backtesting.",
+  "gap_found": "Regra captura_ausente_redundancia em ml_operational_verdict.py combina ausência de hits com redundância alta para elevar veredito a PRECISA CALIBRAR.",
+  "synthetic_scenarios": [
+    {
+      "label": "GP:20 15D saudável estrutural, zero hits",
+      "metrics": {
+        "similaridade_media": 0.42,
+        "sobreposicao_maxima": 10,
+        "quase_repetidos_criticos": 2,
+        "pares_em_atencao": 4,
+        "dezenas_subcobertas": 0,
+        "diversity_score": 0.58,
+        "total_jogos": 20,
+        "desempenho_13_hits": 0,
+        "desempenho_14_hits": 0,
+        "desempenho_15_hits": 0,
+        "formatos_analisados": [
+          15
+        ],
+        "primary_format_size": 15
+      },
+      "counterfactual": {
+        "current_verdict": "APROVADO",
+        "structural_only_verdict": "APROVADO",
+        "current_release": true,
+        "structural_only_release": true,
+        "verdict_differs": false,
+        "release_differs": false,
+        "current_reason": "Sem bloqueios estruturais.",
+        "structural_only_reason": "Sem bloqueios estruturais.",
+        "rule_triggers": [],
+        "reason_has_capture_phrase": false
+      },
+      "interpretation": {
+        "capture_decision_blocks": 1,
+        "capture_in_plan": true,
+        "plan_items_count": 2,
+        "primary_decision": {
+          "issue_type": "captura_13_14_ausente",
+          "problema_detectado": "Baixa força de captura 13/14 na janela comparada.",
+          "evidencia": "Jogos com 13 hits: 0; 14 hits: 0; 15 hits: 0.",
+          "causa_provavel": "Ausência de proximidade forte contra referência oficial recente.",
+          "acao_recomendada": "Combinar reforço de diversidade, dezenas subcobertas e redução de redundância.",
+          "impacto_esperado": "Melhorar capacidade de aproximação estrutural sem clones.",
+          "severidade": "media",
+          "status": "detectado",
+          "parametros_sugeridos": {
+            "diversity_floor_boost": 1.1,
+            "missing_numbers_boost": 1.1,
+            "redundancy_penalty_boost": 1.1
+          },
+          "trace": {
+            "mission_id": "M-ML-VIS-058",
+            "issue_type": "captura_13_14_ausente",
+            "severidade": "media",
+            "responsible_agent": "agent_estatistico",
+            "support_agents": [
+              "agent_ml",
+              "agent_qualidade"
+            ],
+            "agent_routing_mission_id": "M-GOV-AGENTS-002"
+          },
+          "responsible_agent": "agent_estatistico",
+          "support_agents": [
+            "agent_ml",
+            "agent_qualidade"
+          ],
+          "routing_reason": "Baixa força de captura nas bases 13/14",
+          "agent_routing_matrix_version": "M-GOV-AGENTS-002-v1"
+        }
+      }
+    },
+    {
+      "label": "GP:20 15D redundância alta, zero hits (gatilho captura)",
+      "metrics": {
+        "similaridade_media": 0.58,
+        "sobreposicao_maxima": 12,
+        "quase_repetidos_criticos": 25,
+        "pares_em_atencao": 18,
+        "dezenas_subcobertas": 2,
+        "diversity_score": 0.42,
+        "total_jogos": 20,
+        "desempenho_13_hits": 0,
+        "desempenho_14_hits": 0,
+        "desempenho_15_hits": 0,
+        "formatos_analisados": [
+          15
+        ],
+        "primary_format_size": 15
+      },
+      "counterfactual": {
+        "current_verdict": "PRECISA CALIBRAR",
+        "structural_only_verdict": "PRECISA CALIBRAR",
+        "current_release": false,
+        "structural_only_release": false,
+        "verdict_differs": false,
+        "release_differs": false,
+        "current_reason": "quase repetidos altos (25). ausência de captura 13/14/15 com redundância alta",
+        "structural_only_reason": "quase repetidos altos (25)",
+        "rule_triggers": [
+          "quase_repetidos_alto",
+          "captura_ausente_redundancia",
+          "calibracao_nao_aplicada"
+        ],
+        "reason_has_capture_phrase": true
+      },
+      "interpretation": {
+        "capture_decision_blocks": 1,
+        "capture_in_plan": true,
+        "plan_items_count": 7,
+        "primary_decision": {
+          "issue_type": "similaridade_media_gp_elevada",
+          "problema_detectado": "Jogos parecidos demais.",
+          "evidencia": "Similaridade média 0.580; sobreposição média —; quase repetidos críticos 25; pares em atenção 18.",
+          "causa_provavel": "Pool com estruturas muito próximas entre cartões.",
+          "acao_recomendada": "Aumentar penalidade de similaridade/overlap no rerank supervisionado.",
+          "impacto_esperado": "Separar cartões similares e reduzir redundância na próxima geração.",
+          "severidade": "media",
+          "status": "detectado",
+          "parametros_sugeridos": {
+            "redundancy_penalty_boost": 1.2
+          },
+          "trace": {
+            "mission_id": "M-ML-VIS-058",
+            "issue_type": "similaridade_media_gp_elevada",
+            "severidade": "media",
+            "responsible_agent": "agent_estatistico",
+            "support_agents": [
+              "agent_ml"
+            ],
+            "agent_routing_mission_id": "M-GOV-AGENTS-002"
+          },
+          "responsible_agent": "agent_estatistico",
+          "support_agents": [
+            "agent_ml"
+          ],
+          "routing_reason": "Similaridade média elevada no pool",
+          "agent_routing_matrix_version": "M-GOV-AGENTS-002-v1"
+        }
+      }
+    },
+    {
+      "label": "GP:20 15D redundância alta, com hits 13",
+      "metrics": {
+        "similaridade_media": 0.58,
+        "sobreposicao_maxima": 12,
+        "quase_repetidos_criticos": 25,
+        "pares_em_atencao": 18,
+        "dezenas_subcobertas": 2,
+        "diversity_score": 0.42,
+        "total_jogos": 20,
+        "desempenho_13_hits": 3,
+        "desempenho_14_hits": 0,
+        "desempenho_15_hits": 0,
+        "formatos_analisados": [
+          15
+        ],
+        "primary_format_size": 15
+      },
+      "counterfactual": {
+        "current_verdict": "PRECISA CALIBRAR",
+        "structural_only_verdict": "PRECISA CALIBRAR",
+        "current_release": false,
+        "structural_only_release": false,
+        "verdict_differs": false,
+        "release_differs": false,
+        "current_reason": "quase repetidos altos (25)",
+        "structural_only_reason": "quase repetidos altos (25)",
+        "rule_triggers": [
+          "quase_repetidos_alto",
+          "calibracao_nao_aplicada"
+        ],
+        "reason_has_capture_phrase": false
+      },
+      "interpretation": {
+        "capture_decision_blocks": 0,
+        "capture_in_plan": false,
+        "plan_items_count": 6,
+        "primary_decision": {
+          "issue_type": "similaridade_media_gp_elevada",
+          "problema_detectado": "Jogos parecidos demais.",
+          "evidencia": "Similaridade média 0.580; sobreposição média —; quase repetidos críticos 25; pares em atenção 18.",
+          "causa_provavel": "Pool com estruturas muito próximas entre cartões.",
+          "acao_recomendada": "Aumentar penalidade de similaridade/overlap no rerank supervisionado.",
+          "impacto_esperado": "Separar cartões similares e reduzir redundância na próxima geração.",
+          "severidade": "media",
+          "status": "detectado",
+          "parametros_sugeridos": {
+            "redundancy_penalty_boost": 1.2
+          },
+          "trace": {
+            "mission_id": "M-ML-VIS-058",
+            "issue_type": "similaridade_media_gp_elevada",
+            "severidade": "media",
+            "responsible_agent": "agent_estatistico",
+            "support_agents": [
+              "agent_ml"
+            ],
+            "agent_routing_mission_id": "M-GOV-AGENTS-002"
+          },
+          "responsible_agent": "agent_estatistico",
+          "support_agents": [
+            "agent_ml"
+          ],
+          "routing_reason": "Similaridade média elevada no pool",
+          "agent_routing_matrix_version": "M-GOV-AGENTS-002-v1"
+        }
+      }
+    },
+    {
+      "label": "GP:20 15D crítico estrutural (overlap), zero hits",
+      "metrics": {
+        "similaridade_media": 0.72,
+        "sobreposicao_maxima": 14,
+        "quase_repetidos_criticos": 40,
+        "pares_em_atencao": 30,
+        "dezenas_subcobertas": 4,
+        "diversity_score": 0.28,
+        "total_jogos": 20,
+        "desempenho_13_hits": 0,
+        "desempenho_14_hits": 0,
+        "desempenho_15_hits": 0,
+        "formatos_analisados": [
+          15
+        ],
+        "primary_format_size": 15
+      },
+      "counterfactual": {
+        "current_verdict": "REPROVADO",
+        "structural_only_verdict": "REPROVADO",
+        "current_release": false,
+        "structural_only_release": false,
+        "verdict_differs": false,
+        "release_differs": false,
+        "current_reason": "sobreposição máxima 14 em lote com 15D + quase repetidos 40.",
+        "structural_only_reason": "sobreposição máxima 14 em lote com 15D + quase repetidos 40.",
+        "rule_triggers": [
+          "overlap_ruim_formato",
+          "similaridade_critica_formato",
+          "quase_repetidos_alto",
+          "captura_ausente_redundancia",
+          "calibracao_nao_aplicada"
+        ],
+        "reason_has_capture_phrase": false
+      },
+      "interpretation": {
+        "capture_decision_blocks": 1,
+        "capture_in_plan": true,
+        "plan_items_count": 8,
+        "primary_decision": {
+          "issue_type": "similaridade_media_gp_elevada",
+          "problema_detectado": "Jogos parecidos demais.",
+          "evidencia": "Similaridade média 0.720; sobreposição média —; quase repetidos críticos 40; pares em atenção 30.",
+          "causa_provavel": "Pool com estruturas muito próximas entre cartões.",
+          "acao_recomendada": "Aumentar penalidade de similaridade/overlap no rerank supervisionado.",
+          "impacto_esperado": "Separar cartões similares e reduzir redundância na próxima geração.",
+          "severidade": "alta",
+          "status": "detectado",
+          "parametros_sugeridos": {
+            "redundancy_penalty_boost": 1.2
+          },
+          "trace": {
+            "mission_id": "M-ML-VIS-058",
+            "issue_type": "similaridade_media_gp_elevada",
+            "severidade": "alta",
+            "responsible_agent": "agent_estatistico",
+            "support_agents": [
+              "agent_ml"
+            ],
+            "agent_routing_mission_id": "M-GOV-AGENTS-002"
+          },
+          "responsible_agent": "agent_estatistico",
+          "support_agents": [
+            "agent_ml"
+          ],
+          "routing_reason": "Similaridade média elevada no pool",
+          "agent_routing_matrix_version": "M-GOV-AGENTS-002-v1"
+        }
+      }
+    },
+    {
+      "label": "GP:20 15D limítrofe — redundância leve + zero hits (gatilho exclusivo captura)",
+      "metrics": {
+        "similaridade_media": 0.56,
+        "sobreposicao_maxima": 10,
+        "quase_repetidos_criticos": 2,
+        "pares_em_atencao": 4,
+        "dezenas_subcobertas": 0,
+        "diversity_score": 0.44,
+        "total_jogos": 20,
+        "desempenho_13_hits": 0,
+        "desempenho_14_hits": 0,
+        "desempenho_15_hits": 0,
+        "formatos_analisados": [
+          15
+        ],
+        "primary_format_size": 15
+      },
+      "counterfactual": {
+        "current_verdict": "PRECISA CALIBRAR",
+        "structural_only_verdict": "APROVADO",
+        "current_release": false,
+        "structural_only_release": true,
+        "verdict_differs": true,
+        "release_differs": true,
+        "current_reason": "ausência de captura 13/14/15 com redundância alta",
+        "structural_only_reason": "Sem bloqueios estruturais.",
+        "rule_triggers": [
+          "captura_ausente_redundancia",
+          "calibracao_nao_aplicada"
+        ],
+        "reason_has_capture_phrase": true
+      },
+      "interpretation": {
+        "capture_decision_blocks": 1,
+        "capture_in_plan": true,
+        "plan_items_count": 4,
+        "primary_decision": {
+          "issue_type": "similaridade_media_gp_elevada",
+          "problema_detectado": "Jogos parecidos demais.",
+          "evidencia": "Similaridade média 0.560; sobreposição média —; quase repetidos críticos 2; pares em atenção 4.",
+          "causa_provavel": "Pool com estruturas muito próximas entre cartões.",
+          "acao_recomendada": "Aumentar penalidade de similaridade/overlap no rerank supervisionado.",
+          "impacto_esperado": "Separar cartões similares e reduzir redundância na próxima geração.",
+          "severidade": "media",
+          "status": "detectado",
+          "parametros_sugeridos": {
+            "redundancy_penalty_boost": 1.2
+          },
+          "trace": {
+            "mission_id": "M-ML-VIS-058",
+            "issue_type": "similaridade_media_gp_elevada",
+            "severidade": "media",
+            "responsible_agent": "agent_estatistico",
+            "support_agents": [
+              "agent_ml"
+            ],
+            "agent_routing_mission_id": "M-GOV-AGENTS-002"
+          },
+          "responsible_agent": "agent_estatistico",
+          "support_agents": [
+            "agent_ml"
+          ],
+          "routing_reason": "Similaridade média elevada no pool",
+          "agent_routing_matrix_version": "M-GOV-AGENTS-002-v1"
+        }
+      }
+    }
+  ],
+  "recent_ge_audits": [],
+  "db_error": "",
+  "audited_files": [
+    "src/lotoia/ml/ml_operational_verdict.py",
+    "src/lotoia/observability/coverage_evidence_interpreter.py",
+    "src/lotoia/observability/card_structure_diagnostics.py",
+    "src/lotoia/statistics/card_structure.py",
+    "src/lotoia/operations/lot_operational_status.py",
+    "src/lotoia/ml/ml_operational_hierarchy.py",
+    "src/lotoia/governance/institutional_agent_routing_matrix.py",
+    "dashboard/institutional_ml_calibration_cockpit.py"
+  ],
+  "commands": [
+    "python scripts/audits/m_ml_076_audit_00_structural_vs_hits.py",
+    "python -m pytest tests/audits/test_m_ml_076_audit_00_structural_vs_hits.py -q"
+  ],
+  "functional_integrity": {
+    "core_002_intact": true,
+    "lei_15_intact": true,
+    "lei_15a_intact": true,
+    "public_app_intact": true,
+    "purge_executed": false,
+    "code_changes_to_verdict": false
+  }
+}
