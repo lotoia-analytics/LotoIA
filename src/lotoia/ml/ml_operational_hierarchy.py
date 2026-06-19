@@ -133,6 +133,7 @@ def build_gp_quality_classification(
     stage_results: Mapping[str, Any],
     *,
     stage_failures: Sequence[str] | None = None,
+    calibration_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     tier = derive_gp_quality_tier(stage_results)
     reasons = list(stage_failures or [])
@@ -142,6 +143,10 @@ def build_gp_quality_classification(
             if not row.get("passed"):
                 reasons.extend(list(row.get("failures") or [])[:3])
     diversity_metrics = dict(dict(stage_results.get(STAGE_DIVERSITY) or {}).get("metrics") or {})
+    plan_loaded = bool(
+        (calibration_plan or {}).get("calibration_plan_loaded_from_db")
+        or (calibration_plan or {}).get("authorized")
+    )
     return {
         "mission_id": QUALITY_CLASSIFIER_MISSION_ID,
         "gp_quality_tier": tier,
@@ -150,6 +155,11 @@ def build_gp_quality_classification(
         "diversity_score": diversity_metrics.get("diversity_score"),
         "similarity_score": diversity_metrics.get("similarity_score"),
         "max_overlap": diversity_metrics.get("max_overlap"),
+        "calibration_plan_applied": plan_loaded,
+        "calibration_trace_id": str((calibration_plan or {}).get("calibration_trace_id") or ""),
+        "calibration_plan_source_generation_event_id": int(
+            (calibration_plan or {}).get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
     }
 
 
@@ -629,23 +639,34 @@ def execute_ml_operational_hierarchy(
     baseline_pool = [dict(game) for game in pool]
 
     if is_structural_policy_15d_format(int(game_size)):
+        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
+
+        module_params = extract_module_operational_params(calibration_plan)
+        pool_policy = dict((calibration_plan or {}).get("parametros_sugeridos") or {})
         pool, structural_pool_bundle = build_ml_structural_15d_pool(
             pool,
             history=history,
             seed=seed,
+            policy=pool_policy or None,
+            calibration_plan=calibration_plan,
+            module_params=module_params.get("modules", {}).get("M-ML-072"),
         )
         if structural_pool_bundle.get("structural_pool_applied"):
             corrective_actions.append("pool_estrutural_15d_expandido")
 
     diverse_top_slice_bundle: dict[str, Any] = {}
     if is_structural_policy_15d_format(int(game_size)) and int(requested_count) > 0:
+        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
         from lotoia.statistics.diverse_top_slice_selection import apply_diverse_top_slice_pre_gp
 
+        module_params = extract_module_operational_params(calibration_plan)
         pool, diverse_top_slice_bundle = apply_diverse_top_slice_pre_gp(
             pool,
             game_size=int(game_size),
             requested_count=int(requested_count),
             batch_label=batch_label,
+            calibration_plan=calibration_plan,
+            module_params=module_params.get("modules", {}).get("M-STAT-002"),
         )
         if diverse_top_slice_bundle.get("diverse_top_slice_applied"):
             corrective_actions.append("selecao_top_slice_diversidade_m_stat_002")
@@ -713,7 +734,11 @@ def execute_ml_operational_hierarchy(
         stage_results.get(stage_id, {}).get("passed") for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
     )
     gp_closure_allowed = pre_gp_stages_passed
-    gp_quality = build_gp_quality_classification(stage_results, stage_failures=stage_failures)
+    gp_quality = build_gp_quality_classification(
+        stage_results,
+        stage_failures=stage_failures,
+        calibration_plan=calibration_plan,
+    )
     gp_quality_tier = str(gp_quality.get("gp_quality_tier") or QUALITY_TIER_APROVADO)
     gp_delivery_blocked, critical_delivery_reasons = is_critical_gp_delivery_block(pool, stage_results)
     current_stage = STAGE_GP_CLOSURE
