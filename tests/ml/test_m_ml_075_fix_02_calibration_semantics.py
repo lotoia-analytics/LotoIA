@@ -310,4 +310,4 @@ def test_result_card_ui_fields_not_ambiguous() -> None:
 
 
 def test_build_marker_v74() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v79"
+    assert BUILD_MARKER == "institutional-adm-runtime-v80"

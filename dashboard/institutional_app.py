@@ -267,6 +267,16 @@ from dashboard.institutional_light_mode import (
     request_lazy_load,
     set_light_mode_enabled,
 )
+from dashboard.institutional_conference_runtime import (
+    CONFERENCE_LOTS_PAGE_SIZE,
+    SESSION_CONFERENCE_PAGE,
+    SESSION_CONFERENCE_SELECTED_GE,
+    default_conference_generation_event_id,
+    format_conference_lot_label,
+    paginate_conference_lots,
+    read_cached_conference_result,
+    store_cached_conference_result,
+)
 from lotoia.governance.law15_structural_realignment_v1 import get_realignment_mode
 from lotoia.governance.lei15_15a_core_realignment_v2 import get_v2_mode
 from lotoia.governance.lei15_core_002_sovereign import (
@@ -1497,6 +1507,7 @@ def _cached_persisted_generation_event_groups(
     conference_eligible_only: bool,
     limit: int | None,
     summary_only: bool,
+    generation_event_id: int | None,
 ) -> list[dict[str, Any]]:
     return _load_persisted_generation_event_groups(
         batch_id,
@@ -1504,6 +1515,58 @@ def _cached_persisted_generation_event_groups(
         conference_eligible_only=conference_eligible_only,
         limit=limit,
         summary_only=summary_only,
+        generation_event_id=generation_event_id,
+        use_cache=False,
+    )
+
+
+def _pick_latest_valid_conference_contest_from_records(
+    records: Sequence[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Seleciona o maior concurso válido a partir de registros imported_contests."""
+    valid_payloads = [
+        payload
+        for record in records
+        if (payload := to_conference_contest_payload(record)) is not None
+        and _is_valid_conference_contest(payload)
+    ]
+    if not valid_payloads:
+        return None
+    return max(valid_payloads, key=lambda payload: int(payload.get("contest_number", 0) or 0))
+
+
+def _load_recent_imported_contest_records(*, limit: int = 64) -> list[dict[str, Any]]:
+    """Consulta limitada — evita carregar todo histórico de concursos (M-PERF-CONFERIR-001)."""
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(ImportedContest)
+            .filter(ImportedContest.contest_number > 0)
+            .order_by(ImportedContest.contest_number.desc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        contest_number = int(getattr(row, "contest_number", 0) or 0)
+        if contest_number <= 0:
+            continue
+        records.append(
+            {
+                "contest_number": contest_number,
+                "data": str(getattr(row, "data", "") or ""),
+                "dezenas": _extract_int_numbers(str(getattr(row, "dezenas", "") or "")),
+                "metadata_json": str(getattr(row, "metadata_json", "{}") or ""),
+            }
+        )
+    return records
+
+
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
+def _cached_latest_official_conference_contest(db_path_key: str) -> dict[str, Any] | None:
+    """Último concurso válido — consulta limitada com cache (M-PERF-CONFERIR-001)."""
+    _ = db_path_key
+    return _pick_latest_valid_conference_contest_from_records(
+        _load_recent_imported_contest_records(limit=64)
     )
 
 
@@ -1512,6 +1575,7 @@ def _invalidate_operational_structural_cache() -> None:
     _cached_operational_core_002_generations.clear()
     _cached_operational_card_structure_diagnostics_from_db.clear()
     _cached_persisted_generation_event_groups.clear()
+    _cached_latest_official_conference_contest.clear()
     _cached_scientific_context_indexes.clear()
 
 
@@ -6248,9 +6312,11 @@ def _load_persisted_generation_event_groups(
     conference_eligible_only: bool = False,
     limit: int | None = None,
     summary_only: bool = False,
+    generation_event_id: int | None = None,
     use_cache: bool = True,
 ) -> list[dict[str, Any]]:
     resolved_batch_id = str(batch_id or "").strip()
+    resolved_ge_id = _safe_int(generation_event_id, default=None)
     if use_cache and not summary_only:
         return _cached_persisted_generation_event_groups(
             str(DB_PATH),
@@ -6259,6 +6325,7 @@ def _load_persisted_generation_event_groups(
             conference_eligible_only,
             limit,
             summary_only,
+            resolved_ge_id,
         )
     return _load_persisted_generation_event_groups_uncached(
         batch_id,
@@ -6266,6 +6333,7 @@ def _load_persisted_generation_event_groups(
         conference_eligible_only=conference_eligible_only,
         limit=limit,
         summary_only=summary_only,
+        generation_event_id=resolved_ge_id,
     )
 
 
@@ -6276,18 +6344,24 @@ def _load_persisted_generation_event_groups_uncached(
     conference_eligible_only: bool = False,
     limit: int | None = None,
     summary_only: bool = False,
+    generation_event_id: int | None = None,
 ) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     resolved_batch_id = str(batch_id or "").strip()
+    resolved_ge_id = _safe_int(generation_event_id, default=None)
     resolved_limit = int(limit) if limit is not None and int(limit) > 0 else None
     scan_limit = None
-    if resolved_limit is not None and not resolved_batch_id:
+    if resolved_ge_id is not None and resolved_ge_id > 0:
+        scan_limit = 1
+    elif resolved_limit is not None and not resolved_batch_id:
         scan_limit = max(resolved_limit * 3, resolved_limit, CONFERENCE_EVENTS_LIMIT)
     with get_session(DB_PATH) as session:
         events_query = session.query(GenerationEvent).order_by(
             GenerationEvent.created_at.desc(),
             GenerationEvent.id.desc(),
         )
+        if resolved_ge_id is not None and resolved_ge_id > 0:
+            events_query = events_query.filter(GenerationEvent.id == int(resolved_ge_id))
         if scan_limit is not None:
             events_query = events_query.limit(scan_limit)
         events = events_query.all()
@@ -6493,27 +6567,59 @@ def _run_institutional_conference(
             "selected_contest": int(selected_contest or 0),
         }
         return
-    all_persisted_groups = _load_persisted_generation_event_groups(
-        batch_id=selected_batch_id or None,
-        conference_eligible_only=False,
-        limit=None,
-        summary_only=False,
-        use_cache=False,
-    )
-    grouped_generations = [
-        group
-        for group in all_persisted_groups
-        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
-    ]
-    if not all_persisted_groups:
-        st.session_state["institutional_check_result"] = {
-            "warning": (
-                "Sem lote persistido para conferir. Ação bloqueada por Lei 001. "
-                "Use Simulação Institucional para laboratório histórico."
+
+    if conference_all_official:
+        selected_generation_event_id = (
+            _safe_int(generation_event_id, default=None)
+            or default_conference_generation_event_id(
+                _load_persisted_generation_event_groups(
+                    conference_eligible_only=True,
+                    limit=CONFERENCE_EVENTS_LIMIT,
+                    summary_only=True,
+                    use_cache=False,
+                )
             )
-        }
-        return
+        )
+
+    resolved_ge_id = _safe_int(generation_event_id, default=None) or _safe_int(
+        selected_generation_event_id,
+        default=None,
+    )
+    if resolved_ge_id is not None and resolved_ge_id > 0:
+        grouped_generations = [
+            group
+            for group in _load_persisted_generation_event_groups(
+                generation_event_id=resolved_ge_id,
+                summary_only=False,
+                use_cache=True,
+            )
+            if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
+        ]
+    else:
+        grouped_generations = _load_persisted_generation_event_groups(
+            batch_id=selected_batch_id or None,
+            conference_eligible_only=True,
+            limit=1,
+            summary_only=False,
+            use_cache=True,
+        )
+
     if not grouped_generations:
+        persisted_probe = _load_persisted_generation_event_groups(
+            batch_id=selected_batch_id or None,
+            conference_eligible_only=False,
+            limit=1,
+            summary_only=True,
+            use_cache=False,
+        )
+        if not persisted_probe:
+            st.session_state["institutional_check_result"] = {
+                "warning": (
+                    "Sem lote persistido para conferir. Ação bloqueada por Lei 001. "
+                    "Use Simulação Institucional para laboratório histórico."
+                )
+            }
+            return
         st.session_state["institutional_check_result"] = {
             "warning": (
                 "Sem lote oficial liberado para conferir. Lotes bloqueados pelo Veredito ML permanecem "
@@ -6521,31 +6627,17 @@ def _run_institutional_conference(
             )
         }
         return
-    if selected_generation_event_id is None:
-        selected_generation_event_id = _get_latest_unreconciled_generation_event_id(batch_id=selected_batch_id or None)
-        if selected_generation_event_id is not None:
-            st.session_state["active_reconciliation_generation_event_id"] = selected_generation_event_id
+
+    if resolved_ge_id is not None and resolved_ge_id > 0:
+        selected_generation_event_id = resolved_ge_id
+        st.session_state["active_reconciliation_generation_event_id"] = resolved_ge_id
+        st.session_state[SESSION_CONFERENCE_SELECTED_GE] = resolved_ge_id
+
     generation_results: list[dict[str, Any]] = []
     total_prizes = 0
     total_hits = 0
     best_hits_global = 0
-    selected_generation_groups = grouped_generations
-    if conference_all_official:
-        selected_generation_groups = grouped_generations
-    elif selected_generation_event_id is not None:
-        selected_generation_groups = [
-            group
-            for group in grouped_generations
-            if int(group.get("generation_event_id", 0) or 0) == int(selected_generation_event_id or 0)
-        ]
-    elif selected_batch_id:
-        selected_generation_groups = [
-            group
-            for group in grouped_generations
-            if str(group.get("batch_id", "") or "").strip() == selected_batch_id
-        ]
-    if not selected_generation_groups and grouped_generations and not conference_all_official:
-        selected_generation_groups = grouped_generations[:1]
+    selected_generation_groups = grouped_generations[:1]
 
     for group in selected_generation_groups:
         group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
@@ -6748,6 +6840,15 @@ def _run_institutional_conference(
         "strong_near_miss_memory": strong_near_miss_payload,
         "selected_contest": int(official_contest.get("concurso", 0) or 0),
     }
+    check_payload = dict(st.session_state["institutional_check_result"])
+    cache_ge_id = int(check_payload.get("generation_event_id", 0) or selected_generation_event_id or 0)
+    cache_contest = int(check_payload.get("contest_number", 0) or 0)
+    if cache_ge_id > 0 and cache_contest > 0:
+        store_cached_conference_result(
+            generation_event_id=cache_ge_id,
+            contest_number=cache_contest,
+            check_result=check_payload,
+        )
 
 
 def _run_simulation_lot_generation(*, requested_count: int, selected_card_format: int) -> dict[str, Any]:
@@ -11799,19 +11900,9 @@ def _resolve_latest_official_conference_contest() -> dict[str, Any] | None:
     """Último concurso OFICIAL VÁLIDO em imported_contests (PostgreSQL — Lei 001).
 
     Válido = contest_number > 0 e exatamente 15 dezenas oficiais persistidas
-    (M-OPS-062-FIX-03). Não usa fallback fake/incompleto, não usa normalização
-    parcial de registro e não usa session_state/cache como verdade. Retorna
-    ``None`` quando não há concurso válido — a tela deve bloquear a conferência
-    e orientar a sincronização.
+    (M-OPS-062-FIX-03). Consulta limitada com cache (M-PERF-CONFERIR-001).
     """
-    valid_payloads = [
-        payload
-        for record in _list_all_imported_contest_records()
-        if (payload := to_conference_contest_payload(record)) is not None
-    ]
-    if not valid_payloads:
-        return None
-    return max(valid_payloads, key=lambda payload: int(payload.get("contest_number", 0) or 0))
+    return _cached_latest_official_conference_contest(str(DB_PATH.resolve()))
 
 
 def _persist_clean_law15_generation_history(
@@ -13418,30 +13509,47 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     # ficam recolhidos no expansor "Detalhes técnicos e governança" no final.
     st.markdown("### Conferência oficial")
     st.caption(
-        "Conferir Resultados = **último concurso oficial** × **gerações aprovadas/oficializadas**. "
-        "Exibe apenas jogos com 11 pontos ou mais."
+        "Conferir Resultados = **último concurso oficial** × **lote conferível selecionado**. "
+        "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — um lote por vez."
     )
     official_groups = _load_official_conference_generation_groups(page_load=True)
+    official_groups = sorted(
+        official_groups,
+        key=lambda group: int(group.get("generation_event_id", 0) or 0),
+        reverse=True,
+    )
     status_by_event = {
         int(group.get("generation_event_id", 0) or 0): str(group.get("lot_operational_status", "") or "")
         for group in official_groups
     }
-    official_generation_event_ids = sorted(
-        {
-            int(group.get("generation_event_id", 0) or 0)
-            for group in official_groups
-            if int(group.get("generation_event_id", 0) or 0) > 0
-        },
-        reverse=True,
+    official_generation_event_ids = [
+        int(group.get("generation_event_id", 0) or 0)
+        for group in official_groups
+        if int(group.get("generation_event_id", 0) or 0) > 0
+    ]
+    default_ge_id = default_conference_generation_event_id(official_groups)
+    if SESSION_CONFERENCE_SELECTED_GE not in st.session_state and default_ge_id is not None:
+        st.session_state[SESSION_CONFERENCE_SELECTED_GE] = int(default_ge_id)
+
+    page_index = int(st.session_state.get(SESSION_CONFERENCE_PAGE, 0) or 0)
+    page_groups, total_pages, page_index = paginate_conference_lots(
+        official_groups,
+        page_index=page_index,
+        page_size=CONFERENCE_LOTS_PAGE_SIZE,
     )
+    st.session_state[SESSION_CONFERENCE_PAGE] = page_index
+
     latest_official_contest = _resolve_latest_official_conference_contest()
     latest_contest_number = _safe_int((latest_official_contest or {}).get("concurso"), default=0) or 0
     has_valid_official_contest = bool(latest_official_contest) and latest_contest_number > 0
     conf_cols = st.columns(4)
     conf_cols[0].metric("Último concurso oficial", latest_contest_number if has_valid_official_contest else "-")
-    conf_cols[1].metric("Gerações oficializadas", len(official_generation_event_ids))
-    conf_cols[2].metric("Jogos elegíveis", sum(int(group.get("total_games", 0) or 0) for group in official_groups))
-    conf_cols[3].metric("Modo", "Oficial")
+    conf_cols[1].metric("Lotes conferíveis", len(official_generation_event_ids))
+    conf_cols[2].metric(
+        "Jogos (página atual)",
+        sum(int(group.get("total_games", 0) or 0) for group in page_groups),
+    )
+    conf_cols[3].metric("Modo", "Lote único")
     if has_valid_official_contest:
         st.caption(
             f"Concurso oficial: {latest_contest_number} | data: "
@@ -13456,14 +13564,38 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             "Nenhum concurso oficial válido encontrado no PostgreSQL. "
             "Sincronize o último resultado oficial da Caixa."
         )
-    if official_generation_event_ids:
-        st.caption(
-            "Gerações aprovadas: "
-            + ", ".join(str(value) for value in official_generation_event_ids[:20])
-            + ("…" if len(official_generation_event_ids) > 20 else "")
-        )
-    else:
+
+    if not official_generation_event_ids:
         st.info("Nenhuma geração oficializada disponível para conferência.")
+    else:
+        page_labels = {int(group.get("generation_event_id", 0) or 0): format_conference_lot_label(group) for group in page_groups}
+        selectable_ids = [ge_id for ge_id in page_labels if ge_id > 0]
+        current_selection = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=None)
+        if current_selection not in selectable_ids and selectable_ids:
+            st.session_state[SESSION_CONFERENCE_SELECTED_GE] = selectable_ids[0]
+        st.selectbox(
+            "Lote conferível (último por padrão)",
+            options=selectable_ids or official_generation_event_ids[:1],
+            format_func=lambda ge_id: page_labels.get(int(ge_id), f"GE {ge_id}"),
+            key=SESSION_CONFERENCE_SELECTED_GE,
+        )
+        selected_ge_id = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0) or 0
+        if total_pages > 1:
+            nav_cols = st.columns([1, 1, 4])
+            if nav_cols[0].button("◀ Lotes anteriores", disabled=page_index <= 0, key="conference_page_prev"):
+                st.session_state[SESSION_CONFERENCE_PAGE] = max(0, page_index - 1)
+                st.rerun()
+            if nav_cols[1].button(
+                "Próximos lotes ▶",
+                disabled=page_index >= total_pages - 1,
+                key="conference_page_next",
+            ):
+                st.session_state[SESSION_CONFERENCE_PAGE] = min(total_pages - 1, page_index + 1)
+                st.rerun()
+            nav_cols[2].caption(
+                f"Página {page_index + 1} de {total_pages} — até {CONFERENCE_LOTS_PAGE_SIZE} lotes por página "
+                f"(máx. {CONFERENCE_EVENTS_LIMIT} elegíveis)."
+            )
 
     if not has_valid_official_contest:
         st.info(
@@ -13472,25 +13604,61 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         )
 
     action_cols = st.columns([0.5, 0.5])
-    if action_cols[0].button(
-        "Conferir Resultados",
+    run_conference = action_cols[0].button(
+        "Conferir lote selecionado",
         type="primary",
-        disabled=not bool(has_valid_official_contest and official_generation_event_ids),
-        key="conference_run_all_official",
-    ):
-        _run_institutional_conference(
-            contest_number=latest_contest_number if latest_contest_number > 0 else None,
-            conference_all_official=True,
-        )
-        st.rerun()
+        disabled=not bool(
+            has_valid_official_contest
+            and official_generation_event_ids
+            and _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0)
+        ),
+        key="conference_run_selected_lot",
+    )
     if action_cols[1].button("Sincronizar último resultado oficial", key="conference_sync_latest"):
         sync_payload = _sync_latest_official_result_now()
         st.session_state["institutional_last_official_sync_summary"] = dict(sync_payload)
+        _cached_latest_official_conference_contest.clear()
         st.rerun()
 
     _render_official_sync_feedback()
 
+    selected_ge_for_result = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0) or 0
     check_result = st.session_state.get("institutional_check_result")
+    cached_result = (
+        read_cached_conference_result(
+            generation_event_id=selected_ge_for_result,
+            contest_number=latest_contest_number,
+        )
+        if selected_ge_for_result > 0 and latest_contest_number > 0
+        else None
+    )
+
+    if run_conference and selected_ge_for_result > 0:
+        with st.spinner(
+            f"Conferindo GE {selected_ge_for_result} × concurso {latest_contest_number} "
+            f"(apenas jogos do lote selecionado)…"
+        ):
+            _run_institutional_conference(
+                contest_number=latest_contest_number if latest_contest_number > 0 else None,
+                generation_event_id=selected_ge_for_result,
+                conference_all_official=False,
+            )
+        check_result = st.session_state.get("institutional_check_result")
+        st.rerun()
+
+    if not isinstance(check_result, dict) or not check_result:
+        if isinstance(cached_result, dict):
+            check_result = cached_result
+            st.session_state["institutional_check_result"] = dict(cached_result)
+        else:
+            check_result = None
+    elif (
+        selected_ge_for_result > 0
+        and int(check_result.get("generation_event_id", 0) or 0) not in {0, selected_ge_for_result}
+        and isinstance(cached_result, dict)
+    ):
+        check_result = cached_result
+        st.session_state["institutional_check_result"] = dict(cached_result)
 
     if isinstance(check_result, dict) and list(check_result.get("generation_results") or []):
         _render_conference_summary_and_premium(
@@ -13501,11 +13669,15 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     elif isinstance(check_result, dict) and check_result.get("warning"):
         st.info(check_result["warning"])
     elif isinstance(check_result, dict) and check_result.get("status") == "checked":
-        st.info("Conferência executada sem jogos com 11 pontos ou mais nas gerações oficializadas.")
+        st.info("Conferência executada sem jogos com 11 pontos ou mais no lote selecionado.")
     elif not has_valid_official_contest:
         st.info(
             "Nenhum concurso oficial válido encontrado no PostgreSQL. "
             "Sincronize o último resultado oficial da Caixa."
+        )
+    elif official_generation_event_ids and not isinstance(check_result, dict):
+        st.caption(
+            "Selecione o lote e clique em **Conferir lote selecionado** — a conferência só roda sob demanda."
         )
 
     st.divider()

@@ -44,7 +44,8 @@ def test_resolve_picks_highest_valid_contest(monkeypatch: pytest.MonkeyPatch) ->
         _valid_record(3700),
         _fake_incomplete_record(3710),  # maior número, porém inválido
     ]
-    monkeypatch.setattr(admin_app, "_list_all_imported_contest_records", lambda: records)
+    monkeypatch.setattr(admin_app, "_load_recent_imported_contest_records", lambda limit=64: records)
+    admin_app._cached_latest_official_conference_contest.clear()
 
     resolved = admin_app._resolve_latest_official_conference_contest()
 
@@ -56,18 +57,20 @@ def test_resolve_picks_highest_valid_contest(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_resolve_returns_none_without_valid_contest(monkeypatch: pytest.MonkeyPatch) -> None:
     records = [_fake_incomplete_record(3710), {"contest_number": 0, "dezenas": []}]
-    monkeypatch.setattr(admin_app, "_list_all_imported_contest_records", lambda: records)
+    monkeypatch.setattr(admin_app, "_load_recent_imported_contest_records", lambda limit=64: records)
+    admin_app._cached_latest_official_conference_contest.clear()
 
     assert admin_app._resolve_latest_official_conference_contest() is None
 
 
 def test_resolve_returns_none_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(admin_app, "_list_all_imported_contest_records", lambda: [])
+    monkeypatch.setattr(admin_app, "_load_recent_imported_contest_records", lambda limit=64: [])
+    admin_app._cached_latest_official_conference_contest.clear()
     assert admin_app._resolve_latest_official_conference_contest() is None
 
 
 def test_resolve_has_no_fake_normalize_fallback() -> None:
-    source = inspect.getsource(admin_app._resolve_latest_official_conference_contest)
+    source = inspect.getsource(admin_app._pick_latest_valid_conference_contest_from_records)
     assert "_normalize_contest_record" not in source
     assert "to_conference_contest_payload" in source
 
@@ -189,6 +192,12 @@ class _StreamlitRecorder:
         self.buttons.append({"label": str(label), "disabled": bool(kwargs.get("disabled", False))})
         return False
 
+    def selectbox(self, label, options, **_kwargs):
+        return options[0] if options else None
+
+    def spinner(self, *_a, **_k):
+        return self
+
     def container(self):
         return self
 
@@ -206,13 +215,15 @@ class _StreamlitRecorder:
 
 def _patch_conference_page_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(admin_app, "_live_institutional_snapshot", lambda snapshot: snapshot)
+    monkeypatch.setattr(admin_app, "is_light_mode_enabled", lambda: False)
+    monkeypatch.setattr(admin_app, "render_lazy_load_gate", lambda *_a, **_k: True)
     monkeypatch.setattr(
         admin_app,
         "_database_snapshot",
         lambda: {"counts": {"generated_games": 0, "reconciliation_runs": 0}},
     )
     monkeypatch.setattr(admin_app, "_load_persisted_generation_event_groups", lambda **_k: [])
-    monkeypatch.setattr(admin_app, "_load_official_conference_generation_groups", lambda: [])
+    monkeypatch.setattr(admin_app, "_load_official_conference_generation_groups", lambda **_k: [])
     monkeypatch.setattr(admin_app, "render_conference_governance_section", lambda **_k: None)
     monkeypatch.setattr(admin_app, "_load_official_sync_diagnostics", lambda: None)
     monkeypatch.setattr(
@@ -230,11 +241,12 @@ def test_render_conference_blocks_without_valid_contest(monkeypatch: pytest.Monk
 
     admin_app._render_conference_page({})
 
+    messages = recorder.warnings + recorder.infos
     assert any(
         "Nenhum concurso oficial válido encontrado no PostgreSQL" in message
-        for message in recorder.warnings
+        for message in messages
     )
-    conferir = next(button for button in recorder.buttons if button["label"] == "Conferir Resultados")
+    conferir = next(button for button in recorder.buttons if button["label"] == "Conferir lote selecionado")
     assert conferir["disabled"] is True
 
 
@@ -282,6 +294,5 @@ def test_render_sync_feedback_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_marker_bumped() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v51"
+    assert BUILD_MARKER == "institutional-adm-runtime-v80"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
-    assert "institutional-adm-runtime-v48" in DEPRECATED_BUILD_MARKERS

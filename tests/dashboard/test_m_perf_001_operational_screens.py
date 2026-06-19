@@ -18,7 +18,7 @@ from dashboard.institutional_operational_structural_coverage import load_operati
 
 
 def test_build_marker_v73() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v79"
+    assert BUILD_MARKER == "institutional-adm-runtime-v80"
 
 
 def test_operational_generations_accepts_limit(tmp_path) -> None:
@@ -71,6 +71,8 @@ def test_conference_page_has_lazy_gate_and_summary_load() -> None:
     source = inspect.getsource(institutional_app._render_conference_page)
     assert "SESSION_LOAD_CONFERENCE" in source
     assert "page_load=True" in source
+    assert "SESSION_CONFERENCE_SELECTED_GE" in source
+    assert "read_cached_conference_result" in source
 
 
 def test_central_ml_page_has_lazy_gate() -> None:
