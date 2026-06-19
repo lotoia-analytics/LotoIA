@@ -349,8 +349,30 @@ def test_m_ml_073b_uses_calibration_plan_evidence() -> None:
     assert quality["calibration_plan_source_generation_event_id"] == 7
 
 
+def test_classify_calibration_display_flags_distinguishes_intra_vs_authorized() -> None:
+    from lotoia.ml.authorized_ml_calibration_plan import (
+        classify_calibration_display_flags,
+        is_intra_generation_score_calibration,
+    )
+
+    intra_only = classify_calibration_display_flags({"calibration_applied": True})
+    assert intra_only["intra_generation_score_calibration"] is True
+    assert intra_only["authorized_cross_generation_calibration"] is False
+
+    authorized = classify_calibration_display_flags(
+        {
+            "calibration_applied": True,
+            "calibration_plan_consumer_generation": True,
+            "calibration_plan_loaded_from_db": True,
+        }
+    )
+    assert authorized["authorized_cross_generation_calibration"] is True
+    assert authorized["intra_generation_score_calibration"] is False
+    assert is_intra_generation_score_calibration({"calibration_applied": True}) is True
+
+
 def test_build_marker_v70() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v71"
+    assert BUILD_MARKER == "institutional-adm-runtime-v72"
 
 
 def test_promote_post_calibration_consumer_lot_visibility() -> None:

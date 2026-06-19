@@ -328,6 +328,43 @@ def extract_module_operational_params(
     }
 
 
+def is_authorized_cross_generation_calibration(context: Mapping[str, Any] | None) -> bool:
+    """Calibração autorizada cockpit N→N+1 (M-ML-075-FIX-01) — distinta de score intrageracional."""
+    payload = dict(context or {})
+    if bool(payload.get("calibration_plan_consumer_generation")):
+        return True
+    if bool(payload.get("calibration_plan_applied_to_generation")) and bool(
+        payload.get("calibration_plan_loaded_from_db")
+    ):
+        return True
+    authorized_plan = dict(payload.get("authorized_calibration_plan") or {})
+    return bool(
+        authorized_plan.get("calibration_plan_loaded_from_db")
+        and authorized_plan.get("calibration_plan_applied_to_generation")
+    )
+
+
+def is_intra_generation_score_calibration(context: Mapping[str, Any] | None) -> bool:
+    """Calibração score-only na mesma geração (M-ML-071) — não conta como autorização cockpit."""
+    payload = dict(context or {})
+    if is_authorized_cross_generation_calibration(payload):
+        return False
+    return bool(
+        payload.get("pre_final_calibration_applied")
+        or payload.get("calibration_applied")
+    )
+
+
+def classify_calibration_display_flags(context: Mapping[str, Any] | None) -> dict[str, bool]:
+    authorized = is_authorized_cross_generation_calibration(context)
+    intra = is_intra_generation_score_calibration(context)
+    return {
+        "authorized_cross_generation_calibration": authorized,
+        "intra_generation_score_calibration": intra,
+        "calibration_applied_any": authorized or intra,
+    }
+
+
 def classify_calibration_effect(
     metrics_before: Mapping[str, Any] | None,
     metrics_after: Mapping[str, Any] | None,

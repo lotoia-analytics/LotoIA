@@ -151,7 +151,13 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
     summary_cols = st.columns(3)
     summary_cols[0].metric("Gerações analisadas", int(diagnosis.get("total_events", 0) or 0))
     summary_cols[1].metric("Jogos agregados", int(diagnosis.get("total_games", 0) or 0))
-    summary_cols[2].metric("Com calibração", int(diagnosis.get("calibrated_events", 0) or 0))
+    summary_cols[2].metric("Com calibração autorizada", int(diagnosis.get("calibrated_events", 0) or 0))
+    intra_cal = int(diagnosis.get("intra_generation_calibrated_events", 0) or 0)
+    if intra_cal > 0:
+        st.caption(
+            f"Calibração intrageracional (score M-ML-071) em {intra_cal} geração(ões) — "
+            "distinta da autorização cockpit N→N+1."
+        )
     metrics = dict(diagnosis.get("metrics") or {})
     cols = st.columns(3)
     cols[0].metric("Similaridade média", float(metrics.get("similaridade_media", 0.0) or 0.0))

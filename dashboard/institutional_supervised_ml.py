@@ -43,6 +43,7 @@ from lotoia.ml.supervised_output_calibration import (
     STATUS_ACTIVE as CALIBRATION_STATUS_ACTIVE,
     is_output_calibration_enabled,
 )
+from lotoia.ml.authorized_ml_calibration_plan import classify_calibration_display_flags
 from lotoia.observability.card_structure_diagnostics import (
     SCOPE_ALL_OPERATIONAL_CORE_002,
     SCOPE_LABEL_ALL_OPERATIONAL,
@@ -621,6 +622,7 @@ def load_supervised_ml_operational_events_from_db(
                     "ml_six_bases_status": _extract_six_bases_status(context),
                     "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
                     "calibration_applied": bool(context.get("calibration_applied")),
+                    **classify_calibration_display_flags(context),
                 }
             )
             if len(events) >= max(1, int(limit)):
@@ -701,6 +703,7 @@ def build_supervised_ml_operational_event_detail(
         ),
         "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
         "final_gp_changed_by_ml": bool(context.get("final_gp_changed_by_ml")),
+        **classify_calibration_display_flags(context),
     }
     return {
         "generation_event_id": selected_id,
@@ -949,6 +952,7 @@ def build_ml_calibration_aggregate_context(
     subcovered_total = 0
     total_games = 0
     calibrated_events = 0
+    intra_generation_calibrated_events = 0
     format_counter: Counter[int] = Counter()
     lot_rows: list[dict[str, Any]] = []
 
@@ -957,8 +961,10 @@ def build_ml_calibration_aggregate_context(
         format_counter[card_format] += 1
         persisted = int(event.get("persisted_games", 0) or 0)
         total_games += persisted
-        if event.get("calibration_applied"):
+        if event.get("authorized_cross_generation_calibration"):
             calibrated_events += 1
+        if event.get("intra_generation_score_calibration"):
+            intra_generation_calibrated_events += 1
         diagnostics = dict(event.get("calibration_diagnostics") or {})
         redundancy = dict(diagnostics.get("redundancy") or {})
         near_dup_total += int(redundancy.get("cartoes_quase_repetidos", 0) or 0)
@@ -988,7 +994,8 @@ def build_ml_calibration_aggregate_context(
                 "batch_label": str(event.get("batch_label") or "-"),
                 "formato": f"{card_format}D",
                 "jogos": persisted,
-                "calibracao": bool(event.get("calibration_applied")),
+                "calibracao": bool(event.get("authorized_cross_generation_calibration")),
+                "calibracao_intrageracional": bool(event.get("intra_generation_score_calibration")),
                 "problemas": len(list(event.get("issues_detected") or [])),
                 "diversidade": round(float(event.get("diversity_score", 0.0) or 0.0), 3),
                 "created_at": str(event.get("created_at") or ""),
@@ -1005,6 +1012,7 @@ def build_ml_calibration_aggregate_context(
         "total_events": len(event_details),
         "total_games": total_games,
         "calibrated_events": calibrated_events,
+        "intra_generation_calibrated_events": intra_generation_calibrated_events,
         "issue_types": sorted(all_issue_types),
         "aggregate_issue_types": sorted(all_issue_types),
         "aggregate_available": True,
@@ -1026,6 +1034,7 @@ def build_ml_calibration_aggregate_context(
         ],
         "lot_rows": lot_rows,
         "calibration_applied": calibrated_events > 0,
+        "intra_generation_calibration_applied": intra_generation_calibrated_events > 0,
         "aggregate_calibrated_events": calibrated_events,
     }
 
@@ -1061,6 +1070,10 @@ def build_sovereign_coverage_diagnosis_card(
         "total_events": int(metrics.get("total_geracoes", 0) or 0),
         "total_games": int(metrics.get("total_jogos", 0) or 0),
         "calibrated_events": int(metrics.get("calibrated_events", agg.get("calibrated_events", 0)) or 0),
+        "intra_generation_calibrated_events": int(
+            metrics.get("intra_generation_calibrated_events", agg.get("intra_generation_calibrated_events", 0))
+            or 0
+        ),
         "format_breakdown": list(metrics.get("format_breakdown") or reading.get("format_breakdown") or []),
         "reading": reading,
         "coverage_snapshot_checksum": str(
@@ -1150,6 +1163,9 @@ def build_ml_calibration_aggregate_diagnosis_card(aggregate: Mapping[str, Any]) 
         "total_events": int(aggregate.get("total_events", 0) or 0),
         "total_games": int(aggregate.get("total_games", 0) or 0),
         "calibrated_events": int(aggregate.get("calibrated_events", 0) or 0),
+        "intra_generation_calibrated_events": int(
+            aggregate.get("intra_generation_calibrated_events", 0) or 0
+        ),
         "format_breakdown": list(aggregate.get("format_breakdown") or []),
     }
 
@@ -1162,6 +1178,7 @@ def build_ml_calibration_aggregate_result_card(
     apply_next_generation: bool,
 ) -> dict[str, Any]:
     calibrated = bool(aggregate.get("calibration_applied"))
+    intra_calibrated = bool(aggregate.get("intra_generation_calibration_applied"))
     issues_count = len(list(aggregate.get("issues_preview") or []))
     if workflow_status == COCKPIT_WORKFLOW_REJECTED:
         operational_status = "rejeitada"
@@ -1177,6 +1194,7 @@ def build_ml_calibration_aggregate_result_card(
     return {
         "operational_status": operational_status,
         "calibration_applied": calibrated,
+        "intra_generation_calibration_applied": intra_calibrated,
         "trace_persistido": calibrated,
         "proxima_geracao_afetada": bool(apply_next_generation),
         "decision_at": decision_at,

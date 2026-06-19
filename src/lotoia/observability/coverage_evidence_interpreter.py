@@ -136,7 +136,13 @@ def _attach_ml_operational_metadata(
         return metrics
     merged = dict(metrics)
     merged["calibrated_events"] = _safe_int(aggregate.get("calibrated_events"))
+    merged["intra_generation_calibrated_events"] = _safe_int(
+        aggregate.get("intra_generation_calibrated_events")
+    )
     merged["calibration_applied_any"] = bool(aggregate.get("calibration_applied"))
+    merged["intra_generation_calibration_applied"] = bool(
+        aggregate.get("intra_generation_calibration_applied")
+    )
     merged["ml_events_analyzed"] = _safe_int(aggregate.get("total_events"))
     merged["ml_lot_rows"] = list(aggregate.get("lot_rows") or [])
     return merged
