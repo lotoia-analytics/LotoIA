@@ -1,0 +1,309 @@
+{
+  "mission_id": "M-ML-075-DIAG-00",
+  "diag_version": "M-ML-075-DIAG-00-v1",
+  "verdict": "M-ML-075-DIAG-00 CONCLUÍDA — IMPACTO REAL DA CALIBRAÇÃO NA GERAÇÃO SEGUINTE MEDIDO COM EVIDÊNCIA",
+  "central_question": "A calibração registrada altera materialmente a geração seguinte ou apenas persiste/exibe?",
+  "answer_summary": "Cross-geração: plano cockpit não chega ao gerador (classificação D). Intra-geração: calibração M-ML-071 altera scores e pode reordenar pool, mas métricas estruturais de diversidade/similaridade do pool permanecem iguais enquanto os cartões forem os mesmos. Evidência operacional reportada (diversidade 0.365→0.3337) é consistente com desconexão + efeito fraco.",
+  "mandatory_answers": {
+    "1_onde_registrada": "generation_events.context_json + generated_games.context_json; cockpit_calibration_workflow; calibration_bundle/pre_final_pool_ml_calibration",
+    "2_onde_lida_proxima": "resolve_authorized_calibration_plan → st.session_state central_ml_cockpit_persist_bundle (NÃO PostgreSQL)",
+    "3_parametros_alterados": "redundancy_penalty_boost, max_overlap_penalty, near_duplicate_penalty, prefix/suffix_penalty, missing_numbers_boost, dezenas_subcobertas, diversity_floor_boost",
+    "4_chega_build_sovereign_pool": "NÃO — upstream de calibração; M-ML-072/M-STAT-002 sem calibration_plan; M-ML-074/073 recebem plan na mesma geração",
+    "5_n1_usou_calibracao_anterior": "Somente se sessão cockpit manteve cockpit_apply_next_generation=True; não há prova automática via DB",
+    "6_plano_vira_parametro": "Parcial — parametros_sugeridos viram plan_params só com authorized=True na mesma sessão; plan_items são texto",
+    "7_penalidade_similaridade_aumenta": "Sim intra-geração com plano: delta replay=19.9",
+    "8_prefixo_sufixo_altera_score": "Sim se detectado: prefix_penalty delta replay=0",
+    "9_dezenas_subcobertas_reforco": "Sim pontual: missing_numbers_boost delta replay=0",
+    "10_delta_antes_depois": {
+      "source": "relato_operacional",
+      "diversity_n": 0.365,
+      "diversity_n1": 0.3337,
+      "similarity_n1": 0.6663,
+      "ml_verdict_n1": "REPROVADO",
+      "plan_recommended": [
+        "Aumentar penalidade de similaridade/overlap",
+        "Penalizar estruturas viciadas",
+        "Reforçar dezenas subcobertas"
+      ]
+    },
+    "11_efeito": "fraco_intra_geracao",
+    "12_causa_raiz": [
+      "Plano autorizado persiste em context_json mas não é relido na geração N+1 (sessão Streamlit only).",
+      "M-STAT-002 (diverse_top_slice) e M-ML-072 (structural pool) não recebem calibration_plan.",
+      "M-ML-073b classifica gp_quality_tier REPROVADO sem retroalimentação automática de parâmetros.",
+      "Calibração M-ML-071 é score-only no pool — métricas estruturais (similaridade) invariantes se cartões iguais.",
+      "Remediação intra-geração M-ML-073 força authorized=True com boosts default, mascarando ausência do plano cockpit."
+    ]
+  },
+  "flow_steps": [
+    {
+      "step": "1",
+      "component": "Cobertura Estrutural + coverage_evidence_interpreter",
+      "action": "build_calibration_plan() → plan_items + parametros_sugeridos",
+      "evidence": "src/lotoia/observability/coverage_evidence_interpreter.py — build_calibration_plan"
+    },
+    {
+      "step": "2",
+      "component": "Central ML Cockpit",
+      "action": "Operador autoriza / 'Aplicar na próxima geração' → session_state",
+      "evidence": "dashboard/institutional_ml_calibration_cockpit.py — SESSION_PERSIST"
+    },
+    {
+      "step": "3",
+      "component": "resolve_authorized_calibration_plan",
+      "action": "Lê cockpit_apply_next_generation + calibration_authorized da sessão Streamlit",
+      "evidence": "dashboard/institutional_supervised_ml.py — resolve_authorized_calibration_plan"
+    },
+    {
+      "step": "4",
+      "component": "_invoke_sovereign_adm_generate_best_games",
+      "action": "Passa calibration_plan para generate_best_games (somente se sessão ativa)",
+      "evidence": "dashboard/institutional_app.py — _invoke_sovereign_adm_generate_best_games"
+    },
+    {
+      "step": "5",
+      "component": "generate_best_games",
+      "action": "Hierarquia M-ML-073 / recuperação M-ML-074 / pré-final M-ML-071",
+      "evidence": "src/lotoia/generator/basic_generator.py — execute_ml_operational_hierarchy"
+    },
+    {
+      "step": "6",
+      "component": "apply_pre_final_pool_ml_calibration",
+      "action": "apply_supervised_output_calibration(plan_params se authorized=True)",
+      "evidence": "src/lotoia/ml/pre_final_pool_ml_calibration.py"
+    },
+    {
+      "step": "7",
+      "component": "Persistência generation_events",
+      "action": "cockpit_calibration_workflow snapshot em context_json (histórico)",
+      "evidence": "dashboard/institutional_app.py — _persist_clean_law15_generation_history"
+    },
+    {
+      "step": "8",
+      "component": "Geração N+1",
+      "action": "NÃO relê plano do PostgreSQL — exige nova sessão cockpit",
+      "evidence": "resolve_authorized_calibration_plan — ausência de loader DB"
+    }
+  ],
+  "component_table": [
+    {
+      "item": "penalidade de similaridade",
+      "recomendado": "redundancy_penalty_boost ≥ 1.2 (build_calibration_plan)",
+      "persistido": "parametros_sugeridos em cockpit_calibration_workflow / calibration_bundle",
+      "lido_proxima_geracao": "não — somente st.session_state se operador repetir cockpit",
+      "aplicado_gerador": "sim intra-geração se plan.authorized=True (M-ML-071)",
+      "efeito_observado": "reordena profile_score; similaridade estrutural do pool inalterada se cartões iguais",
+      "evidence": "supervised_output_calibration.py — _plan_scale(redundancy_penalty_boost)"
+    },
+    {
+      "item": "penalidade de sobreposição",
+      "recomendado": "max_overlap_penalty ≥ 1.15",
+      "persistido": "parametros_sugeridos.max_overlap_penalty",
+      "lido_proxima_geracao": "não (sessão)",
+      "aplicado_gerador": "sim intra-geração com plano autorizado",
+      "efeito_observado": "penalidade em jogos com overlap alto; não gera cartões novos",
+      "evidence": "supervised_output_calibration.py L216-L218"
+    },
+    {
+      "item": "penalidade trinca/prefixo/sufixo",
+      "recomendado": "prefix_penalty / suffix_penalty + prefixo_alvo / sufixo_alvo",
+      "persistido": "parametros_sugeridos + plan_items texto",
+      "lido_proxima_geracao": "não (sessão)",
+      "aplicado_gerador": "sim se estrutura detectada em diagnostics.issues",
+      "efeito_observado": "penalidade pontual; M-STAT-002 não recebe calibration_plan",
+      "evidence": "diverse_top_slice_selection.py — sem parâmetro calibration_plan"
+    },
+    {
+      "item": "reforço dezenas subcobertas",
+      "recomendado": "missing_numbers_boost + dezenas_subcobertas",
+      "persistido": "parametros_sugeridos",
+      "lido_proxima_geracao": "não (sessão)",
+      "aplicado_gerador": "boost em jogos que contêm dezena subcoberta",
+      "efeito_observado": "fraco se pool não contém dezenas alvo no top slice",
+      "evidence": "supervised_output_calibration.py L250-L269"
+    },
+    {
+      "item": "rerank diversidade",
+      "recomendado": "diversity_floor_boost + rerank_before_persist",
+      "persistido": "parametros_sugeridos (texto plan_items)",
+      "lido_proxima_geracao": "não",
+      "aplicado_gerador": "diversity_floor_boost só se scale>1 e plan autorizado",
+      "efeito_observado": "não altera métricas estruturais do pool (score-only)",
+      "evidence": "pre_final_pool_ml_calibration.py — metrics_before/after sobre mesmos cartões"
+    },
+    {
+      "item": "seleção top slice (M-STAT-002)",
+      "recomendado": "implícito em plano diversidade",
+      "persistido": "diverse_top_slice_m_stat_002 bundle pós-geração",
+      "lido_proxima_geracao": "não",
+      "aplicado_gerador": "apply_diverse_top_slice_pre_gp sem calibration_plan",
+      "efeito_observado": "swaps estruturais intra-geração; sem memória cross-gen",
+      "evidence": "ml_operational_hierarchy.py L642-L648"
+    },
+    {
+      "item": "recuperação pré-GP (M-ML-074)",
+      "recomendado": "escala parametros_sugeridos em falha de diversidade/cobertura",
+      "persistido": "pre_gp_recovery bundle",
+      "lido_proxima_geracao": "não",
+      "aplicado_gerador": "sim intra-geração com calibration_plan da sessão",
+      "efeito_observado": "até 5 tentativas/etapa; não persiste plano para N+1",
+      "evidence": "pre_gp_deterministic_recovery.py — _escalate_calibration_plan"
+    },
+    {
+      "item": "classificação M-ML-073b",
+      "recomendado": "gp_quality_tier observacional",
+      "persistido": "ml_hierarchy_bundle / gp_quality_tier em context_json",
+      "lido_proxima_geracao": "não — sem loader automático",
+      "aplicado_gerador": "classifica REPROVADO mas entrega GP (ADR-048)",
+      "efeito_observado": "reprovação não retroalimenta parâmetros na geração seguinte",
+      "evidence": "ml_operational_hierarchy.py — build_gp_quality_classification"
+    }
+  ],
+  "replay_experiment": {
+    "pool_size": 30,
+    "operational_reference": {
+      "similaridade_media": 0.6663,
+      "sobreposicao_maxima": 14,
+      "quase_repetidos": 25,
+      "diversity_score": 0.3337,
+      "dezenas_subcobertas": 3,
+      "dezenas_subcobertas_list": [
+        "07",
+        "11",
+        "23"
+      ],
+      "prefixo_viciado": true,
+      "sufixo_viciado": true,
+      "prefixo_mais_gerado": "01-02-03",
+      "sufixo_mais_gerado": "23-24-25",
+      "total_jogos": 20
+    },
+    "parametros_recomendados": {
+      "redundancy_penalty_boost": 1.2,
+      "max_overlap_penalty": 1.15,
+      "near_duplicate_penalty": 1.25,
+      "prefix_penalty": 1.1,
+      "prefixo_alvo": "01-02-03",
+      "suffix_penalty": 1.1,
+      "sufixo_alvo": "23-24-25",
+      "missing_numbers_boost": 1.2,
+      "critical_coverage_boost": 1.1,
+      "dezenas_subcobertas": [
+        "07",
+        "11",
+        "23"
+      ],
+      "diversity_floor_boost": 1.2,
+      "rerank_before_persist": true
+    },
+    "without_authorized_plan": {
+      "calibration_applied": true,
+      "redundancy_penalty": 114.2,
+      "prefix_penalty": 30,
+      "missing_numbers_boost": 0,
+      "plan_params_active": false
+    },
+    "with_authorized_plan": {
+      "calibration_applied": true,
+      "redundancy_penalty": 134.1,
+      "prefix_penalty": 30,
+      "missing_numbers_boost": 0,
+      "plan_params_active": true,
+      "authorized_calibration_plan": {
+        "mission_id": "M-ML-VIS-058-FIX-01",
+        "plan_items": [
+          "Aumentar penalidade de similaridade/overlap.",
+          "Reduzir sobreposição máxima entre cartões (formato 15D, overlap 14).",
+          "Penalizar clones estruturais e quase repetidos críticos (overlap N e N-1).",
+          "Penalizar prefixo viciado 01-02-03.",
+          "Penalizar sufixo viciado 23-24-25.",
+          "Reforçar dezenas subcobertas identificadas pela Cobertura Estrutural (07, 11, 23).",
+          "Elevar diversidade mínima da saída e redistribuir padrões estruturais.",
+          "Combinar elevação de diversidade, reforço de dezenas subcobertas e redução de redundância para captura 13/14.",
+          "Reranquear candidatos antes da persistência oficial."
+        ],
+        "impact_items": [
+          "Reduzir jogos parecidos.",
+          "Diminuir pares com overlap excessivo.",
+          "Diminuir quase repetidos críticos.",
+          "Reduzir vício de prefixo/sufixo.",
+          "Melhorar distribuição das dezenas.",
+          "Aumentar cobertura estrutural.",
+          "Preparar próxima geração com maior diversidade e menor redundância.",
+          "Melhorar leitura das 6 bases."
+        ],
+        "parametros_sugeridos": {
+          "redundancy_penalty_boost": 1.2,
+          "max_overlap_penalty": 1.15,
+          "near_duplicate_penalty": 1.25,
+          "prefix_penalty": 1.1,
+          "prefixo_alvo": "01-02-03",
+          "suffix_penalty": 1.1,
+          "sufixo_alvo": "23-24-25",
+          "missing_numbers_boost": 1.2,
+          "critical_coverage_boost": 1.1,
+          "dezenas_subcobertas": [
+            "07",
+            "11",
+            "23"
+          ],
+          "diversity_floor_boost": 1.2,
+          "rerank_before_persist": true,
+          "game_size": 15,
+          "formato_alvo": "15D",
+          "structural_policy_15d": true
+        },
+        "trace": {},
+        "operador": "diag_replay",
+        "timestamp": "diag"
+      }
+    },
+    "deltas": {
+      "redundancy_penalty": 19.9,
+      "prefix_penalty": 0,
+      "missing_numbers_boost": 0
+    },
+    "structural_metrics_unchanged": "Calibração M-ML-054/071 ajusta scores dos mesmos cartões; diversity_score do pool só muda se compose_sovereign_gp selecionar cartões diferentes."
+  },
+  "generation_pair_analysis": {},
+  "operational_evidence": {
+    "source": "relato_operacional",
+    "diversity_n": 0.365,
+    "diversity_n1": 0.3337,
+    "similarity_n1": 0.6663,
+    "ml_verdict_n1": "REPROVADO",
+    "plan_recommended": [
+      "Aumentar penalidade de similaridade/overlap",
+      "Penalizar estruturas viciadas",
+      "Reforçar dezenas subcobertas"
+    ]
+  },
+  "classification": "D",
+  "classification_label": "Calibração desconectada — plano não chega ao gerador na geração seguinte",
+  "recommended_next_mission": "M-ML-075-FIX-01 — Persistir e reler plano autorizado do PostgreSQL na geração N+1 (agent_ml + agent_dados + agent_plataforma); retroalimentar M-STAT-002 / M-ML-072 com parametros_sugeridos",
+  "functional_changes": false,
+  "purge_executed": false,
+  "agents": {
+    "lider": "agent_ml",
+    "obrigatorios": [
+      "agent_estatistico",
+      "agent_geracao",
+      "agent_qualidade",
+      "agent_governanca"
+    ],
+    "apoio": [
+      "agent_dados",
+      "agent_plataforma",
+      "agent_visual"
+    ]
+  },
+  "db_available": false,
+  "generation_n_analyzed": {
+    "id": null,
+    "note": "DB indisponível — usar --ge-n/--ge-n1"
+  },
+  "generation_n1_analyzed": {
+    "id": null,
+    "note": "DB indisponível — usar --ge-n/--ge-n1"
+  }
+}
