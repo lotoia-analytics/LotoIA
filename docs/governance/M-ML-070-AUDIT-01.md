@@ -1,5 +1,12 @@
 # M-ML-070-AUDIT-01 — Auditoria da Aplicação Efetiva da Política Estrutural 15D
 
+> **STATUS pós-correção:** os achados abaixo (APENAS OBSERVACIONAL / NÃO APLICADA
+> em GP:20) foram **corrigidos pela M-ML-070-FIX-01**: a política passou a governar
+> o lote final por **formato** (não por quantidade), priorizando cartões conformes,
+> expondo `structural_policy_applied=true` e alimentando o veredito/diagnóstico/plano.
+> Rodar `scripts/ops/audit_m_ml_070_structural_policy_15d.py` após a correção
+> classifica GP:20 como **APLICADA_EFETIVAMENTE**.
+
 **Pergunta:** A Política Estrutural 15D (M-ML-070) realmente governa o lote final
 entregue pelo GP soberano / CORE_002, ou atua apenas como memória / validação
 posterior / observabilidade?
