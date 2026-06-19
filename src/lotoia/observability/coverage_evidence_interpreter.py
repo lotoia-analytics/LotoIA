@@ -26,6 +26,9 @@ from lotoia.ml.structural_auto_calibration import (
 )
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
+    analyze_games_from_context_or_records,
+    build_structural_policy_15d_calibration_plan,
+    build_structural_policy_15d_diagnosis,
     extract_structural_policy_application_from_context,
     is_structural_policy_15d_format,
     load_active_structural_policy_15d_memory,
@@ -534,18 +537,102 @@ def get_structural_coverage_evidence(
     metrics = _attach_ml_operational_metadata(metrics, ml_aggregate)
     calibration_applied = bool((ml_aggregate or {}).get("calibration_applied"))
     calibration_authorized = bool((ml_aggregate or {}).get("calibration_authorized"))
+    reading = dict(snapshot.get("reading") or {})
+
+    structural_policy_15d_memory: dict[str, Any] = {}
+    structural_policy_15d_application: dict[str, Any] = {"available": False}
+    structural_policy_15d_analysis: dict[str, Any] = {}
+    structural_policy_15d_calibration_plan: dict[str, Any] = {"has_plan": False}
+    if len(formatos) == 1 and is_structural_policy_15d_format(int(formatos[0])):
+        structural_policy_15d_memory = load_active_structural_policy_15d_memory(
+            db_path,
+            persist_if_missing=False,
+        )
+        context_payload = dict(structural or {})
+        context_payload.setdefault("generation_event_ids", list(metrics.get("generation_event_ids") or []))
+        context_payload.setdefault(
+            "selected_generation_event_id",
+            int(structural.get("selected_generation_event_id", 0) or 0),
+        )
+        structural_policy_15d_application = extract_structural_policy_application_from_context(
+            context_payload
+        )
+        if not structural_policy_15d_application.get("available"):
+            structural_policy_15d_analysis = analyze_games_from_context_or_records(
+                None,
+                context_payload,
+                structural_policy_15d_memory,
+                None,
+                db_path=db_path,
+            )
+            structural_policy_15d_application = {
+                "available": bool(structural_policy_15d_analysis.get("games_total", 0)),
+                "structural_policy_memory_loaded": bool(structural_policy_15d_memory),
+                "structural_policy_format": "15D",
+                "structural_policy_version": str(
+                    structural_policy_15d_analysis.get("structural_policy_version")
+                    or structural_policy_15d_memory.get("policy_version")
+                    or ""
+                ),
+                "structural_policy_applied": bool(
+                    structural_policy_15d_analysis.get("structural_policy_applied")
+                ),
+                "applied_rules": list(structural_policy_15d_analysis.get("applied_rules") or []),
+                "violated_rules": list(structural_policy_15d_analysis.get("violations") or []),
+                "policy_violations": list(structural_policy_15d_analysis.get("policy_violations") or []),
+                "policy_compliance_status": str(
+                    structural_policy_15d_analysis.get("policy_compliance_status") or ""
+                ),
+                "compliance_label": str(structural_policy_15d_analysis.get("compliance_label") or ""),
+                "games_validated": int(structural_policy_15d_analysis.get("games_validated", 0) or 0),
+                "games_compliant": int(structural_policy_15d_analysis.get("games_compliant", 0) or 0),
+            }
+        structural_policy_15d_calibration_plan = build_structural_policy_15d_calibration_plan(
+            structural_policy_15d_analysis or structural_policy_15d_application,
+            structural_policy_15d_memory,
+        )
+        metrics["structural_policy_memory_loaded"] = bool(structural_policy_15d_memory)
+        metrics["structural_policy_version"] = str(
+            structural_policy_15d_application.get("structural_policy_version")
+            or structural_policy_15d_memory.get("policy_version")
+            or ""
+        )
+        metrics["structural_policy_applied"] = bool(
+            structural_policy_15d_application.get("structural_policy_applied")
+        )
+        metrics["policy_compliance_status"] = str(
+            structural_policy_15d_application.get("policy_compliance_status") or ""
+        )
+        metrics["policy_compliance_label"] = str(
+            structural_policy_15d_application.get("compliance_label") or ""
+        )
+        metrics["policy_violations"] = list(
+            structural_policy_15d_application.get("policy_violations")
+            or structural_policy_15d_application.get("violated_rules")
+            or []
+        )
+
     interpretation = interpret_coverage_evidence(
         metrics,
         calibration_applied=calibration_applied,
         trace_persistido=calibration_applied,
     )
+    if structural_policy_15d_analysis:
+        policy_issues = build_structural_policy_15d_diagnosis(structural_policy_15d_analysis)
+        if policy_issues:
+            interpretation = {
+                **interpretation,
+                "decision_blocks": list(interpretation.get("decision_blocks") or []) + policy_issues,
+                "problemas_detectados": list(interpretation.get("problemas_detectados") or [])
+                + [str(row.get("problema_detectado") or "") for row in policy_issues],
+                "has_structural_issues": True,
+            }
     ml_verdict_payload = evaluate_ml_operational_verdict(
         metrics,
         format_analyses=format_analyses,
         calibration_applied=calibration_applied,
         calibration_authorized=calibration_authorized,
     )
-    reading = dict(snapshot.get("reading") or {})
 
     structural_concentration_audit: dict[str, Any] = {"available": False}
     ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
@@ -580,6 +667,20 @@ def get_structural_coverage_evidence(
         )
 
     merged_calibration_plan = dict(interpretation.get("calibration_plan") or {})
+    if structural_policy_15d_calibration_plan.get("plan_items"):
+        merged_calibration_plan = {
+            **merged_calibration_plan,
+            **structural_policy_15d_calibration_plan,
+            "plan_items": list(merged_calibration_plan.get("plan_items") or [])
+            + list(structural_policy_15d_calibration_plan.get("plan_items") or []),
+            "impact_items": list(merged_calibration_plan.get("impact_items") or [])
+            + list(structural_policy_15d_calibration_plan.get("impact_items") or []),
+            "parametros_sugeridos": {
+                **dict(merged_calibration_plan.get("parametros_sugeridos") or {}),
+                **dict(structural_policy_15d_calibration_plan.get("parametros_sugeridos") or {}),
+            },
+            "structural_policy_15d_calibration": True,
+        }
     if structural_auto_calibration_plan.get("plan_items"):
         merged_calibration_plan = {
             **merged_calibration_plan,
@@ -592,18 +693,6 @@ def get_structural_coverage_evidence(
             },
             "auto_structural_calibration": True,
         }
-
-    structural_policy_15d_memory: dict[str, Any] = {}
-    structural_policy_15d_application: dict[str, Any] = {"available": False}
-    if len(formatos) == 1 and is_structural_policy_15d_format(int(formatos[0])):
-        structural_policy_15d_memory = load_active_structural_policy_15d_memory(
-            db_path,
-            persist_if_missing=False,
-        )
-        context_payload = dict((structural or {}).get("context_json") or structural or {})
-        structural_policy_15d_application = extract_structural_policy_application_from_context(
-            context_payload
-        )
 
     return {
         "available": True,
@@ -668,4 +757,11 @@ def get_structural_coverage_evidence(
         "structural_policy_15d_mission_id": STRUCTURAL_POLICY_15D_MISSION_ID,
         "structural_policy_15d_memory": structural_policy_15d_memory,
         "structural_policy_15d_application": structural_policy_15d_application,
+        "structural_policy_15d_analysis": structural_policy_15d_analysis,
+        "structural_policy_15d_calibration_plan": structural_policy_15d_calibration_plan,
+        "structural_policy_memory_loaded": bool(metrics.get("structural_policy_memory_loaded")),
+        "structural_policy_version": str(metrics.get("structural_policy_version") or ""),
+        "structural_policy_applied": bool(metrics.get("structural_policy_applied")),
+        "policy_compliance_status": str(metrics.get("policy_compliance_status") or ""),
+        "policy_violations": list(metrics.get("policy_violations") or []),
     }
