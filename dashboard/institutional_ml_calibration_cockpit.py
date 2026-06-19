@@ -200,13 +200,23 @@ def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
         rules = list(memory.get("regras_aplicadas") or [])
         if rules:
             st.caption("Regras: " + ", ".join(str(rule) for rule in rules))
+    applied = bool(
+        snapshot.get("structural_policy_applied")
+        or application.get("structural_policy_applied")
+    )
+    st.caption(f"Política aplicada no lote: {'SIM' if applied else 'NÃO'}")
     if application.get("available"):
         st.markdown(
             f"**Conformidade:** {application.get('policy_compliance_status', '—')}  \n"
             f"**Jogos validados:** {application.get('games_validated', 0)}  \n"
             f"**Jogos conformes:** {application.get('games_compliant', 0)}"
         )
-        violated = list(application.get("violated_rules") or [])
+        violated = list(
+            snapshot.get("policy_violations")
+            or application.get("policy_violations")
+            or application.get("violated_rules")
+            or []
+        )
         if violated:
             st.caption("Violações: " + ", ".join(str(item) for item in violated[:6]))
 
@@ -344,6 +354,16 @@ def _render_decision_evidence_card(snapshot: dict[str, Any]) -> None:
 
     st.markdown(f"**Decisão operador:**  \n{_decision_status_label(workflow)}")
     verdict = str(snapshot.get("ml_verdict") or coverage.get("ml_verdict") or "")
+    policy_status = str(
+        snapshot.get("policy_compliance_status")
+        or coverage.get("policy_compliance_status")
+        or ""
+    )
+    policy_violations = list(snapshot.get("policy_violations") or coverage.get("policy_violations") or [])
+    if policy_status in {"non_compliant", "partial"} or policy_violations:
+        st.caption(
+            f"Política 15D: status={policy_status or '—'} | violações={len(policy_violations)}"
+        )
     if verdict in {"PRECISA CALIBRAR", "REPROVADO", "BLOQUEADO PARA OFICIALIZAÇÃO"}:
         st.caption(
             "Veredito ML bloqueia oficialização — aguardando calibração supervisionada autorizada."
@@ -358,6 +378,10 @@ def _render_recommendation_card(snapshot: dict[str, Any]) -> None:
         plan_items = list(calibration_plan.get("plan_items") or [])
     if not plan_items:
         plan_items = list(snapshot.get("recommendations") or [])
+    policy_plan = dict(snapshot.get("structural_policy_15d_calibration_plan") or {})
+    policy_items = list(policy_plan.get("plan_items") or [])
+    if not plan_items and policy_items and list(snapshot.get("policy_violations") or []):
+        plan_items = policy_items
     if plan_items:
         for index, item in enumerate(plan_items, start=1):
             st.markdown(f"{index}. {item}")

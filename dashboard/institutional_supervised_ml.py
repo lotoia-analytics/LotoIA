@@ -783,6 +783,11 @@ def build_ml_calibration_recommendations(
     coverage_evidence: Mapping[str, Any] | None = None,
 ) -> list[str]:
     if isinstance(coverage_evidence, Mapping) and coverage_evidence.get("available"):
+        policy_plan = dict(coverage_evidence.get("structural_policy_15d_calibration_plan") or {})
+        policy_items = list(policy_plan.get("plan_items") or [])
+        policy_violations = list(coverage_evidence.get("policy_violations") or [])
+        if policy_items and policy_violations:
+            return policy_items[:12]
         plan_items = list(coverage_evidence.get("plan_items") or [])
         if plan_items:
             return plan_items[:12]
@@ -1051,6 +1056,15 @@ def build_sovereign_coverage_diagnosis_card(
         "structural_policy_15d_application": dict(
             coverage_evidence.get("structural_policy_15d_application") or {}
         ),
+        "structural_policy_memory_loaded": bool(coverage_evidence.get("structural_policy_memory_loaded")),
+        "structural_policy_version": str(coverage_evidence.get("structural_policy_version") or ""),
+        "structural_policy_applied": bool(coverage_evidence.get("structural_policy_applied")),
+        "policy_compliance_status": str(coverage_evidence.get("policy_compliance_status") or ""),
+        "policy_violations": list(coverage_evidence.get("policy_violations") or []),
+        "structural_policy_15d_analysis": dict(coverage_evidence.get("structural_policy_15d_analysis") or {}),
+        "structural_policy_15d_calibration_plan": dict(
+            coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
+        ),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
     }
@@ -1280,6 +1294,15 @@ def build_ml_calibration_cockpit_snapshot(
         "structural_policy_15d_memory": dict(coverage_evidence.get("structural_policy_15d_memory") or {}),
         "structural_policy_15d_application": dict(
             coverage_evidence.get("structural_policy_15d_application") or {}
+        ),
+        "structural_policy_memory_loaded": bool(coverage_evidence.get("structural_policy_memory_loaded")),
+        "structural_policy_version": str(coverage_evidence.get("structural_policy_version") or ""),
+        "structural_policy_applied": bool(coverage_evidence.get("structural_policy_applied")),
+        "policy_compliance_status": str(coverage_evidence.get("policy_compliance_status") or ""),
+        "policy_violations": list(coverage_evidence.get("policy_violations") or []),
+        "structural_policy_15d_analysis": dict(coverage_evidence.get("structural_policy_15d_analysis") or {}),
+        "structural_policy_15d_calibration_plan": dict(
+            coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
         "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),

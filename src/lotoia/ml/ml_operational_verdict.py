@@ -213,6 +213,40 @@ def evaluate_ml_operational_verdict(
             )
             rule_triggers.append("overlap_atencao_com_redundancia_agregada")
 
+    policy_status = str(m.get("policy_compliance_status") or "").strip().lower()
+    policy_label = str(m.get("policy_compliance_label") or "").strip().upper()
+    policy_violations = [
+        str(item).strip()
+        for item in list(m.get("policy_violations") or [])
+        if str(item).strip()
+    ]
+    if policy_status == "non_compliant" or policy_label == "REPROVADO":
+        policy_verdict = (
+            VERDICT_REPROVADO
+            if len(policy_violations) >= 3
+            else VERDICT_PRECISA_CALIBRAR
+        )
+        verdict = _merge_verdict(verdict, policy_verdict)
+        reason_parts.append(
+            f"política estrutural 15D não conforme ({policy_label or policy_status})"
+        )
+        rule_triggers.append("structural_policy_15d_non_compliant")
+    elif policy_status == "partial" or policy_label == "ATENÇÃO":
+        policy_verdict = (
+            VERDICT_PRECISA_CALIBRAR
+            if policy_violations
+            else VERDICT_APROVADO_COM_ALERTA
+        )
+        verdict = _merge_verdict(verdict, policy_verdict)
+        reason_parts.append(
+            f"política estrutural 15D em atenção ({policy_label or policy_status})"
+        )
+        rule_triggers.append("structural_policy_15d_atencao")
+    elif policy_violations:
+        verdict = _merge_verdict(verdict, VERDICT_APROVADO_COM_ALERTA)
+        reason_parts.append("alertas de política estrutural 15D (core/discouraged)")
+        rule_triggers.append("structural_policy_15d_diagnostic")
+
     overlap_detail = _format_overlap_detail(per_format)
     if overlap_detail and overlap_detail not in reason_parts:
         reason_parts.insert(0, overlap_detail)
@@ -253,6 +287,9 @@ def evaluate_ml_operational_verdict(
         "rule_triggers": rule_triggers,
         "format_analyses_count": len(per_format),
         "has_critical_overlap": has_critical_overlap,
+        "policy_compliance_status": policy_status,
+        "policy_compliance_label": policy_label,
+        "policy_violations": policy_violations,
     }
 
     return {

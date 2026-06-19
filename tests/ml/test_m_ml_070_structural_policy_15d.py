@@ -7,13 +7,19 @@ from pathlib import Path
 
 from dashboard.institutional_build import BUILD_MARKER
 from lotoia.ml.structural_policy_15d import (
+    COMPLIANCE_LABEL_APROVADO,
+    COMPLIANCE_LABEL_ATENCAO,
+    COMPLIANCE_LABEL_REPROVADO,
     MISSION_ID,
     POLICY_VERSION,
+    analyze_batch_structural_policy_15d,
     apply_structural_policy_15d_to_sovereign_batch,
+    build_structural_policy_15d_calibration_plan,
     build_structural_policy_15d_memory,
     is_structural_policy_15d_format,
     load_active_structural_policy_15d_memory,
     persist_structural_policy_15d_memory,
+    resolve_policy_compliance_label,
     validate_game_structural_policy_15d,
 )
 
@@ -122,8 +128,8 @@ def test_central_ml_exposes_structural_policy_15d_card() -> None:
     assert "structural_policy_15d_memory" in card_source
 
 
-def test_build_marker_v58() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v58"
+def test_build_marker_v59() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v59"
 
 
 def test_canonical_memory_catalog() -> None:
@@ -132,3 +138,54 @@ def test_canonical_memory_catalog() -> None:
     assert memory["repeticao_ultimo_concurso_min"] == 7
     assert memory["repeticao_ultimo_concurso_max"] == 10
     assert memory["sequencia_maxima"] == 6
+
+
+def test_resolve_policy_compliance_labels() -> None:
+    assert resolve_policy_compliance_label(3, 3, []) == COMPLIANCE_LABEL_APROVADO
+    assert resolve_policy_compliance_label(1, 3, ["repeticao:x"]) == COMPLIANCE_LABEL_ATENCAO
+    assert resolve_policy_compliance_label(0, 3, ["repeticao:x"]) == COMPLIANCE_LABEL_REPROVADO
+
+
+def test_batch_analysis_and_calibration_plan() -> None:
+    previous = _previous_numbers()
+    compliant = {
+        "numbers": _compliant_numbers(),
+        "final_card_numbers": _compliant_numbers(),
+    }
+    analysis = analyze_batch_structural_policy_15d(
+        [compliant],
+        previous_contest_numbers=previous,
+        policy=build_structural_policy_15d_memory(),
+    )
+    assert analysis["games_total"] == 1
+    assert analysis["compliance_label"] in {
+        COMPLIANCE_LABEL_APROVADO,
+        COMPLIANCE_LABEL_ATENCAO,
+    }
+    plan = build_structural_policy_15d_calibration_plan(analysis)
+    assert "plan_items" in plan
+    assert "parametros_sugeridos" in plan
+
+
+def test_verdict_integration_policy_non_compliant() -> None:
+    from lotoia.ml.ml_operational_verdict import evaluate_ml_operational_verdict
+
+    payload = evaluate_ml_operational_verdict(
+        {
+            "policy_compliance_status": "non_compliant",
+            "policy_compliance_label": COMPLIANCE_LABEL_REPROVADO,
+            "policy_violations": ["repeticao:fora_faixa_7_10:3"],
+            "formatos_analisados": [15],
+        }
+    )
+    assert payload["ml_verdict"] in {"REPROVADO", "PRECISA CALIBRAR"}
+    assert "structural_policy_15d_non_compliant" in list(
+        (payload.get("trace") or {}).get("rule_triggers") or []
+    )
+
+
+def test_coverage_render_function_exists() -> None:
+    from dashboard import institutional_structural_policy_coverage as module
+
+    assert callable(module.render_structural_policy_15d_operational_block)
+    assert callable(module.build_structural_policy_coverage_context)

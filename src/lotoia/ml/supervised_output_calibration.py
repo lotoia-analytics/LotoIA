@@ -15,6 +15,13 @@ from lotoia.ml.structural_auto_calibration import (
     compute_structural_diversity_bonus,
     is_structural_auto_calibration_format,
 )
+from lotoia.ml.structural_policy_15d import (
+    MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
+    build_structural_policy_15d_calibration_plan,
+    ensure_structural_policy_15d_memory,
+    is_structural_policy_15d_format,
+    validate_game_structural_policy_15d,
+)
 from lotoia.statistics.card_structure import (
     compute_gp_redundancy,
     compute_missing_dezenas,
@@ -184,6 +191,76 @@ def analyze_pool_structural_issues(
     }
 
 
+
+
+def _resolve_policy_db_path(event_context: Mapping[str, Any] | None) -> Any:
+    payload = dict(event_context or {})
+    for key in ("db_path", "database_path", "LOTOIA_DATABASE_PATH"):
+        if payload.get(key):
+            return payload.get(key)
+    return None
+
+
+def _apply_structural_policy_15d_game_adjustment(
+    game: Mapping[str, Any],
+    *,
+    policy: Mapping[str, Any],
+    previous_contest_numbers: Sequence[int] | None,
+    plan_params: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    numbers = resolve_cartao_final_from_game(dict(game))
+    if not numbers:
+        return {"penalty": 0.0, "boost": 0.0, "actions": []}
+    validation = validate_game_structural_policy_15d(
+        numbers,
+        previous_contest_numbers=previous_contest_numbers,
+        policy=policy,
+    )
+    actions: list[str] = []
+    penalty = 0.0
+    boost = 0.0
+    params = dict(plan_params or {})
+
+    for violation in list(validation.get("violations") or []):
+        token = str(violation)
+        if token.startswith("repeticao"):
+            delta = 0.18 * float(params.get("repeat_penalty_boost", 1.0) or 1.0)
+            penalty += delta
+            actions.append(f"penalidade_politica_repeticao={delta:.3f}")
+        elif token.startswith("paridade"):
+            delta = 0.14 * float(params.get("parity_penalty_boost", 1.0) or 1.0)
+            penalty += delta
+            actions.append(f"penalidade_politica_paridade={delta:.3f}")
+        elif token.startswith("sequencia"):
+            delta = 0.16 * float(params.get("sequence_penalty_boost", 1.0) or 1.0)
+            penalty += delta
+            actions.append(f"penalidade_politica_sequencia={delta:.3f}")
+
+    core_numbers = {int(value) for value in list(policy.get("core_numbers") or [])}
+    discouraged_numbers = {int(value) for value in list(policy.get("discouraged_numbers") or [])}
+    card_set = set(numbers)
+    core_present = card_set & core_numbers
+    discouraged_present = card_set & discouraged_numbers
+    if len(core_present) < 2:
+        delta = 0.12 * float(params.get("core_numbers_boost", 1.0) or 1.0)
+        missing_core = sorted(core_numbers - card_set)
+        if missing_core:
+            boost += delta
+            actions.append(f"reforco_core_numbers={delta:.3f}")
+    if len(discouraged_present) > 3:
+        delta = 0.1 * float(params.get("discourage_penalty_boost", 1.0) or 1.0) * (
+            len(discouraged_present) - 3
+        )
+        penalty += delta
+        actions.append(f"penalidade_discouraged_numbers={delta:.3f}")
+
+    return {
+        "penalty": round(penalty, 4),
+        "boost": round(boost, 4),
+        "actions": actions,
+        "validation": validation,
+    }
+
 def _plan_scale(params: Mapping[str, Any] | None, key: str, default: float = 1.0) -> float:
     if not isinstance(params, Mapping):
         return default
@@ -201,6 +278,8 @@ def _compute_game_calibration_adjustment(
     all_cards: Sequence[list[int]],
     plan_params: Mapping[str, Any] | None = None,
     game_size: int = 15,
+    policy_15d: Mapping[str, Any] | None = None,
+    previous_contest_numbers: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     card = _game_card(game)
     if not card:
@@ -328,6 +407,17 @@ def _compute_game_calibration_adjustment(
     ml_factor = min(max(score_ml / 100.0, 0.0), 1.0) * 0.15
     boost += ml_factor
 
+    if is_structural_policy_15d_format(size) and policy_15d:
+        policy_adjustment = _apply_structural_policy_15d_game_adjustment(
+            game,
+            policy=policy_15d,
+            previous_contest_numbers=previous_contest_numbers,
+            plan_params=plan_params,
+        )
+        penalty += float(policy_adjustment.get("penalty", 0) or 0)
+        boost += float(policy_adjustment.get("boost", 0) or 0)
+        actions.extend(list(policy_adjustment.get("actions") or []))
+
     status = "moderado"
     if penalty >= 2.5:
         status = "reprovado"
@@ -369,6 +459,9 @@ def apply_supervised_output_calibration(
     size = int(game_size)
 
     auto_plan: dict[str, Any] = {}
+    policy_15d: dict[str, Any] = {}
+    policy_15d_plan: dict[str, Any] = {}
+    previous_contest_numbers: list[int] = []
     if is_structural_auto_calibration_format(size):
         auto_plan = build_auto_calibration_plan_from_pool(
             games,
@@ -379,6 +472,24 @@ def apply_supervised_output_calibration(
             for key, value in dict(auto_plan.get("parametros_sugeridos") or {}).items():
                 plan_params.setdefault(key, value)
             plan_authorized = plan_authorized or bool(auto_plan.get("authorized"))
+
+    if is_structural_policy_15d_format(size):
+        db_path = _resolve_policy_db_path(event_context)
+        policy_15d = ensure_structural_policy_15d_memory(db_path) if db_path else ensure_structural_policy_15d_memory()
+        context_payload = dict(event_context or {})
+        previous_contest_numbers = list(context_payload.get("previous_contest_numbers") or [])
+        bundle_ctx = dict(context_payload.get("structural_policy_15d_bundle") or {})
+        if not previous_contest_numbers:
+            previous_contest_numbers = list(bundle_ctx.get("previous_contest_numbers") or [])
+        policy_15d_plan = build_structural_policy_15d_calibration_plan(
+            bundle_ctx or {"violations": list(bundle_ctx.get("violated_rules") or [])},
+            policy_15d,
+        )
+        if policy_15d_plan.get("parametros_sugeridos"):
+            for key, value in dict(policy_15d_plan.get("parametros_sugeridos") or {}).items():
+                plan_params.setdefault(key, value)
+            if policy_15d_plan.get("has_plan"):
+                plan_authorized = True
 
     if not ml_enabled or not is_output_calibration_enabled() or not games:
         return games, empty_bundle
@@ -406,6 +517,8 @@ def apply_supervised_output_calibration(
             all_cards=all_cards,
             plan_params=effective_params,
             game_size=size,
+            policy_15d=policy_15d or None,
+            previous_contest_numbers=previous_contest_numbers or None,
         )
         base_profile = float(enriched.get("profile_score", 0) or 0)
         net = float(adjustment.get("net_adjustment", 0) or 0)
@@ -511,4 +624,16 @@ def apply_supervised_output_calibration(
             "operador": plan.get("operador"),
             "timestamp": plan.get("timestamp"),
         }
+    if policy_15d_plan.get("has_plan"):
+        bundle["structural_policy_15d_mission_id"] = STRUCTURAL_POLICY_15D_MISSION_ID
+        bundle["structural_policy_15d_calibration_plan"] = policy_15d_plan
+        bundle["structural_policy_15d_actions"] = [
+            action
+            for row in calibrated
+            for action in list(row.get("ml_calibration_actions") or [])
+            if "politica" in str(action) or "core_numbers" in str(action) or "discouraged" in str(action)
+        ]
+        bundle["structural_policy_memory_loaded"] = True
+        bundle["structural_policy_version"] = policy_15d.get("policy_version")
+        bundle["structural_policy_applied"] = bool(previous_contest_numbers)
     return calibrated, bundle
