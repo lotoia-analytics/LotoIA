@@ -49,7 +49,8 @@ def test_no_debug_writes_in_page() -> None:
 
 
 def test_m_ops_062_rules_preserved() -> None:
-    assert "conference_all_official=True" in PAGE_SOURCE
+    assert "Conferir lote selecionado" in PAGE_SOURCE
+    assert "SESSION_CONFERENCE_SELECTED_GE" in PAGE_SOURCE
     assert "_resolve_latest_official_conference_contest" in PAGE_SOURCE
     assert "_load_official_conference_generation_groups" in PAGE_SOURCE
     assert 'key="conference_sync_latest"' in PAGE_SOURCE
@@ -181,6 +182,5 @@ def test_premium_empty_when_no_11_plus(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_marker_bumped() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v51"
+    assert BUILD_MARKER == "institutional-adm-runtime-v80"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
-    assert "institutional-adm-runtime-v48" in DEPRECATED_BUILD_MARKERS

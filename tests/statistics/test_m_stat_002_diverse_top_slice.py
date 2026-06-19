@@ -429,7 +429,7 @@ def test_is_enabled_by_default() -> None:
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v79"
+    assert BUILD_MARKER == "institutional-adm-runtime-v80"
 
 
 def test_agent_estatistico_scope_is_swap_not_pool_generation() -> None:
