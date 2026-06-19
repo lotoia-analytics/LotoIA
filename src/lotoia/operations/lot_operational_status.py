@@ -301,14 +301,23 @@ def promote_post_calibration_consumer_lot_visibility(
             plan.get("calibration_plan_source_generation_event_id", 0) or 0
         ),
         "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
+        "authorized_plan_loaded_from_db": True,
+        "authorized_plan_applied_to_generation": bool(plan.get("calibration_plan_applied_to_generation")),
+        "authorized_plan_source_generation_event_id": int(
+            plan.get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
+        "authorized_plan_trace_id": str(plan.get("calibration_trace_id") or ""),
+        "authorized_plan_mission_id": "M-ML-075-FIX-01",
         "calibration_plan_visibility_mission_id": "M-ML-075-FIX-01",
         "post_calibration_promotion_mission_id": POST_CALIBRATION_PROMOTION_MISSION_ID,
         "post_calibration_promotion_evaluated": True,
         "excluded_from_active_reading_reason": "",
         "gp_quality_tier": gp_quality_tier or merged.get("gp_quality_tier"),
+        "gp_quality_tier_after_authorized_plan": gp_quality_tier or merged.get("gp_quality_tier"),
     }
     if verdict:
         consumer_base["ml_verdict"] = verdict
+        consumer_base["ml_verdict_after_authorized_plan"] = verdict
 
     prereq_ok, prereq_reason = _post_calibration_promotion_prerequisites_met(plan, promo)
     if not prereq_ok:

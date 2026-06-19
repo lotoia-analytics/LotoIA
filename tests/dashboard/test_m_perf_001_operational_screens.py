@@ -18,7 +18,7 @@ from dashboard.institutional_operational_structural_coverage import load_operati
 
 
 def test_build_marker_v73() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v73"
+    assert BUILD_MARKER == "institutional-adm-runtime-v74"
 
 
 def test_operational_generations_accepts_limit(tmp_path) -> None:

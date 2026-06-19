@@ -9279,12 +9279,29 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         pre_final_summary = load_pre_final_pool_coverage_summary(DB_PATH, selected_ge_id)
         if pre_final_summary:
             st.info(
-                "GP final veio de pool calibrado pela ML: "
+                "Calibração pré-final aplicada (M-ML-071): "
                 f"{'SIM' if pre_final_summary.get('pre_final_calibration_applied') else 'NÃO'} | "
                 f"pool pré-final={int(pre_final_summary.get('pre_final_pool_size', 0) or 0)} | "
                 f"reordenados={int(pre_final_summary.get('candidates_reordered', 0) or 0)} | "
                 f"substituídos={int(pre_final_summary.get('candidates_replaced', 0) or 0)} | "
                 f"política={pre_final_summary.get('pre_final_calibration_policy', '—')}"
+            )
+        from lotoia.ml.authorized_ml_calibration_plan import (
+            build_calibration_semantics_ui_labels,
+            load_generation_event_context,
+        )
+
+        _gen_ctx = load_generation_event_context(int(selected_ge_id), DB_PATH)
+        if _gen_ctx.get("authorized_plan_loaded_from_db") or _gen_ctx.get(
+            "calibration_plan_loaded_from_db"
+        ):
+            _sem_labels = build_calibration_semantics_ui_labels(_gen_ctx)
+            st.info(
+                f"{_sem_labels['authorized_plan_loaded_label']} | "
+                f"{_sem_labels['authorized_plan_applied_label']} | "
+                f"GE origem={int(_gen_ctx.get('authorized_plan_source_generation_event_id', 0) or _gen_ctx.get('calibration_plan_source_generation_event_id', 0) or 0)} | "
+                f"{_sem_labels['verdict_after_authorized_plan_label']} | "
+                f"{_sem_labels['gp_tier_after_authorized_plan_label']}"
             )
         structural_pool_summary = load_structural_15d_pool_coverage_summary(DB_PATH, selected_ge_id)
         if structural_pool_summary.get("structural_pool_applied"):
@@ -12227,6 +12244,17 @@ def _persist_clean_law15_generation_history(
             ),
         }
     )
+    from lotoia.ml.authorized_ml_calibration_plan import build_calibration_semantics_trace
+
+    generation_context.update(
+        build_calibration_semantics_trace(
+            ml_bundle=ml_bundle,
+            pre_final_trace=_pre_final_trace,
+            authorized_plan=authorized_plan,
+            ml_verdict=str(ml_verdict_payload.get("ml_verdict") or ""),
+            gp_quality_tier=gp_quality_tier,
+        )
+    )
     generation_context = sync_persisted_event_operational_status(generation_context)
     try:
         persisted = _attach_operational_generation_label(
@@ -12262,6 +12290,25 @@ def _persist_clean_law15_generation_history(
                 metrics_after=extract_generation_metrics(generation_context),
                 db_path=DB_PATH,
             )
+            from lotoia.ml.authorized_ml_calibration_plan import (
+                build_calibration_semantics_trace,
+                patch_generation_event_calibration_semantics,
+            )
+
+            semantics_patch = build_calibration_semantics_trace(
+                ml_bundle=ml_bundle,
+                pre_final_trace=_pre_final_trace,
+                authorized_plan=authorized_plan,
+                ml_verdict=str(ml_verdict_payload.get("ml_verdict") or ""),
+                gp_quality_tier=gp_quality_tier,
+                target_generation_event_id=new_event_id,
+            )
+            patch_generation_event_calibration_semantics(
+                new_event_id,
+                semantics_patch=semantics_patch,
+                db_path=DB_PATH,
+            )
+            generation_context.update(semantics_patch)
             if source_id > 0:
                 from lotoia.governance.batch_operational_scope import (
                     mark_generation_events_superseded_by_calibration,

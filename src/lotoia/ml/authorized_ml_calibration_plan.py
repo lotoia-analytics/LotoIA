@@ -486,11 +486,62 @@ def build_validation_report_from_consumed_plan(
     source_ctx = load_generation_event_context(source_id, db_path) if source_id > 0 else {}
     target_ctx = load_generation_event_context(target_id, db_path) if target_id > 0 else {}
     comparison = compare_generations_n_vs_n1(source_ctx, target_ctx)
+    target_semantics = build_calibration_semantics_trace(
+        ml_bundle=target_ctx,
+        pre_final_trace=dict(target_ctx.get("pre_final_pool_ml_calibration") or {}),
+        authorized_plan={
+            "calibration_plan_loaded_from_db": bool(target_ctx.get("authorized_plan_loaded_from_db")),
+            "calibration_plan_applied_to_generation": bool(
+                target_ctx.get("authorized_plan_applied_to_generation")
+            ),
+            "calibration_plan_source_generation_event_id": int(
+                target_ctx.get("authorized_plan_source_generation_event_id", 0) or source_id
+            ),
+            "calibration_trace_id": str(
+                target_ctx.get("authorized_plan_trace_id")
+                or target_ctx.get("calibration_trace_id")
+                or plan.get("calibration_trace_id")
+                or ""
+            ),
+        },
+        ml_verdict=str(
+            target_ctx.get("ml_verdict_after_authorized_plan")
+            or target_ctx.get("ml_verdict")
+            or ""
+        ),
+        gp_quality_tier=str(
+            target_ctx.get("gp_quality_tier_after_authorized_plan")
+            or target_ctx.get("gp_quality_tier")
+            or ""
+        ),
+        target_generation_event_id=target_id,
+    )
+    ui_labels = build_calibration_semantics_ui_labels(
+        {
+            **target_semantics,
+            "ml_verdict": target_semantics.get("ml_verdict_after_authorized_plan"),
+            "gp_quality_tier": target_semantics.get("gp_quality_tier_after_authorized_plan"),
+        }
+    )
     return {
+        "mission_id": MISSION_ID,
         "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
         "source_generation_event_id": source_id,
         "target_generation_event_id": target_id,
+        "authorized_plan_source_generation_event_id": source_id,
+        "authorized_plan_target_generation_event_id": target_id,
+        "authorized_plan_applied_to_generation": bool(
+            target_semantics.get("authorized_plan_applied_to_generation")
+            or target_ctx.get("calibration_plan_applied_to_generation")
+        ),
+        "ml_verdict_after_authorized_plan": str(
+            target_semantics.get("ml_verdict_after_authorized_plan") or ""
+        ),
+        "gp_quality_tier_after_authorized_plan": str(
+            target_semantics.get("gp_quality_tier_after_authorized_plan") or ""
+        ),
         **comparison,
+        **ui_labels,
         "status": str(plan.get("status") or ""),
     }
 
@@ -520,3 +571,109 @@ def reject_active_calibration_plan(
         row.policy_after = stored
         session.commit()
     return {"updated": True, "status": STATUS_REJECTED, "memory_row_id": row_id}
+
+
+PRE_FINAL_CALIBRATION_MISSION_ID = "M-ML-071"
+PRE_FINAL_CALIBRATION_SOURCE = "pre_final_pool_ml_calibration"
+CALIBRATION_APPLIED_LEGACY_NOTE = (
+    "DEPRECATED: use pre_final_calibration_applied (M-ML-071) "
+    "ou authorized_plan_applied_to_generation (M-ML-075-FIX-01)"
+)
+
+
+def build_calibration_semantics_trace(
+    *,
+    ml_bundle: Mapping[str, Any] | None = None,
+    pre_final_trace: Mapping[str, Any] | None = None,
+    authorized_plan: Mapping[str, Any] | None = None,
+    ml_verdict: str = "",
+    gp_quality_tier: str = "",
+    target_generation_event_id: int = 0,
+) -> dict[str, Any]:
+    """Separa semântica M-ML-071 (intra-geração) de M-ML-075-FIX-01 (plano N→N+1)."""
+    bundle = dict(ml_bundle or {})
+    pre_final = dict(pre_final_trace or bundle.get("pre_final_pool_ml_calibration") or {})
+    pre_final_applied = bool(
+        pre_final.get("pre_final_calibration_applied")
+        or bundle.get("pre_final_calibration_applied")
+    )
+    plan = dict(authorized_plan or {})
+    loaded_from_db = bool(plan.get("calibration_plan_loaded_from_db"))
+    applied_to_generation = bool(
+        plan.get("calibration_plan_applied_to_generation")
+    ) if loaded_from_db else False
+    source_ge = int(plan.get("calibration_plan_source_generation_event_id", 0) or 0)
+    target_ge = int(
+        target_generation_event_id
+        or plan.get("target_generation_event_id", 0)
+        or 0
+    )
+    trace_id = str(plan.get("calibration_trace_id") or "")
+    legacy_calibration_applied = bool(bundle.get("calibration_applied"))
+
+    return {
+        "pre_final_calibration_applied": pre_final_applied,
+        "pre_final_calibration_source": PRE_FINAL_CALIBRATION_SOURCE if pre_final_applied else "none",
+        "pre_final_calibration_mission_id": PRE_FINAL_CALIBRATION_MISSION_ID,
+        "authorized_plan_loaded_from_db": loaded_from_db,
+        "authorized_plan_applied_to_generation": applied_to_generation,
+        "authorized_plan_source_generation_event_id": source_ge,
+        "authorized_plan_target_generation_event_id": target_ge,
+        "authorized_plan_trace_id": trace_id,
+        "authorized_plan_mission_id": MISSION_ID,
+        "ml_verdict_after_authorized_plan": str(ml_verdict or "") if loaded_from_db else "",
+        "gp_quality_tier_after_authorized_plan": str(gp_quality_tier or "") if loaded_from_db else "",
+        "calibration_applied": legacy_calibration_applied,
+        "calibration_applied_legacy_compatibility": True,
+        "calibration_applied_legacy_note": CALIBRATION_APPLIED_LEGACY_NOTE,
+    }
+
+
+def build_calibration_semantics_ui_labels(context: Mapping[str, Any] | None) -> dict[str, str]:
+    """Rótulos explícitos para UI — evita ambiguidade de calibration_applied."""
+    ctx = dict(context or {})
+    pre_final = bool(ctx.get("pre_final_calibration_applied"))
+    loaded = bool(ctx.get("authorized_plan_loaded_from_db"))
+    applied = bool(ctx.get("authorized_plan_applied_to_generation"))
+    verdict = str(ctx.get("ml_verdict_after_authorized_plan") or ctx.get("ml_verdict") or "—")
+    tier = str(ctx.get("gp_quality_tier_after_authorized_plan") or ctx.get("gp_quality_tier") or "—")
+    return {
+        "pre_final_calibration_label": (
+            "Calibração pré-final aplicada" if pre_final else "Calibração pré-final não aplicada"
+        ),
+        "authorized_plan_loaded_label": (
+            "Plano autorizado carregado do PostgreSQL"
+            if loaded
+            else "Plano autorizado não carregado do PostgreSQL"
+        ),
+        "authorized_plan_applied_label": (
+            "Plano autorizado aplicado nesta geração"
+            if applied
+            else "Plano autorizado não aplicado nesta geração"
+        ),
+        "verdict_after_authorized_plan_label": f"Resultado após plano autorizado: {verdict}",
+        "gp_tier_after_authorized_plan_label": f"GP após plano autorizado: {tier}",
+    }
+
+
+def patch_generation_event_calibration_semantics(
+    generation_event_id: int,
+    *,
+    semantics_patch: Mapping[str, Any],
+    db_path: Any = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Atualiza context_json com campos authorized_plan_* após persistência (ex.: target GE)."""
+    if int(generation_event_id) <= 0:
+        return {"updated": False, "reason": "invalid_generation_event_id"}
+    create_database(db_path)
+    with get_session(db_path) as session:
+        from lotoia.database.database import GenerationEvent
+
+        row = session.get(GenerationEvent, int(generation_event_id))
+        if row is None:
+            return {"updated": False, "reason": "generation_event_not_found"}
+        merged = dict(getattr(row, "context_json", {}) or {})
+        merged.update(dict(semantics_patch or {}))
+        row.context_json = merged
+        session.commit()
+    return {"updated": True, "generation_event_id": int(generation_event_id)}
