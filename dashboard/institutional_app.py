@@ -11807,6 +11807,10 @@ def _persist_clean_law15_generation_history(
     from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
     from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
     from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
+    from lotoia.governance.institutional_agent_routing_matrix import (
+        MISSION_ID as AGENT_ROUTING_MISSION_ID,
+        build_agent_routing_trace,
+    )
 
     _pre_final_trace = build_pre_final_pool_trace(
         dict(result.get("pre_final_pool_ml_calibration") or result.get("calibration_bundle") or {})
@@ -11864,6 +11868,38 @@ def _persist_clean_law15_generation_history(
             "hierarchy_blocking_reason": str(_hierarchy_trace.get("blocking_reason") or ""),
             "hierarchy_corrective_action_applied": list(
                 _hierarchy_trace.get("corrective_action_applied") or []
+            ),
+            "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+            "agent_routing_matrix_version": str(
+                _hierarchy_trace.get("agent_routing_matrix_version")
+                or dict(result.get("institutional_agent_routing_matrix") or {}).get(
+                    "agent_routing_matrix_version"
+                )
+                or ""
+            ),
+            "primary_responsible_agent": str(
+                _hierarchy_trace.get("blocking_responsible_agent")
+                or result.get("primary_responsible_agent")
+                or ""
+            ),
+            "responsible_agents": list(
+                dict.fromkeys(
+                    list(_hierarchy_trace.get("stage_responsible_agents") or [])
+                    + list(result.get("responsible_agents") or [])
+                )
+            ),
+            "blocking_responsible_agent": str(
+                _hierarchy_trace.get("blocking_responsible_agent")
+                or result.get("blocking_responsible_agent")
+                or ""
+            ),
+            "agent_routing": build_agent_routing_trace(
+                {
+                    "agent_routing_matrix_version": _hierarchy_trace.get("agent_routing_matrix_version"),
+                    "primary_responsible_agent": _hierarchy_trace.get("blocking_responsible_agent"),
+                    "responsible_agents": list(_hierarchy_trace.get("stage_responsible_agents") or []),
+                    "blocking_responsible_agent": _hierarchy_trace.get("blocking_responsible_agent"),
+                }
             ),
         }
     )

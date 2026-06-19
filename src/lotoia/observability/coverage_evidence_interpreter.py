@@ -24,6 +24,14 @@ from lotoia.ml.structural_auto_calibration import (
     build_auto_calibration_plan,
     is_structural_auto_calibration_format,
 )
+from lotoia.governance.institutional_agent_routing_matrix import (
+    MISSION_ID as AGENT_ROUTING_MISSION_ID,
+    build_agent_routing_trace,
+    build_institutional_agent_routing_matrix_memory,
+    enrich_calibration_plan,
+    enrich_decision_block,
+    summarize_responsible_agents,
+)
 from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
 from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
@@ -144,7 +152,7 @@ def _build_decision_block(
     severidade: str,
     parametros_sugeridos: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    block = {
         "issue_type": issue_type,
         "problema_detectado": problema_detectado,
         "evidencia": evidencia,
@@ -156,6 +164,7 @@ def _build_decision_block(
         "parametros_sugeridos": dict(parametros_sugeridos or {}),
         "trace": {"mission_id": MISSION_ID, "issue_type": issue_type, "severidade": severidade},
     }
+    return enrich_decision_block(block)
 
 
 def build_calibration_plan(
@@ -323,18 +332,20 @@ def build_calibration_plan(
             if item not in impact_items:
                 impact_items.append(item)
 
-    return {
-        "mission_id": FIX01_MISSION_ID,
-        "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
-        "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
-        "plan_items": plan_items,
-        "impact_items": impact_items,
-        "parametros_sugeridos": parametros_sugeridos,
-        "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
-        "has_plan": bool(plan_items),
-        "primary_format_analysis": dict(primary_format or {}),
-        "format_analyses": per_format,
-    }
+    return enrich_calibration_plan(
+        {
+            "mission_id": FIX01_MISSION_ID,
+            "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
+            "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
+            "plan_items": plan_items,
+            "impact_items": impact_items,
+            "parametros_sugeridos": parametros_sugeridos,
+            "rerank_action": "Reranquear candidatos antes da persistência oficial." if plan_items else "",
+            "has_plan": bool(plan_items),
+            "primary_format_analysis": dict(primary_format or {}),
+            "format_analyses": per_format,
+        }
+    )
 
 
 def interpret_coverage_evidence(
@@ -518,6 +529,11 @@ def interpret_coverage_evidence(
     if not impacto_detalhado and primary:
         impacto_detalhado = [str(primary.get("impacto_esperado") or "")]
 
+    agent_summary = summarize_responsible_agents(
+        decision_blocks=blocks,
+        calibration_plan=calibration_plan,
+    )
+
     return {
         "mission_id": MISSION_ID,
         "fix_mission_id": FIX01_MISSION_ID,
@@ -532,6 +548,11 @@ def interpret_coverage_evidence(
         "primary_decision": primary,
         "impacto_esperado": primary.get("impacto_esperado") if primary else "",
         "has_structural_issues": bool(blocks),
+        "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+        "agent_routing_matrix_version": agent_summary.get("agent_routing_matrix_version"),
+        "primary_responsible_agent": agent_summary.get("primary_responsible_agent"),
+        "responsible_agents": list(agent_summary.get("responsible_agents") or []),
+        "institutional_agent_routing_matrix": build_institutional_agent_routing_matrix_memory(),
     }
 
 
@@ -901,4 +922,39 @@ def get_structural_coverage_evidence(
         "current_stage": str(ml_operational_hierarchy.get("current_stage") or ""),
         "stage_results": dict(ml_operational_hierarchy.get("stage_results") or {}),
         "stage_failures": list(ml_operational_hierarchy.get("stage_failures") or []),
+        "agent_routing_mission_id": AGENT_ROUTING_MISSION_ID,
+        "agent_routing_matrix_version": str(
+            ml_operational_hierarchy.get("agent_routing_matrix_version")
+            or interpretation.get("agent_routing_matrix_version")
+            or ""
+        ),
+        "primary_responsible_agent": str(
+            ml_operational_hierarchy.get("blocking_responsible_agent")
+            or interpretation.get("primary_responsible_agent")
+            or ""
+        ),
+        "responsible_agents": list(
+            dict.fromkeys(
+                list(ml_operational_hierarchy.get("stage_responsible_agents") or [])
+                + list(interpretation.get("responsible_agents") or [])
+            )
+        ),
+        "institutional_agent_routing_matrix": dict(
+            interpretation.get("institutional_agent_routing_matrix")
+            or build_institutional_agent_routing_matrix_memory()
+        ),
+        "agent_routing": build_agent_routing_trace(
+            {
+                **dict(interpretation),
+                "blocking_responsible_agent": ml_operational_hierarchy.get(
+                    "blocking_responsible_agent"
+                ),
+                "responsible_agents": list(
+                    dict.fromkeys(
+                        list(ml_operational_hierarchy.get("stage_responsible_agents") or [])
+                        + list(interpretation.get("responsible_agents") or [])
+                    )
+                ),
+            }
+        ),
     }

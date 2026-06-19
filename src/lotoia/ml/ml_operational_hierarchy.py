@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Callable, Mapping, Sequence
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, ScientificInstitutionalMemory, create_database, get_session
+from lotoia.governance.institutional_agent_routing_matrix import enrich_hierarchy_bundle
 from lotoia.ml.ml_operational_verdict import evaluate_ml_operational_verdict
 from lotoia.ml.overlap_format_thresholds import (
     DIVERSITY_LOW_THRESHOLD,
@@ -657,35 +658,41 @@ def execute_ml_operational_hierarchy(
         "corrective_actions": list(dict.fromkeys(corrective_actions)),
     }
 
-    hierarchy_bundle: dict[str, Any] = {
-        "mission_id": MISSION_ID,
-        "hierarchy_version": HIERARCHY_VERSION,
-        "ml_hierarchy_version": HIERARCHY_VERSION,
-        "ml_hierarchy_status": MEMORY_STATUS_ACTIVE,
-        "memory_kind": MEMORY_KIND,
-        "hierarchy_applied": True,
-        "hierarchy_compliance": gp_closure_allowed,
-        "gp_closure_allowed": gp_closure_allowed,
-        "gp_closure_blocked": not gp_closure_allowed,
-        "current_stage": current_stage,
-        "last_completed_stage": (
-            STAGE_COVERAGE
-            if pre_gp_stages_passed
-            else next(
-                (stage_id for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE) if not stage_results.get(stage_id, {}).get("passed")),
-                STAGE_COVERAGE,
-            )
-        ),
-        "blocking_reason": "; ".join(stage_failures[:5]) if stage_failures else "",
-        "corrective_action_applied": list(dict.fromkeys(corrective_actions))[:20],
-        "stage_results": stage_results,
-        "stage_failures": stage_failures,
-        "operational_hierarchy_memory": memory,
-        "subordinate_missions": {
-            "structural_pool_15d": structural_pool_bundle,
-            "pre_final_pool_ml": pre_final_bundle,
-        },
-    }
+    hierarchy_bundle: dict[str, Any] = enrich_hierarchy_bundle(
+        {
+            "mission_id": MISSION_ID,
+            "hierarchy_version": HIERARCHY_VERSION,
+            "ml_hierarchy_version": HIERARCHY_VERSION,
+            "ml_hierarchy_status": MEMORY_STATUS_ACTIVE,
+            "memory_kind": MEMORY_KIND,
+            "hierarchy_applied": True,
+            "hierarchy_compliance": gp_closure_allowed,
+            "gp_closure_allowed": gp_closure_allowed,
+            "gp_closure_blocked": not gp_closure_allowed,
+            "current_stage": current_stage,
+            "last_completed_stage": (
+                STAGE_COVERAGE
+                if pre_gp_stages_passed
+                else next(
+                    (
+                        stage_id
+                        for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
+                        if not stage_results.get(stage_id, {}).get("passed")
+                    ),
+                    STAGE_COVERAGE,
+                )
+            ),
+            "blocking_reason": "; ".join(stage_failures[:5]) if stage_failures else "",
+            "corrective_action_applied": list(dict.fromkeys(corrective_actions))[:20],
+            "stage_results": stage_results,
+            "stage_failures": stage_failures,
+            "operational_hierarchy_memory": memory,
+            "subordinate_missions": {
+                "structural_pool_15d": structural_pool_bundle,
+                "pre_final_pool_ml": pre_final_bundle,
+            },
+        }
+    )
     mission_bundles = {
         "structural_pool": structural_pool_bundle,
         "pre_final": pre_final_bundle,
@@ -752,7 +759,7 @@ def finalize_ml_operational_hierarchy_validation(
     payload["ml_verdict_reason"] = str(verdict_payload.get("ml_verdict_reason") or "")
     payload["hierarchy_compliance"] = bool(payload.get("gp_closure_allowed")) and final_passed
     payload["subordinate_missions_status"] = subordinate_status
-    return payload
+    return enrich_hierarchy_bundle(payload)
 
 
 def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -770,6 +777,9 @@ def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> di
             "metrics": dict(result.get("metrics") or {}),
             "failures": list(result.get("failures") or [])[:10],
             "corrective_actions": list(result.get("corrective_actions") or [])[:10],
+            "responsible_agent": str(result.get("responsible_agent") or ""),
+            "support_agents": list(result.get("support_agents") or [])[:5],
+            "routing_reason": str(result.get("routing_reason") or ""),
         }
     return {
         "mission_id": str(source.get("mission_id") or MISSION_ID),
@@ -788,4 +798,8 @@ def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> di
         "ml_verdict": str(source.get("ml_verdict") or ""),
         "ml_verdict_reason": str(source.get("ml_verdict_reason") or ""),
         "subordinate_missions_status": dict(source.get("subordinate_missions_status") or {}),
+        "agent_routing_mission_id": str(source.get("agent_routing_mission_id") or ""),
+        "agent_routing_matrix_version": str(source.get("agent_routing_matrix_version") or ""),
+        "blocking_responsible_agent": str(source.get("blocking_responsible_agent") or ""),
+        "stage_responsible_agents": list(source.get("stage_responsible_agents") or []),
     }
