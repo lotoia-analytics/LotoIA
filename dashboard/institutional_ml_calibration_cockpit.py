@@ -9,6 +9,7 @@ import streamlit as st
 
 from dashboard.institutional_ml_hierarchy_block import (
     build_central_ml_pre_gp_block_notice,
+    build_central_ml_recovery_success_notice,
     format_agent_label,
 )
 from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
@@ -294,6 +295,25 @@ def _render_ml_operational_hierarchy_card(snapshot: dict[str, Any]) -> None:
             f"Motivo de bloqueio: {hierarchy.get('blocking_reason')} | "
             f"Ação corretiva: {', '.join(hierarchy.get('corrective_action_applied') or []) or '—'}"
         )
+    recovery = dict(
+        snapshot.get("pre_gp_recovery")
+        or dict(snapshot.get("coverage_evidence") or {}).get("pre_gp_recovery")
+        or hierarchy.get("pre_gp_recovery")
+        or {}
+    )
+    if recovery.get("internal_recovery_attempted"):
+        success = bool(recovery.get("internal_recovery_success"))
+        attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+        st.info(
+            f"Recuperação pré-GP (M-ML-074): {attempts} tentativa(s) | "
+            f"sucesso={'SIM' if success else 'NÃO'} | "
+            f"GP entregue={'SIM' if recovery.get('final_gp_delivered') else 'NÃO'}"
+        )
+        if success:
+            st.success(
+                build_central_ml_recovery_success_notice(recovery).get("message")
+                or "GP entregue após recuperação interna pré-GP."
+            )
     stage_results = dict(hierarchy.get("stage_results") or {})
     if stage_results:
         with st.expander("Etapas da hierarquia", expanded=True):

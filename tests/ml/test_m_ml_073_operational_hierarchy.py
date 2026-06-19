@@ -144,6 +144,20 @@ def test_build_hierarchy_trace_safe() -> None:
     assert trace["stage_results"][STAGE_CONFORMITY]["passed"] is True
 
 
+def _failed_hierarchy_bundle() -> dict[str, Any]:
+    return {
+        "hierarchy_applied": True,
+        "gp_closure_allowed": False,
+        "blocking_reason": "diversity_score abaixo do limite",
+        "current_stage": STAGE_DIVERSITY,
+        "stage_results": {
+            STAGE_DIVERSITY: {"passed": False, "status": "rejected"},
+            STAGE_COVERAGE: {"passed": True, "status": "approved"},
+        },
+        "stage_failures": ["diversity_score abaixo do limite"],
+    }
+
+
 def test_generate_best_games_uses_hierarchy_orchestrator(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -153,7 +167,7 @@ def test_generate_best_games_uses_hierarchy_orchestrator(
 
     hierarchy_calls: list[int] = []
 
-    def _mock_hierarchy(games, **kwargs):
+    def _mock_recovery(games, **kwargs):
         hierarchy_calls.append(len(games))
         return (
             list(games),
@@ -175,6 +189,12 @@ def test_generate_best_games_uses_hierarchy_orchestrator(
                 "structural_pool": {"structural_pool_applied": True, "pool_origin": "ML_STRUCTURAL_15D_POOL"},
                 "pre_final": {"pre_final_calibration_applied": True},
             },
+            {
+                "internal_recovery_attempted": True,
+                "internal_recovery_attempts": 1,
+                "internal_recovery_success": True,
+                "final_gp_delivered": True,
+            },
         )
 
     def _mock_pool(pool_size_arg, *, seed, history, config):
@@ -191,8 +211,8 @@ def test_generate_best_games_uses_hierarchy_orchestrator(
 
     with patch("lotoia.generation.lei15_core_002.build_sovereign_pool", side_effect=_mock_pool):
         with patch(
-            "lotoia.ml.ml_operational_hierarchy.execute_ml_operational_hierarchy",
-            side_effect=_mock_hierarchy,
+            "lotoia.ml.pre_gp_deterministic_recovery.execute_pre_gp_recovery_cycle",
+            side_effect=_mock_recovery,
         ):
             with patch(
                 "lotoia.generation.lei15_core_002.compose_sovereign_gp",
@@ -221,11 +241,30 @@ def test_hierarchy_blocks_gp_closure_when_diversity_fails(
     monkeypatch.setenv("LOTOIA_LEI15_CORE_002", "sovereign")
     monkeypatch.setenv(ENV_GENERATION_ENABLED, "1")
     monkeypatch.setenv("LOTOIA_LAW15_STRUCTURAL_REALIGNMENT_V1", "off")
+    monkeypatch.setenv("LOTOIA_ML_PRE_GP_RECOVERY_ATTEMPTS", "1")
 
-    with pytest.raises(MlOperationalHierarchyBlockedError, match="M-ML-073"):
-        generate_best_games(count=5, pool_size=40, ml_enabled=True, batch_label=BATCH_LABEL)
+    def _mock_recovery(games, **kwargs):
+        bundle = _failed_hierarchy_bundle()
+        bundle["pre_gp_recovery"] = {
+            "internal_recovery_attempted": True,
+            "internal_recovery_attempts": 1,
+            "internal_recovery_success": False,
+            "recovery_exhausted": True,
+        }
+        return list(games), bundle, {}, dict(bundle["pre_gp_recovery"])
+
+    def _mock_pool(pool_size_arg, *, seed, history, config):
+        return _pool(pool_size_arg)
+
+    with patch("lotoia.generation.lei15_core_002.build_sovereign_pool", side_effect=_mock_pool):
+        with patch(
+            "lotoia.ml.pre_gp_deterministic_recovery.execute_pre_gp_recovery_cycle",
+            side_effect=_mock_recovery,
+        ):
+            with pytest.raises(MlOperationalHierarchyBlockedError, match="M-ML-073"):
+                generate_best_games(count=5, pool_size=40, ml_enabled=True, batch_label=BATCH_LABEL)
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v64"
+    assert BUILD_MARKER == "institutional-adm-runtime-v65"
     assert MISSION_ID == "M-ML-073"
