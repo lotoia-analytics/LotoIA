@@ -3,7 +3,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Missão** | M-STAT-002 |
-| **Build** | `institutional-adm-runtime-v67` |
+| **Build** | `institutional-adm-runtime-v68` |
 | **Agente líder** | `agent_estatistico` |
 | **Veredito** | **CONCLUÍDA** — top slice pré-GP selecionado por diversidade e não apenas por score |
 
