@@ -30,10 +30,12 @@ from dashboard.institutional_supervised_ml import (
     is_supervised_output_calibration_active,
 )
 from dashboard.institutional_operational_structural_coverage import (
-    build_analyzed_card_format_caption,
-    build_card_format_filter_options,
+    build_operational_generation_dropdown_options,
+    build_operational_generation_scope_caption,
+    is_all_operational_generations_selection,
     load_operational_core_002_generations,
-    parse_card_format_filter_label,
+    OPERATIONAL_GENERATION_SELECTOR_KEY,
+    resolve_operational_generation_selection,
 )
 
 SESSION_WORKFLOW = "central_ml_cockpit_workflow_status"
@@ -716,17 +718,25 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     st.caption(COCKPIT_SUBTITLE)
 
     operational_generations = load_operational_core_002_generations(db_path)
-    format_options = build_card_format_filter_options(operational_generations)
-    selected_format_label = st.selectbox(
-        "Formato",
-        options=format_options,
-        key="central_ml_card_format_filter",
+    dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
+    default_index = max(0, len(dropdown_labels) - 1) if dropdown_labels else 0
+    selected_label = st.selectbox(
+        "Geração operacional",
+        options=dropdown_labels or ["—"],
+        index=default_index,
+        key=OPERATIONAL_GENERATION_SELECTOR_KEY,
     )
-    card_format_filter = parse_card_format_filter_label(selected_format_label)
+    operational_selection = resolve_operational_generation_selection(
+        selected_label if dropdown_labels else None,
+        operational_generations,
+    )
+    selected_generation = dict(operational_selection.get("selected_generation") or {})
+    selected_ge_id = int(operational_selection.get("generation_event_id", 0) or 0)
+    selected_card_format = operational_selection.get("card_format")
 
     snapshot = build_ml_calibration_cockpit_snapshot(
         db_path,
-        card_format_filter=card_format_filter,
+        operational_selection=operational_selection,
         workflow_status=str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING),
         decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
         apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
@@ -753,10 +763,38 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     chip_cols[0].caption(f"Lei 15A: {constitutional.get('lei_15a', 'INOPERANTE')}")
     chip_cols[1].caption(f"Purge: {constitutional.get('purge', 'PROTEGIDO')}")
     chip_cols[2].caption(f"public_app: {constitutional.get('public_app_ml', 'SEM ML OPERACIONAL')}")
-    if card_format_filter is not None:
-        st.info(build_analyzed_card_format_caption(card_format_filter))
-    else:
+    if operational_generations:
+        meta_cols = st.columns(4)
+        if is_all_operational_generations_selection(selected_label):
+            meta_cols[0].metric(
+                "Geração operacional",
+                f"Todos ({int(selected_generation.get('generation_events_count', 0) or 0)})",
+            )
+            meta_cols[1].metric(
+                "generation_event_id",
+                f"{int(selected_generation.get('generation_events_count', 0) or 0)} IDs",
+            )
+            meta_cols[2].metric(
+                "Formato cartão",
+                str(selected_generation.get("card_format_label") or "-"),
+            )
+            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+        else:
+            meta_cols[0].metric(
+                "Geração operacional",
+                str(selected_generation.get("operational_generation_label") or "-"),
+            )
+            meta_cols[1].metric("generation_event_id", str(selected_ge_id or "-"))
+            meta_cols[2].metric(
+                "Formato cartão",
+                f"{int(selected_card_format or 0)}D" if selected_card_format else "-",
+            )
+            meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
+
+    if operational_selection.get("is_aggregate"):
         st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
+    else:
+        st.info(build_operational_generation_scope_caption(operational_selection))
     excluded_count = int(snapshot.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
         st.warning(str(snapshot.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))

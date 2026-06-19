@@ -45,6 +45,7 @@ VIS_MISSION_ID = "M-ML-VIS-053"
 VIS_COCKPIT_MISSION_ID = "M-ML-VIS-056"
 VIS_COCKPIT_FIX02_MISSION_ID = "M-ML-VIS-056-FIX-02"
 CARD_FORMAT_FILTER_MISSION_ID = "M-ML-071-FIX-01"
+OPERATIONAL_GENERATION_FILTER_MISSION_ID = CARD_FORMAT_FILTER_MISSION_ID
 VIS_COVERAGE_EVIDENCE_MISSION_ID = "M-ML-VIS-058"
 VIS_COVERAGE_FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
 VIS_COVERAGE_SOVEREIGN_MISSION_ID = SOVEREIGN_MISSION_ID
@@ -1202,47 +1203,66 @@ def build_ml_calibration_result_card(
 def build_ml_calibration_cockpit_snapshot(
     db_path: Path | str,
     *,
-    card_format_filter: int | None = None,
+    operational_selection: Mapping[str, Any] | None = None,
     workflow_status: str = COCKPIT_WORKFLOW_PENDING,
     decision_at: str = "",
     apply_next_generation: bool = False,
     events_limit: int = DEFAULT_AGGREGATE_EVENTS_LIMIT,
 ) -> dict[str, Any]:
     from dashboard.institutional_operational_structural_coverage import (
-        build_analyzed_card_format_caption,
-        build_analyzed_card_format_label,
+        OPERATIONAL_GENERATION_ALL_LABEL,
+        build_operational_generation_scope_caption,
         load_operational_core_002_generations,
-        resolve_generation_event_ids_for_card_format,
+        resolve_operational_generation_selection,
     )
 
     operational_generations = load_operational_core_002_generations(db_path)
-    scoped_generation_event_ids = resolve_generation_event_ids_for_card_format(
-        operational_generations,
-        card_format_filter,
-    )
-    analyzed_format_label = build_analyzed_card_format_label(card_format_filter)
-    analyzed_format_caption = build_analyzed_card_format_caption(card_format_filter)
+    if operational_selection is not None:
+        selection = dict(operational_selection)
+    else:
+        selection = resolve_operational_generation_selection(
+            OPERATIONAL_GENERATION_ALL_LABEL,
+            operational_generations,
+        )
+    is_aggregate = bool(selection.get("is_aggregate"))
+    selected_ge_id = int(selection.get("generation_event_id", 0) or 0)
+    scoped_generation_event_ids = [
+        int(value)
+        for value in list(selection.get("generation_event_ids") or [])
+        if int(value) > 0
+    ]
+    selected_card_format = selection.get("card_format")
+    game_size = int(selected_card_format) if selected_card_format is not None and int(selected_card_format) > 0 else None
+    scope_caption = build_operational_generation_scope_caption(selection)
     format_scope_label = (
-        analyzed_format_caption
-        if card_format_filter is not None
+        scope_caption
+        if not is_aggregate
         else SCOPE_LABEL_ALL_OPERATIONAL
     )
 
     panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
-    if card_format_filter is not None:
+    if is_aggregate and scoped_generation_event_ids:
+        allowed_ids = set(scoped_generation_event_ids)
         event_details = [
             dict(row)
             for row in event_details
-            if int(row.get("card_format", 0) or 0) == int(card_format_filter)
+            if int(row.get("generation_event_id", 0) or 0) in allowed_ids
+        ]
+    elif not is_aggregate and selected_ge_id > 0:
+        event_details = [
+            dict(row)
+            for row in event_details
+            if int(row.get("generation_event_id", 0) or 0) == selected_ge_id
         ]
     aggregate = build_ml_calibration_aggregate_context(event_details)
-    if card_format_filter is not None:
+    if not is_aggregate:
         aggregate = {
             **aggregate,
-            "scope_label": analyzed_format_caption,
-            "analyzed_card_format": int(card_format_filter),
-            "analyzed_card_format_label": analyzed_format_label,
+            "scope_label": scope_caption,
+            "selected_generation_event_id": selected_ge_id,
+            "analyzed_card_format": game_size,
+            "analyzed_card_format_label": f"{game_size}D" if game_size else "—",
         }
     if workflow_status in {COCKPIT_WORKFLOW_AUTHORIZED, COCKPIT_WORKFLOW_APPLIED}:
         aggregate = {**aggregate, "calibration_authorized": True}
@@ -1256,8 +1276,9 @@ def build_ml_calibration_cockpit_snapshot(
         scope=SCOPE_ALL_OPERATIONAL_CORE_002,
         scope_label=format_scope_label,
         events_limit=events_limit,
-        generation_event_ids=scoped_generation_event_ids if card_format_filter is not None else None,
-        game_size=card_format_filter,
+        generation_event_id=selected_ge_id if selected_ge_id > 0 and not is_aggregate else None,
+        generation_event_ids=scoped_generation_event_ids if is_aggregate and scoped_generation_event_ids else None,
+        game_size=game_size if not is_aggregate else None,
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
     sovereign_ids = list(coverage_evidence.get("generation_event_ids") or [])
@@ -1348,15 +1369,16 @@ def build_ml_calibration_cockpit_snapshot(
         "recalibration_display": recalibration,
         "scope_label": (
             AGGREGATE_SCOPE_LABEL
-            if card_format_filter is None
-            else str(diagnosis.get("scope_label") or analyzed_format_caption)
+            if is_aggregate
+            else str(diagnosis.get("scope_label") or scope_caption)
         ),
         "scope_comparison": dict(scope_comparison or {}),
-        "aggregate_mode": card_format_filter is None,
-        "card_format_filter": card_format_filter,
-        "card_format_filter_mission_id": CARD_FORMAT_FILTER_MISSION_ID,
-        "analyzed_card_format_label": analyzed_format_label,
-        "analyzed_card_format_caption": analyzed_format_caption,
+        "aggregate_mode": is_aggregate,
+        "operational_generation_selection": selection,
+        "operational_generation_filter_mission_id": OPERATIONAL_GENERATION_FILTER_MISSION_ID,
+        "selected_generation_event_id": selected_ge_id if not is_aggregate else 0,
+        "selected_card_format": game_size,
+        "analyzed_card_format_caption": scope_caption if not is_aggregate else "",
         "scoped_generation_event_ids": list(scoped_generation_event_ids),
         "constitutional_summary": {
             "core_002": "ATIVO" if panel.get("ml_operational_active") else "BLOQUEADO",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, get_session
 from lotoia.governance.batch_operational_scope import (
@@ -34,71 +34,58 @@ EMPTY_OPERATIONAL_MESSAGE = (
     "Gere um lote no Gerador ADM CORE_002 para habilitar a Cobertura Estrutural operacional."
 )
 OPERATIONAL_GENERATION_ALL_LABEL = "Todos — gerações ativas CORE_002"
-CARD_FORMAT_FILTER_ALL_LABEL = "Todos os formatos"
-CARD_FORMAT_FILTER_MISSION_ID = "M-ML-071-FIX-01"
+OPERATIONAL_GENERATION_SELECTOR_KEY = "structural_coverage_operational_generation"
+OPERATIONAL_GENERATION_FILTER_MISSION_ID = "M-ML-071-FIX-01"
 
 
 def is_all_operational_generations_selection(label: str | None) -> bool:
     return str(label or "").strip() == OPERATIONAL_GENERATION_ALL_LABEL
 
 
-def is_all_card_format_filter_selection(label: str | None) -> bool:
-    return str(label or "").strip() in {"", CARD_FORMAT_FILTER_ALL_LABEL}
+def resolve_operational_generation_selection(
+    selected_label: str | None,
+    generations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Resolve o mesmo seletor da Cobertura Estrutural para Central ML (M-ML-071-FIX-01)."""
+    label_to_generation = {
+        str(row.get("dropdown_label") or ""): dict(row) for row in generations
+    }
+    if is_all_operational_generations_selection(selected_label):
+        aggregate = build_operational_generations_aggregate_summary(generations)
+        return {
+            "is_aggregate": True,
+            "generation_event_id": 0,
+            "generation_event_ids": list(aggregate.get("generation_event_ids") or []),
+            "card_format": None,
+            "selected_generation": aggregate,
+            "operational_generation_label": OPERATIONAL_GENERATION_ALL_LABEL,
+            "dropdown_label": OPERATIONAL_GENERATION_ALL_LABEL,
+        }
+    selected = dict(
+        label_to_generation.get(str(selected_label or "").strip())
+        or (generations[-1] if generations else {})
+    )
+    ge_id = int(selected.get("generation_event_id", 0) or 0)
+    card_format = int(selected.get("card_format", 15) or 15) if selected else None
+    return {
+        "is_aggregate": False,
+        "generation_event_id": ge_id,
+        "generation_event_ids": [ge_id] if ge_id > 0 else [],
+        "card_format": card_format,
+        "selected_generation": selected,
+        "operational_generation_label": str(selected.get("operational_generation_label") or ""),
+        "dropdown_label": str(selected.get("dropdown_label") or selected_label or ""),
+    }
 
 
-def build_card_format_filter_options(generations: list[dict[str, Any]]) -> list[str]:
-    formats = sorted({int(row.get("card_format", 15) or 15) for row in generations})
-    if not formats:
-        return [CARD_FORMAT_FILTER_ALL_LABEL]
-    return [CARD_FORMAT_FILTER_ALL_LABEL, *[f"{size}D" for size in formats]]
-
-
-def parse_card_format_filter_label(label: str | None) -> int | None:
-    text = str(label or "").strip()
-    if is_all_card_format_filter_selection(text):
-        return None
-    if text.endswith("D") and text[:-1].isdigit():
-        return int(text[:-1])
-    if text.isdigit():
-        return int(text)
-    return None
-
-
-def filter_operational_generations_by_card_format(
-    generations: Sequence[Mapping[str, Any]],
-    card_format: int | None,
-) -> list[dict[str, Any]]:
-    if card_format is None:
-        return [dict(row) for row in generations]
-    target = int(card_format)
-    return [
-        dict(row)
-        for row in generations
-        if int(row.get("card_format", 0) or 0) == target
-    ]
-
-
-def resolve_generation_event_ids_for_card_format(
-    generations: Sequence[Mapping[str, Any]],
-    card_format: int | None,
-) -> list[int]:
-    return [
-        int(row.get("generation_event_id", 0) or 0)
-        for row in filter_operational_generations_by_card_format(generations, card_format)
-        if int(row.get("generation_event_id", 0) or 0) > 0
-    ]
-
-
-def build_analyzed_card_format_label(card_format: int | None) -> str:
-    if card_format is None:
-        return CARD_FORMAT_FILTER_ALL_LABEL
-    return f"{int(card_format)}D"
-
-
-def build_analyzed_card_format_caption(card_format: int | None) -> str:
-    if card_format is None:
-        return CARD_FORMAT_FILTER_ALL_LABEL
-    return f"Formato analisado: {int(card_format)}D"
+def build_operational_generation_scope_caption(selection: Mapping[str, Any] | None) -> str:
+    payload = dict(selection or {})
+    if payload.get("is_aggregate"):
+        return OPERATIONAL_GENERATION_ALL_LABEL
+    card_format = int(payload.get("card_format", 0) or 0)
+    if card_format > 0:
+        return f"Formato analisado: {card_format}D"
+    return str(payload.get("dropdown_label") or payload.get("operational_generation_label") or "—")
 
 
 def build_operational_generation_dropdown_options(
