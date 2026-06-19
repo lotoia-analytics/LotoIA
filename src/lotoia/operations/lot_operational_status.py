@@ -177,6 +177,41 @@ def should_defer_generator_persist_verdict_for_coverage(context: Mapping[str, An
     return bool(str(context.get("ml_verdict") or "").strip())
 
 
+def promote_post_calibration_consumer_lot_visibility(
+    lot_status_context: Mapping[str, Any],
+    *,
+    authorized_plan: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Garante que a geração N+1 (consumidora do plano DB) permaneça visível na Cobertura/Central ML."""
+    merged = dict(lot_status_context)
+    plan = dict(authorized_plan or {})
+    if not bool(plan.get("calibration_plan_loaded_from_db")):
+        return merged
+    verdict = str(merged.get("ml_persist_verdict") or merged.get("ml_verdict") or "").strip()
+    if not verdict:
+        verdict = str((merged.get("lot_status_trace") or {}).get("ml_verdict") or "").strip()
+    merged.update(
+        {
+            "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
+            "is_active_structural_reading": True,
+            "active_reading_scope": True,
+            "calibration_plan_consumer_generation": True,
+            "calibration_plan_loaded_from_db": True,
+            "calibration_plan_source_generation_event_id": int(
+                plan.get("calibration_plan_source_generation_event_id", 0) or 0
+            ),
+            "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
+            "calibration_plan_visibility_mission_id": "M-ML-075-FIX-01",
+            "excluded_from_active_reading_reason": "",
+        }
+    )
+    if verdict:
+        merged["ml_persist_verdict_deferred_for_coverage"] = True
+        merged["ml_persist_verdict"] = verdict
+        merged["structural_coverage_defer_mission_id"] = DEFERRED_COVERAGE_MISSION_ID
+    return merged
+
+
 def defer_lot_status_for_structural_coverage(
     lot_status_context: Mapping[str, Any],
     *,

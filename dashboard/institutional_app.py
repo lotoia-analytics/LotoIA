@@ -224,6 +224,7 @@ from lotoia.operations.lot_operational_status import (
     extract_lot_operational_status,
     is_analytical_history_eligible,
     is_official_conference_eligible,
+    promote_post_calibration_consumer_lot_visibility,
     supersede_status_update,
 )
 from dashboard.institutional_clean_law15_runtime import (
@@ -11596,6 +11597,9 @@ def _supersede_prior_lots_for_calibration(
                 continue
             if is_official_conference_eligible(context):
                 continue
+            lot_status = extract_lot_operational_status(context)
+            if lot_status in {"calibration_source_only", "superseded_by_calibration"}:
+                continue
             merged = merge_supersede_operational_fields(
                 context,
                 superseded_by_event_id=int(new_generation_event_id),
@@ -11708,6 +11712,7 @@ def _persist_clean_law15_generation_history(
     )
     cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
     authorized_plan = dict(result.get("authorized_calibration_plan") or {})
+    calibration_plan_loaded_from_db = bool(authorized_plan.get("calibration_plan_loaded_from_db"))
     calibration_authorized = bool(cockpit_bundle.get("calibration_authorized")) or bool(
         authorized_plan.get("authorized")
     )
@@ -11721,8 +11726,8 @@ def _persist_clean_law15_generation_history(
     lot_status_context = build_lot_status_context(
         ml_verdict_payload=ml_verdict_payload,
         generation_origin=generation_origin,
-        calibration_applied=bool(ml_bundle.get("calibration_applied")),
-        calibration_authorized=calibration_authorized,
+        calibration_applied=bool(ml_bundle.get("calibration_applied")) and not calibration_plan_loaded_from_db,
+        calibration_authorized=calibration_authorized and not calibration_plan_loaded_from_db,
         simulation_mode=simulation_mode,
     )
     lot_status_context = defer_lot_status_for_structural_coverage(
@@ -11730,6 +11735,10 @@ def _persist_clean_law15_generation_history(
         generation_origin=generation_origin,
         simulation_mode=simulation_mode,
         ml_verdict_payload=ml_verdict_payload,
+    )
+    lot_status_context = promote_post_calibration_consumer_lot_visibility(
+        lot_status_context,
+        authorized_plan=authorized_plan,
     )
     trace_games = list(ml_bundle.get("decision_trace") or [])
     trace_attributions = list(ml_bundle.get("feature_attribution") or [])
@@ -12050,6 +12059,7 @@ def _persist_clean_law15_generation_history(
             ),
         }
     )
+    generation_context = sync_persisted_event_operational_status(generation_context)
     try:
         persisted = _attach_operational_generation_label(
             _persist_generation_snapshot(
@@ -12084,7 +12094,24 @@ def _persist_clean_law15_generation_history(
                 metrics_after=extract_generation_metrics(generation_context),
                 db_path=DB_PATH,
             )
-        if new_event_id > 0 and (calibration_authorized or bool(ml_bundle.get("calibration_applied"))):
+            if source_id > 0:
+                from lotoia.governance.batch_operational_scope import (
+                    mark_generation_events_superseded_by_calibration,
+                )
+
+                mark_generation_events_superseded_by_calibration(
+                    [source_id],
+                    db_path=DB_PATH,
+                    reason="calibração consumida — lote N arquivado após aplicação em N+1 (M-ML-075-FIX-01)",
+                    evidence=dict(authorized_plan.get("parametros_sugeridos") or {}),
+                    authorized_plan=authorized_plan,
+                    operator="cockpit_operador_adm",
+                    calibration_source_only=True,
+                )
+        if new_event_id > 0 and (
+            (calibration_authorized and not calibration_plan_loaded_from_db)
+            or bool(ml_bundle.get("calibration_applied") and not calibration_plan_loaded_from_db)
+        ):
             _supersede_prior_lots_for_calibration(
                 new_generation_event_id=new_event_id,
                 selected_card_format=int(selected_card_format),

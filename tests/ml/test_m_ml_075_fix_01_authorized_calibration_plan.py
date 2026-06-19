@@ -9,7 +9,7 @@ import pytest
 
 from dashboard.institutional_build import BUILD_MARKER
 from dashboard.institutional_supervised_ml import resolve_authorized_calibration_plan
-from lotoia.database.database import GenerationEvent, ScientificInstitutionalMemory, create_database, get_session
+from lotoia.database.database import GeneratedGame, GenerationEvent, ScientificInstitutionalMemory, create_database, get_session
 from lotoia.ml.authorized_ml_calibration_plan import (
     EFFECT_IMPROVED,
     EFFECT_NEUTRAL,
@@ -26,6 +26,7 @@ from lotoia.ml.authorized_ml_calibration_plan import (
     persist_authorized_ml_calibration_plan,
     resolve_authorized_calibration_plan_from_db,
 )
+from dashboard.institutional_operational_structural_coverage import load_operational_core_002_generations
 from lotoia.ml.ml_operational_hierarchy import build_gp_quality_classification
 
 
@@ -349,4 +350,98 @@ def test_m_ml_073b_uses_calibration_plan_evidence() -> None:
 
 
 def test_build_marker_v70() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v70"
+    assert BUILD_MARKER == "institutional-adm-runtime-v71"
+
+
+def test_promote_post_calibration_consumer_lot_visibility() -> None:
+    from lotoia.operations.lot_operational_status import promote_post_calibration_consumer_lot_visibility
+
+    promoted = promote_post_calibration_consumer_lot_visibility(
+        {
+            "lot_operational_status": "calibration_applied",
+            "active_reading_scope": False,
+            "ml_verdict": "REPROVADO",
+        },
+        authorized_plan={
+            "calibration_plan_loaded_from_db": True,
+            "calibration_plan_source_generation_event_id": 10,
+            "calibration_trace_id": "trace-abc",
+        },
+    )
+    assert promoted["lot_operational_status"] == "pending_structural_review"
+    assert promoted["active_reading_scope"] is True
+    assert promoted["calibration_plan_consumer_generation"] is True
+    assert promoted["ml_persist_verdict_deferred_for_coverage"] is True
+
+
+def test_plan_loaded_consumer_visible_in_operational_loaders(tmp_path: Path) -> None:
+    from lotoia.observability.card_structure_diagnostics import (
+        _event_eligible_for_active_structural_reading,
+        load_operational_card_structure_diagnostics_from_db,
+    )
+
+    db_path = tmp_path / "consumer-visible.db"
+    create_database(db_path)
+    batch_label = "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001"
+    numbers = list(range(1, 16))
+    with get_session(db_path) as session:
+        event = GenerationEvent(
+            lead_id=None,
+            first_name="institutional",
+            whatsapp="",
+            generated_games=[{"numbers": numbers}],
+            context_json={
+                "lot_operational_status": "pending_structural_review",
+                "active_reading_scope": True,
+                "calibration_plan_consumer_generation": True,
+                "calibration_plan_loaded_from_db": True,
+                "ml_verdict": "REPROVADO",
+                "selected_card_format": 15,
+                "card_format": 15,
+                "selected_quantity": 20,
+                "ml_scored_games": 20,
+            },
+            ml_enabled=1,
+            seed=42,
+            strategy="institutional_clean_hb",
+            ranking_score=0.0,
+            execution_time_ms=1.0,
+            analysis_batch_label=batch_label,
+        )
+        session.add(event)
+        session.flush()
+        ge_id = int(event.id or 0)
+        for index in range(20):
+            session.add(
+                GeneratedGame(
+                    generation_event_id=ge_id,
+                    lead_id=None,
+                    target_contest=3700,
+                    origin="institutional",
+                    generation_mode="hb_baseline",
+                    game_index=index + 1,
+                    numbers=numbers,
+                    profile_type="recorrente",
+                    final_score={"final_score": 0.5},
+                    quadra_score={},
+                    context_json={"selected_card_format": 15, "final_card_numbers": numbers},
+                )
+            )
+        session.commit()
+
+    context = {
+        "calibration_plan_consumer_generation": True,
+        "active_reading_scope": True,
+        "lot_operational_status": "pending_structural_review",
+        "ml_verdict": "REPROVADO",
+    }
+    assert _event_eligible_for_active_structural_reading(context) is True
+    generations = load_operational_core_002_generations(db_path)
+    assert any(int(row["generation_event_id"]) == ge_id for row in generations)
+    diagnostics = load_operational_card_structure_diagnostics_from_db(
+        db_path,
+        generation_event_id=ge_id,
+        game_size=15,
+    )
+    abertura = dict(diagnostics.get("abertura") or {})
+    assert abertura or int(diagnostics.get("total_jogos", 0) or 0) > 0
