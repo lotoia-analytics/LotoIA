@@ -114,6 +114,10 @@ from dashboard.institutional_governance import (
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
+from dashboard.institutional_structural_policy_coverage import (
+    build_structural_policy_coverage_context,
+    render_structural_policy_15d_operational_block,
+)
 from dashboard.institutional_ml_assistive import (
     render_constitutional_side_leak_section,
     render_ml_assistive_governance_section,
@@ -9080,6 +9084,19 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         st.warning("Geração operacional selecionada sem jogos persistidos em generated_games.")
         _render_historical_structural_coverage_section()
         return
+
+    policy_context = build_structural_policy_coverage_context(
+        DB_PATH,
+        payload,
+        selected_ge_id if selected_ge_id > 0 else None,
+        selected_card_format,
+    )
+    if policy_context.get("available"):
+        render_structural_policy_15d_operational_block(
+            policy_context.get("memory"),
+            policy_context.get("application"),
+            policy_context.get("compliance"),
+        )
 
     _render_structural_coverage_diagnostics_body(payload)
     _render_historical_structural_coverage_section()

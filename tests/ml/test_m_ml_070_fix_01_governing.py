@@ -6,11 +6,9 @@ import inspect
 from pathlib import Path
 
 import lotoia.generator.basic_generator as basic_generator
-from lotoia.observability.coverage_evidence_interpreter import (
-    _build_structural_policy_15d_diagnosis,
-)
 from lotoia.ml.structural_policy_15d import (
     apply_structural_policy_15d_to_sovereign_batch,
+    build_structural_policy_15d_diagnosis,
     extract_structural_policy_application_from_context,
     validate_game_structural_policy_15d,
 )
@@ -130,29 +128,31 @@ def test_extract_application_exposes_applied_flag() -> None:
 # --------------------------------------------------------------------------- #
 # 4. Integração no veredito/diagnóstico/plano
 # --------------------------------------------------------------------------- #
-def test_policy_feeds_diagnosis_and_verdict_when_partial() -> None:
-    application = {
-        "available": True,
-        "structural_policy_applied": True,
-        "policy_compliance_status": "partial",
-        "games_validated": 20,
+def test_policy_feeds_diagnosis_when_violations_present() -> None:
+    """A conformidade entra no diagnóstico/veredito via build_structural_policy_15d_diagnosis."""
+    analysis = {
+        "violations": ["repeticao:fora_faixa_7_10:6"],
+        "diagnostics": [],
+        "compliance_label": "REPROVADO",
+        "games_total": 20,
         "games_compliant": 17,
-        "games_non_compliant": 3,
-        "compliance_rate": 0.85,
-        "policy_violations": ["repeticao:fora_faixa_7_10:6"],
-        "structural_policy_version": "M-ML-070-v1",
     }
-    problemas, evidencias, acoes, plan_items, verdict_note = _build_structural_policy_15d_diagnosis(application)
-    assert verdict_note  # entra no veredito
-    assert evidencias  # entra nas evidências
-    assert problemas  # entra no diagnóstico (não totalmente conforme)
-    assert acoes  # entra nas recomendações
-    assert plan_items  # entra no plano
-    assert "conformidade" in verdict_note
+    issues = build_structural_policy_15d_diagnosis(analysis)
+    assert issues
+    issue = issues[0]
+    assert issue.get("problema_detectado")
+    assert issue.get("acao_recomendada")
+    assert issue.get("violations")
 
 
-def test_policy_diagnosis_empty_when_not_applied() -> None:
-    problemas, evidencias, acoes, plan_items, verdict_note = _build_structural_policy_15d_diagnosis(
-        {"available": False}
-    )
-    assert (problemas, evidencias, acoes, plan_items, verdict_note) == ([], [], [], [], "")
+def test_policy_diagnosis_compliant_when_no_violations() -> None:
+    analysis = {
+        "violations": [],
+        "diagnostics": [],
+        "compliance_label": "APROVADO",
+        "games_total": 20,
+        "games_compliant": 20,
+    }
+    issues = build_structural_policy_15d_diagnosis(analysis)
+    assert issues
+    assert issues[0].get("issue_type") == "structural_policy_15d_compliant"
