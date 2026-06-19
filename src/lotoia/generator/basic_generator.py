@@ -684,6 +684,7 @@ def generate_best_games(
     _v2_fallback_to_v1 = False
     _v3_fallback_to_v1 = False
     _calibration_bundle = None
+    _structural_policy_bundle = None
     if _apply_sovereign and ml_enabled:
         from lotoia.ml.supervised_output_calibration import apply_supervised_output_calibration
 
@@ -708,6 +709,15 @@ def generate_best_games(
             len(best_games),
             _sovereign_cfg.sovereign_core_status,
         )
+        if count == 15:
+            from lotoia.ml.structural_policy_15d import apply_structural_policy_15d_to_sovereign_batch
+
+            best_games, _structural_policy_bundle = apply_structural_policy_15d_to_sovereign_batch(
+                best_games,
+                pool_games=games,
+                history=history,
+                required_count=count,
+            )
     elif _apply_v4:
         from lotoia.generation.core_realignment_v4 import compose_gp_v4
 
@@ -922,4 +932,15 @@ def generate_best_games(
         payload["calibration_bundle"] = _calibration_bundle
         payload["calibration_applied"] = True
         payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
+    if _structural_policy_bundle:
+        payload["structural_policy_15d_bundle"] = _structural_policy_bundle
+        payload["structural_policy_memory_loaded"] = True
+        payload["structural_policy_format"] = "15D"
+        payload["structural_policy_version"] = _structural_policy_bundle.get("structural_policy_version")
+        payload["applied_rules"] = list(_structural_policy_bundle.get("applied_rules") or [])
+        payload["violated_rules"] = list(_structural_policy_bundle.get("violated_rules") or [])
+        payload["policy_compliance_status"] = _structural_policy_bundle.get("policy_compliance_status")
+        merged_bundle = dict(_calibration_bundle or {})
+        merged_bundle["structural_policy_15d"] = _structural_policy_bundle
+        payload["calibration_bundle"] = merged_bundle
     return payload
