@@ -16,8 +16,10 @@ from dashboard.institutional_ml_hierarchy_block import (
     render_ml_hierarchy_block_panel,
 )
 from lotoia.ml.ml_operational_hierarchy import (
+    QUALITY_TIER_REPROVADO,
     MlOperationalHierarchyBlockedError,
     STAGE_DIVERSITY,
+    build_gp_quality_operational_payload,
     build_ml_hierarchy_block_operational_payload,
     is_ml_operational_hierarchy_block_error,
 )
@@ -26,11 +28,13 @@ from lotoia.ml.ml_operational_hierarchy import (
 def _sample_hierarchy_bundle() -> dict[str, Any]:
     return {
         "mission_id": "M-ML-073",
-        "ml_hierarchy_version": "M-ML-073-v1",
+        "ml_hierarchy_version": "M-ML-073-v2",
         "hierarchy_compliance": False,
         "gp_closure_allowed": False,
+        "gp_delivery_blocked": True,
+        "gp_delivery_block_reasons": ["pool_vazio"],
         "current_stage": STAGE_DIVERSITY,
-        "blocking_reason": "diversidade abaixo do piso institucional",
+        "blocking_reason": "pool_vazio",
         "blocking_responsible_agent": "agent_estatistico",
         "corrective_action_applied": ["rerank_diversidade", "expansao_pool_diversidade"],
         "stage_results": {
@@ -202,8 +206,33 @@ def test_central_ml_pre_gp_block_notice() -> None:
     assert notice.get("responsible_agent") == "agent_estatistico"
 
 
-def test_build_marker_v64() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v68"
+def test_build_gp_quality_operational_payload_delivered() -> None:
+    bundle = {
+        "hierarchy_applied": True,
+        "gp_closure_allowed": False,
+        "gp_quality_tier": QUALITY_TIER_REPROVADO,
+        "gp_quality_reasons": ["diversity_score=0.36 abaixo de 0.55"],
+        "gp_quality_classification": {
+            "diversity_score": 0.36,
+            "similarity_score": 9.47,
+        },
+        "stage_results": {
+            STAGE_DIVERSITY: {
+                "passed": False,
+                "stage_label": "Etapa 2: Diversidade",
+                "responsible_agent": "agent_estatistico",
+            }
+        },
+        "blocking_responsible_agent": "agent_estatistico",
+    }
+    payload = build_gp_quality_operational_payload(bundle, delivered_count=20, requested_count=20)
+    assert payload["gp_delivered"] is True
+    assert payload["gp_quality_tier"] == QUALITY_TIER_REPROVADO
+    assert payload["gp_delivered_count"] == 20
+
+
+def test_build_marker_v69() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v69"
 
 
 def test_session_snapshot_key_constant() -> None:

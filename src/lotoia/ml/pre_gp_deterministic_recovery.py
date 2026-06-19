@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from lotoia.governance.institutional_agent_routing_matrix import enrich_hierarchy_bundle
 from lotoia.ml.ml_operational_hierarchy import (
+    QUALITY_TIER_APROVADO,
     STAGE_CONFORMITY,
     STAGE_COVERAGE,
     STAGE_DIVERSITY,
@@ -87,6 +88,8 @@ def _attempt_metrics_snapshot(
         "coverage_passed": bool(coverage_stage.get("passed")),
         "conformity_passed": bool(conformity_stage.get("passed")),
         "gp_closure_allowed": bool(hierarchy_bundle.get("gp_closure_allowed")),
+        "gp_quality_tier": str(hierarchy_bundle.get("gp_quality_tier") or ""),
+        "gp_delivery_blocked": bool(hierarchy_bundle.get("gp_delivery_blocked")),
         "max_overlap": int(
             (diversity_stage.get("metrics") or {}).get("max_overlap", 0) or 0
         ),
@@ -101,8 +104,13 @@ def _score_attempt(metrics: Mapping[str, Any]) -> float:
         score += 20.0
     if metrics.get("diversity_passed"):
         score += 25.0
-    if metrics.get("gp_closure_allowed"):
+    tier = str(metrics.get("gp_quality_tier") or "")
+    if tier == QUALITY_TIER_APROVADO:
         score += 200.0
+    elif tier == "ATENÇÃO":
+        score += 80.0
+    if metrics.get("gp_delivery_blocked"):
+        score -= 500.0
     return round(score, 4)
 
 
@@ -470,6 +478,8 @@ def execute_pre_gp_recovery_cycle(
         attempt_row = {
             "attempt_index": attempt_index,
             "gp_closure_allowed": bool(hierarchy_bundle.get("gp_closure_allowed")),
+            "gp_quality_tier": str(hierarchy_bundle.get("gp_quality_tier") or ""),
+            "gp_delivery_blocked": bool(hierarchy_bundle.get("gp_delivery_blocked")),
             "failed_stage": failed_stage,
             "metrics": metrics,
             "recovery_actions": [],
@@ -486,7 +496,10 @@ def execute_pre_gp_recovery_cycle(
             best_hierarchy = dict(hierarchy_bundle)
             best_missions = dict(mission_bundles)
 
-        if hierarchy_bundle.get("gp_closure_allowed"):
+        if (
+            hierarchy_bundle.get("gp_quality_tier") == QUALITY_TIER_APROVADO
+            and not hierarchy_bundle.get("gp_delivery_blocked")
+        ):
             successful_pool = [dict(game) for game in pool]
             successful_hierarchy = dict(hierarchy_bundle)
             successful_missions = dict(mission_bundles)
@@ -530,7 +543,7 @@ def execute_pre_gp_recovery_cycle(
     if not success:
         failed_reason = str(
             final_hierarchy.get("blocking_reason")
-            or (final_hierarchy.get("stage_failures") or ["etapas 1–3 reprovadas"])[0]
+            or (final_hierarchy.get("gp_quality_reasons") or ["qualidade abaixo de APROVADO"])[0]
         )
 
     recovery_bundle: dict[str, Any] = {
@@ -540,7 +553,7 @@ def execute_pre_gp_recovery_cycle(
         "internal_recovery_attempts": len(attempt_results),
         "internal_recovery_success": success,
         "internal_recovery_failed_reason": failed_reason,
-        "final_gp_delivered": success,
+        "final_gp_delivered": not bool(final_hierarchy.get("gp_delivery_blocked")),
         "max_recovery_attempts": max_attempts,
         "best_attempt_selected": best_attempt_index,
         "best_attempt_metrics": best_metrics,

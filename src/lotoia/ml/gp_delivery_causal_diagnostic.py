@@ -69,10 +69,18 @@ BLOCKING_DECISION_POINTS: tuple[dict[str, Any], ...] = (
     {
         "id": "BLK-HIERARCHY-073",
         "module": "ml_operational_hierarchy + basic_generator",
-        "condition": "gp_closure_allowed is False (etapas 1–3 reprovadas após até 5 remediações/etapa)",
+        "condition": "gp_delivery_blocked is True (pool vazio, overlap crítico — M-ML-073b)",
         "intentional": True,
         "before_compose_gp": True,
-        "evidence": "ml_operational_hierarchy.py L631-634, L741-742 basic_generator.py",
+        "evidence": "ml_operational_hierarchy.py is_critical_gp_delivery_block, basic_generator.py L766-767",
+    },
+    {
+        "id": "QUALITY-073B",
+        "module": "ml_operational_hierarchy",
+        "condition": "gp_quality_tier in {ATENÇÃO, REPROVADO} — entrega mantida",
+        "intentional": True,
+        "before_compose_gp": False,
+        "evidence": "ADR-048 M-ML-073b — classificador de qualidade pós-etapas 1-3",
     },
     {
         "id": "BLK-COMPOSE-SHORT",
@@ -250,16 +258,16 @@ def build_gp_delivery_causal_report() -> dict[str, Any]:
             "Por que GP:20 15D com ML habilitado não entrega 20 jogos em alguns cenários?"
         ),
         "answer_summary": (
-            "A hierarquia M-ML-073 bloqueia intencionalmente o fechamento do GP "
-            "(gp_closure_allowed=False) quando diversidade/cobertura/conformidade falham "
-            "no top slice (requested_count×3), APÓS até 5 tentativas de remediação por etapa. "
-            "compose_sovereign_gp nunca é chamado nesse caminho."
+            "M-ML-073b (ADR-048): a hierarquia M-ML-073 classifica qualidade "
+            "(gp_quality_tier) mas não bloqueia entrega por diversidade/cobertura. "
+            "Bloqueio duro (gp_delivery_blocked) apenas em pool vazio, overlap crítico "
+            "ou falha em compose_sovereign_gp."
         ),
         "divergence_point": {
             "file": "src/lotoia/generator/basic_generator.py",
-            "lines": "741-742",
-            "condition": "not _hierarchy_bundle.get('gp_closure_allowed')",
-            "effect": "MlOperationalHierarchyBlockedError — 0 jogos finais entregues",
+            "lines": "766-767",
+            "condition": "_hierarchy_bundle.get('gp_delivery_blocked')",
+            "effect": "MlOperationalHierarchyBlockedError — apenas falhas críticas de entrega",
         },
         "recovery_attempts": {
             "exists": True,
@@ -267,10 +275,10 @@ def build_gp_delivery_causal_report() -> dict[str, Any]:
             "stages": ["diversidade", "cobertura"],
             "evidence": "ml_operational_hierarchy.py — MAX_REMEDIATION_ATTEMPTS=5, while loop L608-626",
         },
-        "metrics_are_hard_gates": True,
+        "metrics_are_hard_gates": False,
         "hard_gate_evidence": (
-            "DIVERSITY_LOW_THRESHOLD=0.55 em overlap_format_thresholds.py; "
-            "_evaluate_diversity_stage failures → passed=False → gp_closure_allowed=False"
+            "M-ML-073b: gp_quality_tier classifica; gp_delivery_blocked apenas crítico. "
+            "DIVERSITY_LOW_THRESHOLD=0.55 permanece como observabilidade."
         ),
         "agents_affect_decision": False,
         "agents_evidence": "institutional_agent_routing_matrix.py — enrich only, no branch on responsible_agent",
@@ -281,6 +289,6 @@ def build_gp_delivery_causal_report() -> dict[str, Any]:
         "classification": CLASSIFICATION,
         "classification_label": CLASSIFICATION_LABEL,
         "recommended_next_mission": RECOMMENDED_NEXT_MISSION,
-        "functional_changes": False,
+        "functional_changes": True,
         "purge_executed": False,
     }

@@ -39,8 +39,12 @@ from lotoia.ml.supervised_output_calibration import (
 from lotoia.statistics.card_structure import resolve_cartao_final_from_game
 
 MISSION_ID = "M-ML-073"
-HIERARCHY_VERSION = "M-ML-073-v1"
+QUALITY_CLASSIFIER_MISSION_ID = "M-ML-073b"
+HIERARCHY_VERSION = "M-ML-073-v2"
 MEMORY_KIND = "ml_operational_hierarchy"
+QUALITY_TIER_APROVADO = "APROVADO"
+QUALITY_TIER_ATENCAO = "ATENÇÃO"
+QUALITY_TIER_REPROVADO = "REPROVADO"
 MEMORY_STATUS_ACTIVE = "active"
 ENV_HIERARCHY_ENABLED = "LOTOIA_ML_OPERATIONAL_HIERARCHY_ENABLED"
 MAX_REMEDIATION_ATTEMPTS = 5
@@ -84,6 +88,69 @@ COVERAGE_ISSUE_TYPES: frozenset[str] = frozenset({"dezena_subcoberta"})
 def is_ml_operational_hierarchy_enabled() -> bool:
     raw = os.getenv(ENV_HIERARCHY_ENABLED, "1").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def derive_gp_quality_tier(stage_results: Mapping[str, Any]) -> str:
+    """M-ML-073b — classifica qualidade sem bloquear entrega por diversidade/cobertura."""
+    failed_stages = [
+        stage_id
+        for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
+        if stage_id in stage_results
+        and not dict(stage_results.get(stage_id) or {}).get("passed")
+    ]
+    if not failed_stages:
+        return QUALITY_TIER_APROVADO
+    if len(failed_stages) == 1:
+        stage_id = failed_stages[0]
+        if stage_id in {STAGE_DIVERSITY, STAGE_COVERAGE}:
+            return QUALITY_TIER_ATENCAO
+        conformity_failures = list(
+            dict(stage_results.get(STAGE_CONFORMITY) or {}).get("failures") or []
+        )
+        if any("overlap_critico" in str(failure) for failure in conformity_failures):
+            return QUALITY_TIER_REPROVADO
+        return QUALITY_TIER_ATENCAO
+    return QUALITY_TIER_REPROVADO
+
+
+def is_critical_gp_delivery_block(
+    pool: Sequence[Mapping[str, Any]],
+    stage_results: Mapping[str, Any],
+) -> tuple[bool, list[str]]:
+    """Bloqueio duro de entrega — apenas falhas operacionais/soberanas críticas."""
+    reasons: list[str] = []
+    if not pool:
+        reasons.append("pool_vazio")
+    conformity = dict(stage_results.get(STAGE_CONFORMITY) or {})
+    for failure in list(conformity.get("failures") or []):
+        text = str(failure)
+        if "overlap_critico" in text:
+            reasons.append(text)
+    return bool(reasons), reasons
+
+
+def build_gp_quality_classification(
+    stage_results: Mapping[str, Any],
+    *,
+    stage_failures: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    tier = derive_gp_quality_tier(stage_results)
+    reasons = list(stage_failures or [])
+    if not reasons:
+        for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE):
+            row = dict(stage_results.get(stage_id) or {})
+            if not row.get("passed"):
+                reasons.extend(list(row.get("failures") or [])[:3])
+    diversity_metrics = dict(dict(stage_results.get(STAGE_DIVERSITY) or {}).get("metrics") or {})
+    return {
+        "mission_id": QUALITY_CLASSIFIER_MISSION_ID,
+        "gp_quality_tier": tier,
+        "gp_quality_reasons": reasons[:10],
+        "gp_quality_passed": tier == QUALITY_TIER_APROVADO,
+        "diversity_score": diversity_metrics.get("diversity_score"),
+        "similarity_score": diversity_metrics.get("similarity_score"),
+        "max_overlap": diversity_metrics.get("max_overlap"),
+    }
 
 
 def is_hierarchy_format(game_size: int) -> bool:
@@ -646,9 +713,12 @@ def execute_ml_operational_hierarchy(
         stage_results.get(stage_id, {}).get("passed") for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
     )
     gp_closure_allowed = pre_gp_stages_passed
-    current_stage = STAGE_GP_CLOSURE if gp_closure_allowed else stage_results.get(STAGE_COVERAGE, {}).get("stage_id", STAGE_COVERAGE)
+    gp_quality = build_gp_quality_classification(stage_results, stage_failures=stage_failures)
+    gp_quality_tier = str(gp_quality.get("gp_quality_tier") or QUALITY_TIER_APROVADO)
+    gp_delivery_blocked, critical_delivery_reasons = is_critical_gp_delivery_block(pool, stage_results)
+    current_stage = STAGE_GP_CLOSURE
 
-    if gp_closure_allowed and not pre_final_bundle:
+    if not pre_final_bundle:
         pool, pre_final_bundle = apply_pre_final_pool_ml_calibration(
             pool,
             game_size=game_size,
@@ -665,10 +735,16 @@ def execute_ml_operational_hierarchy(
     stage_results[STAGE_GP_CLOSURE] = {
         "stage_id": STAGE_GP_CLOSURE,
         "stage_label": STAGE_LABELS[STAGE_GP_CLOSURE],
-        "status": "approved" if gp_closure_allowed else "blocked",
-        "passed": gp_closure_allowed,
-        "metrics": {"requested_count": int(requested_count), "pool_size": len(pool)},
-        "failures": [] if gp_closure_allowed else stage_failures,
+        "status": "blocked" if gp_delivery_blocked else ("approved" if gp_closure_allowed else "quality_warning"),
+        "passed": not gp_delivery_blocked,
+        "metrics": {
+            "requested_count": int(requested_count),
+            "pool_size": len(pool),
+            "gp_quality_tier": gp_quality_tier,
+            "gp_delivered_policy": "always_unless_critical",
+            "quality_gates_passed": gp_closure_allowed,
+        },
+        "failures": critical_delivery_reasons if gp_delivery_blocked else [],
         "corrective_actions": list(dict.fromkeys(corrective_actions)),
     }
 
@@ -683,20 +759,19 @@ def execute_ml_operational_hierarchy(
             "hierarchy_compliance": gp_closure_allowed,
             "gp_closure_allowed": gp_closure_allowed,
             "gp_closure_blocked": not gp_closure_allowed,
+            "gp_delivery_blocked": gp_delivery_blocked,
+            "gp_delivery_block_reasons": critical_delivery_reasons,
+            "gp_quality_tier": gp_quality_tier,
+            "gp_quality_reasons": list(gp_quality.get("gp_quality_reasons") or []),
+            "gp_quality_classification": gp_quality,
+            "quality_classifier_mission_id": QUALITY_CLASSIFIER_MISSION_ID,
             "current_stage": current_stage,
-            "last_completed_stage": (
-                STAGE_COVERAGE
-                if pre_gp_stages_passed
-                else next(
-                    (
-                        stage_id
-                        for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
-                        if not stage_results.get(stage_id, {}).get("passed")
-                    ),
-                    STAGE_COVERAGE,
-                )
+            "last_completed_stage": STAGE_GP_CLOSURE,
+            "blocking_reason": "; ".join(
+                critical_delivery_reasons[:5]
+                if gp_delivery_blocked
+                else list(gp_quality.get("gp_quality_reasons") or [])[:5]
             ),
-            "blocking_reason": "; ".join(stage_failures[:5]) if stage_failures else "",
             "corrective_action_applied": list(dict.fromkeys(corrective_actions))[:20],
             "stage_results": stage_results,
             "stage_failures": stage_failures,
@@ -806,6 +881,10 @@ def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> di
         "hierarchy_compliance": bool(source.get("hierarchy_compliance")),
         "gp_closure_allowed": bool(source.get("gp_closure_allowed")),
         "gp_closure_blocked": bool(source.get("gp_closure_blocked")),
+        "gp_delivery_blocked": bool(source.get("gp_delivery_blocked")),
+        "gp_quality_tier": str(source.get("gp_quality_tier") or ""),
+        "gp_quality_reasons": list(source.get("gp_quality_reasons") or [])[:10],
+        "quality_classifier_mission_id": str(source.get("quality_classifier_mission_id") or ""),
         "current_stage": str(source.get("current_stage") or ""),
         "last_completed_stage": str(source.get("last_completed_stage") or ""),
         "blocking_reason": str(source.get("blocking_reason") or ""),
@@ -823,7 +902,7 @@ def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> di
 
 
 class MlOperationalHierarchyBlockedError(RuntimeError):
-    """GP bloqueado pelas etapas 1–3 da hierarquia M-ML-073 (pré-compose_sovereign_gp)."""
+    """GP bloqueado por falha crítica de entrega (M-ML-073b — não por classificação de qualidade)."""
 
     def __init__(self, message: str, *, hierarchy_bundle: Mapping[str, Any]) -> None:
         super().__init__(message)
@@ -831,17 +910,20 @@ class MlOperationalHierarchyBlockedError(RuntimeError):
 
     @classmethod
     def from_bundle(cls, hierarchy_bundle: Mapping[str, Any]) -> MlOperationalHierarchyBlockedError:
-        reason = str(hierarchy_bundle.get("blocking_reason") or "etapas 1–3 reprovadas")
+        critical_reasons = list(hierarchy_bundle.get("gp_delivery_block_reasons") or [])
+        reason = "; ".join(critical_reasons[:5]) or str(
+            hierarchy_bundle.get("blocking_reason") or "falha crítica de entrega GP"
+        )
         recovery = dict(hierarchy_bundle.get("pre_gp_recovery") or {})
         attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
         if recovery.get("internal_recovery_attempted") and attempts > 0:
             message = (
-                "[M-ML-073/M-ML-074] Fechamento GP bloqueado após "
+                "[M-ML-073/M-ML-074] Entrega GP bloqueada por falha crítica após "
                 f"{attempts} tentativas internas de recuperação pré-GP: {reason}"
             )
         else:
             message = (
-                "[M-ML-073] Fechamento GP bloqueado pela hierarquia operacional ML: "
+                "[M-ML-073] Entrega GP bloqueada por falha crítica (não por qualidade): "
                 f"{reason}"
             )
         return cls(message, hierarchy_bundle=hierarchy_bundle)
@@ -863,12 +945,50 @@ def resolve_failed_hierarchy_stage(hierarchy_bundle: Mapping[str, Any] | None) -
     return str(source.get("current_stage") or "")
 
 
+def build_gp_quality_operational_payload(
+    hierarchy_bundle: Mapping[str, Any] | None,
+    *,
+    delivered_count: int,
+    requested_count: int,
+) -> dict[str, Any]:
+    """Estado operacional M-ML-073b quando o GP é entregue com classificação de qualidade."""
+    source = dict(hierarchy_bundle or {})
+    quality = dict(source.get("gp_quality_classification") or {})
+    tier = str(source.get("gp_quality_tier") or quality.get("gp_quality_tier") or QUALITY_TIER_APROVADO)
+    reasons = list(source.get("gp_quality_reasons") or quality.get("gp_quality_reasons") or [])
+    trace = build_ml_operational_hierarchy_trace(source)
+    failed_stage = resolve_failed_hierarchy_stage(source)
+    stage_row = dict(source.get("stage_results", {}).get(failed_stage) or {})
+    return {
+        "mission_id": QUALITY_CLASSIFIER_MISSION_ID,
+        "status": f"GP ENTREGUE — Qualidade: {tier}",
+        "gp_delivered": True,
+        "gp_delivered_count": int(delivered_count),
+        "requested_count": int(requested_count),
+        "gp_quality_tier": tier,
+        "gp_quality_reasons": reasons,
+        "gp_closure_allowed": bool(source.get("gp_closure_allowed")),
+        "quality_gates_passed": bool(source.get("gp_closure_allowed")),
+        "diversity_score": quality.get("diversity_score"),
+        "similarity_score": quality.get("similarity_score"),
+        "max_overlap": quality.get("max_overlap"),
+        "failed_stage": failed_stage,
+        "failed_stage_label": str(stage_row.get("stage_label") or STAGE_LABELS.get(failed_stage, failed_stage)),
+        "responsible_agent": str(
+            source.get("blocking_responsible_agent") or stage_row.get("responsible_agent") or ""
+        ),
+        "corrective_action_applied": list(source.get("corrective_action_applied") or [])[:20],
+        "ml_operational_hierarchy_trace": trace,
+        "pre_gp_recovery": dict(source.get("pre_gp_recovery") or {}),
+    }
+
+
 def build_ml_hierarchy_block_operational_payload(
     hierarchy_bundle: Mapping[str, Any] | None,
     *,
     exception_message: str = "",
 ) -> dict[str, Any]:
-    """Estado operacional seguro quando o GP é bloqueado antes do fechamento."""
+    """Estado operacional seguro quando o GP é bloqueado por falha crítica de entrega."""
     source = dict(hierarchy_bundle or {})
     failed_stage = resolve_failed_hierarchy_stage(source)
     stage_row = dict(source.get("stage_results", {}).get(failed_stage) or {})
