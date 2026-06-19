@@ -132,12 +132,22 @@ def _resolve_generated_game_card_size(game: dict[str, Any], *, batch_label: str 
 
 
 def _event_eligible_for_active_structural_reading(context: Mapping[str, Any]) -> bool:
-    """Lotes ativos na leitura padrão — M-DADOS-ML-061 / M-OPS-062 / M-OPS-062-FIX-04."""
+    """Lotes ativos na leitura padrão — alinhado a is_generation_event_active_reading (M-ML-075-FIX-01)."""
     if context.get("legacy_excluded_from_active_coverage"):
         return False
-    if context.get("active_reading_scope") is False:
+    if bool(context.get("calibration_plan_consumer_generation")):
+        return True
+    if context.get("active_reading_scope") is False and not context.get(
+        "ml_persist_verdict_deferred_for_coverage"
+    ):
         return False
-    return is_active_reading_scope(context)
+    if is_active_reading_scope(context):
+        return True
+    from lotoia.operations.lot_operational_status import (
+        should_defer_generator_persist_verdict_for_coverage,
+    )
+
+    return should_defer_generator_persist_verdict_for_coverage(context)
 
 
 def load_operational_card_structure_diagnostics_from_db(

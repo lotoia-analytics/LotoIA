@@ -13,7 +13,6 @@ from dashboard.institutional_ml_hierarchy_block import (
     build_central_ml_recovery_success_notice,
     format_agent_label,
 )
-from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
 from lotoia.ml.structural_policy_15d import (
     NON_COMPLIANT_PARITY_PAIRS,
     PREFERRED_PARITY_PAIRS,
@@ -726,19 +725,6 @@ def _render_command_card(
             problemas_detectados=list(coverage.get("problemas_detectados") or []),
             operator="cockpit_operador_adm",
         )
-        scope_payload = (
-            mark_generation_events_superseded_by_calibration(
-                source_event_ids,
-                db_path=db_path,
-                reason="calibração autorizada — lote removido do escopo ativo (M-DADOS-ML-061)",
-                evidence=dict(snapshot.get("coverage_evidence") or {}),
-                authorized_plan=calibration_plan,
-                operator="cockpit_operador_adm",
-                calibration_source_only=True,
-            )
-            if source_event_ids
-            else {}
-        )
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_AUTHORIZED
         st.session_state[SESSION_APPLY_NEXT] = True
         st.session_state[SESSION_DECISION_AT] = decision_at
@@ -749,13 +735,9 @@ def _render_command_card(
             apply_next_generation=True,
             operator_decision="aplicar_proxima_geracao",
         )
-        if scope_payload.get("updated_generation_event_ids"):
-            st.success(
-                f"{len(scope_payload.get('updated_generation_event_ids') or [])} lote(s) marcado(s) "
-                "como calibration_source_only — removidos da leitura ativa."
-            )
         st.success(
-            f"Plano persistido no PostgreSQL (trace: {persisted_db_plan.get('calibration_trace_id', '—')})."
+            f"Plano persistido no PostgreSQL (trace: {persisted_db_plan.get('calibration_trace_id', '—')}). "
+            "O lote N permanece visível até a geração N+1 consumir o plano."
         )
         st.rerun()
     if cmd_cols[3].button("Rejeitar recomendação", key="cockpit_cmd_reject", use_container_width=True):

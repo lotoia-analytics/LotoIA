@@ -425,5 +425,5 @@ def test_delivers_with_quality_warning_after_recovery_exhaustion(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v70"
+    assert BUILD_MARKER == "institutional-adm-runtime-v71"
     assert is_pre_gp_recovery_enabled() is True

@@ -183,6 +183,8 @@ def generation_event_context(event: GenerationEvent | None) -> dict[str, Any]:
 
 def is_generation_event_active_reading(event: GenerationEvent | None) -> bool:
     context = generation_event_context(event)
+    if bool(context.get("calibration_plan_consumer_generation")):
+        return True
     if is_active_reading_scope(context):
         return True
     from lotoia.operations.lot_operational_status import (
