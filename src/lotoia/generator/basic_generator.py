@@ -709,14 +709,24 @@ def generate_best_games(
             len(best_games),
             _sovereign_cfg.sovereign_core_status,
         )
-        if count == 15:
-            from lotoia.ml.structural_policy_15d import apply_structural_policy_15d_to_sovereign_batch
+        from lotoia.ml.structural_policy_15d import (
+            apply_structural_policy_15d_to_sovereign_batch,
+            is_structural_policy_15d_format,
+            resolve_sovereign_game_size,
+        )
 
+        sovereign_game_size = resolve_sovereign_game_size(
+            games,
+            batch_label=batch_label,
+            requested_count=count,
+        )
+        if is_structural_policy_15d_format(sovereign_game_size):
             best_games, _structural_policy_bundle = apply_structural_policy_15d_to_sovereign_batch(
                 best_games,
                 pool_games=games,
                 history=history,
                 required_count=count,
+                game_size=sovereign_game_size,
             )
     elif _apply_v4:
         from lotoia.generation.core_realignment_v4 import compose_gp_v4
@@ -934,11 +944,17 @@ def generate_best_games(
         payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
     if _structural_policy_bundle:
         payload["structural_policy_15d_bundle"] = _structural_policy_bundle
-        payload["structural_policy_memory_loaded"] = True
-        payload["structural_policy_format"] = "15D"
+        payload["structural_policy_memory_loaded"] = bool(
+            _structural_policy_bundle.get("structural_policy_memory_loaded")
+        )
+        payload["structural_policy_format"] = _structural_policy_bundle.get("structural_policy_format")
         payload["structural_policy_version"] = _structural_policy_bundle.get("structural_policy_version")
+        payload["structural_policy_applied"] = bool(
+            _structural_policy_bundle.get("structural_policy_applied")
+        )
         payload["applied_rules"] = list(_structural_policy_bundle.get("applied_rules") or [])
         payload["violated_rules"] = list(_structural_policy_bundle.get("violated_rules") or [])
+        payload["policy_violations"] = list(_structural_policy_bundle.get("policy_violations") or [])
         payload["policy_compliance_status"] = _structural_policy_bundle.get("policy_compliance_status")
         merged_bundle = dict(_calibration_bundle or {})
         merged_bundle["structural_policy_15d"] = _structural_policy_bundle

@@ -39,18 +39,37 @@ RULE_SEQUENCE = "sequencia_maxima_6"
 APPLIED_RULES: tuple[str, ...] = (RULE_REPEAT, RULE_PARITY, RULE_SEQUENCE)
 
 PREFERRED_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((7, 8), (8, 7))
-ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = (
-    (7, 8),
-    (8, 7),
-    (6, 9),
-    (9, 6),
-)
+NON_CONFORMING_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((6, 9), (9, 6))
+# paridade_permitida = paridade conforme soberana (somente 7/8 e 8/7 — FIX-02)
+ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = PREFERRED_PARITY_PAIRS
 CORE_NUMBERS: tuple[int, ...] = (7, 12, 16, 23)
 DISCOURAGED_NUMBERS: tuple[int, ...] = (2, 4, 11, 15, 24, 25)
 
 
 def is_structural_policy_15d_format(game_size: int) -> bool:
     return int(game_size) == 15
+
+
+def resolve_sovereign_game_size(
+    games: Sequence[Mapping[str, Any]] | None,
+    *,
+    batch_label: str | None = None,
+    requested_count: int | None = None,
+) -> int:
+    """Inferência segura do formato do cartão — nunca usa quantidade de jogos (GP:N)."""
+    from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size
+
+    _ = requested_count
+    label_size = core_002_batch_label_game_size(str(batch_label or "").strip())
+    if label_size is not None and is_structural_policy_15d_format(int(label_size)):
+        return int(label_size)
+    for game in games or []:
+        numbers = resolve_cartao_final_from_game(dict(game))
+        if numbers:
+            card_size = len(numbers)
+            if 15 <= card_size <= 25:
+                return card_size
+    return 15
 
 
 def build_structural_policy_15d_memory() -> dict[str, Any]:
@@ -69,6 +88,7 @@ def build_structural_policy_15d_memory() -> dict[str, Any]:
         "repeticao_ultimo_concurso_max": 10,
         "paridade_preferencial": [list(pair) for pair in PREFERRED_PARITY_PAIRS],
         "paridade_permitida": [list(pair) for pair in ALLOWED_PARITY_PAIRS],
+        "paridade_nao_conforme": [list(pair) for pair in NON_CONFORMING_PARITY_PAIRS],
         "sequencia_maxima": 6,
         "core_numbers": list(CORE_NUMBERS),
         "discouraged_numbers": list(DISCOURAGED_NUMBERS),
@@ -200,37 +220,31 @@ def apply_structural_policy_15d_to_sovereign_batch(
     pool_games: Sequence[dict[str, Any]],
     history: Sequence[Any] | None,
     required_count: int,
+    game_size: int = 15,
     db_path: Any = DEFAULT_DATABASE_PATH,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Governa o GP final 15D: conformes primeiro; não conformes só se faltar pool."""
+    empty_bundle = {
+        "mission_id": MISSION_ID,
+        "structural_policy_memory_loaded": False,
+        "structural_policy_applied": False,
+        "structural_policy_format": "15D",
+        "policy_compliance_status": "not_applicable",
+    }
+    if not is_structural_policy_15d_format(int(game_size)):
+        return list(selected_games)[:required_count], empty_bundle
+
     memory = ensure_structural_policy_15d_memory(db_path)
     previous_numbers = resolve_previous_contest_numbers(history)
+    original_selected = list(selected_games)[:required_count]
+    original_signatures = [_game_signature(game) for game in original_selected]
 
-    compliant_pool: list[dict[str, Any]] = []
-    for game in pool_games:
-        validation = _validate_game_record(
-            game,
-            previous_contest_numbers=previous_numbers,
-            policy=memory,
-        )
-        enriched = dict(game)
-        enriched["structural_policy_15d_validation"] = validation
-        if validation["approved"]:
-            compliant_pool.append(enriched)
+    enriched_by_signature: dict[tuple[int, ...], dict[str, Any]] = {}
 
-    compliant_pool.sort(
-        key=lambda row: (
-            -float(row.get("profile_score", 0) or 0),
-            -float((row.get("final_score") or {}).get("final_score", 0) or 0),
-        )
-    )
-
-    final_games: list[dict[str, Any]] = []
-    seen_signatures: set[tuple[int, ...]] = set()
-
-    def _append_candidate(candidate: Mapping[str, Any]) -> None:
+    def _enrich_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
         signature = _game_signature(candidate)
-        if signature in seen_signatures:
-            return
+        if signature in enriched_by_signature:
+            return enriched_by_signature[signature]
         validation = _validate_game_record(
             candidate,
             previous_contest_numbers=previous_numbers,
@@ -242,25 +256,63 @@ def apply_structural_policy_15d_to_sovereign_batch(
         enriched["structural_policy_format"] = "15D"
         enriched["structural_policy_version"] = memory.get("policy_version")
         enriched["policy_compliance_status"] = "compliant" if validation["approved"] else "non_compliant"
-        final_games.append(enriched)
-        seen_signatures.add(signature)
+        enriched_by_signature[signature] = enriched
+        return enriched
 
-    for game in selected_games:
-        if len(final_games) >= required_count:
-            break
-        _append_candidate(game)
+    compliant_pool: list[dict[str, Any]] = []
+    non_compliant_pool: list[dict[str, Any]] = []
+    seen_pool: set[tuple[int, ...]] = set()
+    for game in list(pool_games) + list(selected_games):
+        signature = _game_signature(game)
+        if signature in seen_pool:
+            continue
+        seen_pool.add(signature)
+        enriched = _enrich_candidate(game)
+        if enriched["structural_policy_15d_validation"]["approved"]:
+            compliant_pool.append(enriched)
+        else:
+            non_compliant_pool.append(enriched)
+
+    compliant_pool.sort(
+        key=lambda row: (
+            -float(row.get("profile_score", 0) or 0),
+            -float((row.get("final_score") or {}).get("final_score", 0) or 0),
+        )
+    )
+    non_compliant_pool.sort(
+        key=lambda row: (
+            -float(row.get("profile_score", 0) or 0),
+            -float((row.get("final_score") or {}).get("final_score", 0) or 0),
+        )
+    )
+
+    final_games: list[dict[str, Any]] = []
+    final_signatures: set[tuple[int, ...]] = set()
+
+    def _take(game: dict[str, Any]) -> None:
+        signature = _game_signature(game)
+        if signature in final_signatures:
+            return
+        final_games.append(game)
+        final_signatures.add(signature)
 
     for game in compliant_pool:
         if len(final_games) >= required_count:
             break
-        _append_candidate(game)
+        _take(game)
 
-    for game in selected_games:
-        if len(final_games) >= required_count:
-            break
-        _append_candidate(game)
+    non_compliant_kept_reason: str | None = None
+    if len(final_games) < required_count:
+        non_compliant_kept_reason = "insufficient_compliant_candidates_in_pool"
+        for game in non_compliant_pool:
+            if len(final_games) >= required_count:
+                break
+            _take(game)
 
     final_games = final_games[:required_count]
+    final_signature_list = [_game_signature(game) for game in final_games]
+    lote_alterado = final_signature_list != original_signatures
+
     violated_rules = sorted(
         {
             violation
@@ -273,14 +325,26 @@ def apply_structural_policy_15d_to_sovereign_batch(
         for game in final_games
         if bool((game.get("structural_policy_15d_validation") or {}).get("approved"))
     )
+    non_compliant_count = len(final_games) - compliant_count
+    compliance_rate = round(compliant_count / max(len(final_games), 1), 4)
+    compliance_label = resolve_policy_compliance_label(
+        compliant_count,
+        len(final_games),
+        violated_rules,
+    )
+
     if compliant_count == len(final_games) and final_games:
         compliance_status = "compliant"
+        application_mode = "compliant_pool_governance"
     elif compliant_count == 0 and final_games:
         compliance_status = "non_compliant"
+        application_mode = "non_compliant_fallback_only"
     elif final_games:
         compliance_status = "partial"
+        application_mode = "mixed_compliant_priority"
     else:
         compliance_status = "empty"
+        application_mode = "no_games"
 
     bundle = {
         "mission_id": MISSION_ID,
@@ -288,15 +352,24 @@ def apply_structural_policy_15d_to_sovereign_batch(
         "structural_policy_format": "15D",
         "structural_policy_version": memory.get("policy_version"),
         "structural_policy_15d_memory": memory,
+        "structural_policy_applied": True,
+        "structural_policy_application_mode": application_mode,
         "applied_rules": list(APPLIED_RULES),
         "violated_rules": violated_rules,
+        "policy_violations": violated_rules,
         "policy_compliance_status": compliance_status,
+        "policy_compliance_label": compliance_label,
         "previous_contest_numbers": list(previous_numbers),
         "games_validated": len(final_games),
         "games_compliant": compliant_count,
+        "games_non_compliant": non_compliant_count,
+        "compliance_rate": compliance_rate,
+        "lote_alterado": lote_alterado,
+        "non_compliant_kept_reason": non_compliant_kept_reason,
         "memory_status": memory.get("status"),
         "memory_origin": memory.get("origem_institucional"),
-        "structural_policy_applied": True,
+        "game_size": int(game_size),
+        "required_count": int(required_count),
     }
     return final_games, bundle
 
@@ -337,6 +410,15 @@ def persist_structural_policy_15d_memory(
     return payload
 
 
+def normalize_structural_policy_memory(memory: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Alinha memória persistida à paridade soberana (FIX-02)."""
+    normalized = dict(memory or {})
+    normalized["paridade_preferencial"] = [list(pair) for pair in PREFERRED_PARITY_PAIRS]
+    normalized["paridade_permitida"] = [list(pair) for pair in ALLOWED_PARITY_PAIRS]
+    normalized["paridade_nao_conforme"] = [list(pair) for pair in NON_CONFORMING_PARITY_PAIRS]
+    return normalized
+
+
 def load_active_structural_policy_15d_memory(
     db_path: Any = DEFAULT_DATABASE_PATH,
     *,
@@ -366,17 +448,22 @@ def load_active_structural_policy_15d_memory(
                 str(getattr(row, "structural_status", MEMORY_STATUS_ACTIVE) or MEMORY_STATUS_ACTIVE),
             )
             stored.setdefault("updated_at", getattr(row, "created_at", datetime.now(UTC)).isoformat())
-            return stored
+            return normalize_structural_policy_memory(stored)
     if persist_if_missing:
         return persist_structural_policy_15d_memory(db_path)
     return build_structural_policy_15d_memory()
 
 
 def ensure_structural_policy_15d_memory(db_path: Any = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
-    canonical = build_structural_policy_15d_memory()
+    canonical = normalize_structural_policy_memory(build_structural_policy_15d_memory())
     active = load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
-    if active and str(active.get("policy_version") or "") == canonical["policy_version"]:
-        return active
+    if active:
+        normalized_active = normalize_structural_policy_memory(active)
+        if (
+            str(normalized_active.get("policy_version") or "") == canonical["policy_version"]
+            and normalized_active.get("paridade_permitida") == canonical["paridade_permitida"]
+        ):
+            return normalized_active
     return persist_structural_policy_15d_memory(db_path, canonical)
 
 

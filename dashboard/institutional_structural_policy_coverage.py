@@ -149,12 +149,12 @@ def render_structural_policy_15d_operational_block(
                 f"{(memory or {}).get('repeticao_ultimo_concurso_max', 10)}"
             )
             st.markdown(
-                "**Paridade preferencial:** "
-                f"{_format_parity_pairs((memory or {}).get('paridade_preferencial'))}"
+                "**Paridade conforme:** "
+                f"{_format_parity_pairs((memory or {}).get('paridade_permitida') or (memory or {}).get('paridade_preferencial'))}"
             )
             st.markdown(
-                "**Paridade permitida:** "
-                f"{_format_parity_pairs((memory or {}).get('paridade_permitida'))}"
+                "**Paridade não conforme (violação):** "
+                f"{_format_parity_pairs((memory or {}).get('paridade_nao_conforme') or [[6, 9], [9, 6]])}"
             )
             st.markdown(f"**Sequência máxima:** {(memory or {}).get('sequencia_maxima', 6)}")
             st.markdown(f"**Core:** {_format_dezenas((memory or {}).get('core_numbers'))}")
