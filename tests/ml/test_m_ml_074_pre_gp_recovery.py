@@ -17,6 +17,8 @@ from lotoia.governance.institutional_agent_routing_matrix import AGENT_ESTATISTI
 from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATION_ENABLED
 from lotoia.generator.basic_generator import _attach_scores, _build_game, generate_best_games
 from lotoia.ml.ml_operational_hierarchy import (
+    QUALITY_TIER_APROVADO,
+    QUALITY_TIER_REPROVADO,
     STAGE_COVERAGE,
     STAGE_DIVERSITY,
     STAGE_GP_CLOSURE,
@@ -60,6 +62,9 @@ def _failed_hierarchy_bundle(*, stage: str = STAGE_DIVERSITY) -> dict[str, Any]:
     return {
         "hierarchy_applied": True,
         "gp_closure_allowed": False,
+        "gp_delivery_blocked": False,
+        "gp_quality_tier": QUALITY_TIER_REPROVADO,
+        "gp_quality_reasons": ["diversity_score abaixo do limite"],
         "blocking_reason": "diversity_score abaixo do limite",
         "current_stage": stage,
         "stage_results": {
@@ -86,6 +91,8 @@ def _passed_hierarchy_bundle() -> dict[str, Any]:
     return {
         "hierarchy_applied": True,
         "gp_closure_allowed": True,
+        "gp_delivery_blocked": False,
+        "gp_quality_tier": QUALITY_TIER_APROVADO,
         "hierarchy_compliance": True,
         "current_stage": STAGE_GP_CLOSURE,
         "stage_results": {
@@ -175,7 +182,7 @@ def test_recovery_all_attempts_fail(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert recovery["internal_recovery_success"] is False
-    assert recovery["final_gp_delivered"] is False
+    assert recovery["final_gp_delivered"] is True
     assert recovery["internal_recovery_attempts"] == 3
     assert recovery["recovery_exhausted"] is True
     assert bundle["gp_closure_allowed"] is False
@@ -371,7 +378,7 @@ def test_generate_best_games_uses_recovery_cycle(monkeypatch: pytest.MonkeyPatch
     assert recovery_calls
 
 
-def test_block_after_recovery_exhaustion_in_generate_best_games(
+def test_delivers_with_quality_warning_after_recovery_exhaustion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LOTOIA_LEI15_CORE_002", "sovereign")
@@ -386,21 +393,37 @@ def test_block_after_recovery_exhaustion_in_generate_best_games(
             "internal_recovery_attempts": 2,
             "internal_recovery_success": False,
             "recovery_exhausted": True,
+            "final_gp_delivered": True,
         }
         return list(games), bundle, {}, dict(bundle["pre_gp_recovery"])
 
     def _mock_pool(pool_size_arg, *, seed, history, config):
         return _pool(pool_size_arg)
 
+    def _mock_compose(pool, count_arg, cfg, *, game_size=15):
+        return list(pool[:count_arg])
+
     with patch("lotoia.generation.lei15_core_002.build_sovereign_pool", side_effect=_mock_pool):
         with patch(
             "lotoia.ml.pre_gp_deterministic_recovery.execute_pre_gp_recovery_cycle",
             side_effect=_mock_recovery,
         ):
-            with pytest.raises(MlOperationalHierarchyBlockedError, match="tentativas internas"):
-                generate_best_games(count=20, pool_size=100, ml_enabled=True, batch_label=BATCH_LABEL)
+            with patch(
+                "lotoia.generation.lei15_core_002.compose_sovereign_gp",
+                side_effect=_mock_compose,
+            ):
+                with patch(
+                    "lotoia.ml.structural_policy_15d.apply_structural_policy_15d_to_sovereign_batch",
+                    side_effect=lambda selected, **kwargs: (selected, {"structural_policy_applied": False}),
+                ):
+                    result = generate_best_games(
+                        count=20, pool_size=100, ml_enabled=True, batch_label=BATCH_LABEL
+                    )
+
+    assert result["count"] == 20
+    assert result.get("gp_quality_tier") == QUALITY_TIER_REPROVADO
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v68"
+    assert BUILD_MARKER == "institutional-adm-runtime-v69"
     assert is_pre_gp_recovery_enabled() is True

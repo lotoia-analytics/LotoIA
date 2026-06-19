@@ -763,7 +763,7 @@ def generate_best_games(
             _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
             _diverse_top_slice_bundle = dict(_mission_bundles.get("diverse_top_slice") or {})
             _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
-            if not _hierarchy_bundle.get("gp_closure_allowed"):
+            if _hierarchy_bundle.get("gp_delivery_blocked"):
                 raise MlOperationalHierarchyBlockedError.from_bundle(_hierarchy_bundle)
         else:
             from lotoia.ml.pre_final_pool_ml_calibration import (
@@ -1067,6 +1067,9 @@ def generate_best_games(
         payload["current_stage"] = _hierarchy_bundle.get("current_stage")
         payload["hierarchy_compliance"] = _hierarchy_bundle.get("hierarchy_compliance")
         payload["gp_closure_allowed"] = _hierarchy_bundle.get("gp_closure_allowed")
+        payload["gp_quality_tier"] = _hierarchy_bundle.get("gp_quality_tier")
+        payload["gp_quality_reasons"] = list(_hierarchy_bundle.get("gp_quality_reasons") or [])
+        payload["gp_delivery_blocked"] = bool(_hierarchy_bundle.get("gp_delivery_blocked"))
         payload["agent_routing_mission_id"] = _hierarchy_bundle.get("agent_routing_mission_id")
         payload["agent_routing_matrix_version"] = _hierarchy_bundle.get("agent_routing_matrix_version")
         payload["primary_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent") or (

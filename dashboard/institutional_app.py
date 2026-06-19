@@ -242,6 +242,7 @@ from dashboard.institutional_clean_law15_runtime import (
 from dashboard.institutional_ml_hierarchy_block import (
     build_hierarchy_blocked_generation_result,
     persist_hierarchy_block_session_snapshot,
+    render_gp_quality_classification_panel,
     render_ml_hierarchy_block_panel,
 )
 from dashboard.institutional_light_mode import (
@@ -11929,6 +11930,8 @@ def _persist_clean_law15_generation_history(
             "stage_failures": list(_hierarchy_trace.get("stage_failures") or []),
             "hierarchy_compliance": bool(_hierarchy_trace.get("hierarchy_compliance")),
             "gp_closure_allowed": bool(_hierarchy_trace.get("gp_closure_allowed")),
+            "gp_quality_tier": str(_hierarchy_trace.get("gp_quality_tier") or ""),
+            "gp_quality_reasons": list(_hierarchy_trace.get("gp_quality_reasons") or []),
             "hierarchy_blocking_reason": str(_hierarchy_trace.get("blocking_reason") or ""),
             "hierarchy_corrective_action_applied": list(
                 _hierarchy_trace.get("corrective_action_applied") or []
@@ -13234,6 +13237,25 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         _render_conference_technical_audit(check_result)
 
 
+def _gp_quality_panel_from_payload(
+    sovereign_payload: Mapping[str, Any],
+    *,
+    delivered_count: int,
+) -> dict[str, Any]:
+    from lotoia.ml.ml_operational_hierarchy import build_gp_quality_operational_payload
+
+    hierarchy = dict(sovereign_payload.get("ml_operational_hierarchy") or {})
+    if not hierarchy.get("hierarchy_applied"):
+        return {}
+    panel = build_gp_quality_operational_payload(
+        hierarchy,
+        delivered_count=int(delivered_count),
+        requested_count=int(sovereign_payload.get("requested_count", delivered_count) or delivered_count),
+    )
+    panel["pre_gp_recovery"] = dict(sovereign_payload.get("pre_gp_recovery") or {})
+    return panel
+
+
 def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     total_games = int(requested_count)
     if _is_sovereign_generation_blocked():
@@ -13384,6 +13406,9 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "attempt_results": list(sovereign_payload.get("attempt_results") or []),
         "primary_responsible_agent": sovereign_payload.get("primary_responsible_agent"),
         "blocking_responsible_agent": sovereign_payload.get("blocking_responsible_agent"),
+        "gp_quality_tier": str(sovereign_payload.get("gp_quality_tier") or ""),
+        "gp_quality_reasons": list(sovereign_payload.get("gp_quality_reasons") or []),
+        "gp_quality": _gp_quality_panel_from_payload(sovereign_payload, delivered_count=len(games)),
     }
 
 
@@ -13454,6 +13479,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             render_ml_hierarchy_block_panel(result)
         else:
             render_generation_result_summary(result)
+            render_gp_quality_classification_panel(result)
         games = list(
             result.get("display_games")
             or _expand_generation_games_for_format(

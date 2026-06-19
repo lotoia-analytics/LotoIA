@@ -9,6 +9,7 @@ import streamlit as st
 
 from dashboard.institutional_ml_hierarchy_block import (
     build_central_ml_pre_gp_block_notice,
+    build_central_ml_quality_delivered_notice,
     build_central_ml_recovery_success_notice,
     format_agent_label,
 )
@@ -989,6 +990,14 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             f"Etapa: {pre_gp_notice.get('failed_stage') or '—'} | "
             f"Agente: {format_agent_label(str(pre_gp_notice.get('responsible_agent') or ''))}"
         )
+    else:
+        quality_notice = build_central_ml_quality_delivered_notice(snapshot)
+        if quality_notice.get("available"):
+            tier = str(quality_notice.get("gp_quality_tier") or "")
+            if tier == "REPROVADO":
+                st.error(quality_notice.get("message"))
+            else:
+                st.warning(quality_notice.get("message"))
 
     constitutional = dict(snapshot.get("constitutional_summary") or {})
     status_cols = st.columns(4)

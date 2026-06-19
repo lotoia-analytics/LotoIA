@@ -7,6 +7,8 @@ from typing import Any, Mapping
 import streamlit as st
 
 from lotoia.ml.ml_operational_hierarchy import (
+    QUALITY_TIER_APROVADO,
+    build_gp_quality_operational_payload,
     build_ml_hierarchy_block_operational_payload,
     build_ml_operational_hierarchy_trace,
 )
@@ -20,6 +22,9 @@ CENTRAL_ML_PRE_GP_BLOCK_MESSAGE = (
 )
 CENTRAL_ML_RECOVERY_SUCCESS_MESSAGE = (
     "GP entregue após recuperação interna pré-GP."
+)
+CENTRAL_ML_QUALITY_DELIVERED_MESSAGE = (
+    "GP entregue com classificação de qualidade M-ML-073b."
 )
 
 _AGENT_LABELS = {
@@ -204,6 +209,90 @@ def render_ml_hierarchy_block_panel(result: Mapping[str, Any]) -> None:
                     "supporting_agents": block.get("supporting_agents"),
                 }
             )
+
+
+def render_gp_quality_classification_panel(result: Mapping[str, Any]) -> None:
+    """Painel M-ML-073b — GP entregue com tier APROVADO / ATENÇÃO / REPROVADO."""
+    quality = dict(result.get("gp_quality") or {})
+    if not quality:
+        return
+
+    tier = str(quality.get("gp_quality_tier") or result.get("gp_quality_tier") or "")
+    if not tier or tier == QUALITY_TIER_APROVADO:
+        return
+
+    st.markdown("#### Classificação de qualidade ML (M-ML-073b)")
+    if tier == "REPROVADO":
+        st.error(str(quality.get("status") or f"GP entregue — Qualidade: {tier}"))
+    else:
+        st.warning(str(quality.get("status") or f"GP entregue — Qualidade: {tier}"))
+
+    cols = st.columns(4)
+    cols[0].metric("Jogos entregues", int(quality.get("gp_delivered_count", result.get("requested_count", 0)) or 0))
+    cols[1].metric("Qualidade", tier)
+    diversity = quality.get("diversity_score")
+    if diversity is not None:
+        cols[2].metric("Diversidade", f"{float(diversity):.4f}")
+    similarity = quality.get("similarity_score")
+    if similarity is not None:
+        cols[3].metric("Similaridade média", f"{float(similarity):.2f}")
+
+    reasons = list(quality.get("gp_quality_reasons") or result.get("gp_quality_reasons") or [])
+    if reasons:
+        st.markdown("**Motivo:** " + "; ".join(reasons[:5]))
+
+    agent = format_agent_label(str(quality.get("responsible_agent") or ""))
+    if agent and agent != "—":
+        st.caption(f"Agente responsável pela observação: **{agent}**")
+
+    corrective = list(quality.get("corrective_action_applied") or [])
+    if corrective:
+        st.markdown("**Ações corretivas sugeridas:** " + ", ".join(corrective[:6]))
+
+    recovery = dict(quality.get("pre_gp_recovery") or result.get("pre_gp_recovery") or {})
+    attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+    if attempts > 0:
+        st.markdown(
+            f"**Recuperação pré-GP ({RECOVERY_MISSION_ID}):** "
+            f"{attempts} tentativa(s) | "
+            f"Melhor qualidade: {recovery.get('best_attempt_metrics', {}).get('gp_quality_tier', '—')}"
+        )
+
+    trace = dict(quality.get("ml_operational_hierarchy_trace") or {})
+    if trace:
+        with st.expander("Trace técnico M-ML-073b", expanded=False):
+            st.json(
+                {
+                    "gp_quality_tier": tier,
+                    "gp_quality_reasons": reasons,
+                    "gp_closure_allowed": trace.get("gp_closure_allowed"),
+                    "stage_failures": trace.get("stage_failures"),
+                    "corrective_action_applied": trace.get("corrective_action_applied"),
+                }
+            )
+
+
+def build_central_ml_quality_delivered_notice(
+    snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = dict(snapshot or {})
+    tier = str(source.get("gp_quality_tier") or "")
+    if not tier or tier == QUALITY_TIER_APROVADO:
+        return {}
+    reasons = list(source.get("gp_quality_reasons") or [])
+    return {
+        "mission_id": "M-ML-073b",
+        "available": True,
+        "headline": f"GP entregue — Qualidade: {tier}",
+        "message": (
+            f"{CENTRAL_ML_QUALITY_DELIVERED_MESSAGE} "
+            f"Tier={tier}. "
+            f"Motivo: {'; '.join(reasons[:3]) if reasons else 'etapas 1–3 com ressalvas'}."
+        ),
+        "gp_quality_tier": tier,
+        "gp_quality_reasons": reasons,
+        "gp_delivered_count": int(source.get("gp_delivered_count", 0) or 0),
+    }
 
 
 def build_central_ml_pre_gp_block_notice(snapshot: Mapping[str, Any] | None = None) -> dict[str, Any]:
