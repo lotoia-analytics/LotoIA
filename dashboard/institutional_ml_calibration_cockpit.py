@@ -709,6 +709,23 @@ def _render_command_card(
         sovereign_ids = [int(value) for value in (snapshot.get("generation_event_ids") or []) if int(value or 0) > 0]
         source_event_ids = [latest_event_id] if latest_event_id > 0 else ([sovereign_ids[-1]] if sovereign_ids else [])
         calibration_plan = dict(snapshot.get("calibration_plan") or {})
+        coverage = dict(snapshot.get("coverage_evidence") or {})
+        from lotoia.ml.authorized_ml_calibration_plan import persist_authorized_ml_calibration_plan
+
+        persisted_db_plan = persist_authorized_ml_calibration_plan(
+            source_generation_event_id=int(source_event_ids[0] if source_event_ids else 0),
+            parametros_sugeridos=dict(
+                calibration_plan.get("parametros_sugeridos")
+                or coverage.get("parametros_sugeridos")
+                or {}
+            ),
+            plan_items=list(calibration_plan.get("plan_items") or coverage.get("plan_items") or []),
+            db_path=db_path,
+            calibration_plan=calibration_plan,
+            evidencias=list(coverage.get("evidencias") or []),
+            problemas_detectados=list(coverage.get("problemas_detectados") or []),
+            operator="cockpit_operador_adm",
+        )
         scope_payload = (
             mark_generation_events_superseded_by_calibration(
                 source_event_ids,
@@ -737,9 +754,15 @@ def _render_command_card(
                 f"{len(scope_payload.get('updated_generation_event_ids') or [])} lote(s) marcado(s) "
                 "como calibration_source_only — removidos da leitura ativa."
             )
+        st.success(
+            f"Plano persistido no PostgreSQL (trace: {persisted_db_plan.get('calibration_trace_id', '—')})."
+        )
         st.rerun()
     if cmd_cols[3].button("Rejeitar recomendação", key="cockpit_cmd_reject", use_container_width=True):
         decision_at = _cockpit_now_iso()
+        from lotoia.ml.authorized_ml_calibration_plan import reject_active_calibration_plan
+
+        reject_active_calibration_plan(db_path=db_path, operator="cockpit_operador_adm")
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_REJECTED
         st.session_state[SESSION_APPLY_NEXT] = False
         st.session_state[SESSION_DECISION_AT] = decision_at
@@ -753,6 +776,15 @@ def _render_command_card(
         st.rerun()
     if cmd_cols[4].button("Validar resultado", key="cockpit_cmd_validate", use_container_width=True):
         decision_at = _cockpit_now_iso()
+        from lotoia.ml.authorized_ml_calibration_plan import (
+            build_validation_report_from_consumed_plan,
+            load_latest_consumed_calibration_plan,
+        )
+
+        consumed = load_latest_consumed_calibration_plan(db_path=db_path)
+        if consumed:
+            validation_report = build_validation_report_from_consumed_plan(consumed, db_path=db_path)
+            st.session_state["central_ml_calibration_validation_report"] = validation_report
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_APPLIED
         st.session_state[SESSION_DECISION_AT] = decision_at
         st.session_state[SESSION_APPLY_NEXT] = False
@@ -787,6 +819,26 @@ def _render_result_card(result: dict[str, Any], snapshot: dict[str, Any]) -> Non
         st.caption("Validação usa novamente métricas da Cobertura Estrutural (antes/depois).")
     if result.get("decision_at"):
         st.caption(f"Última decisão cockpit: {result.get('decision_at')}")
+    validation = dict(st.session_state.get("central_ml_calibration_validation_report") or {})
+    if validation:
+        st.markdown("**Validação N vs N+1 (plano consumido)**")
+        vcols = st.columns(4)
+        vcols[0].metric("Efeito", str(validation.get("calibration_effect", "—")))
+        vcols[1].metric("Veredito", str(validation.get("validation_outcome", "—")))
+        deltas = dict(validation.get("deltas") or {})
+        vcols[2].metric("Δ diversidade", f"{float(deltas.get('diversity_score', 0.0)):+.4f}")
+        vcols[3].metric("Δ similaridade", f"{float(deltas.get('similarity_score', 0.0)):+.4f}")
+        before = dict(validation.get("metrics_before") or {})
+        after = dict(validation.get("metrics_after") or {})
+        st.caption(
+            f"GE {validation.get('source_generation_event_id', '—')} → "
+            f"GE {validation.get('target_generation_event_id', '—')} | "
+            f"diversidade {float(before.get('diversity_score', 0.0)):.4f} → "
+            f"{float(after.get('diversity_score', 0.0)):.4f} | "
+            f"similaridade {float(before.get('similarity_score', 0.0)):.4f} → "
+            f"{float(after.get('similarity_score', 0.0)):.4f} | "
+            f"trace {validation.get('calibration_trace_id', '—')}"
+        )
 
 
 def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:

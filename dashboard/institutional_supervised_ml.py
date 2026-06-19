@@ -1628,8 +1628,20 @@ def build_cockpit_persist_bundle(
 
 def resolve_authorized_calibration_plan(
     cockpit_bundle: Mapping[str, Any] | None,
+    *,
+    db_path: Any = None,
+    prefer_database: bool = True,
 ) -> dict[str, Any] | None:
-    """Retorna plano autorizado quando operador aplicou calibração na próxima geração."""
+    """Retorna plano autorizado — PostgreSQL é fonte primária (M-ML-075-FIX-01)."""
+    if prefer_database and db_path is not None:
+        from lotoia.ml.authorized_ml_calibration_plan import (
+            resolve_authorized_calibration_plan_from_db,
+        )
+
+        db_plan = resolve_authorized_calibration_plan_from_db(db_path)
+        if db_plan:
+            return db_plan
+
     if not isinstance(cockpit_bundle, Mapping):
         return None
     if not bool(cockpit_bundle.get("cockpit_apply_next_generation")):
@@ -1649,8 +1661,13 @@ def resolve_authorized_calibration_plan(
         ),
         "evidencias": list(cockpit_bundle.get("evidencias") or []),
         "problemas_detectados": list(cockpit_bundle.get("problemas_detectados") or []),
-        "trace": dict(cockpit_bundle.get("trace") or {}),
+        "trace": {
+            **dict(cockpit_bundle.get("trace") or {}),
+            "loaded_from_db": False,
+            "session_fallback": True,
+        },
         "operador": str(cockpit_bundle.get("operador") or "operador_adm"),
         "timestamp": str(cockpit_bundle.get("timestamp") or cockpit_bundle.get("cockpit_decision_at") or ""),
         "authorized": True,
+        "calibration_plan_loaded_from_db": False,
     }

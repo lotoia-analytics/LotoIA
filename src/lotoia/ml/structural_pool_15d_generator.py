@@ -279,6 +279,8 @@ def build_ml_structural_15d_pool(
     min_compliant: int = MIN_COMPLIANT_POOL_SIZE,
     seed: int | None = None,
     policy: Mapping[str, Any] | None = None,
+    calibration_plan: Mapping[str, Any] | None = None,
+    module_params: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Gera/expande pool estrutural 15D com mínimo de candidatos conformes."""
     empty_bundle: dict[str, Any] = {
@@ -411,6 +413,36 @@ def build_ml_structural_15d_pool(
         "raw_pool_size": len(list(raw_pool)),
         "raw_compliant_count": len(compliant) - generated_count,
     }
+    if module_params or calibration_plan:
+        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
+
+        ops = extract_module_operational_params(calibration_plan)
+        mp = dict(module_params or ops.get("modules", {}).get("M-ML-072") or {})
+        subcovered = {
+            int(str(value).lstrip("0") or "0")
+            for value in list(mp.get("dezenas_subcobertas") or [])
+            if str(value).strip().isdigit()
+        }
+        missing_boost = float(mp.get("missing_numbers_boost", 1.0) or 1.0)
+        actions: list[str] = []
+        if mp:
+            for game in pool:
+                numbers = set(resolve_cartao_final_from_game(dict(game)))
+                boost = 0.0
+                for number in subcovered:
+                    if number in numbers:
+                        boost += 0.35 * missing_boost
+                if boost:
+                    game["profile_score"] = round(
+                        float(game.get("profile_score", 0) or 0) + boost,
+                        4,
+                    )
+                    game["ml_calibration_boost"] = round(boost, 4)
+                    actions.append(f"reforco_subcoberta_{len(numbers & subcovered)}")
+            bundle["calibration_plan_applied"] = bool(ops.get("applied"))
+            bundle["calibration_operational_trace"] = list(ops.get("trace") or [])
+            bundle["calibration_module_params"] = mp
+            bundle["calibration_actions"] = actions
     return pool, bundle
 
 
@@ -429,4 +461,7 @@ def build_structural_15d_pool_trace(bundle: Mapping[str, Any] | None) -> dict[st
         "confronto_recent_contests": dict(source.get("confronto_recent_contests") or {}),
         "metrics_before": dict(source.get("metrics_before") or {}),
         "metrics_after": dict(source.get("metrics_after") or {}),
+        "calibration_plan_applied": bool(source.get("calibration_plan_applied")),
+        "calibration_operational_trace": list(source.get("calibration_operational_trace") or []),
+        "calibration_module_params": dict(source.get("calibration_module_params") or {}),
     }

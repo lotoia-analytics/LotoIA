@@ -662,6 +662,8 @@ def apply_diverse_top_slice_pre_gp(
     requested_count: int,
     batch_label: str | None = None,
     previous_contest_numbers: Sequence[int] | None = None,
+    calibration_plan: Mapping[str, Any] | None = None,
+    module_params: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Aplica seleção diversa ao pool antes do portão M-ML-073."""
     empty_bundle: dict[str, Any] = {
@@ -674,6 +676,10 @@ def apply_diverse_top_slice_pre_gp(
 
     limit = slice_limit(requested_count=int(requested_count))
     caps = _family_caps(limit)
+    mp = dict(module_params or {})
+    prefix_cap = mp.get("prefix_cap")
+    suffix_cap = mp.get("suffix_cap")
+    max_overlap = mp.get("max_overlap")
     before_slice = _score_based_slice(pool, limit=limit)
     before_metrics = _measure_slice_diversity(
         before_slice,
@@ -686,6 +692,9 @@ def apply_diverse_top_slice_pre_gp(
         pool,
         limit=limit,
         game_size=int(game_size),
+        prefix_cap=int(prefix_cap) if prefix_cap is not None else None,
+        suffix_cap=int(suffix_cap) if suffix_cap is not None else None,
+        max_overlap=int(max_overlap) if max_overlap is not None else None,
     )
     if not selected_slice:
         return [dict(game) for game in pool], empty_bundle
@@ -788,6 +797,16 @@ def apply_diverse_top_slice_pre_gp(
         "non_triplet_required_count_gp": int(gp_requirements["required"]),
         "non_triplet_ideal_count_gp": int(gp_requirements["ideal"]),
     }
+    if module_params or calibration_plan:
+        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
+
+        ops = extract_module_operational_params(calibration_plan)
+        bundle["calibration_plan_applied"] = bool(ops.get("applied"))
+        bundle["calibration_module_params"] = dict(
+            module_params or ops.get("modules", {}).get("M-STAT-002") or {}
+        )
+        bundle["calibration_operational_trace"] = list(ops.get("trace") or [])
+        bundle["calibration_trace_id"] = str(ops.get("calibration_trace_id") or "")
     return reordered_pool, bundle
 
 

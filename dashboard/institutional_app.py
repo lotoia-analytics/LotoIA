@@ -791,7 +791,11 @@ def _invoke_sovereign_adm_generate_best_games(
     authorized_plan = calibration_plan
     if authorized_plan is None:
         cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
-        authorized_plan = resolve_authorized_calibration_plan(cockpit_bundle)
+        authorized_plan = resolve_authorized_calibration_plan(
+            cockpit_bundle,
+            db_path=DB_PATH,
+            prefer_database=True,
+        )
     from lotoia.generator.basic_generator import generate_best_games
     from lotoia.ml.ml_operational_hierarchy import (
         MlOperationalHierarchyBlockedError,
@@ -11703,7 +11707,10 @@ def _persist_clean_law15_generation_history(
         calibration_bundle=dict(result.get("calibration_bundle") or {}),
     )
     cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
-    calibration_authorized = bool(cockpit_bundle.get("calibration_authorized"))
+    authorized_plan = dict(result.get("authorized_calibration_plan") or {})
+    calibration_authorized = bool(cockpit_bundle.get("calibration_authorized")) or bool(
+        authorized_plan.get("authorized")
+    )
     generation_origin = str(result.get("generation_origin") or GENERATION_ORIGIN_GENERATOR)
     simulation_mode = bool(result.get("simulation_mode")) or generation_origin == GENERATION_ORIGIN_SIMULATION
     ml_verdict_payload = evaluate_batch_ml_verdict_from_games(
@@ -11799,6 +11806,17 @@ def _persist_clean_law15_generation_history(
         "calibration_actions_applied": list(
             ml_bundle.get("calibration_actions_applied") or ml_bundle.get("actions_applied") or []
         ),
+        "authorized_ml_calibration_mission_id": "M-ML-075-FIX-01",
+        "authorized_ml_calibration_plan_memory_kind": "authorized_ml_calibration_plan",
+        "calibration_plan_loaded_from_db": bool(authorized_plan.get("calibration_plan_loaded_from_db")),
+        "calibration_plan_source_generation_event_id": int(
+            authorized_plan.get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
+        "calibration_plan_applied_to_generation": bool(
+            authorized_plan.get("calibration_plan_applied_to_generation")
+        ),
+        "calibration_trace_id": str(authorized_plan.get("calibration_trace_id") or ""),
+        "authorized_calibration_plan": authorized_plan,
         "calibration_decision_trace": dict(ml_bundle.get("calibration_decision_trace") or {}),
         "calibration_feature_attribution": dict(ml_bundle.get("calibration_feature_attribution") or {}),
         "redundancy_penalty": float(ml_bundle.get("redundancy_penalty", 0.0) or 0.0),
@@ -12045,6 +12063,27 @@ def _persist_clean_law15_generation_history(
             )
         )
         new_event_id = int(persisted.get("generation_event_id", 0) or 0)
+        calibration_consume_result: dict[str, Any] = {}
+        if (
+            new_event_id > 0
+            and authorized_plan.get("calibration_plan_loaded_from_db")
+            and int(authorized_plan.get("memory_row_id", 0) or 0) > 0
+        ):
+            from lotoia.ml.authorized_ml_calibration_plan import (
+                extract_generation_metrics,
+                load_generation_event_context,
+                mark_calibration_plan_consumed,
+            )
+
+            source_id = int(authorized_plan.get("calibration_plan_source_generation_event_id", 0) or 0)
+            source_ctx = load_generation_event_context(source_id, DB_PATH) if source_id > 0 else {}
+            calibration_consume_result = mark_calibration_plan_consumed(
+                int(authorized_plan["memory_row_id"]),
+                target_generation_event_id=new_event_id,
+                metrics_before=extract_generation_metrics(source_ctx),
+                metrics_after=extract_generation_metrics(generation_context),
+                db_path=DB_PATH,
+            )
         if new_event_id > 0 and (calibration_authorized or bool(ml_bundle.get("calibration_applied"))):
             _supersede_prior_lots_for_calibration(
                 new_generation_event_id=new_event_id,
@@ -12064,6 +12103,7 @@ def _persist_clean_law15_generation_history(
             "lot_operational_status": str(lot_status_context.get("lot_operational_status") or ""),
             "generation_origin": generation_origin,
             "simulation_mode": simulation_mode,
+            "calibration_plan_consumed": calibration_consume_result,
         }
     except RuntimeError as exc:
         return {
