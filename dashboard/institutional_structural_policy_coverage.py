@@ -104,40 +104,75 @@ def build_structural_policy_coverage_context(
     }
 
 
+def _format_parity_pairs(pairs: Any) -> str:
+    formatted: list[str] = []
+    for pair in pairs or []:
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+    return " • ".join(formatted) if formatted else "—"
+
+
+def _format_dezenas(numbers: Any) -> str:
+    values = [int(number) for number in (numbers or []) if str(number).strip().isdigit()]
+    return " • ".join(f"{number:02d}" for number in values) if values else "—"
+
+
 def render_structural_policy_15d_operational_block(
     memory: Mapping[str, Any] | None,
     application: Mapping[str, Any] | None,
     compliance: Mapping[str, Any] | None,
 ) -> None:
-    st.markdown(f"##### Política estrutural soberana 15D ({MISSION_ID})")
     memory_loaded = bool((memory or {}).get("policy_version"))
     applied = bool((application or {}).get("structural_policy_applied"))
-    policy_cols = st.columns(4)
-    policy_cols[0].metric("Política carregada", "SIM" if memory_loaded else "NÃO")
-    policy_cols[1].metric("Política aplicada", "SIM" if applied else "NÃO")
-    policy_cols[2].metric(
-        "Compliance",
-        str((compliance or {}).get("compliance_label") or (application or {}).get("compliance_label") or "—"),
-    )
     violations = list(
         (compliance or {}).get("policy_violations")
         or (application or {}).get("policy_violations")
         or (application or {}).get("violated_rules")
         or []
     )
+    compliance_label = str(
+        (compliance or {}).get("compliance_label")
+        or (application or {}).get("compliance_label")
+        or "—"
+    )
+
+    with st.container(border=True):
+        st.markdown("### Política estrutural ativa (memória ML)")
+        st.caption(f"Missão: {MISSION_ID} | Fluxo: {MISSION_FLOW_ID}")
+        if memory_loaded:
+            st.markdown(f"**Status:** {(memory or {}).get('status', 'active')}")
+            st.markdown("**Origem:** Memória ML Institucional")
+            st.markdown(f"**Versão:** {(memory or {}).get('policy_version', '—')}")
+            st.markdown(
+                "**Repetição:** "
+                f"{(memory or {}).get('repeticao_ultimo_concurso_min', 7)}–"
+                f"{(memory or {}).get('repeticao_ultimo_concurso_max', 10)}"
+            )
+            st.markdown(
+                "**Paridade preferencial:** "
+                f"{_format_parity_pairs((memory or {}).get('paridade_preferencial'))}"
+            )
+            st.markdown(
+                "**Paridade permitida:** "
+                f"{_format_parity_pairs((memory or {}).get('paridade_permitida'))}"
+            )
+            st.markdown(f"**Sequência máxima:** {(memory or {}).get('sequencia_maxima', 6)}")
+            st.markdown(f"**Core:** {_format_dezenas((memory or {}).get('core_numbers'))}")
+            st.markdown(
+                f"**Desencorajadas:** {_format_dezenas((memory or {}).get('discouraged_numbers'))}"
+            )
+        else:
+            st.warning("Política estrutural 15D não encontrada na memória ML institucional.")
+
+    st.markdown("#### Compliance do lote")
+    policy_cols = st.columns(4)
+    policy_cols[0].metric("Política carregada", "SIM" if memory_loaded else "NÃO")
+    policy_cols[1].metric("Política aplicada", "SIM" if applied else "NÃO")
+    policy_cols[2].metric("Compliance", compliance_label)
     policy_cols[3].metric("Violações", len(violations))
 
-    if memory_loaded:
-        st.caption(
-            f"Versão: {(memory or {}).get('policy_version', '—')} | "
-            f"Origem: {(memory or {}).get('origem_institucional', '—')}"
-        )
-        rules = list((memory or {}).get("regras_aplicadas") or [])
-        if rules:
-            st.caption("Regras: " + ", ".join(str(rule) for rule in rules))
-
     if violations:
-        st.warning("Violações detectadas: " + ", ".join(str(item) for item in violations[:8]))
+        st.warning("Violações encontradas: " + ", ".join(str(item) for item in violations[:12]))
     elif memory_loaded:
         st.success("Nenhuma violação estrutural da política 15D no lote analisado.")
 
