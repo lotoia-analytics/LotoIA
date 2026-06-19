@@ -176,6 +176,41 @@ def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
         )
 
 
+def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
+    st.markdown("##### Política estrutural soberana 15D (M-ML-070)")
+    memory = dict(
+        snapshot.get("structural_policy_15d_memory")
+        or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_memory")
+        or {}
+    )
+    application = dict(
+        snapshot.get("structural_policy_15d_application")
+        or dict(snapshot.get("coverage_evidence") or {}).get("structural_policy_15d_application")
+        or {}
+    )
+    if not memory and not application.get("available"):
+        st.caption("Política estrutural 15D não carregada para o formato atual.")
+        return
+    if memory:
+        st.caption(
+            f"Versão: {memory.get('policy_version', '—')} | "
+            f"Status: {memory.get('status', '—')} | "
+            f"Origem: {memory.get('origem_institucional', '—')}"
+        )
+        rules = list(memory.get("regras_aplicadas") or [])
+        if rules:
+            st.caption("Regras: " + ", ".join(str(rule) for rule in rules))
+    if application.get("available"):
+        st.markdown(
+            f"**Conformidade:** {application.get('policy_compliance_status', '—')}  \n"
+            f"**Jogos validados:** {application.get('games_validated', 0)}  \n"
+            f"**Jogos conformes:** {application.get('games_compliant', 0)}"
+        )
+        violated = list(application.get("violated_rules") or [])
+        if violated:
+            st.caption("Violações: " + ", ".join(str(item) for item in violated[:6]))
+
+
 def _render_overlap_composition(metrics: dict[str, Any], *, primary_format: dict[str, Any] | None = None) -> None:
     """Composição de pares por overlap — M-ML-067."""
     rows = list(metrics.get("overlap_composition_rows") or [])
@@ -673,6 +708,7 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
         with st.container(border=True):
             _render_diagnosis_card(dict(snapshot.get("diagnosis") or {}))
             _render_overlap_format_verdict(snapshot)
+            _render_structural_policy_15d_card(snapshot)
             _render_structural_auto_calibration_card(snapshot)
     with row1_col2:
         with st.container(border=True):

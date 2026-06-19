@@ -11703,6 +11703,34 @@ def _persist_clean_law15_generation_history(
         "validation_status_lei_17": str(result.get("validation_status_lei_17", "") or ""),
         "validation_status_lei_18": str(result.get("validation_status_lei_18", "") or ""),
         "card_format": int(selected_card_format),
+        "structural_policy_15d_bundle": dict(result.get("structural_policy_15d_bundle") or {}),
+        "structural_policy_15d_mission_id": str(
+            (result.get("structural_policy_15d_bundle") or {}).get("mission_id") or "M-ML-070"
+        ),
+        "structural_policy_15d_memory": dict(
+            (result.get("structural_policy_15d_bundle") or {}).get("structural_policy_15d_memory") or {}
+        ),
+        "structural_policy_15d_application": {
+            "available": bool(result.get("structural_policy_15d_bundle")),
+            "structural_policy_memory_loaded": bool(result.get("structural_policy_memory_loaded")),
+            "structural_policy_format": str(result.get("structural_policy_format") or "15D"),
+            "structural_policy_version": str(result.get("structural_policy_version") or ""),
+            "applied_rules": list(result.get("applied_rules") or []),
+            "violated_rules": list(result.get("violated_rules") or []),
+            "policy_compliance_status": str(result.get("policy_compliance_status") or ""),
+            "games_validated": int(
+                (result.get("structural_policy_15d_bundle") or {}).get("games_validated", 0) or 0
+            ),
+            "games_compliant": int(
+                (result.get("structural_policy_15d_bundle") or {}).get("games_compliant", 0) or 0
+            ),
+        },
+        "structural_policy_memory_loaded": bool(result.get("structural_policy_memory_loaded")),
+        "structural_policy_format": str(result.get("structural_policy_format") or ""),
+        "structural_policy_version": str(result.get("structural_policy_version") or ""),
+        "applied_rules": list(result.get("applied_rules") or []),
+        "violated_rules": list(result.get("violated_rules") or []),
+        "policy_compliance_status": str(result.get("policy_compliance_status") or ""),
     }
     try:
         persisted = _attach_operational_generation_label(
@@ -12931,6 +12959,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     )
     games = list(sovereign_payload.get("games") or [])
     ml_enabled = bool(sovereign_payload.get("ml_enabled", False))
+    structural_policy_bundle = dict(sovereign_payload.get("structural_policy_15d_bundle") or {})
     fill_diagnostics: dict[str, Any] = {
         "fill_completed": len(games) >= total_games,
         "sovereign_generation_path": "generate_best_games",
@@ -12939,6 +12968,20 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "ml_enabled": ml_enabled,
         "ml_operational_status": supervised_ml_status_label() if ml_enabled else "ML_INATIVO",
     }
+    if structural_policy_bundle:
+        fill_diagnostics["structural_policy_15d_bundle"] = structural_policy_bundle
+        fill_diagnostics["structural_policy_memory_loaded"] = True
+        fill_diagnostics["structural_policy_format"] = str(
+            structural_policy_bundle.get("structural_policy_format") or "15D"
+        )
+        fill_diagnostics["structural_policy_version"] = str(
+            structural_policy_bundle.get("structural_policy_version") or ""
+        )
+        fill_diagnostics["applied_rules"] = list(structural_policy_bundle.get("applied_rules") or [])
+        fill_diagnostics["violated_rules"] = list(structural_policy_bundle.get("violated_rules") or [])
+        fill_diagnostics["policy_compliance_status"] = str(
+            structural_policy_bundle.get("policy_compliance_status") or ""
+        )
     commander_report = output_commander_validate_games(
         games,
         batch_id=f"clean-law15-{seed}",
@@ -12970,6 +13013,25 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
         "analysis_batch_label": analysis_batch_label,
+        "structural_policy_15d_bundle": structural_policy_bundle,
+        "structural_policy_memory_loaded": bool(structural_policy_bundle),
+        "structural_policy_format": str(structural_policy_bundle.get("structural_policy_format") or "15D")
+        if structural_policy_bundle
+        else "",
+        "structural_policy_version": str(structural_policy_bundle.get("structural_policy_version") or "")
+        if structural_policy_bundle
+        else "",
+        "applied_rules": list(structural_policy_bundle.get("applied_rules") or [])
+        if structural_policy_bundle
+        else [],
+        "violated_rules": list(structural_policy_bundle.get("violated_rules") or [])
+        if structural_policy_bundle
+        else [],
+        "policy_compliance_status": str(structural_policy_bundle.get("policy_compliance_status") or "")
+        if structural_policy_bundle
+        else "",
+        "calibration_bundle": dict(sovereign_payload.get("calibration_bundle") or {}),
+        "ml_enabled": ml_enabled,
         "official_contest_source": str(
             (latest_contest or {}).get("official_contest_source", "indisponivel") or "indisponivel"
         ),

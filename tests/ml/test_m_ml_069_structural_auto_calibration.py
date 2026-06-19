@@ -177,8 +177,8 @@ def test_m_ml_067_overlap_rules_preserved() -> None:
     assert classify_overlap_for_format(17, game_size=17)["level"] == "critico"
 
 
-def test_build_marker_v57() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v57"
+def test_build_marker_v58() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v58"
 
 
 def test_derive_actions_from_audit_report() -> None:

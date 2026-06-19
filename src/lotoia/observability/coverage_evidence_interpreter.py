@@ -24,6 +24,12 @@ from lotoia.ml.structural_auto_calibration import (
     build_auto_calibration_plan,
     is_structural_auto_calibration_format,
 )
+from lotoia.ml.structural_policy_15d import (
+    MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
+    extract_structural_policy_application_from_context,
+    is_structural_policy_15d_format,
+    load_active_structural_policy_15d_memory,
+)
 from lotoia.ml.structural_concentration_audit import (
     MISSION_ID as CONCENTRATION_MISSION_ID,
     audit_structural_concentration_from_db,
@@ -587,6 +593,18 @@ def get_structural_coverage_evidence(
             "auto_structural_calibration": True,
         }
 
+    structural_policy_15d_memory: dict[str, Any] = {}
+    structural_policy_15d_application: dict[str, Any] = {"available": False}
+    if len(formatos) == 1 and is_structural_policy_15d_format(int(formatos[0])):
+        structural_policy_15d_memory = load_active_structural_policy_15d_memory(
+            db_path,
+            persist_if_missing=False,
+        )
+        context_payload = dict((structural or {}).get("context_json") or structural or {})
+        structural_policy_15d_application = extract_structural_policy_application_from_context(
+            context_payload
+        )
+
     return {
         "available": True,
         "mission_id": MISSION_ID,
@@ -647,4 +665,7 @@ def get_structural_coverage_evidence(
         "structural_calibration_memory": dict(
             structural_auto_calibration_plan.get("structural_calibration_memory") or {}
         ),
+        "structural_policy_15d_mission_id": STRUCTURAL_POLICY_15D_MISSION_ID,
+        "structural_policy_15d_memory": structural_policy_15d_memory,
+        "structural_policy_15d_application": structural_policy_15d_application,
     }
