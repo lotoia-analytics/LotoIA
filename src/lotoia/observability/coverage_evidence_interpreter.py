@@ -35,6 +35,7 @@ from lotoia.governance.institutional_agent_routing_matrix import (
 from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
 from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
+from lotoia.ml.pre_gp_deterministic_recovery import build_pre_gp_recovery_trace
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID as STRUCTURAL_POLICY_15D_MISSION_ID,
     analyze_games_from_context_or_records,
@@ -607,6 +608,23 @@ def _load_ml_operational_hierarchy_evidence(
     return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
 
 
+def _load_pre_gp_recovery_evidence(
+    db_path: Path | str,
+    generation_event_ids: Sequence[int],
+) -> dict[str, Any]:
+    ids = [int(value) for value in generation_event_ids if int(value) > 0]
+    if len(ids) != 1:
+        return {}
+    from lotoia.database.database import GenerationEvent, get_session
+
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ids[0]).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_gp_recovery_trace(dict(context.get("pre_gp_recovery") or {}))
+
+
 def get_structural_coverage_evidence(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -830,6 +848,7 @@ def get_structural_coverage_evidence(
             ml_structural_15d_pool.get("structural_pool_size", 0) or 0
         )
     ml_operational_hierarchy = _load_ml_operational_hierarchy_evidence(db_path, ge_ids)
+    pre_gp_recovery = _load_pre_gp_recovery_evidence(db_path, ge_ids)
     if ml_operational_hierarchy:
         metrics["hierarchy_applied"] = bool(ml_operational_hierarchy.get("hierarchy_applied"))
         metrics["hierarchy_compliance"] = bool(ml_operational_hierarchy.get("hierarchy_compliance"))
@@ -837,6 +856,12 @@ def get_structural_coverage_evidence(
             ml_operational_hierarchy.get("ml_hierarchy_version") or ""
         )
         metrics["current_stage"] = str(ml_operational_hierarchy.get("current_stage") or "")
+    if pre_gp_recovery.get("internal_recovery_attempted"):
+        metrics["internal_recovery_attempts"] = int(
+            pre_gp_recovery.get("internal_recovery_attempts", 0) or 0
+        )
+        metrics["internal_recovery_success"] = bool(pre_gp_recovery.get("internal_recovery_success"))
+        metrics["final_gp_delivered"] = bool(pre_gp_recovery.get("final_gp_delivered"))
 
     return {
         "available": True,
@@ -916,6 +941,12 @@ def get_structural_coverage_evidence(
         "structural_pool_applied": bool(ml_structural_15d_pool.get("structural_pool_applied")),
         "structural_pool_size": int(ml_structural_15d_pool.get("structural_pool_size", 0) or 0),
         "ml_operational_hierarchy": ml_operational_hierarchy,
+        "pre_gp_recovery_mission_id": "M-ML-074",
+        "pre_gp_recovery": pre_gp_recovery,
+        "internal_recovery_attempted": bool(pre_gp_recovery.get("internal_recovery_attempted")),
+        "internal_recovery_attempts": int(pre_gp_recovery.get("internal_recovery_attempts", 0) or 0),
+        "internal_recovery_success": bool(pre_gp_recovery.get("internal_recovery_success")),
+        "final_gp_delivered": bool(pre_gp_recovery.get("final_gp_delivered")),
         "ml_hierarchy_version": str(ml_operational_hierarchy.get("ml_hierarchy_version") or ""),
         "ml_hierarchy_status": str(ml_operational_hierarchy.get("ml_hierarchy_status") or ""),
         "hierarchy_compliance": bool(ml_operational_hierarchy.get("hierarchy_compliance")),

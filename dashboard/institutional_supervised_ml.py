@@ -1113,6 +1113,8 @@ def build_sovereign_coverage_diagnosis_card(
         "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
         "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
         "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
         "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
         "agent_routing_mission_id": coverage_evidence.get(
@@ -1426,6 +1428,8 @@ def build_ml_calibration_cockpit_snapshot(
         "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
         "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
         "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
         "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
         "agent_routing_mission_id": coverage_evidence.get(

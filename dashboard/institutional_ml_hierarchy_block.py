@@ -12,10 +12,14 @@ from lotoia.ml.ml_operational_hierarchy import (
 )
 
 MISSION_ID = "M-ML-073-FIX-01"
+RECOVERY_MISSION_ID = "M-ML-074"
 SESSION_HIERARCHY_BLOCK_KEY = "adm_ml_hierarchy_block_snapshot"
 
 CENTRAL_ML_PRE_GP_BLOCK_MESSAGE = (
-    "Nenhum lote final criado. Bloqueio ocorreu antes do fechamento do GP."
+    "Nenhum lote final criado. Bloqueio ocorreu após esgotar tentativas internas de recuperação pré-GP."
+)
+CENTRAL_ML_RECOVERY_SUCCESS_MESSAGE = (
+    "GP entregue após recuperação interna pré-GP."
 )
 
 _AGENT_LABELS = {
@@ -47,6 +51,7 @@ def build_hierarchy_blocked_generation_result(
         hierarchy_bundle,
         exception_message=exception_message,
     )
+    recovery = dict(hierarchy_bundle.get("pre_gp_recovery") or {})
     return {
         "seed": int(seed),
         "batch_id": f"clean-law15-hierarchy-blocked-{seed}",
@@ -57,6 +62,14 @@ def build_hierarchy_blocked_generation_result(
         "hierarchy_blocked": True,
         "block_reason": "ML_OPERATIONAL_HIERARCHY_GP_BLOCKED",
         "hierarchy_block": hierarchy_block,
+        "pre_gp_recovery": recovery,
+        "internal_recovery_attempted": bool(recovery.get("internal_recovery_attempted")),
+        "internal_recovery_attempts": int(recovery.get("internal_recovery_attempts", 0) or 0),
+        "internal_recovery_success": bool(recovery.get("internal_recovery_success")),
+        "internal_recovery_failed_reason": str(recovery.get("internal_recovery_failed_reason") or ""),
+        "best_attempt_metrics": dict(recovery.get("best_attempt_metrics") or {}),
+        "attempt_results": list(recovery.get("attempt_results") or []),
+        "final_gp_delivered": False,
         "ml_operational_hierarchy": dict(hierarchy_block.get("ml_operational_hierarchy_trace") or {}),
         "commander_report": {
             "status_comandante_saida": "BLOQUEADO",
@@ -83,6 +96,7 @@ def build_hierarchy_blocked_generation_result(
         "persistence_block_reason": CENTRAL_ML_PRE_GP_BLOCK_MESSAGE,
         "no_final_lot_created": True,
         "pre_gp_hierarchy_block": True,
+        "recovery_exhausted": bool(recovery.get("recovery_exhausted")),
     }
 
 
@@ -136,6 +150,31 @@ def render_ml_hierarchy_block_panel(result: Mapping[str, Any]) -> None:
 
     st.info(f"**Próximo passo:** {block.get('next_step') or CENTRAL_ML_PRE_GP_BLOCK_MESSAGE}")
 
+    recovery = dict(result.get("pre_gp_recovery") or block.get("pre_gp_recovery") or {})
+    attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+    if attempts > 0:
+        st.markdown(
+            f"**Recuperação pré-GP ({RECOVERY_MISSION_ID}):** "
+            f"{attempts} tentativa(s) interna(s) | "
+            f"Sucesso: {'sim' if recovery.get('internal_recovery_success') else 'não'} | "
+            f"Melhor tentativa: {recovery.get('best_attempt_selected', '—')}"
+        )
+        best_metrics = dict(recovery.get("best_attempt_metrics") or {})
+        if best_metrics:
+            metric_cols = st.columns(3)
+            metric_cols[0].metric(
+                "Diversidade (melhor)",
+                f"{float(best_metrics.get('diversity_score', 0.0) or 0.0):.4f}",
+            )
+            metric_cols[1].metric(
+                "Overlap máx.",
+                str(best_metrics.get("max_overlap", "—")),
+            )
+            metric_cols[2].metric(
+                "GP liberado",
+                "sim" if best_metrics.get("gp_closure_allowed") else "não",
+            )
+
     stage_results = dict(block.get("stage_results") or {})
     if stage_results:
         with st.expander("Etapas da hierarquia (trace)", expanded=True):
@@ -171,15 +210,50 @@ def build_central_ml_pre_gp_block_notice(snapshot: Mapping[str, Any] | None = No
     block = dict((snapshot or {}).get("pre_gp_hierarchy_block") or load_hierarchy_block_session_snapshot())
     if not block:
         return {}
+    recovery = dict(block.get("pre_gp_recovery") or {})
+    attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+    message = CENTRAL_ML_PRE_GP_BLOCK_MESSAGE
+    if attempts > 0:
+        message = (
+            f"{CENTRAL_ML_PRE_GP_BLOCK_MESSAGE} "
+            f"Tentativas internas: {attempts}."
+        )
     return {
         "mission_id": MISSION_ID,
         "available": True,
         "headline": str(block.get("status") or "GP BLOQUEADO PELA HIERARQUIA ML"),
-        "message": CENTRAL_ML_PRE_GP_BLOCK_MESSAGE,
+        "message": message,
         "failed_stage": str(block.get("failed_stage") or ""),
         "responsible_agent": str(block.get("responsible_agent") or ""),
         "corrective_action_applied": list(block.get("corrective_action_applied") or []),
+        "pre_gp_recovery": recovery,
+        "internal_recovery_attempts": attempts,
+        "best_attempt_metrics": dict(recovery.get("best_attempt_metrics") or {}),
         "ml_operational_hierarchy": build_ml_operational_hierarchy_trace(
             dict(block.get("ml_operational_hierarchy_trace") or block)
         ),
+    }
+
+
+def build_central_ml_recovery_success_notice(
+    recovery_bundle: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    recovery = dict(recovery_bundle or {})
+    if not recovery.get("internal_recovery_success"):
+        return {}
+    attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+    success_attempt = recovery.get("successful_attempt_index")
+    return {
+        "mission_id": RECOVERY_MISSION_ID,
+        "available": True,
+        "headline": CENTRAL_ML_RECOVERY_SUCCESS_MESSAGE,
+        "message": (
+            f"GP entregue após {attempts} tentativa(s) interna(s) "
+            f"(aprovada na tentativa {success_attempt})."
+        ),
+        "internal_recovery_attempts": attempts,
+        "successful_attempt_index": success_attempt,
+        "final_gp_delivered": bool(recovery.get("final_gp_delivered")),
+        "best_attempt_metrics": dict(recovery.get("best_attempt_metrics") or {}),
+        "attempt_results": list(recovery.get("attempt_results") or []),
     }

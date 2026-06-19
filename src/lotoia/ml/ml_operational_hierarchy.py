@@ -815,10 +815,18 @@ class MlOperationalHierarchyBlockedError(RuntimeError):
     @classmethod
     def from_bundle(cls, hierarchy_bundle: Mapping[str, Any]) -> MlOperationalHierarchyBlockedError:
         reason = str(hierarchy_bundle.get("blocking_reason") or "etapas 1–3 reprovadas")
-        message = (
-            "[M-ML-073] Fechamento GP bloqueado pela hierarquia operacional ML: "
-            f"{reason}"
-        )
+        recovery = dict(hierarchy_bundle.get("pre_gp_recovery") or {})
+        attempts = int(recovery.get("internal_recovery_attempts", 0) or 0)
+        if recovery.get("internal_recovery_attempted") and attempts > 0:
+            message = (
+                "[M-ML-073/M-ML-074] Fechamento GP bloqueado após "
+                f"{attempts} tentativas internas de recuperação pré-GP: {reason}"
+            )
+        else:
+            message = (
+                "[M-ML-073] Fechamento GP bloqueado pela hierarquia operacional ML: "
+                f"{reason}"
+            )
         return cls(message, hierarchy_bundle=hierarchy_bundle)
 
 

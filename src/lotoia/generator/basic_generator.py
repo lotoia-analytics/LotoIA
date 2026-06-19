@@ -687,6 +687,7 @@ def generate_best_games(
     _structural_policy_bundle = None
     _structural_pool_bundle = None
     _hierarchy_bundle = None
+    _recovery_bundle = None
     _sovereign_game_size = 15
     _game_size_contract: dict[str, object] = {}
     _baseline_gp_for_trace: list[dict[str, object]] = []
@@ -723,19 +724,41 @@ def generate_best_games(
             "game_size_contract": _game_size_contract,
         }
         if is_ml_operational_hierarchy_enabled():
-            _mission_bundles: dict[str, object] = {}
-            games, _hierarchy_bundle, _mission_bundles = execute_ml_operational_hierarchy(
-                games,
-                game_size=_sovereign_game_size,
-                requested_count=count,
-                history=history,
-                seed=seed_offset,
-                batch_label=batch_label,
-                calibration_plan=calibration_plan,
-                event_context=_event_context,
-                compose_gp=compose_sovereign_gp,
-                compose_config=_sovereign_cfg,
+            from lotoia.ml.pre_gp_deterministic_recovery import (
+                execute_pre_gp_recovery_cycle,
+                is_pre_gp_recovery_enabled,
             )
+
+            _mission_bundles: dict[str, object] = {}
+            _recovery_bundle: dict[str, object] = {}
+            if is_pre_gp_recovery_enabled():
+                games, _hierarchy_bundle, _mission_bundles, _recovery_bundle = (
+                    execute_pre_gp_recovery_cycle(
+                        games,
+                        game_size=_sovereign_game_size,
+                        requested_count=count,
+                        history=history,
+                        seed=seed_offset,
+                        batch_label=batch_label,
+                        calibration_plan=calibration_plan,
+                        event_context=_event_context,
+                        compose_gp=compose_sovereign_gp,
+                        compose_config=_sovereign_cfg,
+                    )
+                )
+            else:
+                games, _hierarchy_bundle, _mission_bundles = execute_ml_operational_hierarchy(
+                    games,
+                    game_size=_sovereign_game_size,
+                    requested_count=count,
+                    history=history,
+                    seed=seed_offset,
+                    batch_label=batch_label,
+                    calibration_plan=calibration_plan,
+                    event_context=_event_context,
+                    compose_gp=compose_sovereign_gp,
+                    compose_config=_sovereign_cfg,
+                )
             _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
             _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
             if not _hierarchy_bundle.get("gp_closure_allowed"):
@@ -1026,6 +1049,7 @@ def generate_best_games(
         "pre_final_pool_ml_calibration": dict(_calibration_bundle or {}),
         "ml_structural_15d_pool": dict(_structural_pool_bundle or {}),
         "ml_operational_hierarchy": dict(_hierarchy_bundle or {}),
+        "pre_gp_recovery": dict(_recovery_bundle or {}),
         "games": best_games,
         "profile_counts": profile_counts,
         "profile_percentages": {
@@ -1050,6 +1074,19 @@ def generate_best_games(
         payload["institutional_agent_routing_matrix"] = _hierarchy_bundle.get(
             "institutional_agent_routing_matrix"
         )
+        if _recovery_bundle:
+            payload["internal_recovery_attempted"] = bool(
+                _recovery_bundle.get("internal_recovery_attempted")
+            )
+            payload["internal_recovery_attempts"] = int(
+                _recovery_bundle.get("internal_recovery_attempts", 0) or 0
+            )
+            payload["internal_recovery_success"] = bool(
+                _recovery_bundle.get("internal_recovery_success")
+            )
+            payload["final_gp_delivered"] = bool(_recovery_bundle.get("final_gp_delivered"))
+            payload["best_attempt_metrics"] = dict(_recovery_bundle.get("best_attempt_metrics") or {})
+            payload["attempt_results"] = list(_recovery_bundle.get("attempt_results") or [])
         merged_hierarchy = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
         merged_hierarchy["ml_operational_hierarchy"] = _hierarchy_bundle
         payload["calibration_bundle"] = merged_hierarchy

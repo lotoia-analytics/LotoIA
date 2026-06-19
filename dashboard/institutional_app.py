@@ -170,6 +170,7 @@ from dashboard.institutional_operational_structural_coverage import (
     load_pre_final_pool_coverage_summary,
     load_structural_15d_pool_coverage_summary,
     load_ml_operational_hierarchy_coverage_summary,
+    load_pre_gp_recovery_coverage_summary,
     sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
@@ -9164,6 +9165,23 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                     f"Bloqueio hierárquico: {hierarchy_summary.get('blocking_reason')} | "
                     f"Ação: {', '.join(hierarchy_summary.get('corrective_action_applied') or []) or '—'}"
                 )
+        recovery_summary = load_pre_gp_recovery_coverage_summary(DB_PATH, selected_ge_id)
+        if recovery_summary.get("internal_recovery_attempted"):
+            success_label = "SIM" if recovery_summary.get("internal_recovery_success") else "NÃO"
+            st.info(
+                "Recuperação pré-GP (M-ML-074): "
+                f"tentativas={int(recovery_summary.get('internal_recovery_attempts', 0) or 0)} | "
+                f"sucesso={success_label} | "
+                f"GP entregue={'SIM' if recovery_summary.get('final_gp_delivered') else 'NÃO'} | "
+                f"aprovada na tentativa={recovery_summary.get('successful_attempt_index', '—')}"
+            )
+            best_metrics = dict(recovery_summary.get("best_attempt_metrics") or {})
+            if best_metrics:
+                st.caption(
+                    "Melhor tentativa — "
+                    f"diversidade={float(best_metrics.get('diversity_score', 0.0) or 0.0):.4f} | "
+                    f"overlap={best_metrics.get('max_overlap', '—')}"
+                )
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
@@ -11845,6 +11863,7 @@ def _persist_clean_law15_generation_history(
     }
     from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
     from lotoia.ml.structural_pool_15d_generator import build_structural_15d_pool_trace
+    from lotoia.ml.pre_gp_deterministic_recovery import build_pre_gp_recovery_trace
     from lotoia.ml.ml_operational_hierarchy import build_ml_operational_hierarchy_trace
     from lotoia.governance.institutional_agent_routing_matrix import (
         MISSION_ID as AGENT_ROUTING_MISSION_ID,
@@ -11860,6 +11879,7 @@ def _persist_clean_law15_generation_history(
     _hierarchy_trace = build_ml_operational_hierarchy_trace(
         dict(result.get("ml_operational_hierarchy") or {})
     )
+    _pre_gp_recovery_trace = build_pre_gp_recovery_trace(dict(result.get("pre_gp_recovery") or {}))
     generation_context.update(
         {
             "pre_final_pool_ml_calibration": _pre_final_trace,
@@ -11940,6 +11960,20 @@ def _persist_clean_law15_generation_history(
                     "blocking_responsible_agent": _hierarchy_trace.get("blocking_responsible_agent"),
                 }
             ),
+            "pre_gp_recovery": _pre_gp_recovery_trace,
+            "internal_recovery_attempted": bool(_pre_gp_recovery_trace.get("internal_recovery_attempted")),
+            "internal_recovery_attempts": int(
+                _pre_gp_recovery_trace.get("internal_recovery_attempts", 0) or 0
+            ),
+            "internal_recovery_success": bool(_pre_gp_recovery_trace.get("internal_recovery_success")),
+            "internal_recovery_failed_reason": str(
+                _pre_gp_recovery_trace.get("internal_recovery_failed_reason") or ""
+            ),
+            "final_gp_delivered": bool(_pre_gp_recovery_trace.get("final_gp_delivered")),
+            "best_attempt_metrics": dict(_pre_gp_recovery_trace.get("best_attempt_metrics") or {}),
+            "attempt_results": list(_pre_gp_recovery_trace.get("attempt_results") or []),
+            "best_attempt_selected": _pre_gp_recovery_trace.get("best_attempt_selected"),
+            "successful_attempt_index": _pre_gp_recovery_trace.get("successful_attempt_index"),
         }
     )
     try:
@@ -13286,6 +13320,17 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "sovereign_generation_path": "generate_best_games",
         "ml_enabled": ml_enabled,
         "ml_operational_status": supervised_ml_status_label() if ml_enabled else "ML_INATIVO",
+        "ml_operational_hierarchy": dict(sovereign_payload.get("ml_operational_hierarchy") or {}),
+        "pre_gp_recovery": dict(sovereign_payload.get("pre_gp_recovery") or {}),
+        "pre_final_pool_ml_calibration": dict(sovereign_payload.get("pre_final_pool_ml_calibration") or {}),
+        "internal_recovery_attempted": bool(sovereign_payload.get("internal_recovery_attempted")),
+        "internal_recovery_attempts": int(sovereign_payload.get("internal_recovery_attempts", 0) or 0),
+        "internal_recovery_success": bool(sovereign_payload.get("internal_recovery_success")),
+        "final_gp_delivered": bool(sovereign_payload.get("final_gp_delivered")),
+        "best_attempt_metrics": dict(sovereign_payload.get("best_attempt_metrics") or {}),
+        "attempt_results": list(sovereign_payload.get("attempt_results") or []),
+        "primary_responsible_agent": sovereign_payload.get("primary_responsible_agent"),
+        "blocking_responsible_agent": sovereign_payload.get("blocking_responsible_agent"),
     }
 
 
