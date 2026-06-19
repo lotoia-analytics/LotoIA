@@ -52,7 +52,7 @@ def _format_analyses() -> list[dict[str, Any]]:
 
 
 def test_build_marker_v78_hits_separation() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v78"
+    assert BUILD_MARKER == "institutional-adm-runtime-v79"
 
 
 def test_separation_trace_fields() -> None:

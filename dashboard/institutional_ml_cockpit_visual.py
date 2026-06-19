@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import html
+import re
+from contextlib import contextmanager
+from collections.abc import Iterator
 from typing import Any, Literal
 
 import streamlit as st
@@ -26,6 +29,23 @@ _VERDICT_HEADLINES: dict[str, str] = {
     "REPROVADO": "Lote reprovado — revisão obrigatória",
     "BLOQUEADO PARA OFICIALIZAÇÃO": "Bloqueado para oficialização",
 }
+
+_HIT_REASON_FRAGMENTS = (
+    "ausência de captura 13/14/15",
+    "ausencia de captura 13/14/15",
+    "captura 13/14/15",
+    "captura 13/14",
+    "baixa força de captura",
+    "zero hits",
+    "ausência de jogos 13/14/15",
+)
+
+_PLAN_HIT_FRAGMENTS = (
+    "captura 13/14",
+    "13/14/15",
+    "zero hits",
+    "ausência de captura",
+)
 
 
 def inject_central_ml_visual_styles() -> None:
@@ -81,14 +101,6 @@ def inject_central_ml_visual_styles() -> None:
             text-transform: uppercase;
             white-space: nowrap;
         }
-        .lotoia-cml-section-shell {
-            border: 1px solid #dbe5ef;
-            border-radius: 1rem;
-            background: #ffffff;
-            box-shadow: 0 8px 20px rgba(18, 52, 86, 0.04);
-            padding: 1rem 1.1rem 1.05rem;
-            margin-bottom: 0.85rem;
-        }
         .lotoia-cml-section-head {
             display: flex;
             align-items: center;
@@ -119,73 +131,38 @@ def inject_central_ml_visual_styles() -> None:
             color: #6d8094;
             margin-top: 0.12rem;
         }
-        .lotoia-cml-metric-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-            gap: 0.65rem;
+        .lotoia-cml-metric-shell {
+            border-radius: 0.85rem !important;
+            padding: 0.55rem 0.65rem 0.35rem !important;
+            min-height: 6.5rem;
         }
-        .lotoia-cml-metric-card {
-            position: relative;
-            border: 1px solid #e2eaf2;
-            border-radius: 0.9rem;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 100%);
-            padding: 0.8rem 0.85rem 0.9rem;
-            min-height: 108px;
+        .lotoia-cml-metric-shell.tone-ok {
+            border-color: rgba(46, 204, 113, 0.35) !important;
+            background: linear-gradient(180deg, #ffffff 0%, #f6fcf8 100%) !important;
         }
-        .lotoia-cml-metric-card.tone-ok { border-color: rgba(46, 204, 113, 0.28); }
-        .lotoia-cml-metric-card.tone-warn { border-color: rgba(243, 156, 18, 0.35); }
-        .lotoia-cml-metric-card.tone-bad { border-color: rgba(231, 76, 60, 0.35); }
-        .lotoia-cml-metric-card.tone-info { border-color: rgba(79, 142, 247, 0.28); }
-        .lotoia-cml-metric-icon {
-            font-size: 1.1rem;
-            margin-bottom: 0.35rem;
+        .lotoia-cml-metric-shell.tone-warn {
+            border-color: rgba(243, 156, 18, 0.4) !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fffaf3 100%) !important;
         }
-        .lotoia-cml-metric-label {
+        .lotoia-cml-metric-shell.tone-bad {
+            border-color: rgba(231, 76, 60, 0.4) !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fff7f6 100%) !important;
+        }
+        .lotoia-cml-metric-shell.tone-info {
+            border-color: rgba(79, 142, 247, 0.35) !important;
+            background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%) !important;
+        }
+        .lotoia-cml-metric-badge-line {
             font-size: 0.68rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #6d8094;
-            line-height: 1.25;
-            padding-right: 3rem;
-        }
-        .lotoia-cml-metric-value {
-            font-size: 1.45rem;
-            font-weight: 800;
-            color: #123456;
-            line-height: 1.1;
-            margin-top: 0.2rem;
-        }
-        .lotoia-cml-metric-badge {
-            position: absolute;
-            top: 0.65rem;
-            right: 0.65rem;
-            font-size: 0.62rem;
             font-weight: 800;
             letter-spacing: 0.06em;
             text-transform: uppercase;
-            padding: 0.18rem 0.45rem;
-            border-radius: 999px;
+            margin-bottom: 0.15rem;
         }
-        .lotoia-cml-metric-badge.ok {
-            background: rgba(46, 204, 113, 0.14);
-            color: #1f8f4d;
-            border: 1px solid rgba(46, 204, 113, 0.28);
-        }
-        .lotoia-cml-metric-badge.warn {
-            background: rgba(243, 156, 18, 0.14);
-            color: #a66a00;
-            border: 1px solid rgba(243, 156, 18, 0.28);
-        }
-        .lotoia-cml-metric-badge.bad {
-            background: rgba(231, 76, 60, 0.12);
-            color: #b83227;
-            border: 1px solid rgba(231, 76, 60, 0.28);
-        }
-        .lotoia-cml-metric-badge.info {
-            background: rgba(79, 142, 247, 0.12);
-            color: #2f6fd6;
-            border: 1px solid rgba(79, 142, 247, 0.28);
-        }
+        .lotoia-cml-metric-badge-line.ok { color: #1f8f4d; }
+        .lotoia-cml-metric-badge-line.warn { color: #a66a00; }
+        .lotoia-cml-metric-badge-line.bad { color: #b83227; }
+        .lotoia-cml-metric-badge-line.info { color: #2f6fd6; }
         .lotoia-cml-verdict {
             border-radius: 0.95rem;
             padding: 1rem 1.1rem;
@@ -240,15 +217,28 @@ def inject_central_ml_visual_styles() -> None:
             font-weight: 700;
             line-height: 1.45;
         }
-        .lotoia-cml-plan-list {
-            margin: 0;
-            padding-left: 1.2rem;
+        .lotoia-cml-plan-card {
+            border: 1px solid #e2eaf2;
+            border-radius: 0.8rem;
+            background: #fbfdff;
+            padding: 0.65rem 0.85rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.92rem;
             color: #27415d;
-            line-height: 1.65;
-            font-size: 0.94rem;
+            line-height: 1.5;
         }
-        .lotoia-cml-plan-list li {
-            margin-bottom: 0.45rem;
+        .lotoia-cml-plan-index {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.35rem;
+            height: 1.35rem;
+            border-radius: 999px;
+            background: #123456;
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 800;
+            margin-right: 0.45rem;
         }
         .lotoia-cml-chip-row {
             display: flex;
@@ -260,6 +250,11 @@ def inject_central_ml_visual_styles() -> None:
             font-size: 0.84rem;
             color: #6d8094;
             margin-bottom: 0.35rem;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.lotoia-cml-section-marker) {
+            padding: 0.85rem 1rem 1rem;
+            margin-bottom: 0.85rem;
+            box-shadow: 0 8px 20px rgba(18, 52, 86, 0.04);
         }
         div[data-testid="stExpander"]:has(.lotoia-cml-audit-marker) {
             border: 1px solid #dbe5ef;
@@ -274,6 +269,30 @@ def inject_central_ml_visual_styles() -> None:
 
 def _esc(value: Any) -> str:
     return html.escape(str(value if value is not None else "—"))
+
+
+def sanitize_structural_display_reason(reason: str) -> str:
+    """Remove frases de hits da exibição operacional (dados legados no PostgreSQL)."""
+    text = str(reason or "").strip()
+    if not text:
+        return "Sem bloqueios estruturais."
+    for fragment in _HIT_REASON_FRAGMENTS:
+        text = re.sub(re.escape(fragment), "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"^[\s,;.\-]+|[\s,;.\-]+$", "", text)
+    text = re.sub(r",\s*,", ",", text)
+    return text.strip() or "Sem bloqueios estruturais."
+
+
+def filter_operational_plan_items(plan_items: list[str]) -> list[str]:
+    """Remove recomendações de captura 13/14/15 da visão operacional principal."""
+    filtered: list[str] = []
+    for item in plan_items:
+        lowered = str(item or "").lower()
+        if any(fragment in lowered for fragment in _PLAN_HIT_FRAGMENTS):
+            continue
+        filtered.append(str(item))
+    return filtered
 
 
 def _metric_tone_for_label(label: str, value: Any) -> MetricTone:
@@ -331,6 +350,31 @@ def _badge_label(tone: MetricTone) -> str:
     return {"ok": "OK", "warn": "ATENÇÃO", "bad": "CRÍTICO", "info": "INFO"}[tone]
 
 
+def _format_metric_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    return str(value if value is not None else "—")
+
+
+@contextmanager
+def section_shell() -> Iterator[None]:
+    """Container nativo Streamlit — evita HTML partido entre chamadas."""
+    st.markdown('<div class="lotoia-cml-section-marker"></div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        yield
+
+
+def begin_section_shell() -> None:
+    """Compatibilidade legada — preferir section_shell()."""
+    st.markdown('<div class="lotoia-cml-section-marker"></div>', unsafe_allow_html=True)
+    st.session_state["_lotoia_cml_section_open"] = True
+
+
+def end_section_shell() -> None:
+    """Compatibilidade legada — no-op (container nativo substitui div partido)."""
+    st.session_state.pop("_lotoia_cml_section_open", None)
+
+
 def render_central_ml_header(*, subtitle: str, supervised_active: bool) -> None:
     badge = "Operacional" if supervised_active else "Inativo"
     st.markdown(
@@ -366,28 +410,19 @@ def render_section_header(section_index: int, title: str, subtitle: str) -> None
 
 
 def render_metric_grid(metrics: list[tuple[str, Any]]) -> None:
-    cards: list[str] = []
-    for label, value in metrics:
-        tone = _metric_tone_for_label(label, value)
-        icon = _METRIC_ICONS.get(label, "📌")
-        if isinstance(value, float):
-            display = f"{value:.4f}".rstrip("0").rstrip(".")
-        else:
-            display = _esc(value)
-        cards.append(
-            f"""
-            <div class="lotoia-cml-metric-card tone-{tone}">
-              <span class="lotoia-cml-metric-badge {tone}">{_badge_label(tone)}</span>
-              <div class="lotoia-cml-metric-icon">{icon}</div>
-              <div class="lotoia-cml-metric-label">{_esc(label)}</div>
-              <div class="lotoia-cml-metric-value">{display}</div>
-            </div>
-            """
-        )
-    st.markdown(
-        f'<div class="lotoia-cml-metric-grid">{"".join(cards)}</div>',
-        unsafe_allow_html=True,
-    )
+    """Grade de métricas com componentes nativos — evita HTML cru na tela."""
+    columns_per_row = 4
+    for row_start in range(0, len(metrics), columns_per_row):
+        row = metrics[row_start : row_start + columns_per_row]
+        cols = st.columns(columns_per_row)
+        for col_index, (label, value) in enumerate(row):
+            tone = _metric_tone_for_label(label, value)
+            icon = _METRIC_ICONS.get(label, "📌")
+            display = _format_metric_value(value)
+            with cols[col_index]:
+                with st.container(border=True):
+                    st.caption(f"{icon} · {_badge_label(tone)}")
+                    st.metric(label=label, value=display)
 
 
 def _verdict_tone(verdict: str) -> str:
@@ -410,13 +445,14 @@ def render_verdict_banner(
     normalized = str(verdict or "APROVADO").strip().upper()
     headline = _VERDICT_HEADLINES.get(normalized, normalized or "Veredito indisponível")
     tone = _verdict_tone(normalized)
+    display_reason = sanitize_structural_display_reason(reason)
     st.markdown(
         f"""
         <div class="lotoia-cml-verdict {tone}">
           <div class="lotoia-cml-verdict-title">{_esc(headline)}</div>
           <div class="lotoia-cml-verdict-copy">
             <strong>Veredito ML:</strong> {_esc(normalized)}<br/>
-            {_esc(reason)}
+            {_esc(display_reason)}
           </div>
           <div class="lotoia-cml-verdict-meta">
             <div class="lotoia-cml-meta-box">
@@ -439,14 +475,20 @@ def render_verdict_banner(
 
 
 def render_plan_list(plan_items: list[str]) -> None:
-    if not plan_items:
+    visible_items = filter_operational_plan_items(plan_items)
+    if not visible_items:
+        st.info("Nenhum plano pendente — aguardando evidências da Cobertura Estrutural.")
+        return
+    for index, item in enumerate(visible_items, start=1):
         st.markdown(
-            '<div class="lotoia-cml-section-sub">Nenhum plano pendente — aguardando evidências da Cobertura Estrutural.</div>',
+            f"""
+            <div class="lotoia-cml-plan-card">
+              <span class="lotoia-cml-plan-index">{index}</span>
+              {_esc(item)}
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        return
-    items = "".join(f"<li>{_esc(item)}</li>" for item in plan_items)
-    st.markdown(f'<ol class="lotoia-cml-plan-list">{items}</ol>', unsafe_allow_html=True)
 
 
 def render_constitutional_chip_row(chips: list[tuple[str, str, str]]) -> None:
@@ -456,11 +498,3 @@ def render_constitutional_chip_row(chips: list[tuple[str, str, str]]) -> None:
             f'<span class="lotoia-pill lotoia-pill-{tone}">{_esc(label)}: {_esc(value)}</span>'
         )
     st.markdown(f'<div class="lotoia-cml-chip-row">{"".join(pills)}</div>', unsafe_allow_html=True)
-
-
-def begin_section_shell() -> None:
-    st.markdown('<div class="lotoia-cml-section-shell">', unsafe_allow_html=True)
-
-
-def end_section_shell() -> None:
-    st.markdown("</div>", unsafe_allow_html=True)

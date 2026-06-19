@@ -156,4 +156,4 @@ def test_interpret_coverage_evidence_agent_summary() -> None:
 
 
 def test_build_marker_v63() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v78"
+    assert BUILD_MARKER == "institutional-adm-runtime-v79"

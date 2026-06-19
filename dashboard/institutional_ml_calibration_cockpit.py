@@ -42,8 +42,6 @@ from dashboard.institutional_ml_cockpit_render_guard import (
 )
 from dashboard.institutional_light_mode import OPERATIONAL_EVENTS_LIMIT
 from dashboard.institutional_ml_cockpit_visual import (
-    begin_section_shell,
-    end_section_shell,
     inject_central_ml_visual_styles,
     render_central_ml_header,
     render_constitutional_chip_row,
@@ -51,6 +49,7 @@ from dashboard.institutional_ml_cockpit_visual import (
     render_plan_list,
     render_section_header,
     render_verdict_banner,
+    section_shell,
 )
 from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
@@ -702,8 +701,14 @@ def _render_command_card(
     if not supervised_active:
         st.warning("Calibração supervisionada inativa — ative ML operacional CORE_002 (M-ML-054).")
         return
-    cmd_cols = st.columns(5)
-    if cmd_cols[0].button("Diagnosticar saída geral", key="cockpit_cmd_diagnose", use_container_width=True):
+    primary_cols = st.columns(2)
+    secondary_cols = st.columns(3)
+    if primary_cols[0].button(
+        "Diagnosticar saída geral",
+        key="cockpit_cmd_diagnose",
+        use_container_width=True,
+        type="secondary",
+    ):
         decision_at = _cockpit_now_iso()
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_PENDING
         st.session_state[SESSION_DECISION_AT] = decision_at
@@ -715,7 +720,12 @@ def _render_command_card(
             operator_decision="diagnosticar",
         )
         st.rerun()
-    if cmd_cols[1].button("Autorizar calibração", key="cockpit_cmd_authorize", use_container_width=True):
+    if primary_cols[1].button(
+        "Autorizar calibração",
+        key="cockpit_cmd_authorize",
+        use_container_width=True,
+        type="primary",
+    ):
         decision_at = _cockpit_now_iso()
         st.session_state[SESSION_WORKFLOW] = COCKPIT_WORKFLOW_AUTHORIZED
         st.session_state[SESSION_DECISION_AT] = decision_at
@@ -727,7 +737,12 @@ def _render_command_card(
             operator_decision="autorizar",
         )
         st.rerun()
-    if cmd_cols[2].button("Aplicar na próxima geração", key="cockpit_cmd_apply_next", use_container_width=True):
+    if secondary_cols[0].button(
+        "Aplicar na próxima geração",
+        key="cockpit_cmd_apply_next",
+        use_container_width=True,
+        type="primary",
+    ):
         decision_at = _cockpit_now_iso()
         latest_event_id = int((snapshot.get("latest_event") or {}).get("generation_event_id", 0) or 0)
         sovereign_ids = [int(value) for value in (snapshot.get("generation_event_ids") or []) if int(value or 0) > 0]
@@ -765,7 +780,12 @@ def _render_command_card(
             "O lote N permanece visível até a geração N+1 consumir o plano."
         )
         st.rerun()
-    if cmd_cols[3].button("Rejeitar recomendação", key="cockpit_cmd_reject", use_container_width=True):
+    if secondary_cols[1].button(
+        "Rejeitar recomendação",
+        key="cockpit_cmd_reject",
+        use_container_width=True,
+        type="secondary",
+    ):
         decision_at = _cockpit_now_iso()
         from lotoia.ml.authorized_ml_calibration_plan import reject_active_calibration_plan
 
@@ -781,7 +801,12 @@ def _render_command_card(
             operator_decision="rejeitar",
         )
         st.rerun()
-    if cmd_cols[4].button("Validar resultado", key="cockpit_cmd_validate", use_container_width=True):
+    if secondary_cols[2].button(
+        "Validar resultado",
+        key="cockpit_cmd_validate",
+        use_container_width=True,
+        type="secondary",
+    ):
         decision_at = _cockpit_now_iso()
         from lotoia.ml.authorized_ml_calibration_plan import (
             build_validation_report_from_consumed_plan,
@@ -1348,37 +1373,33 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             if audit_rows:
                 display_cockpit_dataframe(audit_rows, max_rows=40)
 
-    begin_section_shell()
-    render_cockpit_block_safe(
-        "diagnostico",
-        lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
-    )
-    end_section_shell()
+    with section_shell():
+        render_cockpit_block_safe(
+            "diagnostico",
+            lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
+        )
 
-    begin_section_shell()
-    render_cockpit_block_safe(
-        "evidencias_decisao",
-        lambda: _render_decision_evidence_card(snapshot),
-    )
-    end_section_shell()
+    with section_shell():
+        render_cockpit_block_safe(
+            "evidencias_decisao",
+            lambda: _render_decision_evidence_card(snapshot),
+        )
 
-    begin_section_shell()
-    render_cockpit_block_safe(
-        "recomendacoes",
-        lambda: _render_recommendation_card(snapshot),
-    )
-    end_section_shell()
+    with section_shell():
+        render_cockpit_block_safe(
+            "recomendacoes",
+            lambda: _render_recommendation_card(snapshot),
+        )
 
-    begin_section_shell()
-    render_cockpit_block_safe(
-        "comando",
-        lambda: _render_command_card(
-            snapshot,
-            supervised_active=supervised_active,
-            db_path=db_path,
-        ),
-    )
-    end_section_shell()
+    with section_shell():
+        render_cockpit_block_safe(
+            "comando",
+            lambda: _render_command_card(
+                snapshot,
+                supervised_active=supervised_active,
+                db_path=db_path,
+            ),
+        )
 
     render_cockpit_block_safe(
         "auditoria_tecnica",

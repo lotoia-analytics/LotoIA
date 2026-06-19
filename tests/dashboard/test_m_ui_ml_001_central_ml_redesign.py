@@ -31,7 +31,7 @@ MOVED_TO_AUDIT_MARKERS = (
 
 
 def test_build_marker_v76() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v78"
+    assert BUILD_MARKER == "institutional-adm-runtime-v79"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
 
 
