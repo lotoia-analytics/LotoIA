@@ -803,3 +803,85 @@ def build_ml_operational_hierarchy_trace(bundle: Mapping[str, Any] | None) -> di
         "blocking_responsible_agent": str(source.get("blocking_responsible_agent") or ""),
         "stage_responsible_agents": list(source.get("stage_responsible_agents") or []),
     }
+
+
+class MlOperationalHierarchyBlockedError(RuntimeError):
+    """GP bloqueado pelas etapas 1–3 da hierarquia M-ML-073 (pré-compose_sovereign_gp)."""
+
+    def __init__(self, message: str, *, hierarchy_bundle: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.hierarchy_bundle = dict(hierarchy_bundle)
+
+    @classmethod
+    def from_bundle(cls, hierarchy_bundle: Mapping[str, Any]) -> MlOperationalHierarchyBlockedError:
+        reason = str(hierarchy_bundle.get("blocking_reason") or "etapas 1–3 reprovadas")
+        message = (
+            "[M-ML-073] Fechamento GP bloqueado pela hierarquia operacional ML: "
+            f"{reason}"
+        )
+        return cls(message, hierarchy_bundle=hierarchy_bundle)
+
+
+def is_ml_operational_hierarchy_block_error(exc: BaseException) -> bool:
+    if isinstance(exc, MlOperationalHierarchyBlockedError):
+        return True
+    return str(exc).startswith("[M-ML-073]")
+
+
+def resolve_failed_hierarchy_stage(hierarchy_bundle: Mapping[str, Any] | None) -> str:
+    source = dict(hierarchy_bundle or {})
+    stage_results = dict(source.get("stage_results") or {})
+    for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE):
+        row = stage_results.get(stage_id)
+        if isinstance(row, dict) and not row.get("passed"):
+            return str(stage_id)
+    return str(source.get("current_stage") or "")
+
+
+def build_ml_hierarchy_block_operational_payload(
+    hierarchy_bundle: Mapping[str, Any] | None,
+    *,
+    exception_message: str = "",
+) -> dict[str, Any]:
+    """Estado operacional seguro quando o GP é bloqueado antes do fechamento."""
+    source = dict(hierarchy_bundle or {})
+    failed_stage = resolve_failed_hierarchy_stage(source)
+    stage_row = dict(source.get("stage_results", {}).get(failed_stage) or {})
+    responsible_agent = str(
+        source.get("blocking_responsible_agent")
+        or stage_row.get("responsible_agent")
+        or ""
+    )
+    supporting_agents = list(stage_row.get("support_agents") or [])
+    trace = build_ml_operational_hierarchy_trace(source)
+    category_map = {
+        STAGE_CONFORMITY: "conformidade estrutural",
+        STAGE_DIVERSITY: "diversidade / overlap",
+        STAGE_COVERAGE: "cobertura estrutural",
+    }
+    return {
+        "mission_id": "M-ML-073-FIX-01",
+        "status": "GP BLOQUEADO PELA HIERARQUIA ML",
+        "exception_message": str(exception_message or source.get("blocking_reason") or ""),
+        "ml_hierarchy_version": str(source.get("ml_hierarchy_version") or HIERARCHY_VERSION),
+        "hierarchy_compliance": bool(source.get("hierarchy_compliance")),
+        "gp_closure_allowed": bool(source.get("gp_closure_allowed")),
+        "current_stage": str(source.get("current_stage") or ""),
+        "failed_stage": failed_stage,
+        "failed_stage_label": str(stage_row.get("stage_label") or STAGE_LABELS.get(failed_stage, failed_stage)),
+        "failure_category": category_map.get(failed_stage, "hierarquia operacional ML"),
+        "stage_results": dict(trace.get("stage_results") or {}),
+        "stage_failures": list(trace.get("stage_failures") or []),
+        "corrective_action_applied": list(trace.get("corrective_action_applied") or []),
+        "blocking_reason": str(source.get("blocking_reason") or ""),
+        "responsible_agent": responsible_agent,
+        "supporting_agents": supporting_agents,
+        "primary_responsible_agent": responsible_agent,
+        "agent_routing_matrix_version": str(source.get("agent_routing_matrix_version") or ""),
+        "next_step": (
+            "Gerar novo pool / ajustar geração / revisar diversidade e cobertura estrutural."
+        ),
+        "ml_operational_hierarchy_trace": trace,
+        "no_final_lot_created": True,
+        "pre_gp_block": True,
+    }

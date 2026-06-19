@@ -238,6 +238,11 @@ from dashboard.institutional_clean_law15_runtime import (
     render_six_bases_expander,
     render_technical_expander,
 )
+from dashboard.institutional_ml_hierarchy_block import (
+    build_hierarchy_blocked_generation_result,
+    persist_hierarchy_block_session_snapshot,
+    render_ml_hierarchy_block_panel,
+)
 from dashboard.institutional_light_mode import (
     CACHE_TTL_SECONDS,
     SESSION_LOAD_COMPARATIVE,
@@ -786,17 +791,44 @@ def _invoke_sovereign_adm_generate_best_games(
         cockpit_bundle = dict(st.session_state.get(COCKPIT_SESSION_PERSIST) or {})
         authorized_plan = resolve_authorized_calibration_plan(cockpit_bundle)
     from lotoia.generator.basic_generator import generate_best_games
-
-    payload = dict(
-        generate_best_games(
-            count=int(requested_count),
-            pool_size=effective_pool,
-            batch_label=resolved_label,
-            ml_enabled=effective_ml,
-            seed=seed,
-            calibration_plan=authorized_plan,
-        )
+    from lotoia.ml.ml_operational_hierarchy import (
+        MlOperationalHierarchyBlockedError,
+        is_ml_operational_hierarchy_block_error,
     )
+
+    try:
+        payload = dict(
+            generate_best_games(
+                count=int(requested_count),
+                pool_size=effective_pool,
+                batch_label=resolved_label,
+                ml_enabled=effective_ml,
+                seed=seed,
+                calibration_plan=authorized_plan,
+            )
+        )
+    except MlOperationalHierarchyBlockedError as exc:
+        return {
+            "hierarchy_blocked": True,
+            "hierarchy_block_bundle": dict(exc.hierarchy_bundle),
+            "hierarchy_block_message": str(exc),
+            "games": [],
+            "ml_enabled": effective_ml,
+            "analysis_batch_label": resolved_label,
+            "authorized_calibration_plan": authorized_plan,
+        }
+    except RuntimeError as exc:
+        if is_ml_operational_hierarchy_block_error(exc):
+            return {
+                "hierarchy_blocked": True,
+                "hierarchy_block_bundle": {},
+                "hierarchy_block_message": str(exc),
+                "games": [],
+                "ml_enabled": effective_ml,
+                "analysis_batch_label": resolved_label,
+                "authorized_calibration_plan": authorized_plan,
+            }
+        raise
     payload["ml_enabled"] = effective_ml
     payload["analysis_batch_label"] = resolved_label
     if authorized_plan:
@@ -6568,6 +6600,13 @@ def _run_institutional_conference(
 def _run_simulation_lot_generation(*, requested_count: int, selected_card_format: int) -> dict[str, Any]:
     """Gera lote laboratorial com o mesmo motor CORE_002 + ML — não oficializa (M-OPS-062)."""
     result = _run_clean_law15_generation(requested_count=requested_count)
+    if result.get("hierarchy_blocked"):
+        result["selected_card_format"] = int(selected_card_format)
+        result["card_format_label"] = multidezena_format_label(selected_card_format)
+        result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
+        result["generation_origin"] = GENERATION_ORIGIN_SIMULATION
+        result["simulation_mode"] = True
+        return result
     result["selected_card_format"] = int(selected_card_format)
     result["card_format_label"] = multidezena_format_label(selected_card_format)
     result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
@@ -13128,6 +13167,15 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         batch_label=analysis_batch_label,
         seed=seed,
     )
+    if sovereign_payload.get("hierarchy_blocked"):
+        return build_hierarchy_blocked_generation_result(
+            hierarchy_bundle=dict(sovereign_payload.get("hierarchy_block_bundle") or {}),
+            exception_message=str(sovereign_payload.get("hierarchy_block_message") or ""),
+            requested_count=total_games,
+            seed=seed,
+            analysis_batch_label=analysis_batch_label,
+            ml_enabled=bool(sovereign_payload.get("ml_enabled", False)),
+        )
     games = list(sovereign_payload.get("games") or [])
     ml_enabled = bool(sovereign_payload.get("ml_enabled", False))
     structural_policy_bundle = dict(sovereign_payload.get("structural_policy_15d_bundle") or {})
@@ -13264,6 +13312,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
         result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
+        if result.get("hierarchy_blocked"):
+            persist_hierarchy_block_session_snapshot(result)
+            st.session_state["clean_law15_generation_result"] = result
+            st.rerun()
         result["display_games"] = _expand_generation_games_for_format(
             result.get("games") or [],
             selected_card_format,
@@ -13300,7 +13352,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     result = st.session_state.get("clean_law15_generation_result") or {}
     diagnostics = dict(result.get("fill_diagnostics") or {})
     if result:
-        render_generation_result_summary(result)
+        if result.get("hierarchy_blocked"):
+            render_ml_hierarchy_block_panel(result)
+        else:
+            render_generation_result_summary(result)
         games = list(
             result.get("display_games")
             or _expand_generation_games_for_format(
@@ -13308,12 +13363,13 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                 int(result.get("selected_card_format", 15) or 15),
             )
         )
-        render_generation_games_table(
-            games,
-            card_format=int(result.get("selected_card_format", 15) or 15),
-            format_numbers=_format_numbers_for_history,
-            extract_numbers=_extract_int_numbers,
-        )
+        if games and not result.get("hierarchy_blocked"):
+            render_generation_games_table(
+                games,
+                card_format=int(result.get("selected_card_format", 15) or 15),
+                format_numbers=_format_numbers_for_history,
+                extract_numbers=_extract_int_numbers,
+            )
 
     render_governance_expander(render_constitutional_panel=_render_constitutional_status_panel)
     if result:
