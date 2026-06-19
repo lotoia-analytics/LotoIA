@@ -17,6 +17,7 @@ from lotoia.operations.lot_operational_status import (
     should_defer_generator_persist_verdict_for_coverage,
 )
 from lotoia.governance.lei15_core_002_sovereign import core_002_batch_label_game_size, is_sovereign_core_label
+from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
 
 from dashboard.institutional_operational_generation import (
     build_operational_generation_index,
@@ -353,3 +354,19 @@ def build_active_coverage_scope_summary(
             else ""
         ),
     }
+
+
+def load_pre_final_pool_coverage_summary(
+    db_path: Any,
+    generation_event_id: int,
+) -> dict[str, Any]:
+    """Evidência M-ML-071 — pool pré-final calibrado pela ML (PostgreSQL context_json)."""
+    ge_id = int(generation_event_id or 0)
+    if ge_id <= 0:
+        return {}
+    with get_session(db_path) as session:
+        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
+        if event is None:
+            return {}
+        context = dict(getattr(event, "context_json", {}) or {})
+    return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))

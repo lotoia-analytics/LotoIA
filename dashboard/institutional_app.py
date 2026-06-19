@@ -167,6 +167,7 @@ from dashboard.institutional_operational_structural_coverage import (
     is_all_operational_generations_selection,
     diagnose_operational_coverage_gap,
     load_operational_core_002_generations,
+    load_pre_final_pool_coverage_summary,
     sync_persisted_event_operational_status,
 )
 from dashboard.institutional_route_inventory import (
@@ -9070,6 +9071,16 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
         detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
         st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
+        pre_final_summary = load_pre_final_pool_coverage_summary(DB_PATH, selected_ge_id)
+        if pre_final_summary:
+            st.info(
+                "GP final veio de pool calibrado pela ML: "
+                f"{'SIM' if pre_final_summary.get('pre_final_calibration_applied') else 'NÃO'} | "
+                f"pool pré-final={int(pre_final_summary.get('pre_final_pool_size', 0) or 0)} | "
+                f"reordenados={int(pre_final_summary.get('candidates_reordered', 0) or 0)} | "
+                f"substituídos={int(pre_final_summary.get('candidates_replaced', 0) or 0)} | "
+                f"política={pre_final_summary.get('pre_final_calibration_policy', '—')}"
+            )
 
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
@@ -11749,6 +11760,31 @@ def _persist_clean_law15_generation_history(
         "violated_rules": list(result.get("violated_rules") or []),
         "policy_compliance_status": str(result.get("policy_compliance_status") or ""),
     }
+    from lotoia.ml.pre_final_pool_ml_calibration import build_pre_final_pool_trace
+
+    _pre_final_trace = build_pre_final_pool_trace(
+        dict(result.get("pre_final_pool_ml_calibration") or result.get("calibration_bundle") or {})
+    )
+    generation_context.update(
+        {
+            "pre_final_pool_ml_calibration": _pre_final_trace,
+            "pre_final_pool_ml_enabled": bool(_pre_final_trace.get("pre_final_pool_ml_enabled")),
+            "pre_final_calibration_applied": bool(_pre_final_trace.get("pre_final_calibration_applied")),
+            "pre_final_pool_size": int(_pre_final_trace.get("pre_final_pool_size", 0) or 0),
+            "pre_final_pool_deduped_size": int(_pre_final_trace.get("pre_final_pool_deduped_size", 0) or 0),
+            "pre_final_calibration_format": str(_pre_final_trace.get("pre_final_calibration_format") or ""),
+            "pre_final_calibration_policy": str(_pre_final_trace.get("pre_final_calibration_policy") or ""),
+            "candidates_reordered": int(_pre_final_trace.get("candidates_reordered", 0) or 0),
+            "candidates_replaced": int(_pre_final_trace.get("candidates_replaced", 0) or 0),
+            "final_gp_changed_by_ml": bool(_pre_final_trace.get("final_gp_changed_by_ml")),
+            "final_compliance_rate": float(_pre_final_trace.get("final_compliance_rate", 0.0) or 0.0),
+            "final_diversity_score": float(_pre_final_trace.get("final_diversity_score", 0.0) or 0.0),
+            "final_similarity_score": float(_pre_final_trace.get("final_similarity_score", 0.0) or 0.0),
+            "pre_final_metrics_before": dict(_pre_final_trace.get("metrics_before") or {}),
+            "pre_final_metrics_after": dict(_pre_final_trace.get("metrics_after") or {}),
+            "pre_final_actions_applied": list(_pre_final_trace.get("actions_applied") or []),
+        }
+    )
     try:
         persisted = _attach_operational_generation_label(
             _persist_generation_snapshot(
