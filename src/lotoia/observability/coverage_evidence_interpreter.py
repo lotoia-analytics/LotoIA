@@ -490,6 +490,78 @@ def interpret_coverage_evidence(
     }
 
 
+def _build_structural_policy_15d_diagnosis(
+    application: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Traduz a aplicação da Política Estrutural 15D em diagnóstico/veredito/plano.
+
+    Retorna (problemas, evidencias, acoes, plan_items, verdict_note). Só produz
+    conteúdo quando a política foi efetivamente aplicada (M-ML-070-FIX-01).
+    """
+    if not application.get("available") or not application.get("structural_policy_applied"):
+        return [], [], [], [], ""
+
+    status = str(application.get("policy_compliance_status") or "")
+    validated = int(application.get("games_validated", 0) or 0)
+    compliant = int(application.get("games_compliant", 0) or 0)
+    non_compliant = int(application.get("games_non_compliant", 0) or 0)
+    rate = float(application.get("compliance_rate", 0.0) or 0.0)
+    violations = list(application.get("policy_violations") or application.get("violated_rules") or [])
+    version = str(application.get("structural_policy_version") or "M-ML-070-v1")
+
+    evidencias: list[dict[str, Any]] = [
+        {
+            "fonte": f"Política Estrutural 15D ({version})",
+            "evidencia": (
+                f"Aplicada por formato (governing_by_compliance): {compliant}/{validated} conformes "
+                f"(taxa {rate}); status={status}."
+            ),
+        }
+    ]
+    verdict_note = (
+        f"Política 15D aplicada — conformidade {status} ({compliant}/{validated}, taxa {rate})"
+    )
+
+    problemas: list[dict[str, Any]] = []
+    acoes: list[dict[str, Any]] = []
+    plan_items: list[dict[str, Any]] = []
+    if status != "compliant" and validated:
+        problemas.append(
+            {
+                "problema": (
+                    f"Política Estrutural 15D não totalmente conforme: {non_compliant} jogo(s) com violação "
+                    f"({status})."
+                ),
+                "severidade": "alta" if status == "non_compliant" else "media",
+                "regras_violadas": violations[:8],
+            }
+        )
+        acoes.append(
+            {
+                "acao": "Revisar/calibrar geração 15D para elevar a conformidade estrutural (repetição 7–10, "
+                "paridade permitida, sequência ≤ 6).",
+                "regras_violadas": violations[:8],
+            }
+        )
+        plan_items.append(
+            {
+                "item": "Reforçar conformidade da Política Estrutural 15D no GP soberano.",
+                "policy_compliance_status": status,
+                "compliance_rate": rate,
+                "regras_violadas": violations[:8],
+            }
+        )
+    if application.get("non_compliant_kept_reason"):
+        acoes.append(
+            {
+                "acao": "Ampliar o pool conforme: jogos não conformes foram mantidos por falta de conformes "
+                "suficientes.",
+                "motivo": str(application.get("non_compliant_kept_reason")),
+            }
+        )
+    return problemas, evidencias, acoes, plan_items, verdict_note
+
+
 def get_structural_coverage_evidence(
     db_path: Path | str = DEFAULT_DATABASE_PATH,
     *,
@@ -605,6 +677,26 @@ def get_structural_coverage_evidence(
             context_payload
         )
 
+    # M-ML-070-FIX-01: a conformidade da Política Estrutural 15D entra no
+    # diagnóstico / veredito / plano — não fica apenas no card visual.
+    (
+        _policy_problemas,
+        _policy_evidencias,
+        _policy_acoes,
+        _policy_plan_items,
+        _policy_verdict_note,
+    ) = _build_structural_policy_15d_diagnosis(structural_policy_15d_application)
+    if _policy_verdict_note:
+        ml_verdict_payload = {
+            **ml_verdict_payload,
+            "ml_verdict_reason": (
+                f"{ml_verdict_payload.get('ml_verdict_reason', '') or ''} | {_policy_verdict_note}".strip(" |")
+            ),
+            "structural_policy_compliance_status": str(
+                structural_policy_15d_application.get("policy_compliance_status") or ""
+            ),
+        }
+
     return {
         "available": True,
         "mission_id": MISSION_ID,
@@ -623,11 +715,12 @@ def get_structural_coverage_evidence(
         "interpretation": interpretation,
         "decision_blocks": list(interpretation.get("decision_blocks") or []),
         "primary_decision": dict(interpretation.get("primary_decision") or {}),
-        "problemas_detectados": list(interpretation.get("problemas_detectados") or []),
-        "evidencias": list(interpretation.get("evidencias") or []),
-        "acoes_recomendadas": list(interpretation.get("acoes_recomendadas") or []),
+        "problemas_detectados": list(interpretation.get("problemas_detectados") or []) + _policy_problemas,
+        "evidencias": list(interpretation.get("evidencias") or []) + _policy_evidencias,
+        "acoes_recomendadas": list(interpretation.get("acoes_recomendadas") or []) + _policy_acoes,
         "calibration_plan": merged_calibration_plan,
-        "plan_items": list(merged_calibration_plan.get("plan_items") or interpretation.get("plan_items") or []),
+        "plan_items": list(merged_calibration_plan.get("plan_items") or interpretation.get("plan_items") or [])
+        + _policy_plan_items,
         "impacto_detalhado": list(
             merged_calibration_plan.get("impact_items")
             or interpretation.get("impacto_detalhado")

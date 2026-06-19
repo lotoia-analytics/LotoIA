@@ -166,6 +166,26 @@ def _validate_game_record(
     )
 
 
+def _enrich_with_validation(
+    game: Mapping[str, Any],
+    *,
+    previous_numbers: Sequence[int] | None,
+    memory: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    validation = _validate_game_record(
+        game,
+        previous_contest_numbers=previous_numbers,
+        policy=memory,
+    )
+    enriched = dict(game)
+    enriched["structural_policy_15d_validation"] = validation
+    enriched["structural_policy_memory_loaded"] = True
+    enriched["structural_policy_format"] = "15D"
+    enriched["structural_policy_version"] = memory.get("policy_version")
+    enriched["policy_compliance_status"] = "compliant" if validation["approved"] else "non_compliant"
+    return enriched, validation
+
+
 def apply_structural_policy_15d_to_sovereign_batch(
     selected_games: Sequence[dict[str, Any]],
     *,
@@ -174,22 +194,36 @@ def apply_structural_policy_15d_to_sovereign_batch(
     required_count: int,
     db_path: Any = DEFAULT_DATABASE_PATH,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Governa o lote final 15D pela conformidade estrutural (M-ML-070-FIX-01).
+
+    A política deixa de ser observacional: o lote final prioriza cartões
+    conformes (repetição 7–10, paridade permitida, sequência ≤ 6). Cartões não
+    conformes só entram para completar ``required_count`` quando não há conformes
+    suficientes, e essa exceção é rastreada em ``non_compliant_kept_reason``.
+    """
     memory = ensure_structural_policy_15d_memory(db_path)
     previous_numbers = resolve_previous_contest_numbers(history)
+    original_signatures = [_game_signature(game) for game in selected_games]
 
-    compliant_pool: list[dict[str, Any]] = []
-    for game in pool_games:
-        validation = _validate_game_record(
-            game,
-            previous_contest_numbers=previous_numbers,
-            policy=memory,
+    # Candidatos únicos: seleção soberana do GP primeiro, depois o pool conforme.
+    compliant_candidates: list[dict[str, Any]] = []
+    non_compliant_candidates: list[dict[str, Any]] = []
+    seen_signatures: set[tuple[int, ...]] = set()
+    for game in list(selected_games) + list(pool_games):
+        signature = _game_signature(game)
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        enriched, validation = _enrich_with_validation(
+            game, previous_numbers=previous_numbers, memory=memory
         )
-        enriched = dict(game)
-        enriched["structural_policy_15d_validation"] = validation
         if validation["approved"]:
-            compliant_pool.append(enriched)
+            compliant_candidates.append(enriched)
+        else:
+            non_compliant_candidates.append(enriched)
 
-    compliant_pool.sort(
+    # Conformes governam o lote: ordenados por qualidade (profile/final score).
+    compliant_candidates.sort(
         key=lambda row: (
             -float(row.get("profile_score", 0) or 0),
             -float((row.get("final_score") or {}).get("final_score", 0) or 0),
@@ -197,42 +231,20 @@ def apply_structural_policy_15d_to_sovereign_batch(
     )
 
     final_games: list[dict[str, Any]] = []
-    seen_signatures: set[tuple[int, ...]] = set()
-
-    def _append_candidate(candidate: Mapping[str, Any]) -> None:
-        signature = _game_signature(candidate)
-        if signature in seen_signatures:
-            return
-        validation = _validate_game_record(
-            candidate,
-            previous_contest_numbers=previous_numbers,
-            policy=memory,
-        )
-        enriched = dict(candidate)
-        enriched["structural_policy_15d_validation"] = validation
-        enriched["structural_policy_memory_loaded"] = True
-        enriched["structural_policy_format"] = "15D"
-        enriched["structural_policy_version"] = memory.get("policy_version")
-        enriched["policy_compliance_status"] = "compliant" if validation["approved"] else "non_compliant"
-        final_games.append(enriched)
-        seen_signatures.add(signature)
-
-    for game in selected_games:
+    for game in compliant_candidates:
         if len(final_games) >= required_count:
             break
-        _append_candidate(game)
+        final_games.append(game)
 
-    for game in compliant_pool:
-        if len(final_games) >= required_count:
-            break
-        _append_candidate(game)
-
-    for game in selected_games:
-        if len(final_games) >= required_count:
-            break
-        _append_candidate(game)
-
+    non_compliant_kept = 0
+    if len(final_games) < required_count:
+        for game in non_compliant_candidates:
+            if len(final_games) >= required_count:
+                break
+            final_games.append(game)
+            non_compliant_kept += 1
     final_games = final_games[:required_count]
+
     violated_rules = sorted(
         {
             violation
@@ -245,6 +257,7 @@ def apply_structural_policy_15d_to_sovereign_batch(
         for game in final_games
         if bool((game.get("structural_policy_15d_validation") or {}).get("approved"))
     )
+    non_compliant_count = len(final_games) - compliant_count
     if compliant_count == len(final_games) and final_games:
         compliance_status = "compliant"
     elif compliant_count == 0 and final_games:
@@ -253,19 +266,32 @@ def apply_structural_policy_15d_to_sovereign_batch(
         compliance_status = "partial"
     else:
         compliance_status = "empty"
+    compliance_rate = round(compliant_count / len(final_games), 4) if final_games else 0.0
+    lote_alterado = [_game_signature(game) for game in final_games] != original_signatures
+    non_compliant_kept_reason = (
+        "insufficient_compliant_pool" if non_compliant_kept else None
+    )
 
     bundle = {
         "mission_id": MISSION_ID,
         "structural_policy_memory_loaded": True,
         "structural_policy_format": "15D",
         "structural_policy_version": memory.get("policy_version"),
+        "structural_policy_applied": True,
+        "structural_policy_application_mode": "governing_by_compliance",
         "structural_policy_15d_memory": memory,
         "applied_rules": list(APPLIED_RULES),
         "violated_rules": violated_rules,
+        "policy_violations": violated_rules,
         "policy_compliance_status": compliance_status,
         "previous_contest_numbers": list(previous_numbers),
         "games_validated": len(final_games),
         "games_compliant": compliant_count,
+        "games_non_compliant": non_compliant_count,
+        "compliance_rate": compliance_rate,
+        "lote_alterado": lote_alterado,
+        "non_compliant_kept": non_compliant_kept,
+        "non_compliant_kept_reason": non_compliant_kept_reason,
         "memory_status": memory.get("status"),
         "memory_origin": memory.get("origem_institucional"),
     }
@@ -362,11 +388,18 @@ def extract_structural_policy_application_from_context(
             "structural_policy_memory_loaded": bool(bundle.get("structural_policy_memory_loaded")),
             "structural_policy_format": str(bundle.get("structural_policy_format") or "15D"),
             "structural_policy_version": str(bundle.get("structural_policy_version") or ""),
+            "structural_policy_applied": bool(bundle.get("structural_policy_applied")),
+            "structural_policy_application_mode": str(bundle.get("structural_policy_application_mode") or ""),
             "applied_rules": list(bundle.get("applied_rules") or []),
             "violated_rules": list(bundle.get("violated_rules") or []),
+            "policy_violations": list(bundle.get("policy_violations") or bundle.get("violated_rules") or []),
             "policy_compliance_status": str(bundle.get("policy_compliance_status") or ""),
             "games_validated": int(bundle.get("games_validated", 0) or 0),
             "games_compliant": int(bundle.get("games_compliant", 0) or 0),
+            "games_non_compliant": int(bundle.get("games_non_compliant", 0) or 0),
+            "compliance_rate": float(bundle.get("compliance_rate", 0.0) or 0.0),
+            "lote_alterado": bool(bundle.get("lote_alterado")),
+            "non_compliant_kept_reason": bundle.get("non_compliant_kept_reason"),
         }
     if payload.get("structural_policy_memory_loaded"):
         return {
