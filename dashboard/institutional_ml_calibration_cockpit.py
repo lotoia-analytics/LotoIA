@@ -181,6 +181,14 @@ def _render_diagnosis_card(diagnosis: dict[str, Any]) -> None:
         )
 
 
+def _format_parity_pairs(pairs: Any) -> str:
+    formatted: list[str] = []
+    for pair in pairs or []:
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            formatted.append(f"{int(pair[0])}/{int(pair[1])}")
+    return " • ".join(formatted) if formatted else "—"
+
+
 def _render_structural_auto_calibration_card(snapshot: dict[str, Any]) -> None:
     st.markdown("##### Calibração estrutural automática (M-ML-069)")
     plan = dict(
@@ -436,6 +444,14 @@ def _render_structural_policy_15d_card(snapshot: dict[str, Any]) -> None:
             f"Versão: {memory.get('policy_version', '—')} | "
             f"Status: {memory.get('status', '—')} | "
             f"Origem: {memory.get('origem_institucional', '—')}"
+        )
+        st.markdown(
+            "**Paridade conforme:** "
+            + _format_parity_pairs(memory.get("paridade_permitida") or memory.get("paridade_preferencial"))
+        )
+        st.markdown(
+            "**Paridade não conforme (violação):** "
+            + _format_parity_pairs(memory.get("paridade_nao_conforme") or [[6, 9], [9, 6]])
         )
         rules = list(memory.get("regras_aplicadas") or [])
         if rules:
