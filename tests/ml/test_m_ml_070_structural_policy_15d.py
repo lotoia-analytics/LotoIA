@@ -121,7 +121,7 @@ def test_apply_structural_policy_bundle(tmp_path: Path) -> None:
 def test_central_ml_exposes_structural_policy_15d_card() -> None:
     import dashboard.institutional_ml_calibration_cockpit as cockpit
 
-    source = inspect.getsource(cockpit.render_ml_calibration_cockpit)
+    source = inspect.getsource(cockpit._render_technical_audit_section)
     card_source = inspect.getsource(cockpit._render_structural_policy_15d_card)
     assert "_render_structural_policy_15d_card" in source
     assert "M-ML-070" in card_source
@@ -129,7 +129,7 @@ def test_central_ml_exposes_structural_policy_15d_card() -> None:
 
 
 def test_build_marker_v59() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v75"
+    assert BUILD_MARKER == "institutional-adm-runtime-v76"
 
 
 def test_canonical_memory_catalog() -> None:

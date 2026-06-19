@@ -46,6 +46,7 @@ def test_central_ml_page_uses_cockpit_not_legacy_panel() -> None:
 
 def test_cockpit_render_module_has_required_sections() -> None:
     module_source = inspect.getsource(cockpit)
+    render_source = inspect.getsource(cockpit.render_ml_calibration_cockpit)
     assert "COCKPIT_TITLE" in module_source
     assert "Diagnóstico geral da saída" in module_source
     assert "Ação recomendada" in module_source
@@ -56,9 +57,10 @@ def test_cockpit_render_module_has_required_sections() -> None:
     assert "Detalhes por lote" in module_source
     assert "Proteções constitucionais ativas" in module_source
     assert "expanded=False" in module_source
+    assert "Auditoria Técnica" in module_source
     assert "Lote analisado" not in module_source
-    assert "OPERATIONAL_GENERATION_SELECTOR_KEY" in module_source
-    assert "Geração operacional" in module_source
+    assert "OPERATIONAL_GENERATION_SELECTOR_KEY" in render_source
+    assert "Geração operacional" in render_source
 
 
 def test_home_page_recalibration_status_not_generic_blocked() -> None:
