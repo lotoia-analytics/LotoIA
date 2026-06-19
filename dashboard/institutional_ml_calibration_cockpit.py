@@ -782,16 +782,102 @@ def _render_command_card(
     st.caption("Comandos registram decisão supervisionada com evidência da Cobertura Estrutural.")
 
 
+def _render_authorized_plan_semantics_card(snapshot: dict[str, Any]) -> None:
+    """Plano autorizado N→N+1 — M-ML-075-FIX-01 (separado de calibração pré-final M-ML-071)."""
+    from lotoia.ml.authorized_ml_calibration_plan import build_calibration_semantics_ui_labels
+
+    latest = dict(snapshot.get("latest_event") or {})
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    ctx = {
+        **coverage,
+        **latest,
+        "pre_final_calibration_applied": bool(
+            latest.get("pre_final_calibration_applied")
+            or coverage.get("pre_final_calibration_applied")
+        ),
+        "authorized_plan_loaded_from_db": bool(
+            latest.get("authorized_plan_loaded_from_db")
+            or latest.get("calibration_plan_loaded_from_db")
+        ),
+        "authorized_plan_applied_to_generation": bool(
+            latest.get("authorized_plan_applied_to_generation")
+            or latest.get("calibration_plan_applied_to_generation")
+        ),
+        "authorized_plan_source_generation_event_id": int(
+            latest.get("authorized_plan_source_generation_event_id", 0)
+            or latest.get("calibration_plan_source_generation_event_id", 0)
+            or 0
+        ),
+        "authorized_plan_target_generation_event_id": int(
+            latest.get("authorized_plan_target_generation_event_id", 0)
+            or latest.get("target_generation_event_id", 0)
+            or 0
+        ),
+        "ml_verdict_after_authorized_plan": str(
+            latest.get("ml_verdict_after_authorized_plan") or latest.get("ml_verdict") or ""
+        ),
+        "gp_quality_tier_after_authorized_plan": str(
+            latest.get("gp_quality_tier_after_authorized_plan") or latest.get("gp_quality_tier") or ""
+        ),
+    }
+    labels = build_calibration_semantics_ui_labels(ctx)
+    st.markdown("##### Plano autorizado N→N+1 (M-ML-075-FIX-01)")
+    cols = st.columns(4)
+    cols[0].metric(
+        "Plano carregado (DB)",
+        "sim" if ctx.get("authorized_plan_loaded_from_db") else "não",
+    )
+    cols[1].metric(
+        "Plano aplicado",
+        "sim" if ctx.get("authorized_plan_applied_to_generation") else "não",
+    )
+    cols[2].metric("GE origem (N)", str(ctx.get("authorized_plan_source_generation_event_id") or "—"))
+    cols[3].metric("GE alvo (N+1)", str(ctx.get("authorized_plan_target_generation_event_id") or "—"))
+    st.caption(labels["authorized_plan_loaded_label"])
+    st.caption(labels["authorized_plan_applied_label"])
+    if ctx.get("authorized_plan_applied_to_generation"):
+        st.caption(labels["verdict_after_authorized_plan_label"])
+        st.caption(labels["gp_tier_after_authorized_plan_label"])
+        if str(ctx.get("ml_verdict_after_authorized_plan", "")).upper() == "REPROVADO":
+            st.warning(
+                "REPROVADO após plano autorizado — o plano foi aplicado; o veredito reflete "
+                "a reavaliação estrutural do lote N+1, não ausência de aplicação."
+            )
+
+
 def _render_result_card(result: dict[str, Any], snapshot: dict[str, Any]) -> None:
+    from lotoia.ml.authorized_ml_calibration_plan import build_calibration_semantics_ui_labels
+
     st.markdown("#### 6. Resultado da calibração")
+    latest = dict(snapshot.get("latest_event") or {})
+    semantics_ctx = {**latest, **result}
+    labels = build_calibration_semantics_ui_labels(semantics_ctx)
     cols = st.columns(4)
     cols[0].metric("Status calibração", str(result.get("operational_status", "pendente")))
-    cols[1].metric("calibration_applied", str(bool(result.get("calibration_applied"))))
-    cols[2].metric("Trace persistido", "sim" if result.get("trace_persistido") else "não")
-    cols[3].metric("Próx. geração", "sim" if result.get("proxima_geracao_afetada") else "não")
+    cols[1].metric(
+        "Calibração pré-final",
+        "sim" if semantics_ctx.get("pre_final_calibration_applied") else "não",
+    )
+    cols[2].metric(
+        "Plano autorizado (DB)",
+        "sim" if semantics_ctx.get("authorized_plan_loaded_from_db") else "não",
+    )
+    cols[3].metric(
+        "Plano aplicado (N+1)",
+        "sim" if semantics_ctx.get("authorized_plan_applied_to_generation") else "não",
+    )
     persist = dict(st.session_state.get(SESSION_PERSIST) or {})
     if persist.get("calibration_authorized") is not None:
-        st.caption(f"calibration_authorized: {bool(persist.get('calibration_authorized'))}")
+        st.caption(f"Decisão operador (autorização): {bool(persist.get('calibration_authorized'))}")
+    st.caption(labels["pre_final_calibration_label"])
+    if semantics_ctx.get("authorized_plan_loaded_from_db") or semantics_ctx.get(
+        "authorized_plan_applied_to_generation"
+    ):
+        st.caption(labels["authorized_plan_loaded_label"])
+        st.caption(labels["authorized_plan_applied_label"])
+        st.caption(labels["verdict_after_authorized_plan_label"])
+    if result.get("calibration_applied_legacy_note"):
+        st.caption(f"Legado: {result.get('calibration_applied_legacy_note')}")
     if result.get("before_after_available") or int(result.get("geracoes_analisadas", 0) or 0) > 0:
         st.caption(
             f"Gerações analisadas: {int(result.get('geracoes_analisadas', 0) or 0)} | "
@@ -804,7 +890,7 @@ def _render_result_card(result: dict[str, Any], snapshot: dict[str, Any]) -> Non
         st.caption(f"Última decisão cockpit: {result.get('decision_at')}")
     validation = dict(st.session_state.get("central_ml_calibration_validation_report") or {})
     if validation:
-        st.markdown("**Validação N vs N+1 (plano consumido)**")
+        st.markdown("**Validação N vs N+1 (plano autorizado consumido)**")
         vcols = st.columns(4)
         vcols[0].metric("Efeito", str(validation.get("calibration_effect", "—")))
         vcols[1].metric("Veredito", str(validation.get("validation_outcome", "—")))
@@ -813,15 +899,23 @@ def _render_result_card(result: dict[str, Any], snapshot: dict[str, Any]) -> Non
         vcols[3].metric("Δ similaridade", f"{float(deltas.get('similarity_score', 0.0)):+.4f}")
         before = dict(validation.get("metrics_before") or {})
         after = dict(validation.get("metrics_after") or {})
+        source_id = validation.get("authorized_plan_source_generation_event_id") or validation.get(
+            "source_generation_event_id", "—"
+        )
+        target_id = validation.get("authorized_plan_target_generation_event_id") or validation.get(
+            "target_generation_event_id", "—"
+        )
         st.caption(
-            f"GE {validation.get('source_generation_event_id', '—')} → "
-            f"GE {validation.get('target_generation_event_id', '—')} | "
+            f"Comparação autorizada: GE {source_id} (N) → GE {target_id} (N+1) | "
+            f"plano aplicado: {'sim' if validation.get('authorized_plan_applied_to_generation') else 'não'} | "
             f"diversidade {float(before.get('diversity_score', 0.0)):.4f} → "
             f"{float(after.get('diversity_score', 0.0)):.4f} | "
             f"similaridade {float(before.get('similarity_score', 0.0)):.4f} → "
             f"{float(after.get('similarity_score', 0.0)):.4f} | "
             f"trace {validation.get('calibration_trace_id', '—')}"
         )
+        if validation.get("verdict_after_authorized_plan_label"):
+            st.caption(str(validation.get("verdict_after_authorized_plan_label")))
 
 
 def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
@@ -953,7 +1047,8 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                         "evento": row.get("generation_event_id"),
                         "batch": row.get("batch_label"),
                         "jogos": row.get("persisted_games"),
-                        "calibracao": row.get("calibration_applied"),
+                        "pré-final M-ML-071": row.get("pre_final_calibration_applied"),
+                        "plano N+1": row.get("authorized_plan_applied_to_generation"),
                         "criado": row.get("created_at"),
                     }
                     for row in events
@@ -1141,6 +1236,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             render_cockpit_block_safe(
                 "pre_final_pool_ml",
                 lambda: _render_pre_final_pool_ml_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "authorized_plan_n_plus_1",
+                lambda: _render_authorized_plan_semantics_card(snapshot),
             )
             render_cockpit_block_safe(
                 "politica_15d",

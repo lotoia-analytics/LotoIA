@@ -621,6 +621,15 @@ def load_supervised_ml_operational_events_from_db(
                     "ml_six_bases_status": _extract_six_bases_status(context),
                     "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
                     "calibration_applied": bool(context.get("calibration_applied")),
+                    "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+                    "authorized_plan_loaded_from_db": bool(
+                        context.get("authorized_plan_loaded_from_db")
+                        or context.get("calibration_plan_loaded_from_db")
+                    ),
+                    "authorized_plan_applied_to_generation": bool(
+                        context.get("authorized_plan_applied_to_generation")
+                        or context.get("calibration_plan_applied_to_generation")
+                    ),
                 }
             )
             if len(events) >= max(1, int(limit)):
@@ -700,6 +709,40 @@ def build_supervised_ml_operational_event_detail(
             dict(context.get("ml_operational_hierarchy") or {})
         ),
         "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+        "pre_final_calibration_mission_id": str(
+            context.get("pre_final_calibration_mission_id") or PRE_FINAL_POOL_MISSION_ID
+        ),
+        "authorized_plan_loaded_from_db": bool(
+            context.get("authorized_plan_loaded_from_db")
+            or context.get("calibration_plan_loaded_from_db")
+        ),
+        "authorized_plan_applied_to_generation": bool(
+            context.get("authorized_plan_applied_to_generation")
+            or context.get("calibration_plan_applied_to_generation")
+        ),
+        "authorized_plan_source_generation_event_id": int(
+            context.get("authorized_plan_source_generation_event_id", 0)
+            or context.get("calibration_plan_source_generation_event_id", 0)
+            or 0
+        ),
+        "authorized_plan_target_generation_event_id": int(
+            context.get("authorized_plan_target_generation_event_id", 0) or 0
+        ),
+        "authorized_plan_trace_id": str(
+            context.get("authorized_plan_trace_id") or context.get("calibration_trace_id") or ""
+        ),
+        "authorized_plan_mission_id": str(
+            context.get("authorized_plan_mission_id") or "M-ML-075-FIX-01"
+        ),
+        "ml_verdict_after_authorized_plan": str(
+            context.get("ml_verdict_after_authorized_plan") or context.get("ml_verdict") or ""
+        ),
+        "gp_quality_tier_after_authorized_plan": str(
+            context.get("gp_quality_tier_after_authorized_plan")
+            or context.get("gp_quality_tier")
+            or ""
+        ),
+        "calibration_applied_legacy_note": str(context.get("calibration_applied_legacy_note") or ""),
         "final_gp_changed_by_ml": bool(context.get("final_gp_changed_by_ml")),
     }
     return {
@@ -1232,6 +1275,9 @@ def build_ml_calibration_result_card(
     decision_at: str,
     apply_next_generation: bool,
 ) -> dict[str, Any]:
+    pre_final_applied = bool(event.get("pre_final_calibration_applied")) if isinstance(event, Mapping) else False
+    authorized_loaded = bool(event.get("authorized_plan_loaded_from_db")) if isinstance(event, Mapping) else False
+    authorized_applied = bool(event.get("authorized_plan_applied_to_generation")) if isinstance(event, Mapping) else False
     calibration_applied = bool(event.get("calibration_applied")) if isinstance(event, Mapping) else False
     trace_persisted = bool(
         isinstance(event, Mapping)
@@ -1239,7 +1285,7 @@ def build_ml_calibration_result_card(
     )
     if workflow_status == COCKPIT_WORKFLOW_REJECTED:
         operational_status = "rejeitada"
-    elif calibration_applied:
+    elif authorized_applied or pre_final_applied or calibration_applied:
         operational_status = "aplicada"
     elif workflow_status == COCKPIT_WORKFLOW_AUTHORIZED:
         operational_status = "autorizada"
@@ -1250,13 +1296,29 @@ def build_ml_calibration_result_card(
     return {
         "operational_status": operational_status,
         "calibration_applied": calibration_applied,
+        "calibration_applied_legacy_compatibility": True,
+        "pre_final_calibration_applied": pre_final_applied,
+        "authorized_plan_loaded_from_db": authorized_loaded,
+        "authorized_plan_applied_to_generation": authorized_applied,
+        "authorized_plan_source_generation_event_id": int(
+            event.get("authorized_plan_source_generation_event_id", 0) or 0
+        ) if isinstance(event, Mapping) else 0,
+        "authorized_plan_target_generation_event_id": int(
+            event.get("authorized_plan_target_generation_event_id", 0) or 0
+        ) if isinstance(event, Mapping) else 0,
+        "ml_verdict_after_authorized_plan": str(
+            event.get("ml_verdict_after_authorized_plan") or ""
+        ) if isinstance(event, Mapping) else "",
+        "gp_quality_tier_after_authorized_plan": str(
+            event.get("gp_quality_tier_after_authorized_plan") or ""
+        ) if isinstance(event, Mapping) else "",
         "trace_persistido": trace_persisted,
         "proxima_geracao_afetada": bool(apply_next_generation),
         "decision_at": decision_at,
         "diversity_score": float(event.get("diversity_score", 0.0) or 0.0) if isinstance(event, Mapping) else 0.0,
         "issues_count": len(list(event.get("issues_detected") or [])) if isinstance(event, Mapping) else 0,
         "actions_count": len(list(event.get("calibration_actions_applied") or [])) if isinstance(event, Mapping) else 0,
-        "before_after_available": calibration_applied,
+        "before_after_available": pre_final_applied or authorized_applied or calibration_applied,
     }
 
 
