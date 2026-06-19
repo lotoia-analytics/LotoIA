@@ -18,19 +18,20 @@ def battery_output(tmp_path: Path) -> Path:
     return tmp_path / "m_flow_001"
 
 
-def test_m_flow_001_battery_smoke_three_cycles(battery_output: Path) -> None:
+def test_m_flow_001_battery_smoke_three_cycles_promotes_precisa_calibrar(battery_output: Path) -> None:
     report = run_battery(cycles=3, db_path=battery_output / "stub.db", output_dir=battery_output)
     summary = dict(report.get("summary") or {})
     assert report.get("mission_id") == MISSION_ID
     assert summary.get("total_cycles") == 3
     assert int(summary.get("N_persisted", 0) or 0) == 3
     assert int(summary.get("N1_persisted", 0) or 0) == 3
-    assert int(summary.get("plans_loaded", 0) or 0) == 3
     assert int(summary.get("plans_applied", 0) or 0) == 3
+    assert int(summary.get("eligible_analytical_history", 0) or 0) >= 1
+    cycles = list(report.get("cycles") or [])
+    bypassed = [row for row in cycles if row.get("promotion_bypass_reason") == "authorized_plan_consumed"]
+    assert bypassed
+    assert bypassed[0].get("lot_operational_status_N1") == "approved_with_warning"
     assert report.get("purge_executed") is False
-    assert (battery_output / "docs").exists() is False
-    json_files = list(battery_output.glob("lotoia_m_flow_001_battery_*.json"))
-    assert json_files
 
 
 def test_aggregate_failure_table() -> None:

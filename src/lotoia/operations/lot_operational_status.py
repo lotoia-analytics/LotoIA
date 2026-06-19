@@ -8,6 +8,8 @@ from typing import Any, Mapping, Sequence
 MISSION_ID = "M-OPS-062"
 DEFERRED_COVERAGE_MISSION_ID = "M-OPS-062-FIX-06"
 POST_CALIBRATION_PROMOTION_MISSION_ID = "M-OPS-064-FIX-01"
+AUTHORIZED_PLAN_PROMOTION_BYPASS_MISSION_ID = "M-OPS-065"
+PROMOTION_BYPASS_REASON_AUTHORIZED_PLAN_CONSUMED = "authorized_plan_consumed"
 
 QUALITY_TIER_APROVADO = "APROVADO"
 QUALITY_TIER_ATENCAO = "ATENÇÃO"
@@ -226,31 +228,43 @@ def _resolve_post_calibration_promoted_status(
     ml_verdict: str,
     official_release_allowed: bool,
     current_status: str,
-) -> tuple[str, bool, str]:
+    authorized_plan_applied_to_generation: bool = False,
+) -> tuple[str, bool, str, str]:
     tier = _normalize_quality_tier(gp_quality_tier)
     verdict = str(ml_verdict or "").strip().upper()
 
     if tier in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}:
-        return current_status, False, f"gp_quality_tier_{tier.lower()}_not_releasable"
+        return current_status, False, f"gp_quality_tier_{tier.lower()}_not_releasable", ""
     if verdict in {VERDICT_REPROVADO, VERDICT_BLOQUEADO}:
-        return current_status, False, f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable"
+        return current_status, False, f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable", ""
+    if (
+        authorized_plan_applied_to_generation
+        and verdict == VERDICT_PRECISA_CALIBRAR
+        and tier not in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}
+    ):
+        return (
+            STATUS_APPROVED_WITH_WARNING,
+            True,
+            "",
+            PROMOTION_BYPASS_REASON_AUTHORIZED_PLAN_CONSUMED,
+        )
     if verdict == VERDICT_PRECISA_CALIBRAR and tier not in {QUALITY_TIER_APROVADO, QUALITY_TIER_ATENCAO}:
-        return current_status, False, "ml_verdict_precisa_calibrar_not_releasable"
+        return current_status, False, "ml_verdict_precisa_calibrar_not_releasable", ""
 
     if current_status in OFFICIAL_CONFERENCE_STATUSES:
-        return current_status, True, ""
+        return current_status, True, "", ""
 
     if tier == QUALITY_TIER_ATENCAO or verdict == VERDICT_APROVADO_COM_ALERTA:
-        return STATUS_APPROVED_WITH_WARNING, True, ""
+        return STATUS_APPROVED_WITH_WARNING, True, "", ""
 
     if tier == QUALITY_TIER_APROVADO or verdict == VERDICT_APROVADO or official_release_allowed:
         if verdict == VERDICT_APROVADO_COM_ALERTA:
-            return STATUS_APPROVED_WITH_WARNING, True, ""
+            return STATUS_APPROVED_WITH_WARNING, True, "", ""
         if verdict == VERDICT_APROVADO:
-            return STATUS_OFFICIALIZED, True, ""
-        return STATUS_APPROVED_FOR_OFFICIALIZATION, True, ""
+            return STATUS_OFFICIALIZED, True, "", ""
+        return STATUS_APPROVED_FOR_OFFICIALIZATION, True, "", ""
 
-    return current_status, False, "quality_tier_or_verdict_insufficient_for_promotion"
+    return current_status, False, "quality_tier_or_verdict_insufficient_for_promotion", ""
 
 
 def _apply_post_calibration_eligibility_flags(merged: dict[str, Any], *, lot_status: str) -> None:
@@ -334,24 +348,31 @@ def promote_post_calibration_consumer_lot_visibility(
         merged.setdefault("active_reading_scope", bool(merged.get("is_active_structural_reading")))
         return merged
 
-    promoted_status, promoted, block_reason = _resolve_post_calibration_promoted_status(
+    promoted_status, promoted, block_reason, bypass_reason = _resolve_post_calibration_promoted_status(
         gp_quality_tier=gp_quality_tier,
         ml_verdict=verdict,
         official_release_allowed=official_release_allowed,
         current_status=current_status,
+        authorized_plan_applied_to_generation=bool(plan.get("calibration_plan_applied_to_generation")),
     )
 
     merged.update(consumer_base)
     if promoted:
+        promotion_payload: dict[str, Any] = {
+            "post_calibration_promotion_status": promoted_status,
+            "promoted_to_analytical_history": True,
+            "promoted_to_official_conference": True,
+            "promotion_block_reason": "",
+        }
+        if bypass_reason:
+            promotion_payload.update(
+                {
+                    "promotion_bypass_reason": bypass_reason,
+                    "authorized_plan_promotion_bypass_mission_id": AUTHORIZED_PLAN_PROMOTION_BYPASS_MISSION_ID,
+                }
+            )
         _apply_post_calibration_eligibility_flags(merged, lot_status=promoted_status)
-        merged.update(
-            {
-                "post_calibration_promotion_status": promoted_status,
-                "promoted_to_analytical_history": True,
-                "promoted_to_official_conference": True,
-                "promotion_block_reason": "",
-            }
-        )
+        merged.update(promotion_payload)
     else:
         if current_status:
             _apply_post_calibration_eligibility_flags(merged, lot_status=current_status)

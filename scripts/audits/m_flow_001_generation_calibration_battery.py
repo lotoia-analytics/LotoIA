@@ -292,7 +292,13 @@ def _classify_failure(record: dict[str, Any]) -> str:
     if not record.get("is_analytical_history_eligible") and not record.get("in_analytical_history"):
         if record.get("promotion_block_reason") and "quality" in str(record.get("promotion_block_reason", "")).lower():
             return "I"
-        if str(record.get("ml_verdict_N1", "")).upper() in {"REPROVADO", "BLOQUEADO", "PRECISA CALIBRAR"}:
+        if str(record.get("ml_verdict_N1", "")).upper() in {"REPROVADO", "BLOQUEADO"}:
+            return "I"
+        if (
+            str(record.get("ml_verdict_N1", "")).upper() == "PRECISA CALIBRAR"
+            and not record.get("promotion_bypass_reason")
+            and str(record.get("lot_operational_status_N1", "")).lower() != "approved_with_warning"
+        ):
             return "I"
         if str(record.get("gp_quality_tier_N1", "")).upper() in {"REPROVADO", "CRITICO", "CRÍTICO"}:
             return "I"
@@ -436,6 +442,7 @@ def run_single_cycle(*, cycle_id: int, db_path: Path, seed: int) -> dict[str, An
         record["promoted_to_analytical_history"] = bool(ctx_n1.get("promoted_to_analytical_history"))
         record["promoted_to_official_conference"] = bool(ctx_n1.get("promoted_to_official_conference"))
         record["promotion_block_reason"] = str(ctx_n1.get("promotion_block_reason") or "")
+        record["promotion_bypass_reason"] = str(ctx_n1.get("promotion_bypass_reason") or "")
 
         visibility = _screen_visibility(db_path, ge_n1)
         record.update(visibility)
