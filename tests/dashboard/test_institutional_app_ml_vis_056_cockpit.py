@@ -218,6 +218,9 @@ def test_render_cockpit_without_name_error(
         def json(self, *_args, **_kwargs) -> None:
             return None
 
+        def error(self, *_args, **_kwargs) -> None:
+            return None
+
         def selectbox(self, _label, *, options, **kwargs):
             return options[0] if options else None
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
 from lotoia.governance.batch_operational_scope import mark_generation_events_superseded_by_calibration
@@ -28,6 +27,14 @@ from dashboard.institutional_supervised_ml import (
     build_ml_six_bases_operational_summary,
     build_supervised_ml_operational_event_detail,
     is_supervised_output_calibration_active,
+)
+from dashboard.institutional_ml_cockpit_render_guard import (
+    MISSION_ID as VIS_COCKPIT_RENDER_GUARD_MISSION_ID,
+    detect_mixed_format_aggregate,
+    display_cockpit_dataframe,
+    display_cockpit_json,
+    render_cockpit_block_safe,
+    summarize_coverage_snapshot_for_ui,
 )
 from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
@@ -265,7 +272,7 @@ def _render_overlap_composition(metrics: dict[str, Any], *, primary_format: dict
     st.markdown("##### Composição de pares por overlap (M-ML-067)")
     formato = f"{game_size}D" if game_size else str((primary_format or {}).get("formato") or "—")
     st.caption(f"Formato analisado: {formato} | Pares possíveis: {int(metrics.get('pares_possiveis', 0) or 0)}")
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    display_cockpit_dataframe(rows, max_rows=64)
     criticos = int(metrics.get("quase_repetidos_criticos", metrics.get("quase_repetidos", 0)) or 0)
     atencao = int(metrics.get("pares_em_atencao", 0) or 0)
     st.caption(f"Quase repetidos críticos (overlap N + N-1): {criticos}")
@@ -589,7 +596,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
             coverage_rows = list((audit.get("cobertura_dezenas") or {}).get("tabela_dezenas") or [])[:10]
             if coverage_rows:
                 st.markdown("**Top desvios de cobertura (dezenas)**")
-                st.dataframe(pd.DataFrame(coverage_rows), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(coverage_rows, max_rows=10)
             st.markdown(f"**Causa provável:** {diag.get('problema_detectado', '—')}")
             for action in list(diag.get("acoes_recomendadas") or [])[:5]:
                 st.caption(f"→ {action}")
@@ -605,7 +612,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         overlap_memory = dict(memory.get("overlap_memory") or memory)
         thresholds = list(overlap_memory.get("thresholds") or memory.get("thresholds") or [])
         if thresholds:
-            st.dataframe(pd.DataFrame(thresholds), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(thresholds, max_rows=24)
             st.caption(str(overlap_memory.get("rule_summary") or memory.get("rule_summary") or ""))
         similarity_memory = dict(memory.get("similarity_memory") or {})
         if similarity_memory.get("format_thresholds"):
@@ -614,7 +621,7 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                 {"formato": fmt, **bands}
                 for fmt, bands in dict(similarity_memory.get("format_thresholds") or {}).items()
             ]
-            st.dataframe(pd.DataFrame(similarity_rows), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(similarity_rows, max_rows=24)
         legacy = dict(memory.get("legacy_rule") or {})
         if legacy:
             st.caption(f"Régua legada: overlap fixo >= {legacy.get('near_duplicate_overlap_fixed')} — {legacy.get('status')}")
@@ -623,38 +630,40 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
 
     with st.expander("Detalhes por lote", expanded=False):
         if lot_details:
-            st.dataframe(pd.DataFrame(lot_details), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(lot_details, max_rows=50)
         else:
             st.caption(EMPTY_ML_EVENTS_MESSAGE)
 
     with st.expander("Leitura usada da Cobertura Estrutural", expanded=False):
         if coverage.get("available"):
-            st.json(dict(coverage.get("coverage_evidence_snapshot") or {}))
+            display_cockpit_json(
+                "Resumo seguro da leitura (payload bruto omitido)",
+                summarize_coverage_snapshot_for_ui(coverage.get("coverage_evidence_snapshot") or {}),
+            )
         else:
             st.caption("Snapshot indisponível.")
 
     with st.expander("Registro completo da decisão ML", expanded=False):
         blocks = list(snapshot.get("decision_blocks") or [])
         if blocks:
-            st.dataframe(pd.DataFrame(blocks), hide_index=True, use_container_width=True)
+            display_cockpit_dataframe(blocks, max_rows=40)
         else:
             st.caption("Nenhum bloco decisório gerado.")
 
     with st.expander("Proteções constitucionais ativas", expanded=False):
-        st.dataframe(
-            pd.DataFrame([{"bloqueio": code} for code in panel.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS]),
-            hide_index=True,
-            use_container_width=True,
+        display_cockpit_dataframe(
+            [{"bloqueio": code} for code in panel.get("constitutional_blocks") or CONSTITUTIONAL_BLOCKS],
+            max_rows=20,
         )
 
     with st.expander("Rastreamento da decisão", expanded=False):
         trace = dict(latest_event.get("decision_trace") or {})
         persist = dict(st.session_state.get(SESSION_PERSIST) or {})
         if persist.get("trace"):
-            st.json(dict(persist.get("trace") or {}))
+            display_cockpit_json("Trace persistido", dict(persist.get("trace") or {}))
         elif trace.get("status") == "persistido":
             st.caption("Amostra da geração mais recente — visão geral acima.")
-            st.json(dict(trace.get("sample") or {}))
+            display_cockpit_json("Amostra decision trace", dict(trace.get("sample") or {}))
         else:
             st.caption("Decision trace ausente nas gerações recentes.")
 
@@ -663,35 +672,32 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
         if attribution.get("status") == "persistido":
             st.caption("Amostra da geração mais recente — visão geral acima.")
             if attribution.get("sample"):
-                st.json(dict(attribution.get("sample") or {}))
+                display_cockpit_json("Amostra feature attribution", dict(attribution.get("sample") or {}))
             top_factors = list(attribution.get("top_factors") or [])
             if top_factors:
-                st.dataframe(pd.DataFrame(top_factors), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(top_factors, max_rows=20)
         else:
             st.caption("Feature attribution ausente nas gerações recentes.")
 
     with st.expander("Leitura ML pelas 6 Bases", expanded=False):
         six_bases = list(latest_event.get("ml_six_bases_reading") or build_ml_six_bases_operational_summary())
-        st.dataframe(pd.DataFrame(six_bases), hide_index=True, use_container_width=True)
+        display_cockpit_dataframe(six_bases, max_rows=12)
 
     with st.expander("Histórico e auditoria PostgreSQL", expanded=False):
         events = list(snapshot.get("events") or [])
         if events:
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "evento": row.get("generation_event_id"),
-                            "batch": row.get("batch_label"),
-                            "jogos": row.get("persisted_games"),
-                            "calibracao": row.get("calibration_applied"),
-                            "criado": row.get("created_at"),
-                        }
-                        for row in events
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
+            display_cockpit_dataframe(
+                [
+                    {
+                        "evento": row.get("generation_event_id"),
+                        "batch": row.get("batch_label"),
+                        "jogos": row.get("persisted_games"),
+                        "calibracao": row.get("calibration_applied"),
+                        "criado": row.get("created_at"),
+                    }
+                    for row in events
+                ],
+                max_rows=50,
             )
         else:
             st.caption(EMPTY_ML_EVENTS_MESSAGE)
@@ -703,10 +709,10 @@ def _render_technical_expanders(db_path: Any, snapshot: dict[str, Any]) -> None:
                 cal_attr = dict(detail.get("calibration_feature_attribution") or {})
                 if cal_trace:
                     st.markdown("**Trace de calibração (geração mais recente)**")
-                    st.json(cal_trace)
+                    display_cockpit_json("Trace calibração", cal_trace)
                 if cal_attr:
                     st.markdown("**Feature attribution — calibração (geração mais recente)**")
-                    st.json(cal_attr)
+                    display_cockpit_json("Feature attribution calibração", cal_attr)
 
 
 def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
@@ -734,13 +740,30 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     selected_ge_id = int(operational_selection.get("generation_event_id", 0) or 0)
     selected_card_format = operational_selection.get("card_format")
 
-    snapshot = build_ml_calibration_cockpit_snapshot(
-        db_path,
-        operational_selection=operational_selection,
-        workflow_status=str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING),
-        decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
-        apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
-    )
+    try:
+        snapshot = build_ml_calibration_cockpit_snapshot(
+            db_path,
+            operational_selection=operational_selection,
+            workflow_status=str(st.session_state.get(SESSION_WORKFLOW) or COCKPIT_WORKFLOW_PENDING),
+            decision_at=str(st.session_state.get(SESSION_DECISION_AT) or ""),
+            apply_next_generation=bool(st.session_state.get(SESSION_APPLY_NEXT)),
+        )
+    except Exception as exc:  # noqa: BLE001 — fallback seguro de snapshot
+        st.error(
+            f"Central ML não pôde montar o snapshot completo ({VIS_COCKPIT_RENDER_GUARD_MISSION_ID}). "
+            "Selecione uma Geração operacional específica no seletor acima."
+        )
+        st.caption(str(exc)[:320])
+        snapshot = {
+            "mission_id": VIS_COCKPIT_RENDER_GUARD_MISSION_ID,
+            "aggregate_mode": bool(operational_selection.get("is_aggregate")),
+            "coverage_evidence": {"available": False, "headline": "Snapshot indisponível"},
+            "diagnosis": {"available": False, "headline": "Snapshot indisponível"},
+            "constitutional_summary": {},
+            "recommendations": [],
+            "plan_items": [],
+            "result": {},
+        }
 
     if supervised_active:
         st.success(CALIBRATION_SUPERVISED_LABEL)
@@ -795,42 +818,82 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
         st.info(str(snapshot.get("scope_label") or AGGREGATE_SCOPE_LABEL))
     else:
         st.info(build_operational_generation_scope_caption(operational_selection))
+    if detect_mixed_format_aggregate(snapshot):
+        st.warning(
+            "Leitura agregada com múltiplos formatos (ex.: 15D + 17D). "
+            "Para evitar lentidão ou falha de renderização, selecione uma "
+            "**Geração operacional** específica no seletor acima."
+        )
     excluded_count = int(snapshot.get("excluded_batches_count", 0) or 0)
     if excluded_count > 0:
         st.warning(str(snapshot.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
         with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
             audit_rows = list(snapshot.get("excluded_batches_audit") or [])
             if audit_rows:
-                st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+                display_cockpit_dataframe(audit_rows, max_rows=40)
 
     row1_col1, row1_col2 = st.columns(2)
     with row1_col1:
         with st.container(border=True):
-            _render_diagnosis_card(dict(snapshot.get("diagnosis") or {}))
-            _render_overlap_format_verdict(snapshot)
-            _render_structural_policy_15d_card(snapshot)
-            _render_structural_auto_calibration_card(snapshot)
+            render_cockpit_block_safe(
+                "diagnostico",
+                lambda: _render_diagnosis_card(dict(snapshot.get("diagnosis") or {})),
+            )
+            render_cockpit_block_safe(
+                "overlap_format",
+                lambda: _render_overlap_format_verdict(snapshot),
+            )
+            render_cockpit_block_safe(
+                "politica_15d",
+                lambda: _render_structural_policy_15d_card(snapshot),
+            )
+            render_cockpit_block_safe(
+                "auto_calibracao",
+                lambda: _render_structural_auto_calibration_card(snapshot),
+            )
     with row1_col2:
         with st.container(border=True):
-            _render_decision_evidence_card(snapshot)
+            render_cockpit_block_safe(
+                "evidencias_decisao",
+                lambda: _render_decision_evidence_card(snapshot),
+            )
 
     row2_col1, row2_col2 = st.columns(2)
     with row2_col1:
         with st.container(border=True):
-            _render_recommendation_card(snapshot)
+            render_cockpit_block_safe(
+                "recomendacoes",
+                lambda: _render_recommendation_card(snapshot),
+            )
     with row2_col2:
         with st.container(border=True):
-            _render_impact_card(snapshot)
+            render_cockpit_block_safe(
+                "impacto",
+                lambda: _render_impact_card(snapshot),
+            )
 
     row3_col1, row3_col2 = st.columns(2)
     with row3_col1:
         with st.container(border=True):
-            _render_command_card(snapshot, supervised_active=supervised_active, db_path=db_path)
+            render_cockpit_block_safe(
+                "comando",
+                lambda: _render_command_card(
+                    snapshot,
+                    supervised_active=supervised_active,
+                    db_path=db_path,
+                ),
+            )
     with row3_col2:
         with st.container(border=True):
-            _render_result_card(dict(snapshot.get("result") or {}), snapshot)
+            render_cockpit_block_safe(
+                "resultado",
+                lambda: _render_result_card(dict(snapshot.get("result") or {}), snapshot),
+            )
 
     st.divider()
     st.markdown("### Detalhes técnicos")
-    _render_technical_expanders(db_path, snapshot)
+    render_cockpit_block_safe(
+        "detalhes_tecnicos",
+        lambda: _render_technical_expanders(db_path, snapshot),
+    )
     return snapshot
