@@ -8,11 +8,14 @@ import streamlit as st
 
 from lotoia.ml.structural_policy_15d import (
     MISSION_ID,
+    NON_COMPLIANT_PARITY_PAIRS,
+    PREFERRED_PARITY_PAIRS,
     analyze_games_from_context_or_records,
     build_structural_policy_15d_calibration_plan,
     extract_structural_policy_application_from_context,
     is_structural_policy_15d_format,
     load_active_structural_policy_15d_memory,
+    normalize_structural_policy_15d_memory,
 )
 
 MISSION_FLOW_ID = "M-ML-070-FLOW"
@@ -28,7 +31,9 @@ def build_structural_policy_coverage_context(
     if not is_structural_policy_15d_format(size):
         return {"available": False, "mission_id": MISSION_FLOW_ID}
 
-    memory = load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
+    memory = normalize_structural_policy_15d_memory(
+        load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
+    )
     context_payload = dict(payload or {})
     if generation_event_id:
         context_payload.setdefault("selected_generation_event_id", int(generation_event_id))
@@ -112,6 +117,14 @@ def _format_parity_pairs(pairs: Any) -> str:
     return " • ".join(formatted) if formatted else "—"
 
 
+def _canonical_compliant_parity_label(memory: Mapping[str, Any] | None) -> str:
+    preferred = (memory or {}).get("paridade_preferencial")
+    permitted = (memory or {}).get("paridade_permitida")
+    if preferred or permitted:
+        return _format_parity_pairs(preferred or permitted)
+    return _format_parity_pairs(PREFERRED_PARITY_PAIRS)
+
+
 def _format_dezenas(numbers: Any) -> str:
     values = [int(number) for number in (numbers or []) if str(number).strip().isdigit()]
     return " • ".join(f"{number:02d}" for number in values) if values else "—"
@@ -149,12 +162,8 @@ def render_structural_policy_15d_operational_block(
                 f"{(memory or {}).get('repeticao_ultimo_concurso_max', 10)}"
             )
             st.markdown(
-                "**Paridade preferencial:** "
-                f"{_format_parity_pairs((memory or {}).get('paridade_preferencial'))}"
-            )
-            st.markdown(
-                "**Paridade permitida:** "
-                f"{_format_parity_pairs((memory or {}).get('paridade_permitida'))}"
+                "**Paridade conforme:** "
+                f"{_canonical_compliant_parity_label(memory)}"
             )
             st.markdown(f"**Sequência máxima:** {(memory or {}).get('sequencia_maxima', 6)}")
             st.markdown(f"**Core:** {_format_dezenas((memory or {}).get('core_numbers'))}")

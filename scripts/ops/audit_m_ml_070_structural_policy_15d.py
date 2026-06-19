@@ -20,7 +20,6 @@ from typing import Any, Sequence
 from lotoia.data.loader import load_draws_csv
 from lotoia.generator.basic_generator import generate_best_games
 from lotoia.ml.structural_policy_15d import (
-    ALLOWED_PARITY_PAIRS,
     CORE_NUMBERS,
     DISCOURAGED_NUMBERS,
     PREFERRED_PARITY_PAIRS,
@@ -64,8 +63,8 @@ def audit_game(numbers: Sequence[int], previous: set[int]) -> dict[str, Any]:
     violations: list[str] = []
     if not (7 <= repeat <= 10):
         violations.append(f"repeticao_fora_7_10({repeat})")
-    if list(parity) not in [list(p) for p in ALLOWED_PARITY_PAIRS]:
-        violations.append(f"paridade_nao_permitida({parity[0]}/{parity[1]})")
+    if list(parity) not in [list(p) for p in PREFERRED_PARITY_PAIRS]:
+        violations.append(f"paridade_nao_conforme({parity[0]}/{parity[1]})")
     if seq > 6:
         violations.append(f"sequencia_excede_6({seq})")
     return {
