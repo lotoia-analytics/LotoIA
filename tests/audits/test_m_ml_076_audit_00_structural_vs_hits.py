@@ -11,13 +11,14 @@ from scripts.audits.m_ml_076_audit_00_structural_vs_hits import MISSION_ID, run_
 def test_audit_runs_and_classifies_hits_interference() -> None:
     payload = run_audit(db_path=None, output=None)
     assert payload["mission_id"] == MISSION_ID
-    assert payload["classification"] in {"B", "C", "D", "E", "F"}
-    assert payload["hits_interfere_liberacao"] is True
+    assert payload["classification"] in {"A", "B"}
+    assert payload["hits_interfere_liberacao"] is False
     labels = [row["label"] for row in payload["synthetic_scenarios"]]
     assert any("limítrofe" in label for label in labels)
     edge = next(row for row in payload["synthetic_scenarios"] if "limítrofe" in row["label"])
-    assert edge["counterfactual"]["verdict_differs"] is True
-    assert edge["counterfactual"]["release_differs"] is True
+    assert edge["counterfactual"]["verdict_differs"] is False
+    assert edge["counterfactual"]["release_differs"] is False
+    assert "captura_ausente_redundancia" not in edge["counterfactual"]["rule_triggers"]
 
 
 def test_evidence_json_on_disk_matches_schema() -> None:

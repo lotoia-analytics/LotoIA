@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ml.ml_operational_verdict import (
     MISSION_ID as ML_VERDICT_MISSION_ID,
+    build_structural_verdict_hits_separation_trace,
     evaluate_ml_operational_verdict,
 )
 from lotoia.ml.overlap_format_thresholds import (
@@ -59,6 +60,7 @@ from lotoia.observability.card_structure_diagnostics import (
 
 MISSION_ID = "M-ML-VIS-058"
 FIX01_MISSION_ID = "M-ML-VIS-058-FIX-01"
+HITS_ANALYTICS_MISSION_ID = "M-ML-076-FIX-01"
 SOVEREIGN_MISSION_ID = "M-ML-VIS-059"
 OVERLAP_FORMAT_MISSION_ID = OVERLAP_MISSION_ID
 OVERLAP_FORMAT_MISSION_ID_067 = OVERLAP_MISSION_ID_067
@@ -140,6 +142,27 @@ def _attach_ml_operational_metadata(
     merged["ml_events_analyzed"] = _safe_int(aggregate.get("total_events"))
     merged["ml_lot_rows"] = list(aggregate.get("lot_rows") or [])
     return merged
+
+
+def build_historical_hit_analytics_summary(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """Métricas de hits 13/14/15 — escopo analítico posterior (M-ML-076-FIX-01)."""
+    hits_13 = _safe_int(metrics.get("desempenho_13_hits"))
+    hits_14 = _safe_int(metrics.get("desempenho_14_hits"))
+    hits_15 = _safe_int(metrics.get("desempenho_15_hits"))
+    total_jogos = _safe_int(metrics.get("total_jogos"))
+    return {
+        "mission_id": HITS_ANALYTICS_MISSION_ID,
+        "available": total_jogos > 0,
+        "hits_evaluation_scope": "historical_analytics_only",
+        "desempenho_13_hits": hits_13,
+        "desempenho_14_hits": hits_14,
+        "desempenho_15_hits": hits_15,
+        "total_jogos": total_jogos,
+        "headline": (
+            "Captura 13/14/15 disponível para Histórico Analítico, Conferir e Backtesting — "
+            "não compõe veredito estrutural nem liberação operacional."
+        ),
+    }
 
 
 def _build_decision_block(
@@ -304,20 +327,6 @@ def build_calibration_plan(
             1.2,
         )
 
-    hits_13 = _safe_int(m.get("desempenho_13_hits"))
-    hits_14 = _safe_int(m.get("desempenho_14_hits"))
-    if hits_13 == 0 and hits_14 == 0 and _safe_int(m.get("total_jogos")) >= 5:
-        combo = (
-            "Combinar elevação de diversidade, reforço de dezenas subcobertas "
-            "e redução de redundância para captura 13/14."
-        )
-        if combo not in plan_items:
-            plan_items.append(combo)
-        impact_items.append("Melhorar leitura das 6 bases.")
-        parametros_sugeridos.setdefault("diversity_floor_boost", 1.1)
-        parametros_sugeridos.setdefault("missing_numbers_boost", 1.1)
-        parametros_sugeridos.setdefault("redundancy_penalty_boost", 1.1)
-
     if plan_items:
         rerank_action = "Reranquear candidatos antes da persistência oficial."
         if rerank_action not in plan_items:
@@ -463,31 +472,6 @@ def interpret_coverage_evidence(
                 impacto_esperado="Reduzir redundância e melhorar cobertura estrutural da próxima geração.",
                 severidade="alta" if diversity_score <= 0.2 else "media",
                 parametros_sugeridos={"diversity_floor_boost": 1.2},
-            )
-        )
-
-    hits_13 = _safe_int(m.get("desempenho_13_hits"))
-    hits_14 = _safe_int(m.get("desempenho_14_hits"))
-    if hits_13 == 0 and hits_14 == 0 and _safe_int(m.get("total_jogos")) >= 5:
-        blocks.append(
-            _build_decision_block(
-                issue_type="captura_13_14_ausente",
-                problema_detectado="Baixa força de captura 13/14 na janela comparada.",
-                evidencia=(
-                    f"Jogos com 13 hits: {hits_13}; 14 hits: {hits_14}; "
-                    f"15 hits: {_safe_int(m.get('desempenho_15_hits'))}."
-                ),
-                causa_provavel="Ausência de proximidade forte contra referência oficial recente.",
-                acao_recomendada=(
-                    "Combinar reforço de diversidade, dezenas subcobertas e redução de redundância."
-                ),
-                impacto_esperado="Melhorar capacidade de aproximação estrutural sem clones.",
-                severidade="media",
-                parametros_sugeridos={
-                    "diversity_floor_boost": 1.1,
-                    "missing_numbers_boost": 1.1,
-                    "redundancy_penalty_boost": 1.1,
-                },
             )
         )
 
@@ -988,4 +972,6 @@ def get_structural_coverage_evidence(
                 ),
             }
         ),
+        **build_structural_verdict_hits_separation_trace(),
+        "historical_hit_analytics": build_historical_hit_analytics_summary(metrics),
     }

@@ -1129,6 +1129,32 @@ def _render_operational_scope_audit(
         st.caption(f"Mission cockpit: {mission_id}")
 
 
+def _render_historical_hit_analytics_card(snapshot: dict[str, Any]) -> None:
+    """Hits 13/14/15 — escopo analítico (M-ML-076-FIX-01), somente auditoria técnica."""
+    from lotoia.observability.coverage_evidence_interpreter import build_historical_hit_analytics_summary
+
+    st.markdown("##### Captura 13/14/15 — métrica analítica (Histórico / Conferir / Backtesting)")
+    coverage = dict(snapshot.get("coverage_evidence") or {})
+    analytics = dict(
+        snapshot.get("historical_hit_analytics")
+        or coverage.get("historical_hit_analytics")
+        or {}
+    )
+    if not analytics:
+        diagnosis = dict(snapshot.get("diagnosis") or {})
+        analytics = build_historical_hit_analytics_summary(dict(diagnosis.get("metrics") or {}))
+    st.caption(str(analytics.get("headline") or ""))
+    if not analytics.get("available"):
+        st.caption("Sem jogos suficientes para leitura analítica de hits.")
+        return
+    cols = st.columns(4)
+    cols[0].metric("Jogos 13 hits", int(analytics.get("desempenho_13_hits", 0) or 0))
+    cols[1].metric("Jogos 14 hits", int(analytics.get("desempenho_14_hits", 0) or 0))
+    cols[2].metric("Jogos 15 hits", int(analytics.get("desempenho_15_hits", 0) or 0))
+    cols[3].metric("Total jogos", int(analytics.get("total_jogos", 0) or 0))
+    st.caption(f"Escopo: {analytics.get('hits_evaluation_scope', 'historical_analytics_only')}")
+
+
 def _render_technical_audit_section(
     db_path: Any,
     snapshot: dict[str, Any],
@@ -1165,6 +1191,10 @@ def _render_technical_audit_section(
         render_cockpit_block_safe(
             "auditoria_evidencias_tecnicas",
             lambda: _render_decision_evidence_technical_details(snapshot),
+        )
+        render_cockpit_block_safe(
+            "auditoria_hits_analiticos",
+            lambda: _render_historical_hit_analytics_card(snapshot),
         )
         render_cockpit_block_safe(
             "overlap_format",
