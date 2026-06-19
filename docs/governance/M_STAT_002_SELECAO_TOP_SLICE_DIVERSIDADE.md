@@ -3,7 +3,7 @@
 | Campo | Valor |
 |-------|-------|
 | **Missão** | M-STAT-002 |
-| **Build** | `institutional-adm-runtime-v66` |
+| **Build** | `institutional-adm-runtime-v67` |
 | **Agente líder** | `agent_estatistico` |
 | **Veredito** | **CONCLUÍDA** — top slice pré-GP selecionado por diversidade e não apenas por score |
 
@@ -15,11 +15,11 @@ O recorte `requested_count × 3` (GP:20 → 60 jogos) era montado por `profile_s
 
 Módulo `src/lotoia/statistics/diverse_top_slice_selection.py`:
 
-1. Recorte inicial por `profile_score` (`requested_count × 3`)
-2. Substituição determinística de excesso de sufixo/prefixo/família por candidatos sub-representados
-3. Tetos: `MAX_PREFIX_SUFFIX_SHARE=0.14`, `MAX_FAMILY_SHARE=0.10` (prefixo ignorado quando o pool é monoprefixo)
-4. Reordenação do pool — slice diverso promovido ao topo antes do portão M-ML-073
-5. Critério: `diversity_score >= 0.55` **ou** ganho material `>= +0.20`
+1. Baseline por `profile_score` (top `requested_count × 3`)
+2. **Camada 1** — swap iterativo de sufixo/família com teto `LOTOIA_MSTAT_002_SUFFIX_CAP` (default `6`, alinhado ao `DOMINANCE_CALIBRATION_THRESHOLD`)
+3. **Camada 2** — swap anti-clone quando overlap > `LOTOIA_MSTAT_002_MAX_OVERLAP` (default `12` em 15D)
+4. Reordenação do pool antes do portão M-ML-073
+5. Critério registrado: `diversity_score >= 0.55` **ou** ganho material `>= +0.20`
 
 ## Integração
 

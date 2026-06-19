@@ -17,14 +17,15 @@ from lotoia.ml.ml_operational_hierarchy import (
     execute_ml_operational_hierarchy,
 )
 from lotoia.ml.overlap_format_thresholds import DIVERSITY_LOW_THRESHOLD
+from lotoia.ml.supervised_output_calibration import DOMINANCE_CALIBRATION_THRESHOLD
 from lotoia.statistics.diverse_top_slice_selection import (
     MISSION_ID,
-    MAX_PREFIX_SUFFIX_SHARE,
     MIN_MATERIAL_DIVERSITY_GAIN,
     apply_diverse_top_slice_pre_gp,
     build_diverse_top_slice_trace,
     evaluate_top_slice_criteria,
     is_diverse_top_slice_enabled,
+    run_mstat_002_swap_engine,
     select_diverse_pre_gp_top_slice,
     slice_limit,
 )
@@ -158,10 +159,20 @@ def test_dominant_family_capped_in_top_slice() -> None:
 
         suffix = _suffix_key(game)
         suffix_counts[suffix] = suffix_counts.get(suffix, 0) + 1
-    suffix_cap = max(3, int(limit * MAX_PREFIX_SUFFIX_SHARE))
+    suffix_cap = DOMINANCE_CALIBRATION_THRESHOLD
     assert len(selected) == limit
     assert selected
-    assert max(suffix_counts.values()) <= suffix_cap + 2
+    assert max(suffix_counts.values()) <= suffix_cap
+
+
+def test_swap_engine_reports_structural_and_overlap_layers() -> None:
+    pool = _build_mixed_score_dominant_pool(pool_size=100, requested_count=20)
+    limit = slice_limit(requested_count=20)
+    selected, stats = run_mstat_002_swap_engine(pool, limit=limit, game_size=15)
+    assert len(selected) == limit
+    assert int(stats.get("structural_swaps", 0) or 0) > 0
+    assert int(stats.get("suffix_cap", 0) or 0) == DOMINANCE_CALIBRATION_THRESHOLD
+    assert int(stats.get("max_overlap_permitted", 0) or 0) == 12
 
 
 def test_criteria_threshold_or_material_gain() -> None:
@@ -233,4 +244,4 @@ def test_is_enabled_by_default() -> None:
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v66"
+    assert BUILD_MARKER == "institutional-adm-runtime-v67"

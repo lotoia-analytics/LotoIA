@@ -129,7 +129,7 @@ def test_central_ml_exposes_structural_policy_15d_card() -> None:
 
 
 def test_build_marker_v59() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v66"
+    assert BUILD_MARKER == "institutional-adm-runtime-v67"
 
 
 def test_canonical_memory_catalog() -> None:

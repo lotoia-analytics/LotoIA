@@ -266,5 +266,5 @@ def test_hierarchy_blocks_gp_closure_when_diversity_fails(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v66"
+    assert BUILD_MARKER == "institutional-adm-runtime-v67"
     assert MISSION_ID == "M-ML-073"
