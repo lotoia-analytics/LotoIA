@@ -73,6 +73,43 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _normalize_format_size(value: Any) -> int | None:
+    """Normaliza um formato de cartão para o número de dezenas (M-ML-070-FIX-02).
+
+    Aceita ``15``, ``"15"``, ``"15D"``, ``"15d"``, ``" 15 "`` e rótulos como
+    ``"15 dezenas"`` (usa os dígitos iniciais). Retorna ``None`` para valores
+    inválidos e nunca levanta — evitando que payloads de snapshot/context_json/UI
+    quebrem a Central ML. NUNCA usar ``int(formato)`` direto nesses payloads.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        ivalue = int(value)
+        return ivalue if ivalue > 0 else None
+    digits = ""
+    for char in str(value or "").strip():
+        if char.isdigit():
+            digits += char
+        else:
+            break
+    if not digits:
+        return None
+    ivalue = int(digits)
+    return ivalue if ivalue > 0 else None
+
+
+def _normalize_format_sizes(values: Any) -> list[int]:
+    """Lista de formatos válidos (int de dezenas), ignorando entradas inválidas."""
+    if not isinstance(values, (list, tuple, set)):
+        return []
+    sizes: list[int] = []
+    for value in values:
+        size = _normalize_format_size(value)
+        if size is not None:
+            sizes.append(size)
+    return sizes
+
+
 def _extract_metrics_from_structural_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Compat: delega para fonte única da Cobertura Estrutural (M-ML-VIS-059)."""
     return extract_operational_structural_metrics(payload)
@@ -166,12 +203,14 @@ def build_calibration_plan(
     suffix = str(m.get("sufixo_mais_gerado") or "—")
     prefix_viciado = bool(m.get("prefixo_viciado") or m.get("prefixos_sufixos_viciados"))
     suffix_viciado = bool(m.get("sufixo_viciado") or m.get("prefixos_sufixos_viciados"))
-    primary_game_size = int(
-        (primary_format or {}).get("game_size")
-        or (m.get("formatos_analisados") or [15])[0]
-        if len(m.get("formatos_analisados") or []) == 1
-        else 15
-    )
+    # M-ML-070-FIX-02: normalização segura de formato (aceita 15/"15"/"15D"/"15d").
+    _formatos_norm = _normalize_format_sizes(m.get("formatos_analisados"))
+    if len(_formatos_norm) == 1:
+        primary_game_size = (
+            _normalize_format_size((primary_format or {}).get("game_size")) or _formatos_norm[0]
+        )
+    else:
+        primary_game_size = 15
     game_size = primary_game_size
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
@@ -311,8 +350,8 @@ def interpret_coverage_evidence(
     pares_atencao = _safe_int(m.get("pares_em_atencao"))
     diversity_score = _safe_float(m.get("diversity_score"))
     subcovered = _safe_int(m.get("dezenas_subcobertas"))
-    formatos = [int(value) for value in list(m.get("formatos_analisados") or []) if int(value) > 0]
-    game_size = int(formatos[0]) if len(formatos) == 1 else 15
+    formatos = _normalize_format_sizes(m.get("formatos_analisados"))
+    game_size = formatos[0] if len(formatos) == 1 else 15
 
     if similaridade >= SIMILARITY_HIGH_THRESHOLD:
         blocks.append(
@@ -539,11 +578,15 @@ def get_structural_coverage_evidence(
     calibration_authorized = bool((ml_aggregate or {}).get("calibration_authorized"))
     reading = dict(snapshot.get("reading") or {})
 
+    # M-ML-070-FIX-02: normaliza formato de forma segura (aceita 15/"15"/"15D"/"15d";
+    # ignora inválidos) — nunca usar int(formatos[0]) direto em payload de snapshot/UI.
+    formatos = _normalize_format_sizes(metrics.get("formatos_analisados"))
+
     structural_policy_15d_memory: dict[str, Any] = {}
     structural_policy_15d_application: dict[str, Any] = {"available": False}
     structural_policy_15d_analysis: dict[str, Any] = {}
     structural_policy_15d_calibration_plan: dict[str, Any] = {"has_plan": False}
-    if len(formatos) == 1 and is_structural_policy_15d_format(int(formatos[0])):
+    if len(formatos) == 1 and is_structural_policy_15d_format(formatos[0]):
         structural_policy_15d_memory = load_active_structural_policy_15d_memory(
             db_path,
             persist_if_missing=False,
@@ -636,7 +679,6 @@ def get_structural_coverage_evidence(
 
     structural_concentration_audit: dict[str, Any] = {"available": False}
     ge_ids = [int(value) for value in list(metrics.get("generation_event_ids") or []) if int(value) > 0]
-    formatos = [int(value) for value in list(metrics.get("formatos_analisados") or []) if int(value) > 0]
     if len(ge_ids) == 1 and formatos:
         try:
             structural_concentration_audit = audit_structural_concentration_from_db(
@@ -651,11 +693,11 @@ def get_structural_coverage_evidence(
     if (
         structural_concentration_audit.get("available")
         and len(formatos) == 1
-        and is_structural_auto_calibration_format(int(formatos[0]))
+        and is_structural_auto_calibration_format(formatos[0])
     ):
         occurrence = int(
             dict((structural or {}).get("context_json") or {}).get("structural_calibration_occurrences", {}).get(
-                f"{int(formatos[0])}D:{(structural_concentration_audit.get('diagnostico') or {}).get('problema_detectado')}",
+                f"{formatos[0]}D:{(structural_concentration_audit.get('diagnostico') or {}).get('problema_detectado')}",
                 0,
             )
             or 0
