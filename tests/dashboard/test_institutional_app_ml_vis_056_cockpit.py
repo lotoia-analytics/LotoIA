@@ -57,7 +57,8 @@ def test_cockpit_render_module_has_required_sections() -> None:
     assert "Proteções constitucionais ativas" in module_source
     assert "expanded=False" in module_source
     assert "Lote analisado" not in module_source
-    assert 'key="central_ml_card_format_filter"' in module_source
+    assert "OPERATIONAL_GENERATION_SELECTOR_KEY" in module_source
+    assert "Geração operacional" in module_source
 
 
 def test_home_page_recalibration_status_not_generic_blocked() -> None:

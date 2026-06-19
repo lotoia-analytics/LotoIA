@@ -1,4 +1,4 @@
-"""M-ML-071-FIX-01 — Central ML herda filtro de formato da Cobertura Estrutural."""
+"""M-ML-071-FIX-01 — Central ML herda seletor de Geração operacional da Cobertura."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ from pathlib import Path
 
 import dashboard.institutional_ml_calibration_cockpit as cockpit
 from dashboard.institutional_operational_structural_coverage import (
-    CARD_FORMAT_FILTER_ALL_LABEL,
-    CARD_FORMAT_FILTER_MISSION_ID,
-    build_analyzed_card_format_caption,
-    build_card_format_filter_options,
-    filter_operational_generations_by_card_format,
-    parse_card_format_filter_label,
-    resolve_generation_event_ids_for_card_format,
+    OPERATIONAL_GENERATION_ALL_LABEL,
+    OPERATIONAL_GENERATION_FILTER_MISSION_ID,
+    OPERATIONAL_GENERATION_SELECTOR_KEY,
+    build_operational_generation_dropdown_options,
+    build_operational_generation_scope_caption,
+    load_operational_core_002_generations,
+    resolve_operational_generation_selection,
 )
 from dashboard.institutional_supervised_ml import (
-    CARD_FORMAT_FILTER_MISSION_ID as SNAPSHOT_MISSION_ID,
+    OPERATIONAL_GENERATION_FILTER_MISSION_ID as SNAPSHOT_MISSION_ID,
     build_ml_calibration_cockpit_snapshot,
 )
 from lotoia.database.database import GeneratedGame, GenerationEvent, create_database, get_session
@@ -80,55 +80,81 @@ def _seed_gp_event(
         return ge_id
 
 
-def _seed_mixed_formats_db(tmp_path: Path) -> tuple[Path, int, int]:
+def _seed_mixed_formats_db(tmp_path: Path) -> tuple[Path, int, int, list[dict]]:
     db_path = tmp_path / "mixed_formats.db"
     create_database(db_path)
     ge_15 = _seed_gp_event(db_path, card_format=15, games_count=20)
     ge_17 = _seed_gp_event(db_path, card_format=17, games_count=20)
-    return db_path, ge_15, ge_17
+    generations = load_operational_core_002_generations(db_path)
+    return db_path, ge_15, ge_17, generations
 
 
-def test_format_filter_helpers_match_cobertura_catalog() -> None:
+def _selection_for_ge(generations: list[dict], ge_id: int) -> dict:
+    for row in generations:
+        if int(row.get("generation_event_id", 0) or 0) == int(ge_id):
+            return resolve_operational_generation_selection(
+                str(row.get("dropdown_label") or ""),
+                generations,
+            )
+    raise AssertionError(f"generation_event_id {ge_id} not found")
+
+
+def test_operational_generation_dropdown_matches_cobertura() -> None:
     generations = [
-        {"generation_event_id": 1, "card_format": 15},
-        {"generation_event_id": 2, "card_format": 17},
+        {
+            "generation_event_id": 4,
+            "card_format": 17,
+            "games_count": 20,
+            "dropdown_label": "Geração 001 — GE 4 — 17D — CORE_002 — 20 jogos",
+            "operational_generation_label": "001",
+        },
+        {
+            "generation_event_id": 5,
+            "card_format": 15,
+            "games_count": 20,
+            "dropdown_label": "Geração 002 — GE 5 — 15D — CORE_002 — 20 jogos",
+            "operational_generation_label": "002",
+        },
     ]
-    options = build_card_format_filter_options(generations)
-    assert options == [CARD_FORMAT_FILTER_ALL_LABEL, "15D", "17D"]
-    assert parse_card_format_filter_label("15D") == 15
-    assert parse_card_format_filter_label("17D") == 17
-    assert parse_card_format_filter_label(CARD_FORMAT_FILTER_ALL_LABEL) is None
-    assert build_analyzed_card_format_caption(15) == "Formato analisado: 15D"
-    assert resolve_generation_event_ids_for_card_format(generations, 17) == [2]
-    assert len(filter_operational_generations_by_card_format(generations, 15)) == 1
+    options = build_operational_generation_dropdown_options(generations)
+    assert options[0] == OPERATIONAL_GENERATION_ALL_LABEL
+    assert any("17D" in item for item in options)
+    assert any("15D" in item for item in options)
+    selected = resolve_operational_generation_selection(options[2], generations)
+    assert selected["generation_event_id"] == 5
+    assert selected["card_format"] == 15
+    assert build_operational_generation_scope_caption(selected) == "Formato analisado: 15D"
 
 
-def test_cockpit_exposes_format_selector() -> None:
+def test_cockpit_reuses_cobertura_operational_generation_selector() -> None:
     source = inspect.getsource(cockpit.render_ml_calibration_cockpit)
-    assert "central_ml_card_format_filter" in source
-    assert "build_card_format_filter_options" in source
-    assert "card_format_filter" in source
-    assert "build_analyzed_card_format_caption" in source
+    assert "OPERATIONAL_GENERATION_SELECTOR_KEY" in source
+    assert 'st.selectbox(\n        "Geração operacional"' in source or '"Geração operacional"' in source
+    assert "build_operational_generation_dropdown_options" in source
+    assert "resolve_operational_generation_selection" in source
+    assert "central_ml_card_format_filter" not in source
+    assert "build_card_format_filter_options" not in source
 
 
-def test_snapshot_filters_15d_only(tmp_path: Path) -> None:
-    db_path, ge_15, ge_17 = _seed_mixed_formats_db(tmp_path)
-    snapshot = build_ml_calibration_cockpit_snapshot(db_path, card_format_filter=15)
-    assert snapshot["card_format_filter"] == 15
-    assert snapshot["card_format_filter_mission_id"] == SNAPSHOT_MISSION_ID == CARD_FORMAT_FILTER_MISSION_ID
+def test_snapshot_scoped_to_selected_15d_generation(tmp_path: Path) -> None:
+    db_path, ge_15, ge_17, generations = _seed_mixed_formats_db(tmp_path)
+    selection = _selection_for_ge(generations, ge_15)
+    snapshot = build_ml_calibration_cockpit_snapshot(db_path, operational_selection=selection)
+    assert snapshot["aggregate_mode"] is False
+    assert snapshot["selected_generation_event_id"] == ge_15
+    assert snapshot["selected_card_format"] == 15
     assert snapshot["analyzed_card_format_caption"] == "Formato analisado: 15D"
-    assert ge_15 in list(snapshot.get("scoped_generation_event_ids") or [])
-    assert ge_17 not in list(snapshot.get("scoped_generation_event_ids") or [])
+    assert snapshot["operational_generation_filter_mission_id"] == SNAPSHOT_MISSION_ID == OPERATIONAL_GENERATION_FILTER_MISSION_ID
     coverage = dict(snapshot.get("coverage_evidence") or {})
     metrics = dict(coverage.get("metrics") or {})
     assert metrics.get("formatos_analisados") == [15]
     assert ge_17 not in list(metrics.get("generation_event_ids") or [])
-    assert all(row.get("formato") == "15D" for row in list(snapshot.get("aggregate", {}).get("lot_rows") or []))
 
 
-def test_snapshot_filters_17d_only(tmp_path: Path) -> None:
-    db_path, ge_15, ge_17 = _seed_mixed_formats_db(tmp_path)
-    snapshot = build_ml_calibration_cockpit_snapshot(db_path, card_format_filter=17)
+def test_snapshot_scoped_to_selected_17d_generation(tmp_path: Path) -> None:
+    db_path, ge_15, ge_17, generations = _seed_mixed_formats_db(tmp_path)
+    selection = _selection_for_ge(generations, ge_17)
+    snapshot = build_ml_calibration_cockpit_snapshot(db_path, operational_selection=selection)
     coverage = dict(snapshot.get("coverage_evidence") or {})
     metrics = dict(coverage.get("metrics") or {})
     assert metrics.get("formatos_analisados") == [17]
@@ -136,11 +162,11 @@ def test_snapshot_filters_17d_only(tmp_path: Path) -> None:
     assert ge_17 in list(metrics.get("generation_event_ids") or [])
 
 
-def test_snapshot_all_formats_preserves_aggregate_mode(tmp_path: Path) -> None:
-    db_path, ge_15, ge_17 = _seed_mixed_formats_db(tmp_path)
-    snapshot = build_ml_calibration_cockpit_snapshot(db_path, card_format_filter=None)
+def test_snapshot_all_operational_generations_preserves_aggregate_mode(tmp_path: Path) -> None:
+    db_path, ge_15, ge_17, generations = _seed_mixed_formats_db(tmp_path)
+    selection = resolve_operational_generation_selection(OPERATIONAL_GENERATION_ALL_LABEL, generations)
+    snapshot = build_ml_calibration_cockpit_snapshot(db_path, operational_selection=selection)
     assert snapshot["aggregate_mode"] is True
-    assert snapshot["card_format_filter"] is None
     coverage = dict(snapshot.get("coverage_evidence") or {})
     metrics = dict(coverage.get("metrics") or {})
     assert sorted(metrics.get("formatos_analisados") or []) == [15, 17]
@@ -148,18 +174,15 @@ def test_snapshot_all_formats_preserves_aggregate_mode(tmp_path: Path) -> None:
     assert ge_17 in list(metrics.get("generation_event_ids") or [])
 
 
-def test_get_structural_coverage_evidence_respects_format_filter(tmp_path: Path) -> None:
-    db_path, ge_15, ge_17 = _seed_mixed_formats_db(tmp_path)
+def test_get_structural_coverage_evidence_respects_operational_selection(tmp_path: Path) -> None:
+    db_path, ge_15, ge_17, generations = _seed_mixed_formats_db(tmp_path)
+    selection = _selection_for_ge(generations, ge_15)
     evidence_15 = get_structural_coverage_evidence(
         db_path,
-        generation_event_ids=[ge_15],
-        game_size=15,
-        scope_label="Formato analisado: 15D",
+        generation_event_id=int(selection["generation_event_id"]),
+        game_size=int(selection["card_format"]),
+        scope_label=build_operational_generation_scope_caption(selection),
     )
     metrics_15 = dict(evidence_15.get("metrics") or {})
     assert metrics_15.get("formatos_analisados") == [15]
     assert ge_17 not in list(metrics_15.get("generation_event_ids") or [])
-
-    evidence_all = get_structural_coverage_evidence(db_path)
-    metrics_all = dict(evidence_all.get("metrics") or {})
-    assert sorted(metrics_all.get("formatos_analisados") or []) == [15, 17]

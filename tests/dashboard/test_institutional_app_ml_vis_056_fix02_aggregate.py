@@ -23,7 +23,8 @@ def test_build_marker_v37() -> None:
 def test_cockpit_main_render_has_no_lot_selector() -> None:
     render_source = inspect.getsource(cockpit.render_ml_calibration_cockpit)
     assert "Lote analisado" not in render_source
-    assert 'key="central_ml_card_format_filter"' in render_source
+    assert "OPERATIONAL_GENERATION_SELECTOR_KEY" in render_source
+    assert "Geração operacional" in render_source
     assert "AGGREGATE_SCOPE_LABEL" in render_source
     expander_source = inspect.getsource(cockpit._render_technical_expanders)
     assert "Detalhes por lote" in expander_source
