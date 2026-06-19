@@ -180,14 +180,37 @@ def load_operational_core_002_generations(
     db_path: Any = DEFAULT_DATABASE_PATH,
     *,
     active_reading_only: bool = True,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Lista gerações operacionais CORE_002 persistidas (generation_events + generated_games)."""
     generations: list[dict[str, Any]] = []
+    resolved_limit = int(limit) if limit is not None and int(limit) > 0 else None
+    scan_buffer = max(resolved_limit * 3, resolved_limit or 0, 20) if resolved_limit else None
     with get_session(db_path) as session:
-        events = (
-            session.query(GenerationEvent)
-            .order_by(GenerationEvent.created_at.asc(), GenerationEvent.id.asc())
-            .all()
+        events_query = session.query(GenerationEvent).order_by(
+            GenerationEvent.created_at.desc(),
+            GenerationEvent.id.desc(),
+        )
+        if scan_buffer is not None:
+            events_query = events_query.limit(scan_buffer)
+        recent_events = list(events_query.all())
+
+        filtered_events: list[GenerationEvent] = []
+        for event in recent_events:
+            batch_label = str(getattr(event, "analysis_batch_label", "") or "")
+            if not is_sovereign_core_label(batch_label):
+                continue
+            if active_reading_only and not is_generation_event_active_reading(event):
+                continue
+            filtered_events.append(event)
+            if resolved_limit is not None and len(filtered_events) >= resolved_limit:
+                break
+
+        filtered_events.sort(
+            key=lambda item: (
+                item.created_at.isoformat() if getattr(item, "created_at", None) else "",
+                int(item.id or 0),
+            )
         )
         event_dicts = [
             {
@@ -196,18 +219,12 @@ def load_operational_core_002_generations(
                 "analysis_batch_label": str(getattr(event, "analysis_batch_label", "") or ""),
                 "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
             }
-            for event in events
-            if is_sovereign_core_label(str(getattr(event, "analysis_batch_label", "") or ""))
-            and (not active_reading_only or is_generation_event_active_reading(event))
+            for event in filtered_events
         ]
         index_map = build_operational_generation_index(event_dicts)
 
-        for event in events:
+        for event in filtered_events:
             batch_label = str(getattr(event, "analysis_batch_label", "") or "")
-            if not is_sovereign_core_label(batch_label):
-                continue
-            if active_reading_only and not is_generation_event_active_reading(event):
-                continue
             ge_id = int(event.id or 0)
             if ge_id <= 0:
                 continue

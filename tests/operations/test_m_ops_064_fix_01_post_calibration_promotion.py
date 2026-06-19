@@ -49,7 +49,7 @@ def _promo_context(**overrides: Any) -> dict[str, Any]:
 
 
 def test_build_marker_v72() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v72"
+    assert BUILD_MARKER == "institutional-adm-runtime-v73"
 
 
 def test_n1_aprovado_promoted_to_officialized() -> None:

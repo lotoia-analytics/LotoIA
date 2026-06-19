@@ -247,13 +247,21 @@ from dashboard.institutional_ml_hierarchy_block import (
     render_ml_hierarchy_block_panel,
 )
 from dashboard.institutional_light_mode import (
+    ANALYTICAL_PAGE_SIZE,
     CACHE_TTL_SECONDS,
+    CONFERENCE_EVENTS_LIMIT,
+    OPERATIONAL_EVENTS_LIMIT,
+    SESSION_LOAD_ANALYTICAL,
+    SESSION_LOAD_CENTRAL_ML,
     SESSION_LOAD_COMPARATIVE,
+    SESSION_LOAD_CONFERENCE,
+    SESSION_LOAD_GENERATION,
     SESSION_LOAD_HISTORY,
     SESSION_LOAD_STRUCTURAL,
     batch_select_options,
     default_batch_index,
     is_light_mode_enabled,
+    paginate_rows,
     render_lazy_load_gate,
     render_paginated_dataframe,
     request_lazy_load,
@@ -1455,14 +1463,56 @@ def _cached_card_structure_diagnostics_from_db(
 
 
 @st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
-def _cached_operational_core_002_generations(db_path: str) -> list[dict[str, Any]]:
-    return load_operational_core_002_generations(db_path)
+def _cached_operational_core_002_generations(
+    db_path: str,
+    limit: int,
+    active_reading_only: bool,
+) -> list[dict[str, Any]]:
+    return load_operational_core_002_generations(
+        db_path,
+        active_reading_only=active_reading_only,
+        limit=limit if limit > 0 else None,
+    )
+
+
+def _load_operational_generations_cached(
+    *,
+    limit: int | None = None,
+    active_reading_only: bool = True,
+) -> list[dict[str, Any]]:
+    resolved_limit = int(limit or OPERATIONAL_EVENTS_LIMIT)
+    return _cached_operational_core_002_generations(str(DB_PATH), resolved_limit, active_reading_only)
+
+
+@st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
+def _cached_scientific_context_indexes(db_path: str) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    return _load_scientific_context_indexes_uncached()
+
+
+@st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
+def _cached_persisted_generation_event_groups(
+    db_path: str,
+    batch_id: str | None,
+    active_reading_only: bool,
+    conference_eligible_only: bool,
+    limit: int | None,
+    summary_only: bool,
+) -> list[dict[str, Any]]:
+    return _load_persisted_generation_event_groups(
+        batch_id,
+        active_reading_only=active_reading_only,
+        conference_eligible_only=conference_eligible_only,
+        limit=limit,
+        summary_only=summary_only,
+    )
 
 
 def _invalidate_operational_structural_cache() -> None:
     """Invalida cache da Cobertura Estrutural após nova persistência (M-OPS-062-FIX-05)."""
     _cached_operational_core_002_generations.clear()
     _cached_operational_card_structure_diagnostics_from_db.clear()
+    _cached_persisted_generation_event_groups.clear()
+    _cached_scientific_context_indexes.clear()
 
 
 @st.cache_data(show_spinner=True, ttl=CACHE_TTL_SECONDS)
@@ -2726,6 +2776,10 @@ def _make_streamlit_dataframe_safe(df: pd.DataFrame | None) -> pd.DataFrame:
 
 
 def _load_scientific_context_indexes() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    return _cached_scientific_context_indexes(str(DB_PATH))
+
+
+def _load_scientific_context_indexes_uncached() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     decision_index: dict[str, dict[str, Any]] = {}
     memory_index: dict[str, dict[str, Any]] = {}
     with get_session(DB_PATH) as session:
@@ -6192,91 +6246,149 @@ def _load_persisted_generation_event_groups(
     *,
     active_reading_only: bool = False,
     conference_eligible_only: bool = False,
+    limit: int | None = None,
+    summary_only: bool = False,
+    use_cache: bool = True,
+) -> list[dict[str, Any]]:
+    resolved_batch_id = str(batch_id or "").strip()
+    if use_cache and not summary_only:
+        return _cached_persisted_generation_event_groups(
+            str(DB_PATH),
+            resolved_batch_id or None,
+            active_reading_only,
+            conference_eligible_only,
+            limit,
+            summary_only,
+        )
+    return _load_persisted_generation_event_groups_uncached(
+        batch_id,
+        active_reading_only=active_reading_only,
+        conference_eligible_only=conference_eligible_only,
+        limit=limit,
+        summary_only=summary_only,
+    )
+
+
+def _load_persisted_generation_event_groups_uncached(
+    batch_id: str | None = None,
+    *,
+    active_reading_only: bool = False,
+    conference_eligible_only: bool = False,
+    limit: int | None = None,
+    summary_only: bool = False,
 ) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     resolved_batch_id = str(batch_id or "").strip()
+    resolved_limit = int(limit) if limit is not None and int(limit) > 0 else None
+    scan_limit = None
+    if resolved_limit is not None and not resolved_batch_id:
+        scan_limit = max(resolved_limit * 3, resolved_limit, CONFERENCE_EVENTS_LIMIT)
     with get_session(DB_PATH) as session:
-        events = (
-            session.query(GenerationEvent)
-            .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
-            .all()
+        events_query = session.query(GenerationEvent).order_by(
+            GenerationEvent.created_at.desc(),
+            GenerationEvent.id.desc(),
         )
+        if scan_limit is not None:
+            events_query = events_query.limit(scan_limit)
+        events = events_query.all()
         for event in events:
+            if resolved_limit is not None and len(groups) >= resolved_limit and not resolved_batch_id:
+                break
             event_context = dict(getattr(event, "context_json", {}) or {})
             if active_reading_only and not is_active_reading_scope(event_context):
                 continue
             if conference_eligible_only and not is_conference_eligible_scope(event_context):
                 continue
-            rows = (
-                session.query(GeneratedGame)
-                .filter(GeneratedGame.generation_event_id == event.id)
-                .order_by(GeneratedGame.game_index.asc())
-                .all()
-            )
-            if resolved_batch_id:
-                rows = [
-                    row
-                    for row in rows
-                    if str(dict(getattr(row, "context_json", {}) or {}).get("batch_id", "") or "").strip() == resolved_batch_id
-                ]
-                if not rows:
-                    continue
+            if summary_only:
+                game_count_query = session.query(GeneratedGame).filter(
+                    GeneratedGame.generation_event_id == event.id
+                )
+                if resolved_batch_id:
+                    game_count = sum(
+                        1
+                        for row in game_count_query.all()
+                        if str(dict(getattr(row, "context_json", {}) or {}).get("batch_id", "") or "").strip()
+                        == resolved_batch_id
+                    )
+                    if game_count <= 0:
+                        continue
+                else:
+                    game_count = int(game_count_query.count() or 0)
+                    if game_count <= 0:
+                        continue
+                rows = []
+                games = []
+            else:
+                rows = (
+                    session.query(GeneratedGame)
+                    .filter(GeneratedGame.generation_event_id == event.id)
+                    .order_by(GeneratedGame.game_index.asc())
+                    .all()
+                )
+                if resolved_batch_id:
+                    rows = [
+                        row
+                        for row in rows
+                        if str(dict(getattr(row, "context_json", {}) or {}).get("batch_id", "") or "").strip()
+                        == resolved_batch_id
+                    ]
+                    if not rows:
+                        continue
+                game_count = len(rows)
+                games = []
             reconciliation_summary = _load_latest_reconciliation_for_generation(session, int(event.id or 0))
-            games: list[dict[str, Any]] = []
-            for row in rows:
-                numbers = [int(number) for number in (row.numbers or [])]
-                context_json = dict(row.context_json or {})
-                structural_metrics = dict(context_json.get("structural_metrics") or {})
-                core_numbers = list(context_json.get("core_numbers") or numbers or [])
-                audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
-                final_card_numbers = list(context_json.get("final_card_numbers") or numbers or [])
-                card_format = _safe_int(
-                    context_json.get("selected_card_format")
-                    or context_json.get("card_format")
-                    or context_json.get("format_cartao")
-                    or context_json.get("formato_cartao"),
-                    default=None,
-                )
-                expected_card_size = int(card_format or len(final_card_numbers) or len(numbers) or 15)
-                games.append(
-                    {
-                        "game_index": int(row.game_index or 0),
-                        "numbers": numbers,
-                        "formato_cartao": int(card_format or len(final_card_numbers) or len(numbers) or 15),
-                        "nucleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers) if core_numbers else "",
-                        "reservas_auditadas": " ".join(f"{number:02d}" for number in audited_reserve_numbers) if audited_reserve_numbers else "",
-                        "cartao_final": final_card_numbers,
-                        "expected_card_size": expected_card_size,
-                        "actual_card_size": len(final_card_numbers) if final_card_numbers else len(numbers),
-                        "profile_type": str(row.profile_type or ""),
-                        "perfil": str(row.profile_type or ""),
-                        "game_signature": str(context_json.get("game_signature", "") or ""),
-                        "context_json": context_json,
-                        "score": round(float((row.final_score or {}).get("final_score", 0.0) or 0.0), 4),
-                        "final_score": dict(row.final_score or {}),
-                        "quadra_score": dict(row.quadra_score or {}),
-                        "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
-                        "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
-                        "odd": sum(1 for number in numbers if number % 2 != 0),
-                        "even": sum(1 for number in numbers if number % 2 == 0),
-                        "frame": len({((number - 1) // 5) for number in numbers}),
-                        "center": sum(1 for number in numbers if 8 <= number <= 18),
-                    }
-                )
+            if not summary_only:
+                for row in rows:
+                    numbers = [int(number) for number in (row.numbers or [])]
+                    context_json = dict(row.context_json or {})
+                    structural_metrics = dict(context_json.get("structural_metrics") or {})
+                    core_numbers = list(context_json.get("core_numbers") or numbers or [])
+                    audited_reserve_numbers = list(context_json.get("audited_reserve_numbers") or [])
+                    final_card_numbers = list(context_json.get("final_card_numbers") or numbers or [])
+                    card_format = _safe_int(
+                        context_json.get("selected_card_format")
+                        or context_json.get("card_format")
+                        or context_json.get("format_cartao")
+                        or context_json.get("formato_cartao"),
+                        default=None,
+                    )
+                    expected_card_size = int(card_format or len(final_card_numbers) or len(numbers) or 15)
+                    games.append(
+                        {
+                            "game_index": int(row.game_index or 0),
+                            "numbers": numbers,
+                            "formato_cartao": int(card_format or len(final_card_numbers) or len(numbers) or 15),
+                            "nucleo_lei_15": " ".join(f"{number:02d}" for number in core_numbers) if core_numbers else "",
+                            "reservas_auditadas": " ".join(f"{number:02d}" for number in audited_reserve_numbers) if audited_reserve_numbers else "",
+                            "cartao_final": final_card_numbers,
+                            "expected_card_size": expected_card_size,
+                            "actual_card_size": len(final_card_numbers) if final_card_numbers else len(numbers),
+                            "profile_type": str(row.profile_type or ""),
+                            "perfil": str(row.profile_type or ""),
+                            "game_signature": str(context_json.get("game_signature", "") or ""),
+                            "context_json": context_json,
+                            "score": round(float((row.final_score or {}).get("final_score", 0.0) or 0.0), 4),
+                            "final_score": dict(row.final_score or {}),
+                            "quadra_score": dict(row.quadra_score or {}),
+                            "coverage": round(float(structural_metrics.get("coverage_score", 0.0) or 0.0), 4),
+                            "entropy": round(float(structural_metrics.get("entropy_score", 0.0) or 0.0), 4),
+                            "odd": sum(1 for number in numbers if number % 2 != 0),
+                            "even": sum(1 for number in numbers if number % 2 == 0),
+                            "frame": len({((number - 1) // 5) for number in numbers}),
+                            "center": sum(1 for number in numbers if 8 <= number <= 18),
+                        }
+                    )
             target_contests: list[int] = []
-            for row in rows:
-                value = _safe_int(_safe_get(row, "target_contest"), default=None)
-                if value is not None and value > 0:
-                    target_contests.append(value)
+            if not summary_only:
+                for row in rows:
+                    value = _safe_int(_safe_get(row, "target_contest"), default=None)
+                    if value is not None and value > 0:
+                        target_contests.append(value)
             event_context = dict(getattr(event, "context_json", {}) or {})
             first_row_context = dict(rows[0].context_json or {}) if rows else {}
             batch_id_value = str(
                 event_context.get("batch_id") or first_row_context.get("batch_id", "") or ""
             )
-            ml_verdict_payload = {
-                "ml_verdict": str(event_context.get("ml_verdict") or ""),
-                "official_release_allowed": event_context.get("official_release_allowed"),
-            }
             official_release_allowed = is_official_conference_eligible(event_context)
             lot_status = extract_lot_operational_status(event_context)
             groups.append(
@@ -6287,7 +6399,7 @@ def _load_persisted_generation_event_groups(
                     "strategy": str(getattr(event, "strategy", "") or ""),
                     "batch_id": batch_id_value,
                     "context_json": event_context,
-                    "total_games": len(games),
+                    "total_games": int(game_count),
                     "target_contest": max(target_contests) if target_contests else None,
                     "reconciliation": reconciliation_summary or {},
                     "conference_status": "Conferido" if reconciliation_summary else "Nao conferido",
@@ -6301,10 +6413,38 @@ def _load_persisted_generation_event_groups(
                         event_context.get("ml_verdict_reason") or event_context.get("motivo_principal") or ""
                     ),
                     "games": games,
-                    "structural_summary": _summarize_games_structurally([game["numbers"] for game in games]),
+                    "structural_summary": (
+                        _summarize_games_structurally([game["numbers"] for game in games])
+                        if games
+                        else {}
+                    ),
                 }
             )
     return groups
+
+
+def _load_official_conference_generation_groups(
+    *,
+    page_load: bool = False,
+) -> list[dict[str, Any]]:
+    """Grupos elegíveis para Conferir Resultados — apenas lotes oficializados/aprovados."""
+    if page_load:
+        return _load_persisted_generation_event_groups(
+            batch_id=None,
+            conference_eligible_only=True,
+            limit=CONFERENCE_EVENTS_LIMIT,
+            summary_only=True,
+            use_cache=False,
+        )
+    return [
+        group
+        for group in _load_persisted_generation_event_groups(
+            batch_id=None,
+            conference_eligible_only=True,
+            limit=CONFERENCE_EVENTS_LIMIT,
+        )
+        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
+    ]
 
 
 def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
@@ -6353,7 +6493,13 @@ def _run_institutional_conference(
             "selected_contest": int(selected_contest or 0),
         }
         return
-    all_persisted_groups = _load_persisted_generation_event_groups(batch_id=selected_batch_id or None)
+    all_persisted_groups = _load_persisted_generation_event_groups(
+        batch_id=selected_batch_id or None,
+        conference_eligible_only=False,
+        limit=None,
+        summary_only=False,
+        use_cache=False,
+    )
     grouped_generations = [
         group
         for group in all_persisted_groups
@@ -8694,6 +8840,15 @@ def _render_central_ml_observational_history() -> None:
 
 def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_CENTRAL_ML,
+        "Carregar Central ML",
+        help_text=(
+            "Modo leve ativo: métricas ML e snapshot do cockpit não são carregados automaticamente. "
+            "Clique para montar o painel a partir dos snapshots persistidos."
+        ),
+    ):
+        return
     render_ml_calibration_cockpit(DB_PATH)
     st.markdown("### Detalhes técnicos adicionais")
     with st.expander("Diagnóstico ML observacional (alertas vazamento lateral)", expanded=False):
@@ -9028,7 +9183,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     if st.session_state.pop("_bust_operational_coverage_cache", False):
         _invalidate_operational_structural_cache()
 
-    operational_generations = load_operational_core_002_generations(DB_PATH)
+    operational_generations = _load_operational_generations_cached(limit=OPERATIONAL_EVENTS_LIMIT)
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
     scope_summary = build_active_coverage_scope_summary(
         operational_generations,
@@ -11642,15 +11797,6 @@ def _resolve_latest_official_conference_contest() -> dict[str, Any] | None:
     return max(valid_payloads, key=lambda payload: int(payload.get("contest_number", 0) or 0))
 
 
-def _load_official_conference_generation_groups() -> list[dict[str, Any]]:
-    """Grupos elegíveis para Conferir Resultados — apenas lotes oficializados/aprovados."""
-    return [
-        group
-        for group in _load_persisted_generation_event_groups(batch_id=None)
-        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
-    ]
-
-
 def _persist_clean_law15_generation_history(
     *,
     result: dict[str, Any],
@@ -13205,8 +13351,21 @@ def _render_conference_technical_audit(check_result: Any) -> None:
 
 def _render_conference_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
-    live_counts = _database_snapshot()["counts"]
     st.subheader("Conferir Resultados")
+
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_CONFERENCE,
+        "Carregar Conferir Resultados",
+        help_text=(
+            "Modo leve ativo: lotes elegíveis e métricas de conferência não são carregados automaticamente. "
+            "Clique para consultar os últimos lotes oficializados."
+        ),
+    ):
+        return
+
+    live_counts = snapshot.get("counts") or {}
+    if not live_counts and not is_light_mode_enabled():
+        live_counts = _database_snapshot()["counts"]
 
     # M-VIS-064: tela abre direto na Conferência oficial. Governança/detalhes técnicos
     # ficam recolhidos no expansor "Detalhes técnicos e governança" no final.
@@ -13215,7 +13374,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         "Conferir Resultados = **último concurso oficial** × **gerações aprovadas/oficializadas**. "
         "Exibe apenas jogos com 11 pontos ou mais."
     )
-    official_groups = _load_official_conference_generation_groups()
+    official_groups = _load_official_conference_generation_groups(page_load=True)
     status_by_event = {
         int(group.get("generation_event_id", 0) or 0): str(group.get("lot_operational_status", "") or "")
         for group in official_groups
@@ -14332,7 +14491,18 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     st.subheader("Histórico Analítico")
     st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
-    sovereign_events = _load_sovereign_generation_event_rows()
+
+    if is_light_mode_enabled() and not render_lazy_load_gate(
+        SESSION_LOAD_ANALYTICAL,
+        "Carregar Histórico Analítico",
+        help_text=(
+            "Modo leve ativo: histórico analítico não é montado automaticamente. "
+            f"Clique para carregar as últimas {ANALYTICAL_PAGE_SIZE} gerações elegíveis."
+        ),
+    ):
+        return
+
+    sovereign_events = _load_sovereign_generation_event_rows(limit=ANALYTICAL_PAGE_SIZE)
     operational_index = build_operational_generation_index(sovereign_events)
     analytic_labels = {
         "TOTAL_GENERATION_EVENTS_CARREGADOS": "Gerações carregadas",
@@ -14343,11 +14513,11 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         "GENERATION_EVENT_ID_MAIS_RECENTE": "Geração mais recente",
     }
 
-    generation_history = _load_generation_history_light(limit=25)
-    historical_rows = _load_accumulated_analytical_rows_light(limit=25)
-    if (not generation_history or not historical_rows) and int(snapshot["counts"].get("generation_events", 0) or 0) > 0:
-        generation_history = _load_generation_history(limit=50)
-        historical_rows = _load_accumulated_analytical_rows()
+    generation_history = _load_generation_history_light(limit=ANALYTICAL_PAGE_SIZE)
+    historical_rows = _load_accumulated_analytical_rows_light(limit=ANALYTICAL_PAGE_SIZE)
+    if not generation_history and int(snapshot.get("counts", {}).get("generation_events", 0) or 0) > 0:
+        generation_history = _load_generation_history(limit=ANALYTICAL_PAGE_SIZE)
+        historical_rows = _load_accumulated_analytical_rows_light(limit=ANALYTICAL_PAGE_SIZE)
     if not generation_history or not historical_rows:
         st.info("Ainda não há gerações persistidas para reconstruir o histórico analítico.")
         return
@@ -15007,7 +15177,7 @@ def main() -> None:
         st.stop()
     require_institutional_login(DB_PATH)
     _ensure_institutional_schema()
-    snapshot = _database_snapshot()
+    snapshot = _resolve_database_snapshot()
     snapshot["cloud_runtime_policy"] = cloud_runtime_policy_snapshot(DB_PATH)
     _align_institutional_runtime_with_database(snapshot)
     page = _render_sidebar(

@@ -41,6 +41,7 @@ from dashboard.institutional_ml_cockpit_render_guard import (
     render_cockpit_block_safe,
     summarize_coverage_snapshot_for_ui,
 )
+from dashboard.institutional_light_mode import OPERATIONAL_EVENTS_LIMIT
 from dashboard.institutional_operational_structural_coverage import (
     build_operational_generation_dropdown_options,
     build_operational_generation_scope_caption,
@@ -983,7 +984,10 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
     st.markdown(f"### {COCKPIT_TITLE}")
     st.caption(COCKPIT_SUBTITLE)
 
-    operational_generations = load_operational_core_002_generations(db_path)
+    operational_generations = load_operational_core_002_generations(
+        db_path,
+        limit=OPERATIONAL_EVENTS_LIMIT,
+    )
     dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
     default_index = max(0, len(dropdown_labels) - 1) if dropdown_labels else 0
     selected_label = st.selectbox(
