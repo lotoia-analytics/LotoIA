@@ -114,6 +114,7 @@ from dashboard.institutional_governance import (
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_m_core_003_monitoring import render_m_core_003_bias_monitoring_panel
+from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
 from dashboard.institutional_structural_policy_coverage import (
     build_structural_policy_coverage_context,
     render_structural_policy_15d_operational_block,
