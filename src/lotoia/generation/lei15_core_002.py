@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _REINFORCE_DIGITS: frozenset[int] = frozenset({7, 12, 16, 23})
-_CONTEXTUAL_DISCOURAGE: frozenset[int] = frozenset({2, 4, 11, 15, 24, 25})
+_CONTEXTUAL_DISCOURAGE: frozenset[int] = frozenset({11, 15, 24, 25})
 _NEVER_HARD_BLOCK: frozenset[int] = frozenset({15, 24, 25})
 _GP_MAX_OVERLAP: int = 10
 _GP_MAX_ARCH_PCT: float = 0.12
@@ -186,16 +186,24 @@ def compose_sovereign_gp(
     *,
     game_size: int = 15,
 ) -> list[dict]:
-    """L2 compose V1 + L4 anti-clone + payload soberano completo."""
+    """L2 compose V1 + M-CORE-003 diversity caps + L4 anti-clone + payload soberano."""
+    from lotoia.generation.m_core_003_prefix_suffix_policy import (
+        enforce_gp_diversity_cap,
+        pre_filter_pool_diversity,
+    )
     from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
     from lotoia.governance.law15_structural_realignment_v1 import get_realignment_config
 
+    filtered_pool = pre_filter_pool_diversity(pool)
     realign_cfg = get_realignment_config()
-    composed = compose_diverse_gp(pool, count, realign_cfg, game_size=game_size)
+    composed = compose_diverse_gp(filtered_pool, count, realign_cfg, game_size=game_size)
     for game in composed:
         game["v1_selection_compose_applied"] = True
+        game["m_core_003_pre_filter_applied"] = True
 
-    gp = apply_anti_clone_gp(composed, pool, count, game_size=game_size)
+    capped = enforce_gp_diversity_cap(composed, filtered_pool, count)
+    gp = apply_anti_clone_gp(capped, filtered_pool, count, game_size=game_size)
+    gp = enforce_gp_diversity_cap(gp, filtered_pool, count)
     tag_sovereign_gp_metadata(gp, config=config)
     return gp
 
@@ -230,6 +238,7 @@ def tag_sovereign_gp_metadata(
                 "layers": [
                     "generation_cand_d",
                     "v1_selection_compose",
+                    "m_core_003_prefix_suffix_policy",
                     "v1_strong_shield",
                     "anti_clone_gp",
                     "critical_digit_layer",

@@ -53,7 +53,7 @@ class CoreCandidate001Config:
     recurrence_weight_scale: float = 0.75
 
     structural_bias_penalty: bool = False
-    structural_bias_weight: float = 8.0
+    structural_bias_weight: float = 60.0
     suffix_hot_cap: bool = False
     max_high_suffix_digits: int = 4
 

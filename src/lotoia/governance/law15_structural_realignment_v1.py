@@ -29,7 +29,7 @@ Constraints (immutable)
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final
 
 # ---------------------------------------------------------------------------
@@ -68,18 +68,18 @@ class StructuralRealignmentConfig:
     Tuning requires a new ADR; these values reflect EPOCH_001 evidence only.
     """
 
-    mode: str = "shadow_test"
+    mode: str = "active"
 
     # Maximum fraction of GP games that may share the same prefix_3 / prefix_4
-    max_prefix3_ratio: float = 0.25
+    max_prefix3_ratio: float = 0.10
     max_prefix4_ratio: float = 0.30
 
     # Maximum fraction of GP games that may share the same suffix_3 / suffix_4
-    max_suffix3_ratio: float = 0.25
+    max_suffix3_ratio: float = 0.10
     max_suffix4_ratio: float = 0.30
 
     # Weight of concentration penalty per excess point (ratio unit)
-    concentration_penalty_weight: float = 40.0
+    concentration_penalty_weight: float = 200.0
 
     # Digits recurrently missing from GP; their presence earns a coverage bonus
     target_coverage_digits: tuple[int, ...] = (16, 6, 17, 23, 20, 8, 10, 4)
@@ -103,7 +103,7 @@ class StructuralRealignmentConfig:
     realignment_tag: str = "REALIGNMENT_V1"
 
     # Evidence reference stored in generated-game metadata
-    evidence_epoch: str = "EPOCH_001"
+    evidence_epoch: str = "EPOCH_002_M_CORE_003"
 
 
 # ---------------------------------------------------------------------------
