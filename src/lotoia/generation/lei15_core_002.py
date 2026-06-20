@@ -39,6 +39,22 @@ _GP_MAX_OVERLAP: int = 10
 _GP_MAX_ARCH_PCT: float = 0.12
 
 
+def _relaxed_overlap_limits(count: int) -> tuple[int, ...]:
+    target = max(int(count or 0), 1)
+    limits = [_GP_MAX_OVERLAP + 1, _GP_MAX_OVERLAP + 2]
+    if target >= 20:
+        limits.append(_GP_MAX_OVERLAP + 3)
+    if target >= 35:
+        limits.append(min(14, _GP_MAX_OVERLAP + 4))
+    return tuple(sorted(set(limits)))
+
+
+def _arch_share_limit(*, gp_target: int, relaxed: bool) -> float:
+    if relaxed and int(gp_target) >= 25:
+        return min(0.28, _GP_MAX_ARCH_PCT * 2.5)
+    return _GP_MAX_ARCH_PCT
+
+
 def _generation_cand_d_config():
     return resolve_candidate_config(BATCH_LABEL_D)
 
@@ -108,6 +124,7 @@ def _passes_anti_clone(
     arch_counts: Counter,
     gp_target: int,
     max_overlap: int | None = None,
+    relax_arch: bool = False,
 ) -> bool:
     nums = list(candidate.get("numbers") or [])
     overlap_limit = int(max_overlap if max_overlap is not None else _GP_MAX_OVERLAP)
@@ -117,7 +134,8 @@ def _passes_anti_clone(
         if _pairwise_overlap(nums, list(other.get("numbers") or [])) > overlap_limit:
             return False
     arch = _architecture_key(candidate)
-    if selected and arch_counts[arch] / max(len(selected), 1) > _GP_MAX_ARCH_PCT:
+    arch_limit = _arch_share_limit(gp_target=gp_target, relaxed=relax_arch)
+    if selected and arch_counts[arch] / max(len(selected), 1) > arch_limit:
         return False
     return True
 
@@ -145,6 +163,7 @@ def _append_anti_clone_candidates(
             arch_counts=arch_counts,
             gp_target=gp_target,
             max_overlap=max_overlap,
+            relax_arch=relaxed,
         ):
             continue
         enriched = dict(game)
@@ -211,7 +230,7 @@ def apply_anti_clone_gp(
                 break
 
     if len(selected) < count:
-        relaxed_limits = (_GP_MAX_OVERLAP + 1, _GP_MAX_OVERLAP + 2)
+        relaxed_limits = _relaxed_overlap_limits(count)
         completion_sources = [
             ordered,
             *[

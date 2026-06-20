@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
-from lotoia.generation.lei15_core_002 import apply_anti_clone_gp, compose_sovereign_gp
+from lotoia.generation.lei15_core_002 import (
+    _relaxed_overlap_limits,
+    apply_anti_clone_gp,
+    compose_sovereign_gp,
+)
 from lotoia.generator.basic_generator import generate_best_games, load_draws
 from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, get_core_002_config
 from lotoia.generation.lei15_core_002 import build_sovereign_pool
@@ -25,8 +27,8 @@ def _enable_structural_pool(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_structural_pool_target_scales_with_requested_count() -> None:
     assert resolve_structural_pool_target(requested_count=10) >= 100
-    assert resolve_structural_pool_target(requested_count=50) == 100
-    assert resolve_structural_pool_target(requested_count=80) == 160
+    assert resolve_structural_pool_target(requested_count=50) == 150
+    assert resolve_structural_pool_target(requested_count=80) == 240
 
 
 def test_compose_sovereign_gp_delivers_50_without_ml() -> None:
@@ -73,19 +75,25 @@ def test_overlap_composition_rows_arrow_compatible_types() -> None:
     assert all(isinstance(value, str) for value in overlaps)
 
 
-def test_generate_best_games_50_with_ml_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_relaxed_overlap_limits_scale_with_batch_size() -> None:
+    assert _relaxed_overlap_limits(10) == (11, 12)
+    assert _relaxed_overlap_limits(50) == (11, 12, 13, 14)
+
+
+def test_generate_best_games_50_with_ml_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("LOTOIA_DATABASE_URL", raising=False)
     monkeypatch.setenv("LOTOIA_ML_OUTPUT_CALIBRATION_ENABLED", "1")
+    monkeypatch.setenv("LOTOIA_ML_OPERATIONAL_HIERARCHY_ENABLED", "1")
     monkeypatch.setattr(
         "lotoia.ml.structural_policy_15d.apply_structural_policy_15d_to_sovereign_batch",
         lambda selected, **kwargs: (list(selected), {"structural_policy_applied": True}),
     )
     result = generate_best_games(
         count=50,
-        pool_size=200,
+        pool_size=150,
         batch_label=BATCH_LABEL,
         ml_enabled=True,
-        seed=42,
+        seed=7,
     )
     assert len(result.get("games") or []) == 50

@@ -35,7 +35,7 @@ def resolve_structural_pool_target(*, requested_count: int, min_compliant: int |
     """Escala pool conforme ao lote solicitado — evita material insuficiente para anti-clone."""
     requested = max(int(requested_count or 0), 1)
     floor = max(int(min_compliant or MIN_COMPLIANT_POOL_SIZE), MIN_COMPLIANT_POOL_SIZE)
-    return max(floor, requested * 2, requested + 50)
+    return max(floor, requested * 3, requested + 75)
 REFERENCE_CONTEST_WINDOW = 10
 MAX_PREFIX_SUFFIX_SHARE = 0.14
 MIN_DEZENA_COVERAGE_RATIO = 0.18
