@@ -6529,6 +6529,40 @@ def _load_persisted_generation_event_groups_uncached(
     return groups
 
 
+def _is_group_conference_selectable(group: Mapping[str, Any], *, page_load: bool = False) -> bool:
+    """Lote inteiro elegível OU promoção parcial com jogos conferíveis (M-OPS-078-FIX-02)."""
+    event_context = dict(group.get("context_json") or group)
+    if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False))):
+        return True
+    promoted = int(
+        group.get("games_promoted_to_conference", 0)
+        or event_context.get("games_promoted_to_conference", 0)
+        or 0
+    )
+    if promoted > 0:
+        return True
+    if page_load:
+        return False
+    games = list(group.get("games") or [])
+    return bool(filter_conference_games(event_context, games))
+
+
+def _prepare_conference_group(group: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Carrega grupo persistido e reduz ao subconjunto game_conference_eligible."""
+    event_context = dict(group.get("context_json") or group)
+    games = list(group.get("games") or [])
+    if not games:
+        return None
+    eligible_games = filter_conference_games(event_context, games)
+    if not eligible_games:
+        return None
+    enriched = dict(group)
+    enriched["games"] = eligible_games
+    enriched["total_games"] = len(eligible_games)
+    enriched["partial_conference_games"] = len(eligible_games) < len(games)
+    return enriched
+
+
 def _load_official_conference_generation_groups(
     *,
     page_load: bool = False,
@@ -6543,21 +6577,13 @@ def _load_official_conference_generation_groups(
     )
     groups: list[dict[str, Any]] = []
     for group in filter_unconferred_groups(raw_groups):
-        event_context = dict(group.get("context_json") or group)
         if page_load:
-            promoted = int(group.get("games_promoted_to_conference", 0) or event_context.get("games_promoted_to_conference", 0) or 0)
-            if promoted > 0 or bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False))):
+            if _is_group_conference_selectable(group, page_load=True):
                 groups.append(dict(group))
             continue
-        games = list(group.get("games") or [])
-        eligible_games = filter_conference_games(event_context, games)
-        if not eligible_games:
-            continue
-        enriched = dict(group)
-        enriched["games"] = eligible_games
-        enriched["total_games"] = len(eligible_games)
-        enriched["partial_conference_games"] = len(eligible_games) < len(games)
-        groups.append(enriched)
+        prepared = _prepare_conference_group(group)
+        if prepared:
+            groups.append(prepared)
     return groups
 
 
@@ -6637,15 +6663,16 @@ def _run_institutional_conference(
         }
         return
     if resolved_ge_id is not None and resolved_ge_id > 0:
-        grouped_generations = [
-            group
-            for group in _load_persisted_generation_event_groups(
-                generation_event_id=resolved_ge_id,
-                summary_only=False,
-                use_cache=True,
-            )
-            if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
-        ]
+        raw_groups = _load_persisted_generation_event_groups(
+            generation_event_id=resolved_ge_id,
+            summary_only=False,
+            use_cache=True,
+        )
+        grouped_generations = []
+        for group in raw_groups:
+            prepared = _prepare_conference_group(group)
+            if prepared:
+                grouped_generations.append(prepared)
     else:
         grouped_generations = _load_persisted_generation_event_groups(
             batch_id=selected_batch_id or None,
@@ -6654,9 +6681,15 @@ def _run_institutional_conference(
             summary_only=False,
             use_cache=True,
         )
+        grouped_generations = [
+            prepared
+            for group in grouped_generations
+            if (prepared := _prepare_conference_group(group)) is not None
+        ]
 
     if not grouped_generations:
         persisted_probe = _load_persisted_generation_event_groups(
+            generation_event_id=resolved_ge_id if resolved_ge_id and resolved_ge_id > 0 else None,
             batch_id=selected_batch_id or None,
             conference_eligible_only=False,
             limit=1,
@@ -6668,6 +6701,16 @@ def _run_institutional_conference(
                 "warning": (
                     "Sem lote persistido para conferir. Ação bloqueada por Lei 001. "
                     "Use Simulação Institucional para laboratório histórico."
+                )
+            }
+            return
+        probe_context = dict(persisted_probe[0].get("context_json") or persisted_probe[0])
+        analytical_promoted = int(probe_context.get("games_promoted_to_analytical", 0) or 0)
+        if analytical_promoted > 0 or is_analytical_history_eligible(probe_context):
+            st.session_state["institutional_check_result"] = {
+                "warning": (
+                    "Lote possui jogos no Histórico Analítico, mas nenhum jogo elegível "
+                    "para Conferir Resultados."
                 )
             }
             return

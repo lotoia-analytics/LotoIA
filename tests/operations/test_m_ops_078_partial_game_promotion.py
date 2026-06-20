@@ -124,7 +124,7 @@ def _approved_lot_context(**overrides: Any) -> dict[str, Any]:
 
 
 def test_build_marker_v83() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v84"
 
 
 def _mock_policy_audit(games: list[dict[str, Any]], **_: Any) -> dict[str, Any]:
