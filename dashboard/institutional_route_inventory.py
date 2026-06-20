@@ -20,6 +20,7 @@ HIDDEN_SIDEBAR_PAGE_IDS: frozenset[str] = frozenset(
     {
         "governance_read_only",
         "restricted_controlled_cleanup",
+        "central_ml_diagnostics",
     }
 )
 
@@ -78,14 +79,13 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
 )
 
 OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-    (
+        (
         "Operacional",
         (
             ("Gerar Jogos", "clean_law15_generation"),
             ("Conferir Resultados", "conference"),
             ("Simular Resultados", "simulation"),
             ("Cobertura Estrutural", "structural_coverage"),
-            ("Central ML — Calibração Supervisionada", "central_ml_diagnostics"),
             ("Histórico Analítico", "history_analytical"),
         ),
     ),
@@ -263,6 +263,11 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "label": "Área Restrita — Limpeza Controlada",
         "estado": "M-UI-MENU-001 — oculta do menu lateral; aliases seguros permanecem",
     },
+    {
+        "page_id": "central_ml_diagnostics",
+        "label": "Central ML — Calibração Supervisionada",
+        "estado": "M-OPS-079 — oculta do menu lateral; rota analítica opt-in permanece",
+    },
 )
 
 PENDING_ROUTE_ROWS: tuple[dict[str, str], ...] = (
@@ -278,7 +283,7 @@ CONSTITUTIONAL_LABELS: tuple[str, ...] = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Central ML — Calibração Supervisionada",
+    "Central ML — Calibração Supervisionada (oculta do menu)",
     "Histórico Analítico",
     "Histórico Institucional",
     "Painel Inicial Institucional",
@@ -295,6 +300,7 @@ ROUTE_GUARDS: tuple[str, ...] = (
     "public_app fora do escopo deste inventário.",
     "M-VIS-057 — menu lateral enxuto; rotas antigas redirecionam com fallback seguro.",
     "M-UI-MENU-001 — governança e status constitucional ocultos do menu operacional.",
+    "M-OPS-079 — Central ML oculta do menu; ML opt-in via variável de ambiente.",
 )
 
 

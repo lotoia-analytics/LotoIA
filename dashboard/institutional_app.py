@@ -661,7 +661,6 @@ PAGE_TARGETS = {
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🎯", "label": "Gerar Jogos", "page_id": "clean_law15_generation"},
     {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
-    {"icon": "🤖", "label": "Central ML — Calibração Supervisionada", "page_id": "central_ml_diagnostics"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},

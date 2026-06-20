@@ -174,5 +174,5 @@ def test_generate_best_games_uses_structural_pool_before_pre_final_calibration(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v87"
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
     assert MISSION_ID == "M-ML-072"
