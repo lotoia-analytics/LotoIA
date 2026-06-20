@@ -234,6 +234,12 @@ from lotoia.operations.partial_game_promotion import (
     filter_conference_games,
     resolve_game_quality_fields,
 )
+from lotoia.operations.structural_coverage_exit_cleanup import (
+    all_active_generations_review_completed,
+    execute_structural_coverage_exit_cleanup,
+    persist_structural_coverage_review_completed,
+    resolve_post_coverage_deletion_targets,
+)
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
     is_multidezena_persistence_supported,
@@ -9514,6 +9520,53 @@ def _render_historical_structural_coverage_section() -> None:
         _render_structural_coverage_diagnostics_body(payload)
 
 
+STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY = "_structural_coverage_aggregate_exit_pending"
+STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY = "_structural_coverage_reviewed_active_ids"
+
+
+def _mark_structural_coverage_aggregate_reviewed(
+    operational_generations: list[dict[str, Any]],
+) -> None:
+    """Marca gerações ativas CORE_002 como auditadas na visão agregada Todos."""
+    active_ids = [
+        int(row.get("generation_event_id", 0) or 0)
+        for row in operational_generations
+        if int(row.get("generation_event_id", 0) or 0) > 0
+    ]
+    if not active_ids:
+        st.session_state.pop(STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY, None)
+        st.session_state.pop(STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY, None)
+        return
+    persist_structural_coverage_review_completed(
+        DB_PATH,
+        active_ids,
+        scope="aggregate_all_active",
+    )
+    if all_active_generations_review_completed(DB_PATH, active_ids):
+        st.session_state[STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY] = True
+        st.session_state[STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY] = active_ids
+
+
+def _handle_structural_coverage_page_exit(previous_page: str, current_page: str) -> None:
+    """Remove gerações CORE_002 auditadas ao sair da Cobertura Estrutural."""
+    if str(previous_page or "") != "structural_coverage" or str(current_page or "") == "structural_coverage":
+        return
+    if not st.session_state.pop(STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY, False):
+        return
+    reviewed_ids = [
+        int(value)
+        for value in list(st.session_state.pop(STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY, []) or [])
+        if int(value or 0) > 0
+    ]
+    result = execute_structural_coverage_exit_cleanup(
+        DB_PATH,
+        active_generation_event_ids=reviewed_ids,
+    )
+    if result.get("executed"):
+        _invalidate_operational_structural_cache()
+        st.session_state["_bust_operational_coverage_cache"] = True
+
+
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Cobertura Estrutural")
@@ -9755,6 +9808,8 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         )
 
     _render_structural_coverage_diagnostics_body(payload)
+    if is_all_operational_generations_selection(selected_label) and payload.get("available"):
+        _mark_structural_coverage_aggregate_reviewed(operational_generations)
     _render_historical_structural_coverage_section()
 
 
@@ -15643,10 +15698,12 @@ def main() -> None:
     snapshot = _resolve_database_snapshot()
     snapshot["cloud_runtime_policy"] = cloud_runtime_policy_snapshot(DB_PATH)
     _align_institutional_runtime_with_database(snapshot)
+    previous_page = str(st.session_state.get("institutional_page_id") or "home")
     page = _render_sidebar(
         st.session_state.get("institutional_page_id", "home"),
         snapshot,
     )
+    _handle_structural_coverage_page_exit(previous_page, page)
     st.session_state["institutional_page_id"] = page
     if page == "audit":
         _render_runtime_audit_page(snapshot)
