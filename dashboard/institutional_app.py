@@ -6915,7 +6915,10 @@ def _run_institutional_conference(
 
 def _run_simulation_lot_generation(*, requested_count: int, selected_card_format: int) -> dict[str, Any]:
     """Gera lote laboratorial com o mesmo motor CORE_002 + ML — não oficializa (M-OPS-062)."""
-    result = _run_clean_law15_generation(requested_count=requested_count)
+    result = _run_clean_law15_generation(
+        requested_count=requested_count,
+        selected_card_format=int(selected_card_format),
+    )
     if result.get("hierarchy_blocked"):
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
@@ -13959,8 +13962,13 @@ def _gp_quality_panel_from_payload(
     return panel
 
 
-def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
+def _run_clean_law15_generation(
+    *,
+    requested_count: int,
+    selected_card_format: int = 15,
+) -> dict[str, Any]:
     total_games = int(requested_count)
+    resolved_card_format = max(int(selected_card_format or 15), 15)
     if _is_sovereign_generation_blocked():
         return _sovereign_generation_blocked_result(requested_count=total_games)
 
@@ -14002,7 +14010,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         if is_agent_operador_ml_enabled():
             agent_result = execute_agent_operador_ml_pre_delivery(
                 requested_quantity=total_games,
-                card_format=15,
+                card_format=int(resolved_card_format),
                 selected_games=games,
                 candidate_pool=list(
                     sovereign_payload.get("gp_candidate_pool") or sovereign_payload.get("games") or []
@@ -14142,6 +14150,7 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "agent_operador_ml_applied": bool(agent_operador_ml_trace.get("agent_operador_ml_applied")),
         "gp_delivery_status": agent_delivery_status
         or str(agent_operador_ml_trace.get("gp_delivery_status") or ""),
+        "selected_card_format": int(resolved_card_format),
     }
 
 
@@ -14164,7 +14173,10 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
     requested_count, selected_card_format = render_generation_operation_block(ml_active=ml_active)
 
     if st.session_state.pop("_clean_law15_generate_clicked", False):
-        result = _run_clean_law15_generation(requested_count=requested_count)
+        result = _run_clean_law15_generation(
+        requested_count=requested_count,
+        selected_card_format=int(selected_card_format),
+    )
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
         result["analysis_batch_label"] = multidezena_batch_label(selected_card_format)
