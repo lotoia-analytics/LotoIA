@@ -13,7 +13,7 @@ from dashboard.institutional_build import BUILD_MARKER
 
 
 def test_build_marker_v81() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v81"
+    assert BUILD_MARKER == "institutional-adm-runtime-v82"
 
 
 def test_is_lot_conferred_from_reconciliation() -> None:

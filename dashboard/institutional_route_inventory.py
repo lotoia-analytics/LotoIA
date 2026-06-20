@@ -13,6 +13,15 @@ ROUTE_INVENTORY_ALERT = (
 
 ROUTE_INVENTORY_MISSION = "M-PLAT-040"
 MENU_CLEANUP_MISSION = "M-VIS-057"
+MENU_UI_MISSION = "M-UI-MENU-001"
+
+# Rotas permitidas mas ocultas do menu lateral (M-UI-MENU-001).
+HIDDEN_SIDEBAR_PAGE_IDS: frozenset[str] = frozenset(
+    {
+        "governance_read_only",
+        "restricted_controlled_cleanup",
+    }
+)
 
 # Fallbacks seguros — rotas removidas do menu (M-VIS-057).
 LEGACY_PAGE_ALIASES: dict[str, str] = {
@@ -70,33 +79,21 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
 
 OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
-        "Núcleo Operacional",
+        "Operacional",
+        (
+            ("Gerar Jogos", "clean_law15_generation"),
+            ("Conferir Resultados", "conference"),
+            ("Simular Resultados", "simulation"),
+            ("Cobertura Estrutural", "structural_coverage"),
+            ("Central ML — Calibração Supervisionada", "central_ml_diagnostics"),
+            ("Histórico Analítico", "history_analytical"),
+        ),
+    ),
+    (
+        "Referência",
         (
             ("Painel Inicial Institucional", "home"),
-            ("Gerador ADM CORE_002 — Geração Soberana Controlada", "clean_law15_generation"),
-            ("Conferir Resultados — Auditoria de Lotes Persistidos", "conference"),
-            ("Simular Resultados", "simulation"),
-        ),
-    ),
-    (
-        "Históricos e Rastreabilidade",
-        (
-            ("Histórico Analítico", "history_analytical"),
             ("Histórico Institucional", "history_institutional"),
-            ("Cobertura Estrutural", "structural_coverage"),
-        ),
-    ),
-    (
-        "ML",
-        (
-            ("Central ML — Calibração Supervisionada", "central_ml_diagnostics"),
-        ),
-    ),
-    (
-        "Governança / Restrito",
-        (
-            ("Governança Institucional — read-only", "governance_read_only"),
-            ("Área Restrita — Limpeza Controlada", "restricted_controlled_cleanup"),
         ),
     ),
 )
@@ -256,6 +253,16 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "label": "Evolução 14 → 15",
         "estado": "M-VIS-057 — removida → Central ML",
     },
+    {
+        "page_id": "governance_read_only",
+        "label": "Governança Institucional — read-only",
+        "estado": "M-UI-MENU-001 — oculta do menu lateral; rota protegida permanece",
+    },
+    {
+        "page_id": "restricted_controlled_cleanup",
+        "label": "Área Restrita — Limpeza Controlada",
+        "estado": "M-UI-MENU-001 — oculta do menu lateral; aliases seguros permanecem",
+    },
 )
 
 PENDING_ROUTE_ROWS: tuple[dict[str, str], ...] = (
@@ -267,16 +274,16 @@ PENDING_ROUTE_ROWS: tuple[dict[str, str], ...] = (
 )
 
 CONSTITUTIONAL_LABELS: tuple[str, ...] = (
-    "Painel Inicial Institucional",
-    "Gerador ADM CORE_002 — Geração Soberana Controlada",
-    "Conferir Resultados — Auditoria de Lotes Persistidos",
+    "Gerar Jogos",
+    "Conferir Resultados",
     "Simular Resultados",
-    "Histórico Analítico",
-    "Histórico Institucional",
     "Cobertura Estrutural",
     "Central ML — Calibração Supervisionada",
-    "Governança Institucional — read-only",
-    "Área Restrita — Limpeza Controlada",
+    "Histórico Analítico",
+    "Histórico Institucional",
+    "Painel Inicial Institucional",
+    "Governança Institucional — read-only (oculta do menu)",
+    "Área Restrita — Limpeza Controlada (oculta do menu)",
     "Lei 15A — Camada futura inoperante (via Governança)",
 )
 
@@ -287,6 +294,7 @@ ROUTE_GUARDS: tuple[str, ...] = (
     "Purge real bloqueado — aliases delete_history/clear_histories → Área Restrita.",
     "public_app fora do escopo deste inventário.",
     "M-VIS-057 — menu lateral enxuto; rotas antigas redirecionam com fallback seguro.",
+    "M-UI-MENU-001 — governança e status constitucional ocultos do menu operacional.",
 )
 
 
@@ -316,6 +324,7 @@ def build_route_inventory_snapshot(*, app_build: str) -> dict[str, Any]:
         "read_only_alert": ROUTE_INVENTORY_ALERT,
         "mission_id": ROUTE_INVENTORY_MISSION,
         "menu_cleanup_mission": MENU_CLEANUP_MISSION,
+        "menu_ui_mission": MENU_UI_MISSION,
         "app_build": app_build,
         "active_routes": [dict(row) for row in ACTIVE_ROUTE_ROWS],
         "blocked_routes": [dict(row) for row in BLOCKED_ROUTE_ROWS],
@@ -326,6 +335,7 @@ def build_route_inventory_snapshot(*, app_build: str) -> dict[str, Any]:
         "route_guards": list(ROUTE_GUARDS),
         "allowed_pages_count": len(INSTITUTIONAL_ALLOWED_PAGES),
         "official_sidebar_count": len(official_sidebar_page_ids()),
+        "hidden_sidebar_page_ids": sorted(HIDDEN_SIDEBAR_PAGE_IDS),
         "legacy_aliases": dict(LEGACY_PAGE_ALIASES),
         "inventory_doc": "docs/governance/INVENTARIO_ROTAS_PAINEL_ADM_M_PLAT_040.md",
     }

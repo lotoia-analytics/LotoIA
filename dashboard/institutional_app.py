@@ -651,14 +651,12 @@ PAGE_TARGETS = {
 }
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
-    {"icon": "🏛️", "label": "Governança Institucional — read-only", "page_id": "governance_read_only"},
-    {"icon": "🎯", "label": "Gerador ADM CORE_002 — Geração Soberana Controlada", "page_id": "clean_law15_generation"},
-    {"icon": "✅", "label": "Conferir Resultados — Auditoria de Lotes Persistidos", "page_id": "conference"},
-    {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
-    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
-    {"icon": "🗂️", "label": "Histórico Institucional", "page_id": "history_institutional"},
+    {"icon": "🎯", "label": "Gerar Jogos", "page_id": "clean_law15_generation"},
     {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
     {"icon": "🤖", "label": "Central ML — Calibração Supervisionada", "page_id": "central_ml_diagnostics"},
+    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
+    {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
+    {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
 ]
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
@@ -10918,7 +10916,6 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
     st.sidebar.markdown('<div class="lotoia-nav-hint">Navegação institucional</div>', unsafe_allow_html=True)
     st.sidebar.caption(f"build={APP_BUILD}")
     st.sidebar.caption(f"commit={_resolve_active_commit()}")
-    _render_constitutional_status_panel(compact=True)
 
     def _nav_entry(label: str, page_id: str | None = None, *, disabled: bool = False) -> None:
         resolved_page_id = page_id or PAGE_TARGETS.get(label, label)
@@ -10932,13 +10929,10 @@ def _render_sidebar(page: str, snapshot: dict[str, Any]) -> str:
         st.sidebar.markdown(f'<div class="lotoia-sidebar-group">{group_name}</div>', unsafe_allow_html=True)
         for label, page_id in entries:
             _nav_entry(label, page_id)
-        if group_name == "Governança / Restrito":
-            st.sidebar.caption(GOVERNANCE_READ_ONLY_ALERT)
-            st.sidebar.caption(RESTRICTED_PURGE_BLOCK_MESSAGE)
-        elif group_name == "ML":
+        if group_name == "Operacional":
             st.sidebar.caption(
-                "Cockpit de calibração supervisionada da saída CORE_002 + ML. "
-                "Não gera jogos fora do path soberano."
+                "Fluxo operacional diário — geração soberana, conferência, simulação, "
+                "cobertura estrutural e Central ML."
             )
 
     choice = resolve_institutional_page_id(
