@@ -84,15 +84,9 @@ OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         (
             ("Gerar Jogos", "clean_law15_generation"),
             ("Conferir Resultados", "conference"),
-            ("Histórico Analítico", "history_analytical"),
-            ("Cobertura Estrutural", "structural_coverage"),
             ("Simular Resultados", "simulation"),
-        ),
-    ),
-    (
-        "Análise",
-        (
-            ("Análise ML", "central_ml_diagnostics"),
+            ("Cobertura Estrutural", "structural_coverage"),
+            ("Histórico Analítico", "history_analytical"),
         ),
     ),
     (
@@ -289,7 +283,7 @@ CONSTITUTIONAL_LABELS: tuple[str, ...] = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Análise ML",
+    "Central ML — Calibração Supervisionada (oculta do menu)",
     "Histórico Analítico",
     "Histórico Institucional",
     "Painel Inicial Institucional",
