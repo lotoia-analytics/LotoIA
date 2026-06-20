@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from typing import Final, Literal, Sequence
 
@@ -76,12 +77,10 @@ def historical_pattern_cap(historical_freq_pct: float, *, gp_size: int = 10) -> 
     """Cap proporcional à frequência histórica e ao tamanho do lote (M-CORE-003)."""
     freq = float(historical_freq_pct or 0.0)
     size = max(1, int(gp_size or 10))
-    proportional = int(size * freq / 100.0)
+    expected = size * freq / 100.0
     if freq < 2.0:
-        return min(1, proportional)
-    if freq <= 10.0:
-        return min(2, max(proportional, 1))
-    return min(3, max(proportional, 2))
+        return min(1, int(expected))
+    return max(1, math.ceil(expected))
 
 
 def resolve_pattern_cap(pattern: str, *, kind: PatternKind, gp_size: int = 10) -> int:
@@ -119,58 +118,34 @@ def _pattern_signatures(game: dict) -> tuple[str, str]:
     return str(sig.get("prefix_signature") or ""), str(sig.get("suffix_signature") or "")
 
 
-def pre_filter_pool_diversity(pool: list[dict]) -> list[dict]:
-    """Filtra pool bruto — allowlist + cap de concentração pré-compose."""
+def pre_filter_pool_diversity(pool: list[dict], *, gp_size: int = 10) -> list[dict]:
+    """Filtra pool bruto — allowlist histórica (concentração no fechamento do GP)."""
     if not pool:
         return []
+    allowlist_only = _allowlist_only_pool(pool)
+    return allowlist_only or list(pool)
 
-    pool_size = len(pool)
-    prefix_counts: Counter[str] = Counter()
-    suffix_counts: Counter[str] = Counter()
-    filtered: list[dict] = []
 
-    for game in sorted(pool, key=_game_sort_key):
-        prefix, suffix = _pattern_signatures(game)
-        if not is_allowed_prefix(prefix) or not is_allowed_suffix(suffix):
-            continue
-        prefix_cap = min(
-            resolve_pattern_cap(prefix, kind="prefix", gp_size=pool_size),
-            POOL_MAX_PER_PREFIX,
-        )
-        suffix_cap = min(
-            resolve_pattern_cap(suffix, kind="suffix", gp_size=pool_size),
-            POOL_MAX_PER_SUFFIX,
-        )
-        if prefix_cap <= 0 or suffix_cap <= 0:
-            continue
-        if prefix_counts[prefix] >= prefix_cap:
-            continue
-        if suffix_counts[suffix] >= suffix_cap:
-            continue
-        filtered.append(game)
-        prefix_counts[prefix] += 1
-        suffix_counts[suffix] += 1
-
-    if filtered:
-        return filtered
-
-    allowlist_only: list[dict] = []
-    for game in sorted(pool, key=_game_sort_key):
+def _allowlist_only_pool(pool: list[dict]) -> list[dict]:
+    allowed: list[dict] = []
+    for game in pool:
         prefix, suffix = _pattern_signatures(game)
         if is_allowed_prefix(prefix) and is_allowed_suffix(suffix):
-            allowlist_only.append(game)
-    return allowlist_only or list(pool)
+            allowed.append(game)
+    return allowed or list(pool)
 
 
 def enforce_gp_diversity_cap(
     games: list[dict],
     pool: list[dict],
     count: int,
+    *,
+    fallback_pool: list[dict] | None = None,
 ) -> list[dict]:
     """Hard-cap final no GP — cap proporcional à frequência histórica."""
     if count <= 0:
         return []
-    if not games:
+    if not games and not pool and not fallback_pool:
         return []
 
     prefix_counts: Counter[str] = Counter()
@@ -207,12 +182,75 @@ def enforce_gp_diversity_cap(
             break
         _accept(game)
 
-    if len(selected) < count:
-        replacement_pool = pre_filter_pool_diversity(pool)
+    completion_sources = [
+        pre_filter_pool_diversity(pool, gp_size=count),
+        _allowlist_only_pool(fallback_pool or []),
+        _allowlist_only_pool(pool),
+    ]
+    for replacement_pool in completion_sources:
+        if len(selected) >= count:
+            break
         for game in sorted(replacement_pool, key=_game_sort_key):
             if len(selected) >= count:
                 break
             _accept(game, completion=True)
+
+    if len(selected) < count:
+        relaxed_multiplier = 2
+
+        def _fits_relaxed_caps(prefix: str, suffix: str) -> bool:
+            prefix_cap = resolve_pattern_cap(prefix, kind="prefix", gp_size=count) * relaxed_multiplier
+            suffix_cap = resolve_pattern_cap(suffix, kind="suffix", gp_size=count) * relaxed_multiplier
+            return prefix_counts[prefix] < prefix_cap and suffix_counts[suffix] < suffix_cap
+
+        for replacement_pool in completion_sources:
+            if len(selected) >= count:
+                break
+            for game in sorted(replacement_pool, key=_game_sort_key):
+                if len(selected) >= count:
+                    break
+                key = _game_key(game)
+                if not key or key in seen:
+                    continue
+                prefix, suffix = _pattern_signatures(game)
+                if not prefix or not suffix or not _fits_relaxed_caps(prefix, suffix):
+                    continue
+                enriched = dict(game)
+                enriched["gp_diversity_cap_completion"] = True
+                enriched["m_core_003_gp_diversity_cap_relaxed"] = True
+                enriched["m_core_003_gp_diversity_cap_applied"] = True
+                selected.append(enriched)
+                seen.add(key)
+                prefix_counts[prefix] += 1
+                suffix_counts[suffix] += 1
+
+    if len(selected) < count:
+        for replacement_pool in completion_sources:
+            if len(selected) >= count:
+                break
+            for game in sorted(replacement_pool, key=_game_sort_key):
+                if len(selected) >= count:
+                    break
+                key = _game_key(game)
+                if not key or key in seen:
+                    continue
+                prefix, suffix = _pattern_signatures(game)
+                if not prefix or not suffix:
+                    continue
+                if resolve_pattern_cap(prefix, kind="prefix", gp_size=count) <= 0:
+                    continue
+                if resolve_pattern_cap(suffix, kind="suffix", gp_size=count) <= 0:
+                    continue
+                if not is_allowed_prefix(prefix) or not is_allowed_suffix(suffix):
+                    continue
+                enriched = dict(game)
+                enriched["gp_diversity_cap_completion"] = True
+                enriched["m_core_003_gp_diversity_cap_fill"] = True
+                enriched["m_core_003_gp_diversity_cap_applied"] = True
+                selected.append(enriched)
+                seen.add(key)
+                prefix_counts[prefix] += 1
+                suffix_counts[suffix] += 1
 
     return selected[:count]
 
