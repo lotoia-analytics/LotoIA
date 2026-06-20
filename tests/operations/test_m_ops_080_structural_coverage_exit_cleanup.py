@@ -181,6 +181,46 @@ def test_conferred_generation_is_not_deleted(tmp_path) -> None:
         assert reason == "lot_already_conferred"
 
 
+def test_conference_status_checked_without_reconciliation_is_eligible(tmp_path) -> None:
+    db_path = tmp_path / "checked-context.db"
+    create_database(db_path)
+    lot_context = build_lot_status_context(
+        ml_verdict_payload={
+            "ml_verdict": VERDICT_PRECISA_CALIBRAR,
+            "official_release_allowed": False,
+        },
+        generation_origin=GENERATION_ORIGIN_GENERATOR,
+    )
+    ge_id = _seed_sovereign_event(
+        db_path,
+        context_json={**lot_context, "conference_status": "checked"},
+        games_count=8,
+    )
+    persist_structural_coverage_review_completed(db_path, [ge_id])
+    dry_run = resolve_post_coverage_deletion_targets(db_path, [ge_id])
+    assert ge_id in dry_run["eligible_generation_event_ids"]
+
+
+def test_approved_operational_scope_is_eligible_after_structural_review(tmp_path) -> None:
+    db_path = tmp_path / "approved.db"
+    create_database(db_path)
+    lot_context = build_lot_status_context(
+        ml_verdict_payload={
+            "ml_verdict": VERDICT_PRECISA_CALIBRAR,
+            "official_release_allowed": False,
+        },
+        generation_origin=GENERATION_ORIGIN_GENERATOR,
+    )
+    ge_id = _seed_sovereign_event(
+        db_path,
+        context_json={**lot_context, "operational_status": "approved_for_officialization"},
+        games_count=8,
+    )
+    persist_structural_coverage_review_completed(db_path, [ge_id])
+    dry_run = resolve_post_coverage_deletion_targets(db_path, [ge_id])
+    assert ge_id in dry_run["eligible_generation_event_ids"]
+
+
 def test_execute_exit_cleanup_requires_all_reviewed(tmp_path) -> None:
     db_path = tmp_path / "exit.db"
     create_database(db_path)
@@ -210,6 +250,8 @@ def test_institutional_app_wires_structural_coverage_exit_cleanup() -> None:
 
     source = inspect.getsource(institutional_app.main)
     assert "_handle_structural_coverage_page_exit" in source
+    assert "INSTITUTIONAL_PREVIOUS_PAGE_ID_KEY" in source
     coverage_source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
     assert "_mark_structural_coverage_aggregate_reviewed" in coverage_source
     assert "is_all_operational_generations_selection" in coverage_source
+    assert "_maybe_bust_operational_coverage_cache" in inspect.getsource(institutional_app.main)
