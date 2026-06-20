@@ -91,7 +91,7 @@ def _historical_evidence_for_base(base_name: str) -> str:
 
 def _pending_for_base(base_name: str) -> str:
     if base_name == "controle_prefixo_sufixo":
-        return "Conceitual CORE_002 implantado — métrica walk-forward pendente no painel."
+        return "Painel M-CORE-003 ativo na Cobertura Operacional — razão de viés e entropia."
     return "Métrica operacional walk-forward pendente para LEI15_CORE_002."
 
 
