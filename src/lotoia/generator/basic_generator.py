@@ -797,10 +797,49 @@ def generate_best_games(
             )
     _gp_candidate_pool: list[dict[str, object]] = []
     if _apply_sovereign:
-        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
+        from lotoia.generation.lei15_core_002 import build_sovereign_pool, compose_sovereign_gp
 
-        _gp_candidate_pool = [dict(game) for game in games]
-        best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=_sovereign_game_size)
+        compose_pool = [dict(game) for game in games]
+        _gp_candidate_pool = list(compose_pool)
+        best_games = compose_sovereign_gp(
+            compose_pool,
+            count,
+            _sovereign_cfg,
+            game_size=_sovereign_game_size,
+        )
+        attempt = 0
+        working_pool_size = int(pool_size)
+        while len(best_games) < count and attempt < 4:
+            attempt += 1
+            working_pool_size = max(working_pool_size * 2, count * (4 + attempt), count + 100)
+            logger.warning(
+                "[LEI15_CORE_002] compose_sovereign_gp entregou %d/%d — tentativa %d pool=%d",
+                len(best_games),
+                count,
+                attempt,
+                working_pool_size,
+            )
+            extra_pool = build_sovereign_pool(
+                working_pool_size,
+                seed=seed_offset + (attempt * 37),
+                history=history,
+                config=_sovereign_cfg,
+            )
+            merged_by_key: dict[tuple[int, ...], dict[str, object]] = {
+                tuple(dict(game).get("numbers") or []): dict(game) for game in compose_pool
+            }
+            for game in extra_pool:
+                key = tuple(game.get("numbers") or [])
+                if key and key not in merged_by_key:
+                    merged_by_key[key] = dict(game)
+            compose_pool = list(merged_by_key.values())
+            _gp_candidate_pool = list(compose_pool)
+            best_games = compose_sovereign_gp(
+                compose_pool,
+                count,
+                _sovereign_cfg,
+                game_size=_sovereign_game_size,
+            )
         if len(best_games) < count:
             from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
 
@@ -849,7 +888,7 @@ def generate_best_games(
         if len(best_games) < count:
             raise RuntimeError(
                 f"[LEI15_CORE_002] compose_sovereign_gp retornou {len(best_games)}/{count} "
-                "após anti-clone — lote inválido."
+                f"após anti-clone — lote inválido (tentativas_expansao={attempt})."
             )
         logger.info(
             "[LEI15_CORE_002] sovereign batch_label=%r total=%d status=%s",

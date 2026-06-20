@@ -28,7 +28,7 @@ OPERATIONAL_MENU_LABELS = (
 
 
 def test_build_marker_v88() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v91"
+    assert BUILD_MARKER == "institutional-adm-runtime-v92"
 
 
 def test_official_sidebar_menu_has_eight_operational_items() -> None:
