@@ -182,5 +182,5 @@ def test_premium_empty_when_no_11_plus(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_marker_bumped() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS

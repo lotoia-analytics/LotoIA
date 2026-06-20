@@ -10,10 +10,11 @@ import pytest
 import dashboard.institutional_app as institutional_app
 from dashboard import institutional_conferred_lots_runtime as conferred_runtime
 from dashboard.institutional_build import BUILD_MARKER
+from lotoia.operations.lot_operational_status import STATUS_OFFICIALIZED
 
 
 def test_build_marker_v81() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_is_lot_conferred_from_reconciliation() -> None:
@@ -128,27 +129,28 @@ def test_analytical_rows_loader_skips_conferred(monkeypatch: pytest.MonkeyPatch)
     generations = [
         {
             "generation_event_id": 10,
-            "lot_operational_status": "official",
+            "lot_operational_status": STATUS_OFFICIALIZED,
             "official_release_allowed": True,
             "is_active_reading": True,
             "reconciliation": {"id": 1},
+            "context_json": {"lot_operational_status": STATUS_OFFICIALIZED},
             "games": [{"game_index": 1, "numbers": list(range(1, 16)), "score": 1.0}],
         },
         {
             "generation_event_id": 11,
-            "lot_operational_status": "official",
+            "lot_operational_status": STATUS_OFFICIALIZED,
             "official_release_allowed": True,
             "is_active_reading": True,
             "reconciliation": {},
             "strategy": "lei15",
             "created_at": "2026-06-18",
+            "context_json": {"lot_operational_status": STATUS_OFFICIALIZED},
             "games": [{"game_index": 1, "numbers": list(range(1, 16)), "score": 1.0, "generation_context": {}}],
         },
     ]
 
     monkeypatch.setattr(institutional_app, "_load_generation_history_light", lambda limit=25: generations)
     monkeypatch.setattr(institutional_app, "_load_sovereign_generation_event_rows", lambda limit=50: [])
-    monkeypatch.setattr(institutional_app, "is_analytical_history_eligible", lambda payload: True)
 
     rows = institutional_app._load_accumulated_analytical_rows_light(limit=10)
     ge_ids = {int(row["generation_event_id"]) for row in rows}
@@ -156,9 +158,22 @@ def test_analytical_rows_loader_skips_conferred(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_conference_groups_exclude_conferred(monkeypatch: pytest.MonkeyPatch) -> None:
+    sample_game = {"game_index": 1, "numbers": list(range(1, 16)), "generation_context": {}}
     groups = [
-        {"generation_event_id": 1, "context_json": {}, "reconciliation": {}, "official_release_allowed": True},
-        {"generation_event_id": 2, "context_json": {}, "reconciliation": {"id": 5}, "official_release_allowed": True},
+        {
+            "generation_event_id": 1,
+            "context_json": {"lot_operational_status": STATUS_OFFICIALIZED, "official_release_allowed": True},
+            "reconciliation": {},
+            "official_release_allowed": True,
+            "games": [sample_game],
+        },
+        {
+            "generation_event_id": 2,
+            "context_json": {"lot_operational_status": STATUS_OFFICIALIZED, "official_release_allowed": True},
+            "reconciliation": {"id": 5},
+            "official_release_allowed": True,
+            "games": [sample_game],
+        },
     ]
     monkeypatch.setattr(
         institutional_app,

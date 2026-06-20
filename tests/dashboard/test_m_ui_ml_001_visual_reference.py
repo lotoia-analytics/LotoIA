@@ -10,7 +10,7 @@ from dashboard.institutional_build import BUILD_MARKER
 
 
 def test_build_marker_v77_visual_reference() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_cockpit_uses_visual_reference_layer() -> None:

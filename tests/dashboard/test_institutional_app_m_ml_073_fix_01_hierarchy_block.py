@@ -232,7 +232,7 @@ def test_build_gp_quality_operational_payload_delivered() -> None:
 
 
 def test_build_marker_v69() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_session_snapshot_key_constant() -> None:
