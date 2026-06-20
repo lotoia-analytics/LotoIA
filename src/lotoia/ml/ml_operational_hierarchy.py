@@ -111,7 +111,7 @@ def resolve_min_pool_compliance_rate(requested_count: int) -> float:
 
 
 def is_ml_operational_hierarchy_enabled() -> bool:
-    raw = os.getenv(ENV_HIERARCHY_ENABLED, "1").strip().lower()
+    raw = os.getenv(ENV_HIERARCHY_ENABLED, "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 

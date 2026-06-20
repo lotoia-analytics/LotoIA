@@ -17,12 +17,12 @@ def test_institutional_app_build_v19() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
-def test_supervised_ml_active_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_supervised_ml_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(supervised_ml.ENV_ML_OPERATIONAL_ENABLED, raising=False)
     monkeypatch.setenv(ENV_GENERATION_ENABLED, "1")
-    assert supervised_ml.is_ml_operational_enabled() is True
-    assert supervised_ml.is_adm_supervised_ml_active() is True
-    assert supervised_ml.supervised_ml_status_label() == supervised_ml.SUPERVISED_ML_STATUS_ACTIVE
+    assert supervised_ml.is_ml_operational_enabled() is False
+    assert supervised_ml.is_adm_supervised_ml_active() is False
+    assert supervised_ml.supervised_ml_status_label() == supervised_ml.SUPERVISED_ML_STATUS_BLOCKED
 
 
 def test_supervised_ml_blocked_when_env_zero(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,14 +173,17 @@ def test_persist_path_records_ml_trace(
     assert len(ctx.get("ml_six_bases_reading") or []) == 6
 
 
-def test_ml_assistive_snapshot_operational_fields() -> None:
+def test_ml_assistive_snapshot_default_read_only() -> None:
+    payload = ml_assistive.build_ml_assistive_snapshot()
+    assert payload["ml_operacional"] is False
+    assert payload["generation_cmd"] is False
+
+
+def test_ml_assistive_snapshot_operational_when_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(supervised_ml.ENV_ML_OPERATIONAL_ENABLED, "1")
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "1")
     payload = ml_assistive.build_ml_assistive_snapshot()
     assert payload["ml_operacional"] is True
-    assert payload["decision_trace_enabled"] is True
-    assert payload["feature_attribution_enabled"] is True
-    assert payload["ml_six_bases_enabled"] is True
-    assert payload["generation_cmd"] is False
-    assert len(payload["ml_six_bases_relation"]) == 6
 
 
 def test_ml_assistive_read_only_when_ml_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,7 +249,18 @@ def test_governance_mission_registry_includes_m_ml_045() -> None:
     assert "M-ML-045" in mission_ids
 
 
-def test_activation_snapshot_documents_supervised_path() -> None:
+def test_activation_snapshot_documents_sovereign_default_without_ml() -> None:
+    payload = supervised_ml.build_supervised_ml_activation_snapshot()
+    assert payload["batch_label"] == BATCH_LABEL
+    assert payload["ml_enabled_default"] is False
+    assert payload["ml_operational_active"] is False
+
+
+def test_activation_snapshot_documents_supervised_path_when_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(supervised_ml.ENV_ML_OPERATIONAL_ENABLED, "1")
+    monkeypatch.setenv(ENV_GENERATION_ENABLED, "1")
     payload = supervised_ml.build_supervised_ml_activation_snapshot()
     assert payload["batch_label"] == BATCH_LABEL
     assert payload["ml_enabled_default"] is True

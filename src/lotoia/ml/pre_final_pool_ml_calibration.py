@@ -29,7 +29,7 @@ ENV_PRE_FINAL_POOL_ML_ENABLED = "LOTOIA_ML_PRE_FINAL_POOL_ENABLED"
 
 
 def is_pre_final_pool_ml_enabled() -> bool:
-    raw = os.getenv(ENV_PRE_FINAL_POOL_ML_ENABLED, "1").strip().lower()
+    raw = os.getenv(ENV_PRE_FINAL_POOL_ML_ENABLED, "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 

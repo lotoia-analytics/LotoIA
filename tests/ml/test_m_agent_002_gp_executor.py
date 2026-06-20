@@ -78,7 +78,13 @@ def _with_shared_triple(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return adjusted
 
 
-def test_agent_enabled_by_default() -> None:
+def test_agent_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOTOIA_AGENT_OPERADOR_ML_ENABLED", raising=False)
+    assert is_agent_operador_ml_enabled() is False
+
+
+def test_agent_opt_in_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOTOIA_AGENT_OPERADOR_ML_ENABLED", "1")
     assert is_agent_operador_ml_enabled() is True
 
 
