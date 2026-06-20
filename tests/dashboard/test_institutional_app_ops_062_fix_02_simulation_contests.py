@@ -36,11 +36,12 @@ def _sample_games(count: int = 3) -> list[dict[str, Any]]:
 
 def test_simulation_page_shows_contest_selection_block() -> None:
     source = inspect.getsource(institutional_app._render_simulation_page)
-    assert "Concursos para simulação" in source
-    assert "Comparar lote contra concursos selecionados" in source
-    assert "Simulação manual avulsa" in source
+    assert "Concursos para comparação" in source
+    assert "Comparar lote conferido contra concursos selecionados" in source
+    assert "Lotes conferidos" in source
     assert "SELECTION_MODE_LABELS" in source
     assert "sim_contest_selection_mode" in source
+    assert "Gerar lote laboratório" not in source
 
 
 def test_resolve_last_10_contests() -> None:

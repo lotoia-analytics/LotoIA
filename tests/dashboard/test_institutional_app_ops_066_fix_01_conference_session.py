@@ -152,6 +152,7 @@ def test_run_conference_succeeds_without_touching_widget_key(
     monkeypatch.setattr(admin_app, "_persist_scientific_reconciliation_memory", lambda payload: payload)
     monkeypatch.setattr(admin_app, "build_strong_near_miss_scientific_memory", lambda **_kwargs: {})
     monkeypatch.setattr(admin_app, "build_batch_reconciliation_scientific_memory", lambda **_kwargs: {})
+    monkeypatch.setattr(admin_app, "persist_generation_event_conference_mark", lambda **_kwargs: True)
 
     admin_app._run_institutional_conference(
         contest_number=3713,

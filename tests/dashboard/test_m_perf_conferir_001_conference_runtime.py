@@ -22,7 +22,7 @@ from dashboard.institutional_conference_runtime import (
 )
 
 
-def test_build_marker_v80_conference_perf() -> None:
+def test_build_marker_v81_conference_perf() -> None:
     assert BUILD_MARKER == "institutional-adm-runtime-v81"
 
 
@@ -156,6 +156,7 @@ def test_run_institutional_conference_single_lot_only(monkeypatch: pytest.Monkey
     monkeypatch.setattr(institutional_app, "_persist_scientific_reconciliation_memory", lambda payload: payload)
     monkeypatch.setattr(institutional_app, "build_strong_near_miss_scientific_memory", lambda **_kwargs: {})
     monkeypatch.setattr(institutional_app, "build_batch_reconciliation_scientific_memory", lambda **_kwargs: {})
+    monkeypatch.setattr(institutional_app, "persist_generation_event_conference_mark", lambda **_kwargs: True)
     monkeypatch.setattr(institutional_app.st, "session_state", {}, raising=False)
 
     institutional_app._run_institutional_conference(

@@ -283,6 +283,16 @@ from dashboard.institutional_conference_runtime import (
     store_cached_conference_result,
     sync_conference_selectbox_selection,
 )
+from dashboard.institutional_conferred_lots_runtime import (
+    MISSION_ID as CONFERRED_LOTS_MISSION_ID,
+    SESSION_SIMULATION_SELECTED_GE,
+    build_checked_result_summary,
+    filter_conferred_groups,
+    filter_unconferred_groups,
+    format_conferred_lot_label,
+    is_lot_conferred,
+    persist_generation_event_conference_mark,
+)
 from lotoia.governance.law15_structural_realignment_v1 import get_realignment_mode
 from lotoia.governance.lei15_15a_core_realignment_v2 import get_v2_mode
 from lotoia.governance.lei15_core_002_sovereign import (
@@ -6509,14 +6519,15 @@ def _load_official_conference_generation_groups(
 ) -> list[dict[str, Any]]:
     """Grupos elegíveis para Conferir Resultados — apenas lotes oficializados/aprovados."""
     if page_load:
-        return _load_persisted_generation_event_groups(
+        groups = _load_persisted_generation_event_groups(
             batch_id=None,
             conference_eligible_only=True,
             limit=CONFERENCE_EVENTS_LIMIT,
             summary_only=True,
             use_cache=False,
         )
-    return [
+        return filter_unconferred_groups(groups)
+    groups = [
         group
         for group in _load_persisted_generation_event_groups(
             batch_id=None,
@@ -6525,6 +6536,7 @@ def _load_official_conference_generation_groups(
         )
         if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
     ]
+    return filter_unconferred_groups(groups)
 
 
 def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
@@ -6688,6 +6700,18 @@ def _run_institutional_conference(
         persisted_scientific_memory = _persist_scientific_reconciliation_memory(scientific_memory_payload)
         st.session_state["institutional_post_reconciliation_memory"] = dict(persisted_scientific_memory or scientific_memory_payload)
         hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
+        group_hit_values = [int(row.get("hits", 0) or 0) for row in comparison.get("results", [])]
+        group_hit_decomposition = _decompose_hit_counts(group_hit_values)
+        persist_generation_event_conference_mark(
+            db_path=DB_PATH,
+            generation_event_id=int(group.get("generation_event_id") or 0),
+            checked_against_contest=int(comparison.get("contest_number", contest_to_use or 0) or 0),
+            checked_result_summary=build_checked_result_summary(
+                comparison=comparison,
+                hit_distribution=dict(hit_counts),
+                batch_hit_decomposition=group_hit_decomposition,
+            ),
+        )
         generation_results.append(
             {
                 "generation_event_id": int(group.get("generation_event_id") or 0),
@@ -6994,6 +7018,93 @@ def _run_simulation_multicontest_lab(
                 evidence=central_ml_evidence,
             )
     return payload
+
+
+def _load_conferred_generation_groups(*, limit: int = 25) -> list[dict[str, Any]]:
+    """Carrega lotes já conferidos do PostgreSQL — fonte soberana para Simular Resultados."""
+    raw_groups = _load_persisted_generation_event_groups(
+        limit=max(int(limit) * 4, CONFERENCE_EVENTS_LIMIT),
+        summary_only=False,
+        use_cache=False,
+    )
+    return filter_conferred_groups(raw_groups)[: max(1, int(limit))]
+
+
+def _run_conferred_lot_multicontest_comparison(
+    *,
+    conferred_lot: Mapping[str, Any],
+    selection_mode: str = SELECTION_MODE_LAST_10,
+    manual_start: int | None = None,
+    manual_end: int | None = None,
+    contests_limit: int = SIMULATION_MAX_CONTESTS,
+) -> dict[str, Any]:
+    """Compara lote conferido contra janela de concursos — leitura histórica, sem gerar lote."""
+    games = list(conferred_lot.get("games") or [])
+    if not games:
+        return {
+            "blocked": True,
+            "block_reason": "Lote conferido sem jogos persistidos no PostgreSQL.",
+            "mission_id": CONFERRED_LOTS_MISSION_ID,
+            "contests_compared": 0,
+            "contest_results": [],
+        }
+    contests_context = build_simulation_contests_context(
+        list_imported_contest_records=_list_all_imported_contest_records,
+        load_imported_contest=lambda contest_number: _load_imported_contest(contest_number),
+    )
+    selection = resolve_simulation_contest_selection(
+        context=contests_context,
+        selection_mode=selection_mode,
+        manual_start=manual_start,
+        manual_end=manual_end,
+    )
+    if selection.get("blocked") and not selection.get("contest_numbers"):
+        return {
+            "blocked": True,
+            "block_reason": str(selection.get("block_reason") or "Seleção de concursos inválida."),
+            "selection": selection,
+            "contests_compared": 0,
+            "contest_results": [],
+            "mission_id": CONFERRED_LOTS_MISSION_ID,
+        }
+    selected_numbers = set(int(number) for number in (selection.get("contest_numbers") or []))
+    if len(selected_numbers) > max(1, int(contests_limit)):
+        return {
+            "blocked": True,
+            "block_reason": f"Seleção excede o limite de {int(contests_limit)} concursos.",
+            "selection": selection,
+            "contests_compared": 0,
+            "contest_results": [],
+            "mission_id": CONFERRED_LOTS_MISSION_ID,
+        }
+    records_by_number = {
+        int(record.get("contest_number", 0) or 0): record
+        for record in (contests_context.get("valid_records") or [])
+    }
+    selected_records = [records_by_number[number] for number in sorted(selected_numbers) if number in records_by_number]
+    comparison = compare_lab_games_against_contests(
+        games=games,
+        contest_records=selected_records,
+        normalize_contest_record=_normalize_contest_record,
+    )
+    return {
+        **comparison,
+        "selection": selection,
+        "source": contests_context.get("source"),
+        "latest_contest_available": int(contests_context.get("latest_contest_available") or 0),
+        "selection_mode": selection_mode,
+        "contest_initial": int(selection.get("contest_initial", 0) or 0),
+        "contest_final": int(selection.get("contest_final", 0) or 0),
+        "total_selected": int(selection.get("total_selected", 0) or 0),
+        "blocked": bool(selection.get("blocked")),
+        "block_reason": str(selection.get("block_reason") or ""),
+        "mission_id": CONFERRED_LOTS_MISSION_ID,
+        "generation_event_id": int(conferred_lot.get("generation_event_id", 0) or 0),
+        "checked_against_contest": int(conferred_lot.get("checked_against_contest", 0) or 0),
+        "checked_at": str(conferred_lot.get("checked_at", "") or ""),
+        "conference_status": str(conferred_lot.get("conference_status", "") or ""),
+        "comparison_mode": "conferred_lot_historical",
+    }
 
 
 def _run_institutional_simulation(*, drawn_numbers: list[int] | None = None) -> None:
@@ -7680,6 +7791,8 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
             continue
         if not bool(generation.get("is_active_reading", True)):
             continue
+        if is_lot_conferred(reconciliation=generation.get("reconciliation") or {}):
+            continue
         for game in generation.get("games", []) or []:
             rows.append(
                 _analytical_row_from_game(
@@ -7698,6 +7811,8 @@ def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, A
         if not is_analytical_history_eligible({"lot_operational_status": generation.get("lot_operational_status"), "official_release_allowed": generation.get("official_release_allowed")}):
             continue
         if not bool(generation.get("is_active_reading", True)):
+            continue
+        if is_lot_conferred(reconciliation=generation.get("reconciliation") or {}):
             continue
         for game in generation.get("games", []) or []:
             rows.append(
@@ -13988,26 +14103,64 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Simular Resultados")
     st.info(
-        "Laboratório/calibração — usa o **mesmo motor CORE_002 + ML supervisionada** do Gerador. "
-        "Lotes gerados aqui **não são oficializados** automaticamente. "
-        "Para conferência oficial persistida, use **Conferir Resultados**."
+        "Comparação histórica de **lotes já conferidos** contra concursos oficiais selecionados. "
+        "Esta tela **não gera jogos**. Para conferência oficial, use **Conferir Resultados**; "
+        "para fila ativa de jogos válidos ainda não conferidos, use **Histórico Analítico**."
     )
-    lab_cols = st.columns([1, 1, 1])
-    sim_quantity = int(lab_cols[0].number_input("Quantidade de jogos (lab)", min_value=1, max_value=100, value=20, key="sim_lab_quantity"))
-    sim_format = int(lab_cols[1].selectbox("Formato", options=list(range(15, 24)), index=0, key="sim_lab_format"))
-    if lab_cols[2].button("Gerar lote laboratório", type="primary", key="sim_lab_generate"):
-        lab_result = _run_simulation_lot_generation(requested_count=sim_quantity, selected_card_format=sim_format)
-        st.session_state["institutional_simulation_lab_result"] = lab_result
-        st.session_state["institutional_last_ui_event"] = "operacional:simular_geracao_lab"
-        st.rerun()
-    lab_result = dict(st.session_state.get("institutional_simulation_lab_result") or {})
-    if lab_result:
-        st.caption(
-            f"Lote laboratório | status={lab_result.get('lot_operational_status', 'not_officialized')} | "
-            f"veredito={lab_result.get('ml_verdict', '-')} | oficialização={'bloqueada' if lab_result.get('ml_verdict_blocked') else 'não aplicável'}"
-        )
 
-    st.markdown("#### Concursos para simulação")
+    conferred_lots = _load_conferred_generation_groups(limit=CONFERENCE_EVENTS_LIMIT)
+    if not conferred_lots:
+        st.warning(
+            "Nenhum lote conferido encontrado no PostgreSQL. "
+            "Conferir um lote em **Conferir Resultados** para habilitar comparações aqui."
+        )
+        return
+
+    lot_labels = {
+        int(lot.get("generation_event_id", 0) or 0): format_conferred_lot_label(lot)
+        for lot in conferred_lots
+        if int(lot.get("generation_event_id", 0) or 0) > 0
+    }
+    selectable_ge_ids = list(lot_labels.keys())
+    default_ge_id = selectable_ge_ids[0] if selectable_ge_ids else None
+    if SESSION_SIMULATION_SELECTED_GE not in st.session_state and default_ge_id is not None:
+        st.session_state[SESSION_SIMULATION_SELECTED_GE] = int(default_ge_id)
+    current_selection = _safe_int(st.session_state.get(SESSION_SIMULATION_SELECTED_GE), default=None)
+    if current_selection not in selectable_ge_ids and selectable_ge_ids:
+        st.session_state[SESSION_SIMULATION_SELECTED_GE] = selectable_ge_ids[0]
+
+    st.markdown("#### Lotes conferidos")
+    selected_ge_id = int(
+        st.selectbox(
+            "Selecionar lote conferido",
+            options=selectable_ge_ids,
+            format_func=lambda ge_id: lot_labels.get(int(ge_id), f"GE {ge_id}"),
+            key=SESSION_SIMULATION_SELECTED_GE,
+        )
+        or 0
+    )
+    selected_lot = next(
+        (lot for lot in conferred_lots if int(lot.get("generation_event_id", 0) or 0) == selected_ge_id),
+        conferred_lots[0],
+    )
+    summary_cols = st.columns(6)
+    summary_cols[0].metric("generation_event_id", int(selected_lot.get("generation_event_id", 0) or 0))
+    summary_cols[1].metric("Jogos", int(selected_lot.get("total_games", 0) or 0))
+    summary_cols[2].metric("Concurso da conferência", int(selected_lot.get("checked_against_contest", 0) or 0) or "—")
+    summary_cols[3].metric("Melhor acerto", int(selected_lot.get("best_hits", 0) or 0))
+    summary_cols[4].metric("Data da conferência", str(selected_lot.get("checked_at", "") or "")[:10] or "—")
+    summary_cols[5].metric("Status", str(selected_lot.get("status_label", "conferido") or "conferido"))
+
+    reconciliation = dict(selected_lot.get("reconciliation") or {})
+    hit_distribution = dict(reconciliation.get("hit_distribution") or selected_lot.get("hit_distribution") or {})
+    if hit_distribution:
+        dist_cols = st.columns(min(len(hit_distribution), 6))
+        for index, (hits, count) in enumerate(sorted(hit_distribution.items(), key=lambda item: -int(item[0]))):
+            if index >= len(dist_cols):
+                break
+            dist_cols[index].metric(f"{hits} acertos", int(count))
+
+    st.markdown("#### Concursos para comparação")
     try:
         sim_contests_context = build_simulation_contests_context(
             list_imported_contest_records=_list_all_imported_contest_records,
@@ -14065,50 +14218,36 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
     preview_cols[3].metric("Último disponível", int(sim_contests_context.get("latest_contest_available") or 0) or "—")
     st.caption(
         f"Fonte: {sim_contests_context.get('source', MONITORED_CONTEST_SOURCE_LABEL)} | "
-        f"Limite máximo: {SIMULATION_MAX_CONTESTS} concursos"
+        f"Limite máximo: {SIMULATION_MAX_CONTESTS} concursos | missão {CONFERRED_LOTS_MISSION_ID}"
     )
     if sim_contests_context.get("outlier_message"):
         st.warning(str(sim_contests_context.get("outlier_message") or ""))
     if preview_selection.get("blocked"):
         st.error(str(preview_selection.get("block_reason") or "Seleção de concursos bloqueada."))
-    selected_preview = list(preview_selection.get("contest_numbers") or [])
-    if selected_preview:
-        preview_label = ", ".join(str(number) for number in selected_preview[:12])
-        if len(selected_preview) > 12:
-            preview_label = f"{preview_label}, … (+{len(selected_preview) - 12})"
-        st.caption(f"Concursos selecionados: {preview_label}")
 
-    compare_disabled = (
-        not lab_result
-        or bool(preview_selection.get("blocked"))
-        or int(preview_selection.get("total_selected") or 0) <= 0
-    )
+    compare_disabled = bool(preview_selection.get("blocked")) or int(preview_selection.get("total_selected") or 0) <= 0
     if st.button(
-        "Comparar lote contra concursos selecionados",
+        "Comparar lote conferido contra concursos selecionados",
         type="primary",
-        key="sim_lab_multicontest",
-        disabled=bool(compare_disabled),
+        key="sim_conferred_multicontest",
+        disabled=compare_disabled,
     ):
-        games = list(lab_result.get("display_games") or lab_result.get("games") or [])
-        multicontest = _run_simulation_multicontest_lab(
-            games=games,
+        multicontest = _run_conferred_lot_multicontest_comparison(
+            conferred_lot=selected_lot,
             selection_mode=str(selection_mode),
             manual_start=manual_start if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
             manual_end=manual_end if selection_mode == SELECTION_MODE_MANUAL_RANGE else None,
-            lab_result=lab_result,
             contests_limit=SIMULATION_MAX_CONTESTS,
         )
         st.session_state["institutional_simulation_multicontest"] = multicontest
-        if multicontest.get("central_ml_evidence"):
-            st.session_state["institutional_simulation_central_ml_evidence"] = multicontest.get("central_ml_evidence")
-        st.session_state["institutional_last_ui_event"] = "operacional:simular_multicontest_lab"
+        st.session_state["institutional_last_ui_event"] = "operacional:simular_conferred_multicontest"
         st.rerun()
-    if not lab_result:
-        st.info("Gere um lote laboratório antes de comparar contra concursos oficiais.")
 
     multicontest = dict(st.session_state.get("institutional_simulation_multicontest") or {})
+    if int(multicontest.get("generation_event_id", 0) or 0) not in {0, selected_ge_id}:
+        multicontest = {}
     if multicontest.get("contest_results") or multicontest.get("blocked"):
-        st.markdown("#### Resultado da comparação laboratorial")
+        st.markdown("#### Resultado da comparação histórica")
         aggregate = dict(multicontest.get("aggregate_summary") or {})
         agg_cols = st.columns(5)
         agg_cols[0].metric("Jogos c/ 11 hits", int(aggregate.get("count_11_exact", 0) or 0))
@@ -14116,35 +14255,25 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
         agg_cols[2].metric("Jogos c/ 13 hits", int(aggregate.get("count_13_exact", 0) or 0))
         agg_cols[3].metric("Jogos c/ 14 hits", int(aggregate.get("count_14_exact", 0) or 0))
         agg_cols[4].metric("Jogos c/ 15 hits", int(aggregate.get("count_15_exact", 0) or 0))
-        summary_cols = st.columns(4)
-        summary_cols[0].metric("Concursos comparados", int(multicontest.get("contests_compared", 0) or 0))
-        summary_cols[1].metric("Jogos no lote", int(multicontest.get("total_games", 0) or 0))
+        summary_cols_2 = st.columns(4)
+        summary_cols_2[0].metric("Concursos comparados", int(multicontest.get("contests_compared", 0) or 0))
+        summary_cols_2[1].metric("Jogos no lote", int(multicontest.get("total_games", 0) or 0))
         best_overall = dict(multicontest.get("best_overall") or {})
-        summary_cols[2].metric(
+        summary_cols_2[2].metric(
             "Melhor resultado",
             f"{best_overall.get('best_hits', 0)} hits (jogo {best_overall.get('best_game_index', '-')})",
         )
         best_game = dict(multicontest.get("best_game_of_batch") or {})
-        summary_cols[3].metric(
+        summary_cols_2[3].metric(
             "Melhor jogo do lote",
             f"jogo {best_game.get('game_index', '-')} | {best_game.get('best_hits_across_window', 0)} hits",
         )
         st.caption(
-            f"Janela: {multicontest.get('contest_initial', '-')} → {multicontest.get('contest_final', '-')} | "
-            f"Fonte: {multicontest.get('source', MONITORED_CONTEST_SOURCE_LABEL)} | "
-            f"13/14 presentes: {'sim' if aggregate.get('has_13_or_14') else 'não'}"
+            f"Lote GE {multicontest.get('generation_event_id', '-')} | conferido × "
+            f"{multicontest.get('checked_against_contest', '-')} | janela "
+            f"{multicontest.get('contest_initial', '-')} → {multicontest.get('contest_final', '-')} | "
+            f"Fonte: {multicontest.get('source', MONITORED_CONTEST_SOURCE_LABEL)}"
         )
-        central_ml_evidence = dict(
-            multicontest.get("central_ml_evidence")
-            or st.session_state.get("institutional_simulation_central_ml_evidence")
-            or {}
-        )
-        if central_ml_evidence:
-            st.success(
-                "Evidência registrada para Central ML — status "
-                f"{central_ml_evidence.get('lot_operational_status', 'not_officialized')} "
-                f"(persistido={'sim' if multicontest.get('central_ml_evidence_persisted') else 'session'})"
-            )
         for contest_block in multicontest.get("contest_results") or []:
             premium = [row for row in list(contest_block.get("results") or []) if int(row.get("hits", 0) or 0) >= 11]
             with st.expander(
@@ -14155,97 +14284,6 @@ def _render_simulation_page(snapshot: dict[str, Any]) -> None:
                     st.dataframe(pd.DataFrame(premium), hide_index=True, use_container_width=True)
                 else:
                     st.caption("Nenhum jogo com 11+ hits neste concurso.")
-
-    st.divider()
-    with st.expander("Simulação manual avulsa (secundária)", expanded=False):
-        st.write("Digite 15 dezenas para comparar com lote laboratorial recente — fluxo secundário.")
-        status_cols = st.columns([1, 1, 1, 1])
-        status_cols[0].metric("generated_games", int(snapshot["counts"].get("generated_games", 0)))
-        status_cols[1].metric("imported_contests", int(snapshot["counts"].get("imported_contests", 0)))
-        status_cols[2].metric("last_event", st.session_state.get("institutional_last_ui_event", "-"))
-        status_cols[3].metric("runtime", st.session_state.get("institutional_simulation", {}).get("runtime_status", "idle"))
-
-        draw_input = st.text_input(
-            "Dezenas sorteadas",
-            value=st.session_state.get("institutional_draw_input", ""),
-            placeholder="01 02 04 05 07 08 09 13 14 17 18 19 20 22 24",
-            key="sim_manual_draw_input",
-        )
-        st.session_state["institutional_draw_input"] = draw_input
-        if st.button("Simular Resultados", type="primary", key="sim_manual_run"):
-            parsed_draw = _parse_draw_numbers(draw_input)
-            if len(parsed_draw) != 15:
-                st.warning("Informe exatamente 15 dezenas válidas entre 1 e 25.")
-            else:
-                _run_institutional_simulation(drawn_numbers=parsed_draw)
-                st.session_state["institutional_last_ui_event"] = "operacional:simular_resultado_manual"
-                st.rerun()
-        st.caption("Cole as 15 dezenas sorteadas para conferir com os jogos gerados e persistidos.")
-
-        simulation_state = st.session_state.get("institutional_simulation") or {}
-        if simulation_state:
-            sim_diag_cols = st.columns([1, 1, 1, 1])
-            sim_diag_cols[0].metric("source", str(simulation_state.get("source", "-") or "-"))
-            sim_diag_cols[1].metric("loaded_games", int(simulation_state.get("loaded_games", 0) or 0))
-            sim_diag_cols[2].metric("compared_games", int(simulation_state.get("compared_games", 0) or 0))
-            sim_diag_cols[3].metric("premium_games", int(simulation_state.get("premium_games", 0) or 0))
-            with st.expander("Diagnóstico da simulação manual", expanded=False):
-                st.json(simulation_state.get("summary") or {})
-                st.write("Jogos carregados:", int(simulation_state.get("loaded_games", 0) or 0))
-                st.write("Jogos comparados:", int(simulation_state.get("compared_games", 0) or 0))
-                error_payload = st.session_state.get("institutional_simulation_error")
-                if error_payload:
-                    st.error(error_payload.get("error", "Erro desconhecido"))
-
-        cover_result = st.session_state.get("institutional_simulation_result")
-        if cover_result:
-            st.markdown("##### Resultado da simulação manual")
-            st.caption("Apenas os jogos premiados com 11 pontos ou mais aparecem abaixo.")
-            rows_html = []
-            premium_rows = [row for row in cover_result if int(row.get("hits", 0)) >= 11]
-            for row in premium_rows:
-                rows_html.append(
-                    "<tr>"
-                    f"<td>{row.get('jogo', '-')}</td>"
-                    f"<td>{row.get('resultado', '-')}</td>"
-                    f"<td>{row.get('hits', '-')}</td>"
-                    f"<td>{row.get('premiado', '-')}</td>"
-                    "</tr>"
-                )
-            if premium_rows:
-                st.markdown(
-                    """
-                    <table class="lotoia-sim-table">
-                        <thead>
-                            <tr>
-                                <th>jogo</th>
-                                <th>resultado</th>
-                                <th>hits</th>
-                                <th>premiado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                    """
-                    + "".join(rows_html)
-                    + """
-                        </tbody>
-                    </table>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.info("Nenhum jogo premiado com 11 pontos ou mais nesta simulação.")
-                st.dataframe(
-                    pd.DataFrame(cover_result)[
-                        ["jogo", "dezenas", "hits", "premiado"]
-                    ]
-                    if cover_result
-                    else pd.DataFrame(columns=["jogo", "dezenas", "hits", "premiado"]),
-                    hide_index=True,
-                    use_container_width=True,
-                )
-        elif simulation_state.get("runtime_status") == "error":
-            st.error("A simulação encontrou um erro. Veja o diagnóstico acima.")
 
 
 def _render_history_page(snapshot: dict[str, Any]) -> None:
@@ -14723,7 +14761,11 @@ def _render_operational_page(snapshot: dict[str, Any]) -> None:
 def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Histórico Analítico")
-    st.info("Esta página é analítica e observacional. Não gera jogos, não recalibra a Lei 15 e não altera histórico.")
+    st.info(
+        "Fila ativa de jogos válidos **ainda não conferidos**. "
+        "Após conferência em **Conferir Resultados**, os lotes saem desta fila e passam a "
+        "**Simular Resultados** para comparação histórica."
+    )
     st.write("Visão acumulativa de desempenho dos jogos persistidos no PostgreSQL Institucional.")
 
     if is_light_mode_enabled() and not render_lazy_load_gate(
@@ -14747,13 +14789,21 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         "GENERATION_EVENT_ID_MAIS_RECENTE": "Geração mais recente",
     }
 
-    generation_history = _load_generation_history_light(limit=ANALYTICAL_PAGE_SIZE)
+    generation_history = [
+        generation
+        for generation in _load_generation_history_light(limit=ANALYTICAL_PAGE_SIZE)
+        if not is_lot_conferred(reconciliation=generation.get("reconciliation") or {})
+    ]
     historical_rows = _load_accumulated_analytical_rows_light(limit=ANALYTICAL_PAGE_SIZE)
     if not generation_history and int(snapshot.get("counts", {}).get("generation_events", 0) or 0) > 0:
-        generation_history = _load_generation_history(limit=ANALYTICAL_PAGE_SIZE)
+        generation_history = [
+            generation
+            for generation in _load_generation_history(limit=ANALYTICAL_PAGE_SIZE)
+            if not is_lot_conferred(reconciliation=generation.get("reconciliation") or {})
+        ]
         historical_rows = _load_accumulated_analytical_rows_light(limit=ANALYTICAL_PAGE_SIZE)
     if not generation_history or not historical_rows:
-        st.info("Ainda não há gerações persistidas para reconstruir o histórico analítico.")
+        st.info("Nenhum lote válido pendente de conferência no histórico analítico ativo.")
         return
 
     games_df = pd.DataFrame(historical_rows)
@@ -14789,7 +14839,7 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
     else:
         st.caption("Geração ativa: -")
 
-    filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.2, 1.0])
+    filter_row_1 = st.columns([1.2, 1.2, 1.2, 1.0])
     generation_options = sorted(int(value) for value in games_df["generation_event_id"].dropna().unique().tolist())
     if generation_options:
         latest_ge = max(generation_options)
@@ -14807,13 +14857,9 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
 
     selected_generation_ids = filter_row_1[0].multiselect("filtrar por geração", generation_options, default=generation_options)
     selected_strategies = filter_row_1[1].multiselect("filtrar por estratégia", strategy_options, default=strategy_options)
-    selected_status_view = filter_row_1[2].selectbox(
-        "filtrar por status de conferência",
-        ["Todos", "Não conferido", "Conferido"],
-        index=0,
-    )
-    selected_contests = filter_row_1[3].multiselect("filtrar por concurso", contest_options, default=contest_options)
-    order_by = filter_row_1[4].selectbox("ordenar por", ["score", "data", "acertos"], index=0)
+    selected_contests = filter_row_1[2].multiselect("filtrar por concurso alvo", contest_options, default=contest_options)
+    order_by = filter_row_1[3].selectbox("ordenar por", ["score", "data", "acertos"], index=0)
+    st.caption("Fila ativa: somente lotes válidos ainda não conferidos (status conferido aparece em Simular Resultados).")
 
     date_values = games_df["data/hora_dt"].dropna()
     if not date_values.empty:
@@ -14828,8 +14874,6 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         filtered_df = filtered_df[filtered_df["generation_event_id"].isin(selected_generation_ids)]
     if selected_strategies:
         filtered_df = filtered_df[filtered_df["estratégia"].isin(selected_strategies)]
-    if selected_status_view != "Todos":
-        filtered_df = filtered_df[filtered_df["status de conferência"].astype(str) == selected_status_view]
     if selected_contests:
         filtered_df = filtered_df[
             filtered_df["concurso conferido"].fillna(0).astype(int).isin(selected_contests)
