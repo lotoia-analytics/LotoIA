@@ -20,10 +20,7 @@ from lotoia.database.database import (
     ReportEvent,
     get_session,
 )
-from lotoia.governance.batch_operational_scope import (
-    is_analytical_official_scope,
-    is_generation_event_active_reading,
-)
+from lotoia.governance.batch_operational_scope import is_generation_event_active_reading
 from lotoia.governance.history_preservation_policy import (
     is_protected_generation_event_id,
 )
@@ -88,10 +85,8 @@ def is_generation_eligible_for_post_coverage_deletion(
         return False, "not_sovereign_core_002"
     if not is_structural_coverage_review_completed(context):
         return False, "structural_coverage_review_pending"
-    if reconciliation_exists or str(context.get("conference_status") or "").strip().lower() == "checked":
+    if reconciliation_exists:
         return False, "lot_already_conferred"
-    if is_analytical_official_scope(context):
-        return False, "official_analytical_scope_preserved"
     if not is_generation_event_active_reading(event):
         return False, "not_active_reading"
     return True, ""

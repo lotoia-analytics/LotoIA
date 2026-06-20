@@ -9457,6 +9457,7 @@ def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> Non
 
 STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY = "_structural_coverage_aggregate_exit_pending"
 STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY = "_structural_coverage_reviewed_active_ids"
+INSTITUTIONAL_PREVIOUS_PAGE_ID_KEY = "_institutional_previous_page_id"
 
 
 def _mark_structural_coverage_aggregate_reviewed(
@@ -9500,6 +9501,14 @@ def _handle_structural_coverage_page_exit(previous_page: str, current_page: str)
     if result.get("executed"):
         _invalidate_operational_structural_cache()
         st.session_state["_bust_operational_coverage_cache"] = True
+    else:
+        st.session_state["_structural_coverage_exit_cleanup_result"] = result
+
+
+def _maybe_bust_operational_coverage_cache() -> None:
+    """Invalida cache operacional após purge pós-Cobertura (qualquer página)."""
+    if st.session_state.pop("_bust_operational_coverage_cache", False):
+        _invalidate_operational_structural_cache()
 
 
 def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
@@ -9534,8 +9543,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     ):
         return
 
-    if st.session_state.pop("_bust_operational_coverage_cache", False):
-        _invalidate_operational_structural_cache()
+    _maybe_bust_operational_coverage_cache()
 
     operational_generations = _load_operational_generations_cached(limit=OPERATIONAL_EVENTS_LIMIT)
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
@@ -9714,6 +9722,9 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                     f"overlap={best_metrics.get('max_overlap', '—')}"
                 )
 
+    if is_all_operational_generations_selection(selected_label):
+        _mark_structural_coverage_aggregate_reviewed(operational_generations)
+
     payload = _cached_operational_card_structure_diagnostics_from_db(
         str(DB_PATH),
         selected_ge_id if selected_ge_id > 0 else None,
@@ -9741,8 +9752,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         )
 
     _render_structural_coverage_diagnostics_body(payload)
-    if is_all_operational_generations_selection(selected_label) and payload.get("available"):
-        _mark_structural_coverage_aggregate_reviewed(operational_generations)
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
@@ -15630,13 +15639,19 @@ def main() -> None:
     snapshot = _resolve_database_snapshot()
     snapshot["cloud_runtime_policy"] = cloud_runtime_policy_snapshot(DB_PATH)
     _align_institutional_runtime_with_database(snapshot)
-    previous_page = str(st.session_state.get("institutional_page_id") or "home")
+    previous_page = str(
+        st.session_state.get(INSTITUTIONAL_PREVIOUS_PAGE_ID_KEY)
+        or st.session_state.get("institutional_page_id")
+        or "home"
+    )
+    _maybe_bust_operational_coverage_cache()
     page = _render_sidebar(
         st.session_state.get("institutional_page_id", "home"),
         snapshot,
     )
     _handle_structural_coverage_page_exit(previous_page, page)
     st.session_state["institutional_page_id"] = page
+    st.session_state[INSTITUTIONAL_PREVIOUS_PAGE_ID_KEY] = page
     if page == "audit":
         _render_runtime_audit_page(snapshot)
     elif page == "home":
