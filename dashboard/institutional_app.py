@@ -9723,6 +9723,22 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                     f"overlap={best_metrics.get('max_overlap', '—')}"
                 )
 
+    monitoring_ids = (
+        [
+            int(row.get("generation_event_id", 0) or 0)
+            for row in operational_generations
+            if int(row.get("generation_event_id", 0) or 0) > 0
+        ]
+        if is_all_operational_generations_selection(selected_label)
+        else ([selected_ge_id] if selected_ge_id > 0 else [])
+    )
+    st.divider()
+    render_m_core_003_bias_monitoring_panel(
+        db_path=DB_PATH,
+        generation_event_ids=monitoring_ids,
+    )
+    st.divider()
+
     if is_all_operational_generations_selection(selected_label):
         _mark_structural_coverage_aggregate_reviewed(operational_generations)
 
@@ -9753,20 +9769,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         )
 
     _render_structural_coverage_diagnostics_body(payload)
-
-    monitoring_ids = (
-        [
-            int(row.get("generation_event_id", 0) or 0)
-            for row in operational_generations
-            if int(row.get("generation_event_id", 0) or 0) > 0
-        ]
-        if is_all_operational_generations_selection(selected_label)
-        else ([selected_ge_id] if selected_ge_id > 0 else [])
-    )
-    render_m_core_003_bias_monitoring_panel(
-        db_path=DB_PATH,
-        generation_event_ids=monitoring_ids,
-    )
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
