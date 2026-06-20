@@ -16,6 +16,7 @@ from lotoia.ml.overlap_format_thresholds import (
     MAX_FORMAT_SIZE,
     MIN_FORMAT_SIZE,
     classify_overlap_for_format,
+    resolve_diversity_low_threshold,
 )
 from lotoia.ml.pre_final_pool_ml_calibration import (
     MISSION_ID as PRE_FINAL_MISSION_ID,
@@ -35,10 +36,12 @@ from lotoia.ml.structural_pool_15d_generator import (
 from lotoia.ml.supervised_output_calibration import (
     DEFAULT_NEAR_DUP_PAIR_RATIO,
     analyze_pool_structural_issues,
+    resolve_near_duplicate_pair_ratio,
 )
 from lotoia.statistics.card_structure import resolve_cartao_final_from_game
 
 MISSION_ID = "M-ML-073"
+MISSION_ID_080 = "M-ML-080"
 QUALITY_CLASSIFIER_MISSION_ID = "M-ML-073b"
 HIERARCHY_VERSION = "M-ML-073-v2"
 MEMORY_KIND = "ml_operational_hierarchy"
@@ -83,6 +86,28 @@ DIVERSITY_ISSUE_TYPES: frozenset[str] = frozenset(
     }
 )
 COVERAGE_ISSUE_TYPES: frozenset[str] = frozenset({"dezena_subcoberta"})
+
+
+def resolve_min_coverage_for_count(requested_count: int) -> int:
+    """Cobertura mínima de dezenas distintas por tamanho de lote (M-ML-080)."""
+    count = max(int(requested_count or 0), 1)
+    if count <= 5:
+        return 18
+    if count <= 15:
+        return 22
+    return 25
+
+
+def resolve_min_pool_compliance_rate(requested_count: int) -> float:
+    """Taxa mínima de conformidade estrutural adaptativa ao lote (M-ML-080)."""
+    count = max(int(requested_count or 0), 1)
+    if count <= 5:
+        return 0.70
+    if count <= 10:
+        return 0.80
+    if count <= 20:
+        return 0.85
+    return MIN_POOL_COMPLIANCE_RATE
 
 
 def is_ml_operational_hierarchy_enabled() -> bool:
@@ -186,9 +211,13 @@ def build_ml_operational_hierarchy_memory() -> dict[str, Any]:
         ],
         "thresholds": {
             "min_compliance_rate": MIN_POOL_COMPLIANCE_RATE,
+            "min_compliance_rate_adaptive_mission": MISSION_ID_080,
             "min_diversity_score": DIVERSITY_LOW_THRESHOLD,
+            "min_diversity_score_adaptive_mission": MISSION_ID_080,
             "max_near_dup_pair_ratio": DEFAULT_NEAR_DUP_PAIR_RATIO,
+            "max_near_dup_pair_ratio_adaptive_mission": MISSION_ID_080,
             "min_compliant_pool_size_15d": MIN_COMPLIANT_POOL_SIZE,
+            "min_coverage_distinct_dezenas_mission": MISSION_ID_080,
         },
         "subordinate_missions": {
             "structural_policy_15d": "M-ML-070",
@@ -287,7 +316,7 @@ def _pool_candidate_slice(
         key=lambda row: float(row.get("profile_score", 0) or 0),
         reverse=True,
     )
-    limit = max(int(requested_count) * 3, int(requested_count), 20)
+    limit = max(int(requested_count) * 5, int(requested_count), 30)
     return ranked[: min(limit, len(ranked))]
 
 
@@ -298,22 +327,25 @@ def _evaluate_conformity_stage(
     history: Sequence[Any] | None,
     structural_pool_bundle: Mapping[str, Any] | None,
     batch_label: str | None,
+    requested_count: int | None = None,
 ) -> dict[str, Any]:
     size = int(game_size)
     failures: list[str] = []
     corrective_actions: list[str] = []
     compliance_rate = 0.0
+    lot_size = max(int(requested_count or len(pool) or 1), 1)
+    min_compliance_rate = resolve_min_pool_compliance_rate(lot_size)
 
     if is_structural_policy_15d_format(size):
         bundle = dict(structural_pool_bundle or {})
         if bundle.get("structural_pool_applied"):
             compliance_rate = float(bundle.get("compliance_rate", 0.0) or 0.0)
             compliant_size = int(bundle.get("structural_compliant_pool_size", 0) or 0)
-            if compliance_rate < MIN_POOL_COMPLIANCE_RATE:
+            if compliance_rate < min_compliance_rate:
                 failures.append(
-                    f"compliance_rate={compliance_rate:.2%} abaixo de {MIN_POOL_COMPLIANCE_RATE:.0%}"
+                    f"compliance_rate={compliance_rate:.2%} abaixo de {min_compliance_rate:.0%}"
                 )
-            if compliant_size < MIN_COMPLIANT_POOL_SIZE:
+            if compliant_size < MIN_COMPLIANT_POOL_SIZE and lot_size > 20:
                 failures.append(
                     f"pool conforme={compliant_size} abaixo do mínimo {MIN_COMPLIANT_POOL_SIZE}"
                 )
@@ -329,13 +361,18 @@ def _evaluate_conformity_stage(
                 ).get("approved"):
                     approved += 1
             compliance_rate = approved / max(len(pool), 1)
-            if compliance_rate < MIN_POOL_COMPLIANCE_RATE:
+            if compliance_rate < min_compliance_rate:
                 failures.append(
-                    f"compliance_rate={compliance_rate:.2%} abaixo de {MIN_POOL_COMPLIANCE_RATE:.0%}"
+                    f"compliance_rate={compliance_rate:.2%} abaixo de {min_compliance_rate:.0%}"
                 )
                 corrective_actions.append("gerar_pool_estrutural_15d")
     else:
-        diagnostics = analyze_pool_structural_issues(pool, game_size=size, batch_label=batch_label)
+        diagnostics = analyze_pool_structural_issues(
+            pool,
+            game_size=size,
+            batch_label=batch_label,
+            requested_count=requested_count,
+        )
         alta_issues = [
             dict(issue)
             for issue in list(diagnostics.get("issues") or [])
@@ -356,9 +393,9 @@ def _evaluate_conformity_stage(
                 for issue in alta_issues[:5]
             )
             corrective_actions.append("calibracao_estrutural_multidezena")
-        if compliance_rate < MIN_POOL_COMPLIANCE_RATE:
+        if compliance_rate < min_compliance_rate:
             failures.append(
-                f"compliance_rate={compliance_rate:.2%} abaixo de {MIN_POOL_COMPLIANCE_RATE:.0%}"
+                f"compliance_rate={compliance_rate:.2%} abaixo de {min_compliance_rate:.0%}"
             )
 
     passed = not failures
@@ -369,9 +406,11 @@ def _evaluate_conformity_stage(
         "passed": passed,
         "metrics": {
             "compliance_rate": round(compliance_rate, 4),
+            "min_compliance_rate": min_compliance_rate,
             "pool_size": len(pool),
             "format": f"{size}D",
             "batch_label": batch_label,
+            "requested_count": lot_size,
         },
         "failures": failures,
         "corrective_actions": corrective_actions,
@@ -399,12 +438,15 @@ def _evaluate_diversity_stage(
     max_overlap = int(redundancy.get("sobreposicao_maxima", 0) or 0)
     overlap_eval = classify_overlap_for_format(max_overlap, size)
     overlap_level = str(overlap_eval.get("level") or "")
+    lot_size = max(int(requested_count or len(candidate_pool) or 1), 1)
+    diversity_threshold = resolve_diversity_low_threshold(lot_size)
+    near_dup_limit = resolve_near_duplicate_pair_ratio(lot_size)
 
     failures: list[str] = []
     corrective_actions: list[str] = []
-    if diversity_score < DIVERSITY_LOW_THRESHOLD:
+    if diversity_score < diversity_threshold:
         failures.append(
-            f"diversity_score={diversity_score:.4f} abaixo de {DIVERSITY_LOW_THRESHOLD}"
+            f"diversity_score={diversity_score:.4f} abaixo de {diversity_threshold}"
         )
         corrective_actions.append("rerank_diversidade")
     if overlap_level in {LEVEL_RUIM, LEVEL_CRITICO}:
@@ -415,9 +457,9 @@ def _evaluate_diversity_stage(
         redundancy.get("quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos", 0)) or 0
     )
     near_dup_ratio = (near_dup / pair_count) if pair_count > 0 else 0.0
-    if near_dup_ratio >= DEFAULT_NEAR_DUP_PAIR_RATIO:
+    if near_dup_ratio >= near_dup_limit:
         failures.append(
-            f"quase_clones_ratio={near_dup_ratio:.2f} limite={DEFAULT_NEAR_DUP_PAIR_RATIO}"
+            f"quase_clones_ratio={near_dup_ratio:.2f} limite={near_dup_limit}"
         )
         corrective_actions.append("expansao_pool_diversidade")
     for issue in diversity_issues:
@@ -436,6 +478,9 @@ def _evaluate_diversity_stage(
             "max_overlap": max_overlap,
             "overlap_level": overlap_level,
             "near_dup_ratio": round(near_dup_ratio, 4),
+            "near_dup_limit": near_dup_limit,
+            "diversity_threshold": diversity_threshold,
+            "requested_count": lot_size,
             "issue_count": len(diversity_issues),
             "candidate_pool_size": len(candidate_pool),
         },
@@ -677,6 +722,7 @@ def execute_ml_operational_hierarchy(
         history=history,
         structural_pool_bundle=structural_pool_bundle,
         batch_label=batch_label,
+        requested_count=requested_count,
     )
     stage_results[STAGE_CONFORMITY] = conformity
     current_stage = STAGE_CONFORMITY

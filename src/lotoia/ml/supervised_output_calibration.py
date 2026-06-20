@@ -46,6 +46,21 @@ CRITICAL_DEZENAS: frozenset[int] = frozenset({7, 15, 23})
 DEFAULT_UNDERCOVER_RATIO = 0.18
 DEFAULT_PREFIX_SHARE_LIMIT = 0.14
 DEFAULT_NEAR_DUP_PAIR_RATIO = 0.28
+MISSION_ID_080 = "M-ML-080"
+
+
+def resolve_near_duplicate_pair_ratio(requested_count: int) -> float:
+    """Limiar adaptativo de quase-clones por tamanho de lote (M-ML-080)."""
+    count = max(int(requested_count or 0), 1)
+    if count <= 5:
+        return 0.60
+    if count <= 10:
+        return 0.50
+    if count <= 20:
+        return 0.40
+    if count <= 50:
+        return 0.33
+    return DEFAULT_NEAR_DUP_PAIR_RATIO
 DOMINANCE_CALIBRATION_THRESHOLD = 6
 
 
@@ -176,16 +191,21 @@ def analyze_pool_structural_issues(
         redundancy.get("quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos", 0)) or 0
     )
     near_dup_ratio = (near_dup / pair_count) if pair_count > 0 else 0.0
-    if near_dup_ratio >= DEFAULT_NEAR_DUP_PAIR_RATIO:
+    near_dup_limit = (
+        resolve_near_duplicate_pair_ratio(int(requested_count))
+        if requested_count is not None
+        else DEFAULT_NEAR_DUP_PAIR_RATIO
+    )
+    if near_dup_ratio >= near_dup_limit:
         issues.append(
             {
                 "tipo": "quase_repetidos_alto",
                 "severidade": "alta",
                 "valor": near_dup,
-                "limite": round(DEFAULT_NEAR_DUP_PAIR_RATIO * pair_count, 1),
+                "limite": round(near_dup_limit * pair_count, 1),
                 "descricao": (
                     f"Quase repetidos críticos elevado ({near_dup} pares overlap N/N-1, "
-                    f"ratio={near_dup_ratio:.2f})"
+                    f"ratio={near_dup_ratio:.2f}, limite_lote={near_dup_limit:.2f})"
                 ),
             }
         )
@@ -241,20 +261,56 @@ def analyze_pool_structural_issues(
             )
 
     number_presence = Counter(number for card in cards for number in card)
-    min_expected = max(1, int(pool_size * DEFAULT_UNDERCOVER_RATIO))
-    for number in range(1, 26):
-        count = int(number_presence.get(number, 0))
-        if count < min_expected:
-            issues.append(
-                {
-                    "tipo": "dezena_subcoberta",
-                    "severidade": "alta" if number in CRITICAL_DEZENAS else "media",
-                    "dezena": number,
-                    "valor": count,
-                    "limite": min_expected,
-                    "descricao": f"Dezena {number:02d} subcoberta ({count}/{pool_size})",
-                }
-            )
+    lot_reference = int(requested_count or pool_size or 1)
+    from lotoia.ml.ml_operational_hierarchy import resolve_min_coverage_for_count
+
+    min_distinct_coverage = resolve_min_coverage_for_count(lot_reference)
+    distinct_present = sum(1 for number in range(1, 26) if int(number_presence.get(number, 0)) > 0)
+    if distinct_present < min_distinct_coverage:
+        issues.append(
+            {
+                "tipo": "dezena_subcoberta",
+                "severidade": "alta" if min_distinct_coverage >= 25 else "media",
+                "valor": distinct_present,
+                "limite": min_distinct_coverage,
+                "descricao": (
+                    f"Cobertura distinta insuficiente ({distinct_present}/{min_distinct_coverage} "
+                    f"dezenas para lote {lot_reference})"
+                ),
+            }
+        )
+    if min_distinct_coverage >= 25:
+        min_expected = max(1, int(pool_size * DEFAULT_UNDERCOVER_RATIO))
+        for number in range(1, 26):
+            count = int(number_presence.get(number, 0))
+            if count < min_expected:
+                issues.append(
+                    {
+                        "tipo": "dezena_subcoberta",
+                        "severidade": "alta" if number in CRITICAL_DEZENAS else "media",
+                        "dezena": number,
+                        "valor": count,
+                        "limite": min_expected,
+                        "descricao": f"Dezena {number:02d} subcoberta ({count}/{pool_size})",
+                    }
+                )
+    else:
+        for number in CRITICAL_DEZENAS:
+            count = int(number_presence.get(number, 0))
+            if count <= 0:
+                issues.append(
+                    {
+                        "tipo": "dezena_subcoberta",
+                        "severidade": "alta",
+                        "dezena": number,
+                        "valor": count,
+                        "limite": 1,
+                        "descricao": (
+                            f"Dezena crítica {number:02d} ausente no lote {lot_reference} "
+                            f"(cobertura mínima adaptativa {min_distinct_coverage})"
+                        ),
+                    }
+                )
 
     missing_patterns = Counter(
         format_dezena_group(compute_missing_dezenas(card)) for card in cards if card
