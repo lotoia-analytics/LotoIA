@@ -79,14 +79,20 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
 )
 
 OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-        (
+    (
         "Operacional",
         (
             ("Gerar Jogos", "clean_law15_generation"),
             ("Conferir Resultados", "conference"),
-            ("Simular Resultados", "simulation"),
-            ("Cobertura Estrutural", "structural_coverage"),
             ("Histórico Analítico", "history_analytical"),
+            ("Cobertura Estrutural", "structural_coverage"),
+            ("Simular Resultados", "simulation"),
+        ),
+    ),
+    (
+        "Análise",
+        (
+            ("Análise ML", "central_ml_diagnostics"),
         ),
     ),
     (
@@ -283,7 +289,7 @@ CONSTITUTIONAL_LABELS: tuple[str, ...] = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Central ML — Calibração Supervisionada (oculta do menu)",
+    "Análise ML",
     "Histórico Analítico",
     "Histórico Institucional",
     "Painel Inicial Institucional",

@@ -660,10 +660,11 @@ PAGE_TARGETS = {
 
 INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "🎯", "label": "Gerar Jogos", "page_id": "clean_law15_generation"},
-    {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
-    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
+    {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
+    {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
     {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
+    {"icon": "🤖", "label": "Análise ML", "page_id": "central_ml_diagnostics"},
 ]
 
 PAGE_LABELS = {page_id: label for label, page_id in PAGE_TARGETS.items()}
@@ -15575,10 +15576,7 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
             caption=backend,
         )
 
-    governance_cols = st.columns(2)
-    governance_cols[0].metric(CORE_REALIGN_V3_ENV_VAR, v3_mode)
-    governance_cols[1].metric("Evidência histórica V3", CORE_REALIGN_V3_BATCH_LABEL)
-    governance_cols[1].caption("Não é o Núcleo soberano — ver Status Constitucional abaixo.")
+    # V3 governance metrics removidos da home (M-UI-CLEAN-001) — referência interna, não operacional
 
     _render_constitutional_status_panel(compact=False)
 
@@ -15594,12 +15592,8 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     )
     generation_tone = "danger" if _is_sovereign_generation_blocked() else ("success" if generation_loaded else "success")
     recalibration = resolve_recalibration_display_status()
-    ml_pill_status = (
-        "SUPERVISIONADO"
-        if is_supervised_output_calibration_active()
-        else ("ASSISTIVO" if is_adm_supervised_ml_active() else "ASSISTIVO")
-    )
-    ml_pill_tone = "success" if is_supervised_output_calibration_active() else "info"
+    ml_pill_status = "INATIVO"
+    ml_pill_tone = "info"
     with status_cols[0]:
         _render_home_status_pill("Lei 15", SOVEREIGN_CORE_ID, "success")
     with status_cols[1]:
@@ -15617,8 +15611,8 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
-        "Lei 15A inoperante | Geração soberana controlada CORE_002 (M-GER-044) | "
-        "Gestão de Projetos Fase 0 ativa | Inventário PR #124 aprovado."
+        "CORE_002 soberano ativo (M-OPS-079) | ML reposicionado como ferramenta analítica | "
+        "Walk-forward validation ativa | PostgreSQL institucional conectado."
     )
     _render_home_quick_access()
 
