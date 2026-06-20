@@ -157,8 +157,6 @@ from dashboard.institutional_operational_generation import (
 )
 from dashboard.institutional_operational_structural_coverage import (
     EMPTY_OPERATIONAL_MESSAGE,
-    HISTORICAL_SECTION_TITLE,
-    HISTORICAL_SOURCE_CAPTION,
     OPERATIONAL_COVERAGE_TITLE,
     OPERATIONAL_SOURCE_CAPTION,
     build_active_coverage_scope_summary,
@@ -9457,69 +9455,6 @@ def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> Non
     )
 
 
-def _render_historical_structural_coverage_section() -> None:
-    with st.expander(HISTORICAL_SECTION_TITLE, expanded=False):
-        st.caption(HISTORICAL_SOURCE_CAPTION)
-        st.write(
-            "Camada secundária de evidência histórica e reconciliação. "
-            "Não representa geração operacional CORE_002 atual."
-        )
-        filter_cols = st.columns(5)
-        batch_options = batch_select_options(include_all=not is_light_mode_enabled())
-        selected_batch_option = filter_cols[0].selectbox(
-            "Lote histórico (reconciliação)",
-            options=batch_options,
-            index=default_batch_index(batch_options),
-            key="structural_coverage_historical_batch_label",
-        )
-        if is_light_mode_enabled() and selected_batch_option == "(todos)":
-            st.warning("Modo leve: selecione um lote histórico específico.")
-            return
-        selected_game_size = filter_cols[1].selectbox(
-            "game_size (histórico)",
-            options=["(todos)", *list(RUNTIME_GENERATION_CARD_FORMATS)],
-            index=0,
-            key="structural_coverage_historical_game_size",
-        )
-        selected_generation_event_id = filter_cols[2].number_input(
-            "generation_event_id (histórico)",
-            min_value=0,
-            value=0,
-            step=1,
-            key="structural_coverage_historical_generation_event_id",
-        )
-        selected_reconciliation_run_id = filter_cols[3].number_input(
-            "reconciliation_run_id",
-            min_value=0,
-            value=0,
-            step=1,
-            key="structural_coverage_historical_reconciliation_run_id",
-        )
-        selected_concurso = filter_cols[4].number_input(
-            "concurso_analisado",
-            min_value=0,
-            value=0,
-            step=1,
-            key="structural_coverage_historical_concurso_analisado",
-        )
-        payload = _cached_card_structure_diagnostics_from_db(
-            DB_PATH,
-            None if selected_batch_option == "(todos)" else str(selected_batch_option),
-            None if selected_game_size == "(todos)" else int(selected_game_size),
-            int(selected_generation_event_id) if int(selected_generation_event_id) > 0 else None,
-            int(selected_reconciliation_run_id) if int(selected_reconciliation_run_id) > 0 else None,
-            int(selected_concurso) if int(selected_concurso) > 0 else None,
-        )
-        st.caption(
-            f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
-            f"coverage_layer=`historical_reconciliation`"
-        )
-        if not payload.get("available"):
-            st.info("Nenhuma reconciliação histórica encontrada para os filtros selecionados.")
-            return
-        _render_structural_coverage_diagnostics_body(payload)
-
-
 STRUCTURAL_COVERAGE_AGGREGATE_EXIT_PENDING_KEY = "_structural_coverage_aggregate_exit_pending"
 STRUCTURAL_COVERAGE_REVIEWED_ACTIVE_IDS_KEY = "_structural_coverage_reviewed_active_ids"
 
@@ -9633,7 +9568,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
             with st.expander("Diagnóstico — último lote CORE_002 persistido", expanded=True):
                 st.json(coverage_gap)
         st.warning(EMPTY_OPERATIONAL_MESSAGE)
-        _render_historical_structural_coverage_section()
         return
 
     dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
@@ -9791,7 +9725,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     )
     if not payload.get("available"):
         st.warning("Geração operacional selecionada sem jogos persistidos em generated_games.")
-        _render_historical_structural_coverage_section()
         return
 
     policy_context = build_structural_policy_coverage_context(
@@ -9810,7 +9743,6 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     _render_structural_coverage_diagnostics_body(payload)
     if is_all_operational_generations_selection(selected_label) and payload.get("available"):
         _mark_structural_coverage_aggregate_reviewed(operational_generations)
-    _render_historical_structural_coverage_section()
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
