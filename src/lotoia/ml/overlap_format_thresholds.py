@@ -294,7 +294,7 @@ def build_overlap_composition_rows(
             continue
         rows.append(
             {
-                "overlap": overlap,
+                "overlap": str(overlap),
                 "pares": count,
                 "classificacao": label,
                 "level": classify_pair_overlap_level(overlap, size),
@@ -306,7 +306,7 @@ def build_overlap_composition_rows(
     )
     rows.append(
         {
-            "overlap": f"{threshold['aceitavel_max']} ou menor",
+            "overlap": f"<={threshold['aceitavel_max']}",
             "pares": aceitavel_count,
             "classificacao": "aceitável/bom",
             "level": LEVEL_BOM,

@@ -32,6 +32,7 @@ from lotoia.ml.structural_pool_15d_generator import (
     MIN_COMPLIANT_POOL_SIZE,
     MIN_POOL_COMPLIANCE_RATE,
     build_ml_structural_15d_pool,
+    resolve_structural_pool_target,
 )
 from lotoia.ml.supervised_output_calibration import (
     DEFAULT_NEAR_DUP_PAIR_RATIO,
@@ -701,6 +702,7 @@ def execute_ml_operational_hierarchy(
             policy=pool_policy or None,
             calibration_plan=calibration_plan,
             module_params=module_params.get("modules", {}).get("M-ML-072"),
+            min_compliant=resolve_structural_pool_target(requested_count=int(requested_count or 0)),
         )
         if structural_pool_bundle.get("structural_pool_applied"):
             corrective_actions.append("pool_estrutural_15d_expandido")
