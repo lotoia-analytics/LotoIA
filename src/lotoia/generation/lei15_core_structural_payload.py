@@ -19,6 +19,20 @@ STRONG_V1_PREFIXES: tuple[tuple[int, ...], ...] = (
 WATCH_PREFIX_PAIRS: tuple[tuple[int, ...], ...] = ((1, 2), (2, 3))
 WATCH_SUFFIX_PAIRS: tuple[tuple[int, ...], ...] = ((22, 24), (24, 25), (22, 25))
 
+# M-CORE-003 — padrões historicamente sobre-representados nos GPs gerados.
+PREFIX_BIAS_GROUP_A: frozenset[str] = frozenset(
+    {"01-03-06", "01-05-06", "03-05-06", "01-05-07"}
+)
+PREFIX_BIAS_GROUP_B: frozenset[str] = frozenset(
+    {"01-04-06", "04-05-06", "02-03-06", "03-04-06"}
+)
+SUFFIX_BIAS_GROUP_A: frozenset[str] = frozenset(
+    {"20-22-23", "20-23-24", "19-22-23", "21-22-23", "19-23-24"}
+)
+SUFFIX_BIAS_GROUP_B: frozenset[str] = frozenset(
+    {"20-21-23", "19-21-23", "20-21-22", "18-19-21", "19-24-25"}
+)
+
 
 def _fmt(nums: tuple[int, ...]) -> str:
     return "-".join(f"{n:02d}" for n in nums)
@@ -76,6 +90,16 @@ def compute_structural_bias_score(
     for pair in ("22-24", "24-25", "22-25"):
         if pair in sig["suffix_pairs"]:
             score += 6.0
+    prefix_sig = str(sig.get("prefix_signature") or "")
+    suffix_sig = str(sig.get("suffix_signature") or "")
+    if prefix_sig in PREFIX_BIAS_GROUP_A:
+        score += 45.0
+    elif prefix_sig in PREFIX_BIAS_GROUP_B:
+        score += 30.0
+    if suffix_sig in SUFFIX_BIAS_GROUP_A:
+        score += 45.0
+    elif suffix_sig in SUFFIX_BIAS_GROUP_B:
+        score += 35.0
     if profile_origin == "recorrente":
         score += 10.0
     elif profile_origin == "hibrido":
