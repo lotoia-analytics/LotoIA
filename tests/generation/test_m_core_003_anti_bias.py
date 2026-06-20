@@ -26,7 +26,8 @@ def test_historical_pattern_cap_proportional() -> None:
     assert historical_pattern_cap(1.40, gp_size=10) == 0
     assert historical_pattern_cap(1.40, gp_size=100) == 1
     assert historical_pattern_cap(3.50, gp_size=10) == 1
-    assert historical_pattern_cap(20.09, gp_size=10) == 2
+    assert historical_pattern_cap(20.09, gp_size=10) == 3
+    assert historical_pattern_cap(20.09, gp_size=50) == 11
     assert resolve_pattern_cap("01-04-06", kind="prefix", gp_size=10) == 0
 
 
@@ -81,6 +82,23 @@ def test_enforce_gp_diversity_cap_limits_rare_prefix() -> None:
     capped = enforce_gp_diversity_cap(games, pool, 10)
     prefix_count = sum(1 for game in capped if game.get("prefix_signature") == "01-04-06")
     assert prefix_count == 0
+
+
+def test_compose_sovereign_gp_delivers_large_batch_counts() -> None:
+    import os
+
+    os.environ.setdefault("LOTOIA_LEI15_CORE_002", "sovereign")
+    from lotoia.data.loader import DEFAULT_HISTORY_PATH, load_draws_csv
+    from lotoia.generation.lei15_core_002 import build_sovereign_pool, compose_sovereign_gp
+    from lotoia.governance.lei15_core_002_sovereign import get_core_002_config
+
+    label = "STRUCT_LEI15_CORE_CANDIDATE_002_15D_001"
+    cfg = get_core_002_config(label)
+    history = load_draws_csv(DEFAULT_HISTORY_PATH)
+    pool = build_sovereign_pool(150, seed=42, history=history, config=cfg)
+    gp = compose_sovereign_gp(pool, 50, cfg, game_size=15)
+    assert len(gp) == 50
+    assert sum(1 for game in gp if game.get("prefix_signature") == "01-04-06") == 0
 
 
 def test_realignment_defaults_m_core_003() -> None:
