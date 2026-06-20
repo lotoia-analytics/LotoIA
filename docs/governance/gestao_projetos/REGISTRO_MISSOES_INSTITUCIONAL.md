@@ -1104,3 +1104,30 @@ Copiar e preencher ao abrir missão:
 - [`QUADRO_PROJETOS_MISSOES.md`](QUADRO_PROJETOS_MISSOES.md)
 - [`POLITICA_GESTAO_PROJETOS_LOTOIA.md`](../POLITICA_GESTAO_PROJETOS_LOTOIA.md)
 - [`GOVERNANCA_OPERACIONAL_LOTOIA.md`](../GOVERNANCA_OPERACIONAL_LOTOIA.md) — Regra 8 (incidentes)
+
+---
+
+### M-AGENT-001 — Constituição do Primeiro Agente de IA da LotoIA
+
+| Campo | Valor |
+|-------|-------|
+| Data abertura | 2026-06-19 |
+| Projeto | LotoIA Agente de IA |
+| Agente | `agent_governanca` |
+| Status | `CONCLUÍDA` |
+
+**Objetivo:** Definir a arquitetura institucional completa do primeiro Agente de IA da LotoIA, produzindo todos os artefatos documentais exigidos sem alterar o código de produção.
+
+**Escopo autorizado:** Criar ADR-049, Documento de Constituição, Fluxograma, Roadmap de Autonomia, Matrizes de Permissões/Riscos/Auditoria.
+
+**Escopo proibido:** Implementar o agente em código de produção, alterar geração, ML, Lei 15, CORE_002, executar purge, criar tabelas.
+
+**Evidência Git:** Branch `cursor/m-agent-001-constituicao-agente-ia`
+
+**Evidência testes:** N/A (Missão documental)
+
+**Evidência deploy:** N/A
+
+**Bloqueios:** Nenhum.
+
+**Veredicto:** `M-AGENT-001 CONCLUÍDA — CONSTITUIÇÃO DO PRIMEIRO AGENTE DE IA DA LOTOIA DEFINIDA`
