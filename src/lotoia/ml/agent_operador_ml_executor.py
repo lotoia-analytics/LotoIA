@@ -12,7 +12,7 @@ import uuid
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
-from lotoia.ml.overlap_format_thresholds import LEVEL_CRITICO, classify_overlap_for_format
+from lotoia.ml.overlap_format_thresholds import DIVERSITY_LOW_THRESHOLD, LEVEL_CRITICO, classify_overlap_for_format
 from lotoia.ml.supervised_output_calibration import analyze_pool_structural_issues
 from lotoia.operations.partial_game_promotion import (
     GAME_QUALITY_ACCEPTABLE,
@@ -36,17 +36,24 @@ from lotoia.statistics.similarity_overlap_decomposition import DOMINANT_STRUCTUR
 MISSION_ID = "M-AGENT-002"
 AGENT_NAME = "agent_operador_ml"
 AGENT_MODE = "EXECUTOR_AUTONOMO_LOCAL_PRE_ENTREGA"
-EXECUTOR_VERSION = "M-AGENT-002-v1"
+EXECUTOR_VERSION = "M-AGENT-002-FIX-02-v2"
 
 ENV_AGENT_ENABLED = "LOTOIA_AGENT_OPERADOR_ML_ENABLED"
 ENV_AGENT_MAX_ATTEMPTS = "LOTOIA_AGENT_OPERADOR_ML_MAX_ATTEMPTS"
-DEFAULT_MAX_ATTEMPTS = 5
+DEFAULT_MAX_ATTEMPTS = 8
 
 GP_ENTREGUE_ACEITAVEL = "GP_ENTREGUE_ACEITAVEL"
 GP_ENTREGUE_COM_ALERTA = "GP_ENTREGUE_COM_ALERTA"
 GP_FALHA_POOL_INSUFICIENTE = "GP_FALHA_POOL_INSUFICIENTE"
 
 DOMINANCE_SHARE_THRESHOLD = 0.35
+SIMILARITY_ATTENTION_THRESHOLD = DIVERSITY_LOW_THRESHOLD
+STRUCTURAL_DIVERSITY_MIN = DIVERSITY_LOW_THRESHOLD
+ACTION_REDUCE_SIMILARITY_OVERLAP = "reduce_similarity_overlap"
+ACTION_RECOMPOSE_OVERLAP_DIVERSITY = "recompose_by_overlap_diversity"
+SIMILARITY_ISSUE_TYPES = frozenset(
+    {"similaridade_media_gp_elevada", "sobreposicao_maxima_elevada"}
+)
 
 
 def is_agent_operador_ml_enabled() -> bool:
@@ -276,6 +283,67 @@ def compute_gp_batch_metrics(
     }
 
 
+def _max_overlap_attention_threshold(card_format: int) -> int:
+    return max(int(card_format) - 2, 12)
+
+
+def _has_similarity_overlap_issues(metrics: Mapping[str, Any], *, card_format: int) -> bool:
+    mean_similarity = float(metrics.get("mean_similarity", 0.0) or 0.0)
+    max_overlap = int(metrics.get("max_overlap", 0) or 0)
+    structural_diversity = float(metrics.get("structural_diversity", 0.0) or 0.0)
+    issue_count = int(metrics.get("issue_count", 0) or 0)
+    if mean_similarity >= SIMILARITY_ATTENTION_THRESHOLD:
+        return True
+    if structural_diversity < STRUCTURAL_DIVERSITY_MIN:
+        return True
+    if max_overlap >= _max_overlap_attention_threshold(card_format):
+        return True
+    for issue in list(metrics.get("issues") or []):
+        if str(issue.get("tipo") or "") in SIMILARITY_ISSUE_TYPES:
+            return True
+    return issue_count > 0 and (
+        mean_similarity >= SIMILARITY_ATTENTION_THRESHOLD * 0.9
+        or max_overlap >= _max_overlap_attention_threshold(card_format) - 1
+    )
+
+
+def _metrics_similarity_improved(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> bool:
+    mean_before = float(before.get("mean_similarity", 0.0) or 0.0)
+    mean_after = float(after.get("mean_similarity", 0.0) or 0.0)
+    overlap_before = int(before.get("max_overlap", 0) or 0)
+    overlap_after = int(after.get("max_overlap", 0) or 0)
+    diversity_before = float(before.get("structural_diversity", 0.0) or 0.0)
+    diversity_after = float(after.get("structural_diversity", 0.0) or 0.0)
+    issues_before = int(before.get("issue_count", 0) or 0)
+    issues_after = int(after.get("issue_count", 0) or 0)
+    return (
+        mean_after < mean_before
+        or overlap_after < overlap_before
+        or diversity_after > diversity_before
+        or issues_after < issues_before
+    )
+
+
+def _overlap_contribution_ranking(
+    games: Sequence[Mapping[str, Any]],
+) -> list[tuple[int, int]]:
+    cards = _cards_from_games(games)
+    ranking: list[tuple[int, int]] = []
+    for index, card in enumerate(cards):
+        current = set(card)
+        contribution = 0
+        for other_index, other in enumerate(cards):
+            if other_index == index:
+                continue
+            contribution += len(current & set(other))
+        ranking.append((index, contribution))
+    ranking.sort(key=lambda row: row[1], reverse=True)
+    return ranking
+
+
 def _score_attempt(
     metrics: Mapping[str, Any],
     *,
@@ -285,8 +353,9 @@ def _score_attempt(
     if delivered < requested_quantity:
         return -10_000.0 + delivered
     score = float(metrics.get("structural_diversity", 0.0) or 0.0) * 200.0
+    score -= float(metrics.get("mean_similarity", 0.0) or 0.0) * 180.0
     score -= int(metrics.get("duplicates", 0) or 0) * 500.0
-    score -= int(metrics.get("max_overlap", 0) or 0) * 8.0
+    score -= int(metrics.get("max_overlap", 0) or 0) * 12.0
     score -= int(metrics.get("attention_games", 0) or 0) * 25.0
     if bool(metrics.get("critical_status")):
         score -= 5_000.0
@@ -459,6 +528,130 @@ def _recompose_gp(
     return recomposed[:requested_quantity], "recompose_diverse_gp"
 
 
+def _reduce_similarity_overlap(
+    selected: list[dict[str, Any]],
+    pool: Sequence[Mapping[str, Any]],
+    *,
+    card_format: int,
+    batch_label: str | None,
+    requested_quantity: int,
+    attempt_index: int,
+) -> tuple[list[dict[str, Any]], int, str, dict[str, Any]]:
+    """Substitui jogos de maior contribuição a overlap por candidatos mais diversos."""
+    diagnostics: dict[str, Any] = {
+        "overlap_reduction_candidates_evaluated": 0,
+        "pool_alternatives_available": 0,
+        "substitutions_applied": 0,
+    }
+    metrics_before = compute_gp_batch_metrics(
+        selected,
+        requested_quantity=requested_quantity,
+        card_format=card_format,
+        batch_label=batch_label,
+    )
+    if not _has_similarity_overlap_issues(metrics_before, card_format=card_format):
+        return selected, 0, "reduce_similarity_overlap_not_needed", diagnostics
+
+    output = [dict(game) for game in selected]
+    selected_signatures = {_game_signature(game) for game in output if _game_signature(game)}
+    pool_candidates = _pool_unique_conformant_candidates(
+        pool,
+        card_format=card_format,
+        exclude_signatures=selected_signatures,
+    )
+    diagnostics["pool_alternatives_available"] = len(pool_candidates)
+    if not pool_candidates:
+        return selected, 0, "reduce_similarity_overlap_no_pool_alternatives", diagnostics
+
+    cards = _cards_from_games(output)
+    replace_count = max(3, min(len(output) // 4, 8 + attempt_index))
+    ranking = _overlap_contribution_ranking(output)
+
+    for game_index, _contribution in ranking[:replace_count]:
+        if game_index >= len(output):
+            continue
+        best_candidate: dict[str, Any] | None = None
+        best_score = -1.0
+        for candidate in pool_candidates:
+            diagnostics["overlap_reduction_candidates_evaluated"] += 1
+            candidate_signature = _game_signature(candidate)
+            if not candidate_signature or candidate_signature in selected_signatures:
+                continue
+            candidate_card = resolve_cartao_final_from_game(dict(candidate))
+            if not candidate_card:
+                continue
+            overlaps = [
+                len(set(candidate_card) & set(cards[other_index]))
+                for other_index in range(len(cards))
+                if other_index != game_index
+            ]
+            max_overlap = max(overlaps, default=0)
+            candidate_score = (int(card_format) - max_overlap) / max(int(card_format), 1)
+            candidate_score += float(candidate.get("profile_score", 0.0) or 0.0) * 0.01
+            if candidate_score > best_score:
+                best_score = candidate_score
+                best_candidate = dict(candidate)
+        if best_candidate is None:
+            continue
+        old_signature = _game_signature(output[game_index])
+        replacement = dict(best_candidate)
+        replacement["agent_operador_ml_overlap_swap"] = True
+        output[game_index] = replacement
+        new_signature = _game_signature(replacement)
+        if old_signature:
+            selected_signatures.discard(old_signature)
+        if new_signature:
+            selected_signatures.add(new_signature)
+            cards[game_index] = list(resolve_cartao_final_from_game(replacement) or [])
+        diagnostics["substitutions_applied"] += 1
+
+    metrics_after = compute_gp_batch_metrics(
+        output,
+        requested_quantity=requested_quantity,
+        card_format=card_format,
+        batch_label=batch_label,
+    )
+    if _metrics_similarity_improved(metrics_before, metrics_after):
+        return output, int(diagnostics["substitutions_applied"]), ACTION_REDUCE_SIMILARITY_OVERLAP, diagnostics
+    if diagnostics["substitutions_applied"] > 0:
+        return output, int(diagnostics["substitutions_applied"]), "reduce_similarity_overlap_partial", diagnostics
+    return selected, 0, "reduce_similarity_overlap_no_gain", diagnostics
+
+
+def _recompose_by_overlap_diversity(
+    pool: Sequence[Mapping[str, Any]],
+    *,
+    requested_quantity: int,
+    card_format: int,
+    batch_label: str | None,
+    attempt_index: int,
+) -> tuple[list[dict[str, Any]], int, str, dict[str, Any]]:
+    diagnostics = {
+        "overlap_reduction_candidates_evaluated": 0,
+        "pool_alternatives_available": len(
+            _pool_unique_conformant_candidates(pool, card_format=card_format)
+        ),
+        "substitutions_applied": 0,
+    }
+    recomposed, action = _recompose_gp(
+        pool,
+        requested_quantity=requested_quantity,
+        card_format=card_format,
+        batch_label=batch_label,
+        attempt_index=attempt_index,
+    )
+    if recomposed and len(recomposed) >= requested_quantity:
+        for game in recomposed:
+            game["agent_operador_ml_recomposed_overlap"] = True
+        return (
+            recomposed[:requested_quantity],
+            len(recomposed),
+            ACTION_RECOMPOSE_OVERLAP_DIVERSITY,
+            diagnostics,
+        )
+    return recomposed, len(recomposed), action or "recompose_by_overlap_diversity_failed", diagnostics
+
+
 def _resolve_delivery_status(
     games: Sequence[Mapping[str, Any]],
     *,
@@ -595,44 +788,121 @@ def execute_agent_operador_ml_pre_delivery(
             "agent_applied": True,
         }
 
-    correction_sequence = [
-        ("deduplicate", lambda games, attempt: _deduplicate_selection(games, pool, card_format=card_size)),
-        ("swap_prefix", lambda games, attempt: _swap_dominant_games(
-            games, pool, card_format=card_size, batch_label=batch_label,
-            requested_quantity=requested, dominance_kind="prefix",
-        )),
-        ("swap_suffix", lambda games, attempt: _swap_dominant_games(
-            games, pool, card_format=card_size, batch_label=batch_label,
-            requested_quantity=requested, dominance_kind="suffix",
-        )),
-        ("swap_triple", lambda games, attempt: _swap_dominant_games(
-            games, pool, card_format=card_size, batch_label=batch_label,
-            requested_quantity=requested, dominance_kind="triple",
-        )),
-        ("swap_family", lambda games, attempt: _swap_dominant_games(
-            games, pool, card_format=card_size, batch_label=batch_label,
-            requested_quantity=requested, dominance_kind="family",
-        )),
-    ]
-
     working = [dict(game) for game in selected_games]
     max_attempts = get_max_agent_attempts()
+    similarity_overlap_trace: dict[str, Any] = {
+        "agent_similarity_overlap_correction_attempted": False,
+        "agent_similarity_overlap_correction_action": "",
+        "agent_similarity_overlap_correction_applied": False,
+        "agent_noop_prevented": False,
+        "similarity_before": float(before_metrics.get("mean_similarity", 0.0) or 0.0),
+        "similarity_after": float(before_metrics.get("mean_similarity", 0.0) or 0.0),
+        "max_overlap_before": int(before_metrics.get("max_overlap", 0) or 0),
+        "max_overlap_after": int(before_metrics.get("max_overlap", 0) or 0),
+        "structural_diversity_before": float(before_metrics.get("structural_diversity", 0.0) or 0.0),
+        "structural_diversity_after": float(before_metrics.get("structural_diversity", 0.0) or 0.0),
+        "issue_count_before": int(before_metrics.get("issue_count", 0) or 0),
+        "issue_count_after": int(before_metrics.get("issue_count", 0) or 0),
+        "overlap_reduction_candidates_evaluated": 0,
+        "pool_alternatives_available": 0,
+        "similarity_overlap_best_attempt_metrics": dict(before_metrics),
+        "agent_similarity_overlap_correction_failed": False,
+        "similarity_overlap_failure_reason": "",
+        "similarity_overlap_failure_evidence": {},
+    }
+    similarity_needed_initial = _has_similarity_overlap_issues(before_metrics, card_format=card_size)
+
+    def _run_similarity_overlap_correction(
+        games: list[dict[str, Any]],
+        attempt: int,
+    ) -> tuple[list[dict[str, Any]], int, str, dict[str, Any]]:
+        reduced, changed, action, diagnostics = _reduce_similarity_overlap(
+            games,
+            pool,
+            card_format=card_size,
+            batch_label=batch_label,
+            requested_quantity=requested,
+            attempt_index=attempt,
+        )
+        if action == ACTION_REDUCE_SIMILARITY_OVERLAP:
+            return reduced, changed, action, diagnostics
+        recomposed, recompose_changed, recompose_action, recompose_diag = _recompose_by_overlap_diversity(
+            pool,
+            requested_quantity=requested,
+            card_format=card_size,
+            batch_label=batch_label,
+            attempt_index=attempt,
+        )
+        merged_diag = {
+            **diagnostics,
+            **recompose_diag,
+            "reduce_action": action,
+            "recompose_action": recompose_action,
+        }
+        if recomposed and len(recomposed) >= requested:
+            return recomposed[:requested], recompose_changed, ACTION_RECOMPOSE_OVERLAP_DIVERSITY, merged_diag
+        if changed > 0:
+            return reduced, changed, action, merged_diag
+        return games, 0, recompose_action or action, merged_diag
+
+    def _record_overlap_diag(overlap_diag: Mapping[str, Any], action: str) -> None:
+        if not overlap_diag:
+            return
+        similarity_overlap_trace["overlap_reduction_candidates_evaluated"] = max(
+            int(similarity_overlap_trace.get("overlap_reduction_candidates_evaluated", 0) or 0),
+            int(overlap_diag.get("overlap_reduction_candidates_evaluated", 0) or 0),
+        )
+        similarity_overlap_trace["pool_alternatives_available"] = max(
+            int(similarity_overlap_trace.get("pool_alternatives_available", 0) or 0),
+            int(overlap_diag.get("pool_alternatives_available", 0) or 0),
+        )
+        if action in {ACTION_REDUCE_SIMILARITY_OVERLAP, ACTION_RECOMPOSE_OVERLAP_DIVERSITY}:
+            similarity_overlap_trace["agent_similarity_overlap_correction_action"] = action
 
     for attempt_index in range(max_attempts):
-        if attempt_index < len(correction_sequence):
-            _, corrector = correction_sequence[attempt_index]
-            working, changed, action = corrector(working, attempt_index)
+        overlap_diag: dict[str, Any] = {}
+        if attempt_index == 0:
+            working, changed, action = _deduplicate_selection(working, pool, card_format=card_size)
+        elif attempt_index == 1:
+            working, changed, action = _swap_dominant_games(
+                working, pool, card_format=card_size, batch_label=batch_label,
+                requested_quantity=requested, dominance_kind="prefix",
+            )
+        elif attempt_index == 2:
+            working, changed, action = _swap_dominant_games(
+                working, pool, card_format=card_size, batch_label=batch_label,
+                requested_quantity=requested, dominance_kind="suffix",
+            )
+        elif attempt_index == 3:
+            working, changed, action = _swap_dominant_games(
+                working, pool, card_format=card_size, batch_label=batch_label,
+                requested_quantity=requested, dominance_kind="triple",
+            )
+        elif attempt_index == 4:
+            working, changed, action = _swap_dominant_games(
+                working, pool, card_format=card_size, batch_label=batch_label,
+                requested_quantity=requested, dominance_kind="family",
+            )
+        elif attempt_index == 5:
+            working, changed, action, overlap_diag = _run_similarity_overlap_correction(
+                working,
+                attempt_index,
+            )
+            similarity_overlap_trace["agent_similarity_overlap_correction_attempted"] = True
+            similarity_overlap_trace["agent_noop_prevented"] = similarity_needed_initial
         else:
-            working, action = _recompose_gp(
+            working, changed, action, overlap_diag = _recompose_by_overlap_diversity(
                 pool,
                 requested_quantity=requested,
                 card_format=card_size,
                 batch_label=batch_label,
                 attempt_index=attempt_index,
             )
-            changed = len(working)
+            similarity_overlap_trace["agent_similarity_overlap_correction_attempted"] = True
 
-        if action and action not in actions_applied:
+        _record_overlap_diag(overlap_diag, action)
+
+        if action and action not in actions_applied and not action.endswith("_not_needed"):
             actions_applied.append(action)
 
         attempt_metrics = compute_gp_batch_metrics(
@@ -651,6 +921,7 @@ def execute_agent_operador_ml_pre_delivery(
                 "score": attempt_score,
                 "metrics": attempt_metrics,
                 "delivered_quantity": len(working),
+                "overlap_diagnostics": dict(overlap_diag),
             }
         )
         if attempt_score > best_score:
@@ -658,6 +929,7 @@ def execute_agent_operador_ml_pre_delivery(
             best_games = [dict(game) for game in working]
             best_metrics = dict(attempt_metrics)
             best_index = attempt_index
+            similarity_overlap_trace["similarity_overlap_best_attempt_metrics"] = dict(attempt_metrics)
 
         if (
             int(attempt_metrics.get("gp_delivered_quantity", 0) or 0) >= requested
@@ -668,8 +940,78 @@ def execute_agent_operador_ml_pre_delivery(
             and not attempt_metrics.get("dominant_suffix")
             and not attempt_metrics.get("dominant_triple")
             and int(attempt_metrics.get("attention_games", 0) or 0) == 0
+            and not _has_similarity_overlap_issues(attempt_metrics, card_format=card_size)
         ):
             break
+
+    if similarity_needed_initial and not similarity_overlap_trace.get(
+        "agent_similarity_overlap_correction_attempted"
+    ):
+        working, changed, action, overlap_diag = _run_similarity_overlap_correction(working, max_attempts)
+        similarity_overlap_trace["agent_similarity_overlap_correction_attempted"] = True
+        similarity_overlap_trace["agent_noop_prevented"] = True
+        _record_overlap_diag(overlap_diag, action)
+        if action and action not in actions_applied and not action.endswith("_not_needed"):
+            actions_applied.append(action)
+        attempt_metrics = compute_gp_batch_metrics(
+            working,
+            requested_quantity=requested,
+            card_format=card_size,
+            batch_label=batch_label,
+            parent_lot_context=lot_context,
+        )
+        attempt_score = _score_attempt(attempt_metrics, requested_quantity=requested)
+        attempts.append(
+            {
+                "attempt_index": len(attempts),
+                "action": action,
+                "changes": int(changed),
+                "score": attempt_score,
+                "metrics": attempt_metrics,
+                "delivered_quantity": len(working),
+                "overlap_diagnostics": dict(overlap_diag),
+                "forced_similarity_pass": True,
+            }
+        )
+        if attempt_score > best_score:
+            best_score = attempt_score
+            best_games = [dict(game) for game in working]
+            best_metrics = dict(attempt_metrics)
+            best_index = len(attempts) - 1
+            similarity_overlap_trace["similarity_overlap_best_attempt_metrics"] = dict(attempt_metrics)
+
+    similarity_overlap_trace["similarity_after"] = float(best_metrics.get("mean_similarity", 0.0) or 0.0)
+    similarity_overlap_trace["max_overlap_after"] = int(best_metrics.get("max_overlap", 0) or 0)
+    similarity_overlap_trace["structural_diversity_after"] = float(
+        best_metrics.get("structural_diversity", 0.0) or 0.0
+    )
+    similarity_overlap_trace["issue_count_after"] = int(best_metrics.get("issue_count", 0) or 0)
+    similarity_overlap_trace["agent_similarity_overlap_correction_applied"] = _metrics_similarity_improved(
+        before_metrics,
+        best_metrics,
+    )
+    if similarity_needed_initial and not similarity_overlap_trace["agent_similarity_overlap_correction_applied"]:
+        similarity_overlap_trace["agent_similarity_overlap_correction_failed"] = True
+        similarity_overlap_trace["similarity_overlap_failure_reason"] = (
+            "pool_without_diverse_alternatives_sufficient"
+            if int(similarity_overlap_trace.get("pool_alternatives_available", 0) or 0) <= 0
+            else "no_measurable_similarity_overlap_gain_after_correction"
+        )
+        similarity_overlap_trace["similarity_overlap_failure_evidence"] = {
+            "requested_quantity": requested,
+            "pool_alternatives_available": int(
+                similarity_overlap_trace.get("pool_alternatives_available", 0) or 0
+            ),
+            "overlap_reduction_candidates_evaluated": int(
+                similarity_overlap_trace.get("overlap_reduction_candidates_evaluated", 0) or 0
+            ),
+            "similarity_before": float(before_metrics.get("mean_similarity", 0.0) or 0.0),
+            "similarity_after": float(best_metrics.get("mean_similarity", 0.0) or 0.0),
+            "max_overlap_before": int(before_metrics.get("max_overlap", 0) or 0),
+            "max_overlap_after": int(best_metrics.get("max_overlap", 0) or 0),
+            "issue_count_before": int(before_metrics.get("issue_count", 0) or 0),
+            "issue_count_after": int(best_metrics.get("issue_count", 0) or 0),
+        }
 
     delivery_status = _resolve_delivery_status(
         best_games,
@@ -741,6 +1083,7 @@ def execute_agent_operador_ml_pre_delivery(
         law_15_status=law_15_status,
         attempt_results=attempts,
         primary_corrective_action=primary_action,
+        similarity_overlap_trace=similarity_overlap_trace,
     )
 
     return {
@@ -774,8 +1117,9 @@ def _build_trace(
     law_15_status: str,
     attempt_results: Sequence[Mapping[str, Any]],
     primary_corrective_action: str = "",
+    similarity_overlap_trace: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "agent_operador_ml_applied": True,
         "agent_name": AGENT_NAME,
         "agent_mode": AGENT_MODE,
@@ -808,6 +1152,8 @@ def _build_trace(
         "core_002_status": str(core_002_status),
         "law_15_status": str(law_15_status),
     }
+    payload.update(dict(similarity_overlap_trace or {}))
+    return payload
 
 
 def build_agent_operador_ml_ui_summary(trace: Mapping[str, Any] | None) -> dict[str, Any]:
