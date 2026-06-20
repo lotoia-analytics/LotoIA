@@ -13,7 +13,9 @@ from lotoia.operations.lot_operational_status import (
 from lotoia.operations.structural_coverage_exit_cleanup import (
     MISSION_ID,
     all_active_generations_review_completed,
+    build_structural_coverage_queue_cleanup_summary,
     delete_reviewed_operational_generations,
+    execute_manual_structural_coverage_queue_cleanup,
     execute_structural_coverage_exit_cleanup,
     is_generation_eligible_for_post_coverage_deletion,
     is_structural_coverage_review_completed,
@@ -245,6 +247,61 @@ def test_execute_exit_cleanup_requires_all_reviewed(tmp_path) -> None:
     assert list_active_core_002_generation_event_ids(db_path) == []
 
 
+def test_manual_queue_cleanup_clears_active_generations_without_prior_review(tmp_path) -> None:
+    db_path = tmp_path / "manual.db"
+    create_database(db_path)
+    lot_context = build_lot_status_context(
+        ml_verdict_payload={
+            "ml_verdict": VERDICT_PRECISA_CALIBRAR,
+            "official_release_allowed": False,
+        },
+        generation_origin=GENERATION_ORIGIN_GENERATOR,
+    )
+    ge_one = _seed_sovereign_event(db_path, context_json=lot_context, games_count=4)
+    ge_two = _seed_sovereign_event(db_path, context_json=lot_context, games_count=6)
+    summary = build_structural_coverage_queue_cleanup_summary(db_path)
+    assert summary["active_count"] == 2
+    assert summary["eligible_count"] == 2
+    result = execute_manual_structural_coverage_queue_cleanup(db_path)
+    assert result["executed"] is True
+    assert sorted(result["deleted_generation_event_ids"]) == sorted([ge_one, ge_two])
+    assert list_active_core_002_generation_event_ids(db_path) == []
+
+
+def test_manual_queue_cleanup_skips_conferred_generations(tmp_path) -> None:
+    db_path = tmp_path / "manual-conferred.db"
+    create_database(db_path)
+    lot_context = build_lot_status_context(
+        ml_verdict_payload={
+            "ml_verdict": VERDICT_PRECISA_CALIBRAR,
+            "official_release_allowed": False,
+        },
+        generation_origin=GENERATION_ORIGIN_GENERATOR,
+    )
+    ge_eligible = _seed_sovereign_event(db_path, context_json=lot_context, games_count=4)
+    ge_conferred = _seed_sovereign_event(db_path, context_json=lot_context, games_count=4)
+    with get_session(db_path) as session:
+        session.add(
+            ReconciliationRun(
+                generation_event_id=ge_conferred,
+                lead_id=None,
+                contest_id=3700,
+                source="official_result",
+                status="reconciliado",
+                prize_count=0,
+                total_hits=10,
+                best_hits=10,
+                payload={},
+            )
+        )
+        session.commit()
+    result = execute_manual_structural_coverage_queue_cleanup(db_path)
+    assert result["executed"] is True
+    assert result["deleted_generation_event_ids"] == [ge_eligible]
+    with get_session(db_path) as session:
+        assert session.query(GenerationEvent).filter(GenerationEvent.id == ge_conferred).count() == 1
+
+
 def test_institutional_app_wires_structural_coverage_exit_cleanup() -> None:
     import dashboard.institutional_app as institutional_app
 
@@ -254,4 +311,8 @@ def test_institutional_app_wires_structural_coverage_exit_cleanup() -> None:
     coverage_source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
     assert "_mark_structural_coverage_aggregate_reviewed" in coverage_source
     assert "is_all_operational_generations_selection" in coverage_source
+    assert "_render_structural_coverage_queue_cleanup_panel" in coverage_source
+    assert "_render_structural_coverage_cleanup_feedback" in coverage_source
+    panel_source = inspect.getsource(institutional_app._render_structural_coverage_queue_cleanup_panel)
+    assert "execute_manual_structural_coverage_queue_cleanup" in panel_source
     assert "_maybe_bust_operational_coverage_cache" in inspect.getsource(institutional_app.main)

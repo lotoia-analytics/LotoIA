@@ -235,6 +235,8 @@ from lotoia.operations.partial_game_promotion import (
 )
 from lotoia.operations.structural_coverage_exit_cleanup import (
     all_active_generations_review_completed,
+    build_structural_coverage_queue_cleanup_summary,
+    execute_manual_structural_coverage_queue_cleanup,
     execute_structural_coverage_exit_cleanup,
     persist_structural_coverage_review_completed,
     resolve_post_coverage_deletion_targets,
@@ -9503,8 +9505,101 @@ def _handle_structural_coverage_page_exit(previous_page: str, current_page: str)
     if result.get("executed"):
         _invalidate_operational_structural_cache()
         st.session_state["_bust_operational_coverage_cache"] = True
-    else:
-        st.session_state["_structural_coverage_exit_cleanup_result"] = result
+    st.session_state["_structural_coverage_exit_cleanup_result"] = result
+
+
+def _render_structural_coverage_cleanup_feedback() -> None:
+    """Exibe resultado de limpeza manual ou automática da fila operacional CORE_002."""
+    manual_result = st.session_state.pop("_structural_coverage_manual_cleanup_result", None)
+    exit_result = st.session_state.pop("_structural_coverage_exit_cleanup_result", None)
+    for label, result in (
+        ("Limpeza manual da fila operacional", manual_result),
+        ("Limpeza automática ao sair da Cobertura", exit_result),
+    ):
+        if not isinstance(result, dict) or not result:
+            continue
+        deleted_ids = list(result.get("deleted_generation_event_ids") or [])
+        if deleted_ids:
+            st.success(
+                f"{label}: {len(deleted_ids)} geração(ões) removida(s) "
+                f"(GE {', '.join(str(value) for value in deleted_ids)})."
+            )
+            continue
+        reason = str(result.get("reason") or result.get("verdict") or "").strip()
+        ineligible_details = list(result.get("ineligible_details") or [])
+        if reason == "no_active_generations":
+            st.info(f"{label}: nenhuma geração operacional ativa na fila.")
+        elif reason == "pending_structural_coverage_review":
+            st.warning(
+                f"{label}: revisão agregada pendente. "
+                "Selecione **Todos — gerações ativas CORE_002** ou use o botão de limpeza manual."
+            )
+        elif ineligible_details:
+            st.warning(
+                f"{label}: nenhuma geração elegível para remoção "
+                f"({len(ineligible_details)} bloqueada(s))."
+            )
+            with st.expander("Motivos de bloqueio (auditoria técnica)", expanded=False):
+                st.dataframe(pd.DataFrame(ineligible_details), hide_index=True, use_container_width=True)
+        elif reason:
+            st.warning(f"{label}: {reason}")
+
+
+def _render_structural_coverage_queue_cleanup_panel(
+    operational_generations: list[dict[str, Any]],
+) -> None:
+    """Painel M-OPS-080 — limpeza explícita da fila operacional CORE_002."""
+    active_ids = [
+        int(row.get("generation_event_id", 0) or 0)
+        for row in operational_generations
+        if int(row.get("generation_event_id", 0) or 0) > 0
+    ]
+    if not active_ids:
+        return
+
+    summary = build_structural_coverage_queue_cleanup_summary(DB_PATH, active_ids)
+    eligible_count = int(summary.get("eligible_count", 0) or 0)
+    active_count = int(summary.get("active_count", 0) or 0)
+    ineligible_count = int(summary.get("ineligible_count", 0) or 0)
+
+    with st.expander("Fila operacional CORE_002 — limpeza (M-OPS-080)", expanded=active_count > 3):
+        st.caption(
+            f"Fila atual: **{active_count}** geração(ões) ativa(s) · "
+            f"**{eligible_count}** elegível(is) para remoção · "
+            f"**{ineligible_count}** bloqueada(s) (conferida, protegida ou inativa)."
+        )
+        st.write(
+            "Use este painel para esvaziar a fila após auditar os relatórios. "
+            "Gerações já conferidas oficialmente permanecem no banco por governança."
+        )
+        if ineligible_count > 0:
+            with st.expander("Gerações bloqueadas para remoção", expanded=False):
+                st.dataframe(
+                    pd.DataFrame(list(summary.get("ineligible_details") or [])),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+        cleanup_cols = st.columns([2, 1])
+        with cleanup_cols[1]:
+            if st.button(
+                "Limpar fila operacional",
+                type="primary",
+                key="structural_coverage_manual_queue_cleanup",
+                disabled=eligible_count <= 0,
+                help=(
+                    "Remove gerações CORE_002 auditáveis da fila operacional "
+                    "para liberar novas gerações no Gerador ADM."
+                ),
+            ):
+                result = execute_manual_structural_coverage_queue_cleanup(
+                    DB_PATH,
+                    generation_event_ids=active_ids,
+                )
+                st.session_state["_structural_coverage_manual_cleanup_result"] = result
+                if result.get("executed"):
+                    _invalidate_operational_structural_cache()
+                    st.session_state["_bust_operational_coverage_cache"] = True
+                st.rerun()
 
 
 def _maybe_bust_operational_coverage_cache() -> None:
@@ -9546,6 +9641,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         return
 
     _maybe_bust_operational_coverage_cache()
+    _render_structural_coverage_cleanup_feedback()
 
     operational_generations = _load_operational_generations_cached(limit=OPERATIONAL_EVENTS_LIMIT)
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
@@ -9579,6 +9675,8 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                 st.json(coverage_gap)
         st.warning(EMPTY_OPERATIONAL_MESSAGE)
         return
+
+    _render_structural_coverage_queue_cleanup_panel(operational_generations)
 
     dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
     label_to_generation = {

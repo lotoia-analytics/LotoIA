@@ -72,6 +72,7 @@ def is_generation_eligible_for_post_coverage_deletion(
     event: GenerationEvent,
     *,
     reconciliation_exists: bool = False,
+    require_structural_review: bool = True,
 ) -> tuple[bool, str]:
     ge_id = int(getattr(event, "id", 0) or 0)
     batch_label = str(getattr(event, "analysis_batch_label", "") or "")
@@ -83,7 +84,7 @@ def is_generation_eligible_for_post_coverage_deletion(
         return False, "protected_generation_event_id"
     if not is_sovereign_core_label(batch_label):
         return False, "not_sovereign_core_002"
-    if not is_structural_coverage_review_completed(context):
+    if require_structural_review and not is_structural_coverage_review_completed(context):
         return False, "structural_coverage_review_pending"
     if reconciliation_exists:
         return False, "lot_already_conferred"
@@ -195,6 +196,8 @@ def all_active_generations_review_completed(
 def resolve_post_coverage_deletion_targets(
     db_path: Any,
     generation_event_ids: Sequence[int],
+    *,
+    require_structural_review: bool = True,
 ) -> dict[str, Any]:
     """Dry-run dos generation_events elegíveis para purge pós-Cobertura."""
     target_ids = sorted({int(value) for value in generation_event_ids if int(value or 0) > 0})
@@ -216,6 +219,7 @@ def resolve_post_coverage_deletion_targets(
             allowed, reason = is_generation_eligible_for_post_coverage_deletion(
                 event,
                 reconciliation_exists=reconciliation_exists,
+                require_structural_review=require_structural_review,
             )
             if allowed:
                 eligible.append(ge_id)
@@ -361,5 +365,70 @@ def execute_structural_coverage_exit_cleanup(
         "mission_id": MISSION_ID,
         "executed": bool(result.get("deleted_generation_event_ids")),
         "active_generation_event_ids": target_ids,
+        **result,
+    }
+
+
+def build_structural_coverage_queue_cleanup_summary(
+    db_path: Any,
+    generation_event_ids: Sequence[int] | None = None,
+) -> dict[str, Any]:
+    """Resumo dry-run da fila operacional CORE_002 elegível para purge."""
+    target_ids = sorted({int(value) for value in (generation_event_ids or []) if int(value or 0) > 0})
+    if not target_ids:
+        target_ids = list_active_core_002_generation_event_ids(db_path)
+    dry_run = resolve_post_coverage_deletion_targets(
+        db_path,
+        target_ids,
+        require_structural_review=False,
+    )
+    eligible_ids = list(dry_run.get("eligible_generation_event_ids") or [])
+    ineligible_details = list(dry_run.get("ineligible_details") or [])
+    return {
+        "mission_id": MISSION_ID,
+        "active_generation_event_ids": target_ids,
+        "eligible_generation_event_ids": eligible_ids,
+        "ineligible_generation_event_ids": list(dry_run.get("ineligible_generation_event_ids") or []),
+        "ineligible_details": ineligible_details,
+        "eligible_count": len(eligible_ids),
+        "active_count": len(target_ids),
+        "ineligible_count": len(ineligible_details),
+    }
+
+
+def execute_manual_structural_coverage_queue_cleanup(
+    db_path: Any,
+    *,
+    generation_event_ids: Sequence[int] | None = None,
+) -> dict[str, Any]:
+    """Marca e remove imediatamente gerações CORE_002 auditadas na fila operacional."""
+    target_ids = sorted({int(value) for value in (generation_event_ids or []) if int(value or 0) > 0})
+    if not target_ids:
+        target_ids = list_active_core_002_generation_event_ids(db_path)
+    if not target_ids:
+        return {
+            "mission_id": MISSION_ID,
+            "manual_cleanup": True,
+            "executed": False,
+            "reason": "no_active_generations",
+            "deleted_generation_event_ids": [],
+            "active_generation_event_ids": [],
+        }
+
+    summary = build_structural_coverage_queue_cleanup_summary(db_path, target_ids)
+    persist_structural_coverage_review_completed(
+        db_path,
+        target_ids,
+        scope="manual_queue_cleanup",
+    )
+    result = delete_reviewed_operational_generations(db_path, target_ids)
+    deleted_ids = list(result.get("deleted_generation_event_ids") or [])
+    return {
+        "mission_id": MISSION_ID,
+        "manual_cleanup": True,
+        "executed": bool(deleted_ids),
+        "active_generation_event_ids": target_ids,
+        "marked_review_ids": target_ids,
+        "summary_before_cleanup": summary,
         **result,
     }

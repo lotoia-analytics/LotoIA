@@ -112,6 +112,7 @@ src/lotoia/generation/core_realignment_v4.py
 src/lotoia/generation/lei15_core_002.py
 src/lotoia/generation/lei15_core_candidate_001.py
 src/lotoia/generation/lei15_core_structural_payload.py
+src/lotoia/generation/m_core_003_prefix_suffix_policy.py
 src/lotoia/generation/structural_realignment_v1.py
 src/lotoia/generator/__init__.py
 src/lotoia/generator/basic_generator.py
@@ -226,6 +227,7 @@ src/lotoia/observability/hb_metrics.py
 src/lotoia/observability/institutional_dashboard.py
 src/lotoia/observability/live_operational_memory.py
 src/lotoia/observability/live_telemetry.py
+src/lotoia/observability/m_core_003_bias_monitoring.py
 src/lotoia/observability/metrics_registry.py
 src/lotoia/observability/ml_diagnostic_panels.py
 src/lotoia/observability/observability_alerts.py
@@ -241,6 +243,7 @@ src/lotoia/observability/runtime_storytelling.py
 src/lotoia/observability/structured_logging.py
 src/lotoia/operations/lot_operational_status.py
 src/lotoia/operations/partial_game_promotion.py
+src/lotoia/operations/structural_coverage_exit_cleanup.py
 src/lotoia/orchestration/__init__.py
 src/lotoia/orchestration/intelligent_orchestration.py
 src/lotoia/persistence/__init__.py
