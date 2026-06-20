@@ -20,7 +20,6 @@ HIDDEN_SIDEBAR_PAGE_IDS: frozenset[str] = frozenset(
     {
         "governance_read_only",
         "restricted_controlled_cleanup",
-        "central_ml_diagnostics",
     }
 )
 
@@ -269,11 +268,6 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "label": "Área Restrita — Limpeza Controlada",
         "estado": "M-UI-MENU-001 — oculta do menu lateral; aliases seguros permanecem",
     },
-    {
-        "page_id": "central_ml_diagnostics",
-        "label": "Central ML — Calibração Supervisionada",
-        "estado": "M-OPS-079 — oculta do menu lateral; rota analítica opt-in permanece",
-    },
 )
 
 PENDING_ROUTE_ROWS: tuple[dict[str, str], ...] = (
@@ -306,7 +300,7 @@ ROUTE_GUARDS: tuple[str, ...] = (
     "public_app fora do escopo deste inventário.",
     "M-VIS-057 — menu lateral enxuto; rotas antigas redirecionam com fallback seguro.",
     "M-UI-MENU-001 — governança e status constitucional ocultos do menu operacional.",
-    "M-OPS-079 — Central ML oculta do menu; ML opt-in via variável de ambiente.",
+    "M-UI-CLEAN-001 — Análise ML visível no grupo Análise; geração CORE_002 soberana direta.",
 )
 
 
