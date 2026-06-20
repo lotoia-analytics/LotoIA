@@ -105,3 +105,9 @@ def test_legacy_constants_preserved_as_fallback() -> None:
 
 def test_mission_id_declared() -> None:
     assert MISSION_ID_080 == "M-ML-080"
+
+
+def test_small_lot_coverage_thresholds_match_mission() -> None:
+    assert resolve_min_coverage_for_count(5) == 18
+    assert resolve_min_coverage_for_count(10) == 22
+    assert resolve_min_coverage_for_count(16) == 25

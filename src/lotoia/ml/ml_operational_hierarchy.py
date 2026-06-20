@@ -505,15 +505,20 @@ def _evaluate_coverage_stage(
         requested_count=requested_count,
     )
     coverage_issues = _issues_by_type(diagnostics, COVERAGE_ISSUE_TYPES)
+    blocking_coverage_issues = [
+        issue
+        for issue in coverage_issues
+        if str(issue.get("severidade") or "") in {"alta", "media"}
+    ]
     alta_coverage = [
-        issue for issue in coverage_issues if str(issue.get("severidade") or "") == "alta"
+        issue for issue in blocking_coverage_issues if str(issue.get("severidade") or "") == "alta"
     ]
     failures = [
         str(issue.get("descricao") or issue.get("tipo") or "cobertura")
-        for issue in coverage_issues
+        for issue in blocking_coverage_issues
     ]
     corrective_actions: list[str] = []
-    if coverage_issues:
+    if blocking_coverage_issues:
         corrective_actions.append("reforco_dezenas_ausentes")
         corrective_actions.append("rebalanceamento_estrutural")
 
@@ -524,9 +529,10 @@ def _evaluate_coverage_stage(
         "status": "approved" if passed else "rejected",
         "passed": passed,
         "metrics": {
-            "subcovered_dezenas_count": len(coverage_issues),
+            "subcovered_dezenas_count": len(blocking_coverage_issues),
             "critical_subcoverage_count": len(alta_coverage),
-            "issue_count": len(coverage_issues),
+            "observational_coverage_count": len(coverage_issues) - len(blocking_coverage_issues),
+            "issue_count": len(blocking_coverage_issues),
             "candidate_pool_size": len(candidate_pool),
         },
         "failures": failures,

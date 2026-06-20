@@ -279,7 +279,7 @@ def analyze_pool_structural_issues(
                 ),
             }
         )
-    if min_distinct_coverage >= 25:
+    elif lot_reference >= 16:
         min_expected = max(1, int(pool_size * DEFAULT_UNDERCOVER_RATIO))
         for number in range(1, 26):
             count = int(number_presence.get(number, 0))
@@ -300,14 +300,15 @@ def analyze_pool_structural_issues(
             if count <= 0:
                 issues.append(
                     {
-                        "tipo": "dezena_subcoberta",
-                        "severidade": "alta",
+                        "tipo": "dezena_critica_ausente_observacional",
+                        "severidade": "observacional",
                         "dezena": number,
                         "valor": count,
-                        "limite": 1,
+                        "limite": 0,
                         "descricao": (
                             f"Dezena crítica {number:02d} ausente no lote {lot_reference} "
-                            f"(cobertura mínima adaptativa {min_distinct_coverage})"
+                            f"(diagnóstico observacional — cobertura distinta {distinct_present}/"
+                            f"{min_distinct_coverage} atendida)"
                         ),
                     }
                 )

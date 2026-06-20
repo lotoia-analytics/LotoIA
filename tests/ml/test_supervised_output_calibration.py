@@ -90,8 +90,43 @@ def test_analyze_uses_adaptive_near_dup_limit_for_small_lot() -> None:
 def test_analyze_small_lot_uses_adaptive_distinct_coverage() -> None:
     games = [_make_game(_base_card(index)) for index in range(5)]
     diagnostics = analyze_pool_structural_issues(games, game_size=15, requested_count=5)
-    coverage_issues = [row for row in diagnostics["issues"] if row.get("tipo") == "dezena_subcoberta"]
-    assert len(coverage_issues) < 20
+    blocking = [
+        row
+        for row in diagnostics["issues"]
+        if row.get("tipo") == "dezena_subcoberta" and row.get("dezena") in {7, 15, 23}
+    ]
+    assert not blocking
+
+
+def test_small_lot_with_sufficient_distinct_coverage_does_not_block_critical_dezenas() -> None:
+    """M-ML-080-FIX-01 — lote 1–5 com >=18 dezenas distintas não reprova por 7/15/23 ausentes."""
+    card_a = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 16, 17]
+    card_b = [18, 19, 20, 21, 22, 24, 25, 1, 2, 3, 4, 5, 6, 8, 9]
+    games = [_make_game(card_a), _make_game(card_b), _make_game(card_b)]
+    diagnostics = analyze_pool_structural_issues(games, game_size=15, requested_count=5)
+    blocking = [row for row in diagnostics["issues"] if row.get("tipo") == "dezena_subcoberta"]
+    assert not any(int(row.get("dezena", 0) or 0) in {7, 15, 23} for row in blocking if "dezena" in row)
+    observational = [
+        row for row in diagnostics["issues"] if row.get("tipo") == "dezena_critica_ausente_observacional"
+    ]
+    assert len(observational) == 3
+
+
+def test_mid_small_lot_with_22_distinct_does_not_block_critical_dezenas() -> None:
+    """M-ML-080-FIX-01 — lote 6–15 com >=22 dezenas distintas não reprova por 7/15/23 ausentes."""
+    dezenas = list(range(1, 23))
+    games = [_make_game(dezenas, profile_score=10.0 - index) for index in range(8)]
+    diagnostics = analyze_pool_structural_issues(games, game_size=15, requested_count=10)
+    blocking = [row for row in diagnostics["issues"] if row.get("tipo") == "dezena_subcoberta"]
+    assert not any(int(row.get("dezena", 0) or 0) in {7, 15, 23} for row in blocking if "dezena" in row)
+
+
+def test_large_lot_keeps_per_dezena_subcoverage() -> None:
+    core = list(range(1, 16))
+    games = [_make_game(core) for _ in range(19)]
+    games.append(_make_game([16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 1, 2, 3, 4, 5]))
+    diagnostics = analyze_pool_structural_issues(games, game_size=15, requested_count=20)
+    assert any(row.get("tipo") == "dezena_subcoberta" for row in diagnostics["issues"])
 
 
 def test_analyze_detects_excessive_prefix() -> None:
