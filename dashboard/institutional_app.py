@@ -269,13 +269,19 @@ from dashboard.institutional_light_mode import (
 )
 from dashboard.institutional_conference_runtime import (
     CONFERENCE_LOTS_PAGE_SIZE,
+    INVALID_LOT_WARNING,
+    NO_LOT_SELECTED_WARNING,
     SESSION_CONFERENCE_PAGE,
     SESSION_CONFERENCE_SELECTED_GE,
     default_conference_generation_event_id,
+    ensure_conference_session_defaults,
     format_conference_lot_label,
+    is_valid_resolved_generation_event_id,
     paginate_conference_lots,
     read_cached_conference_result,
+    read_conference_selected_ge,
     store_cached_conference_result,
+    sync_conference_selectbox_selection,
 )
 from lotoia.governance.law15_structural_realignment_v1 import get_realignment_mode
 from lotoia.governance.lei15_15a_core_realignment_v2 import get_v2_mode
@@ -6585,6 +6591,17 @@ def _run_institutional_conference(
         selected_generation_event_id,
         default=None,
     )
+    if (
+        not conference_all_official
+        and generation_event_id is not None
+        and not is_valid_resolved_generation_event_id(resolved_ge_id)
+    ):
+        st.session_state["institutional_check_result"] = {
+            "status": "waiting_lot",
+            "warning": INVALID_LOT_WARNING,
+            "generation_event_id": int(resolved_ge_id or 0),
+        }
+        return
     if resolved_ge_id is not None and resolved_ge_id > 0:
         grouped_generations = [
             group
@@ -6628,10 +6645,9 @@ def _run_institutional_conference(
         }
         return
 
-    if resolved_ge_id is not None and resolved_ge_id > 0:
-        selected_generation_event_id = resolved_ge_id
-        st.session_state["active_reconciliation_generation_event_id"] = resolved_ge_id
-        st.session_state[SESSION_CONFERENCE_SELECTED_GE] = resolved_ge_id
+    if is_valid_resolved_generation_event_id(resolved_ge_id):
+        selected_generation_event_id = int(resolved_ge_id or 0)
+        st.session_state["active_reconciliation_generation_event_id"] = selected_generation_event_id
 
     generation_results: list[dict[str, Any]] = []
     total_prizes = 0
@@ -13528,8 +13544,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         if int(group.get("generation_event_id", 0) or 0) > 0
     ]
     default_ge_id = default_conference_generation_event_id(official_groups)
-    if SESSION_CONFERENCE_SELECTED_GE not in st.session_state and default_ge_id is not None:
-        st.session_state[SESSION_CONFERENCE_SELECTED_GE] = int(default_ge_id)
+    ensure_conference_session_defaults(default_ge_id=default_ge_id)
 
     page_index = int(st.session_state.get(SESSION_CONFERENCE_PAGE, 0) or 0)
     page_groups, total_pages, page_index = paginate_conference_lots(
@@ -13570,16 +13585,14 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     else:
         page_labels = {int(group.get("generation_event_id", 0) or 0): format_conference_lot_label(group) for group in page_groups}
         selectable_ids = [ge_id for ge_id in page_labels if ge_id > 0]
-        current_selection = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=None)
-        if current_selection not in selectable_ids and selectable_ids:
-            st.session_state[SESSION_CONFERENCE_SELECTED_GE] = selectable_ids[0]
+        sync_conference_selectbox_selection(selectable_ids=selectable_ids, default_ge_id=default_ge_id)
         st.selectbox(
             "Lote conferível (último por padrão)",
             options=selectable_ids or official_generation_event_ids[:1],
             format_func=lambda ge_id: page_labels.get(int(ge_id), f"GE {ge_id}"),
             key=SESSION_CONFERENCE_SELECTED_GE,
         )
-        selected_ge_id = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0) or 0
+        selected_ge_id = read_conference_selected_ge() or 0
         if total_pages > 1:
             nav_cols = st.columns([1, 1, 4])
             if nav_cols[0].button("◀ Lotes anteriores", disabled=page_index <= 0, key="conference_page_prev"):
@@ -13610,7 +13623,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         disabled=not bool(
             has_valid_official_contest
             and official_generation_event_ids
-            and _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0)
+            and read_conference_selected_ge()
         ),
         key="conference_run_selected_lot",
     )
@@ -13622,7 +13635,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     _render_official_sync_feedback()
 
-    selected_ge_for_result = _safe_int(st.session_state.get(SESSION_CONFERENCE_SELECTED_GE), default=0) or 0
+    selected_ge_for_result = read_conference_selected_ge() or 0
     check_result = st.session_state.get("institutional_check_result")
     cached_result = (
         read_cached_conference_result(
@@ -13668,6 +13681,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         )
     elif isinstance(check_result, dict) and check_result.get("warning"):
         st.info(check_result["warning"])
+    elif isinstance(check_result, dict) and check_result.get("status") == "waiting_lot":
+        st.info(str(check_result.get("warning") or NO_LOT_SELECTED_WARNING))
     elif isinstance(check_result, dict) and check_result.get("status") == "checked":
         st.info("Conferência executada sem jogos com 11 pontos ou mais no lote selecionado.")
     elif not has_valid_official_contest:
@@ -13677,7 +13692,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         )
     elif official_generation_event_ids and not isinstance(check_result, dict):
         st.caption(
-            "Selecione o lote e clique em **Conferir lote selecionado** — a conferência só roda sob demanda."
+            f"{NO_LOT_SELECTED_WARNING} A conferência só roda sob demanda."
         )
 
     st.divider()

@@ -23,7 +23,7 @@ from dashboard.institutional_conference_runtime import (
 
 
 def test_build_marker_v80_conference_perf() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v80"
+    assert BUILD_MARKER == "institutional-adm-runtime-v81"
 
 
 def test_conference_page_loads_summary_only_with_limit() -> None:
