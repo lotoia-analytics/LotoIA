@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, ScientificInstitutionalMemory, create_database, get_session
 from lotoia.governance.institutional_agent_routing_matrix import enrich_hierarchy_bundle
+from lotoia.ml.agent_operador_ml_executor import GP_ENTREGUE_ACEITAVEL, GP_ENTREGUE_COM_ALERTA
 from lotoia.ml.ml_operational_verdict import evaluate_ml_operational_verdict
 from lotoia.ml.overlap_format_thresholds import (
     DIVERSITY_LOW_THRESHOLD,
@@ -152,6 +153,20 @@ def is_critical_gp_delivery_block(
         if "overlap_critico" in text:
             reasons.append(text)
     return bool(reasons), reasons
+
+
+def resolve_gp_closure_allowed(
+    pool: Sequence[Mapping[str, Any]],
+    stage_results: Mapping[str, Any],
+) -> tuple[bool, list[str]]:
+    """Validade mínima operacional — qualidade/diversidade/cobertura não bloqueiam fechamento."""
+    blocked, reasons = is_critical_gp_delivery_block(pool, stage_results)
+    if blocked:
+        return False, reasons
+    conformity = dict(stage_results.get(STAGE_CONFORMITY) or {})
+    if conformity and not conformity.get("passed"):
+        return False, list(conformity.get("failures") or [])[:8]
+    return True, []
 
 
 def build_gp_quality_classification(
@@ -785,7 +800,6 @@ def execute_ml_operational_hierarchy(
     pre_gp_stages_passed = all(
         stage_results.get(stage_id, {}).get("passed") for stage_id in (STAGE_CONFORMITY, STAGE_DIVERSITY, STAGE_COVERAGE)
     )
-    gp_closure_allowed = pre_gp_stages_passed
     gp_quality = build_gp_quality_classification(
         stage_results,
         stage_failures=stage_failures,
@@ -793,6 +807,16 @@ def execute_ml_operational_hierarchy(
     )
     gp_quality_tier = str(gp_quality.get("gp_quality_tier") or QUALITY_TIER_APROVADO)
     gp_delivery_blocked, critical_delivery_reasons = is_critical_gp_delivery_block(pool, stage_results)
+    gp_closure_allowed, operational_block_reasons = resolve_gp_closure_allowed(pool, stage_results)
+
+    if gp_delivery_blocked:
+        gp_delivery_status = ""
+    elif not gp_closure_allowed:
+        gp_delivery_status = ""
+    elif gp_quality_tier == QUALITY_TIER_APROVADO:
+        gp_delivery_status = GP_ENTREGUE_ACEITAVEL
+    else:
+        gp_delivery_status = GP_ENTREGUE_COM_ALERTA
     current_stage = STAGE_GP_CLOSURE
 
     if not pre_final_bundle:
@@ -812,16 +836,18 @@ def execute_ml_operational_hierarchy(
     stage_results[STAGE_GP_CLOSURE] = {
         "stage_id": STAGE_GP_CLOSURE,
         "stage_label": STAGE_LABELS[STAGE_GP_CLOSURE],
-        "status": "blocked" if gp_delivery_blocked else ("approved" if gp_closure_allowed else "quality_warning"),
-        "passed": not gp_delivery_blocked,
+        "status": "blocked" if gp_delivery_blocked else ("quality_warning" if not pre_gp_stages_passed else "approved"),
+        "passed": gp_closure_allowed and not gp_delivery_blocked,
         "metrics": {
             "requested_count": int(requested_count),
             "pool_size": len(pool),
             "gp_quality_tier": gp_quality_tier,
+            "gp_delivery_status": gp_delivery_status,
             "gp_delivered_policy": "always_unless_critical",
-            "quality_gates_passed": gp_closure_allowed,
+            "quality_gates_passed": pre_gp_stages_passed,
+            "operational_validity_passed": gp_closure_allowed,
         },
-        "failures": critical_delivery_reasons if gp_delivery_blocked else [],
+        "failures": critical_delivery_reasons if gp_delivery_blocked else operational_block_reasons,
         "corrective_actions": list(dict.fromkeys(corrective_actions)),
     }
 
@@ -838,6 +864,7 @@ def execute_ml_operational_hierarchy(
             "gp_closure_blocked": not gp_closure_allowed,
             "gp_delivery_blocked": gp_delivery_blocked,
             "gp_delivery_block_reasons": critical_delivery_reasons,
+            "gp_delivery_status": gp_delivery_status,
             "gp_quality_tier": gp_quality_tier,
             "gp_quality_reasons": list(gp_quality.get("gp_quality_reasons") or []),
             "gp_quality_classification": gp_quality,

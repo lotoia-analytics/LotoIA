@@ -288,7 +288,7 @@ def test_m_ops_078_fix_02_not_required_for_this_mission_note() -> None:
 
 
 def test_build_marker_v85() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v85"
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
 
 
 def test_governance_contract_check_passes() -> None:
