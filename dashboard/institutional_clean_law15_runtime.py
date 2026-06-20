@@ -24,7 +24,7 @@ MULTIDEZENA_FORMAT_OPTIONS: tuple[int, ...] = tuple(range(15, 24))
 PERSISTENCE_SUPPORTED_FORMATS: frozenset[int] = frozenset(range(15, 24))
 
 STRATEGY_ML_ACTIVE = "CORE_002 + ML supervisionado"
-STRATEGY_ML_INACTIVE = "CORE_002"
+STRATEGY_ML_INACTIVE = "CORE_002 soberano direto"
 
 MULTIDEZENA_PERSISTENCE_INFO = (
     "Formato {format}D — persistência CORE_002 multidezena subordinada ao núcleo 15D (PostgreSQL)."
@@ -89,10 +89,8 @@ def games_column_labels(card_format: int) -> dict[str, str]:
 
 def render_compact_status_chips(*, ml_active: bool, generation_active: bool) -> None:
     chips = [
-        "CORE_002 ativo" if generation_active else "CORE_002 bloqueado",
-        "ML supervisionado ativo" if ml_active else "ML inativo",
-        "Calibração saída ativa" if ml_active else "Calibração inativa",
-        "Lei 15A inoperante",
+        "CORE_002 soberano" if generation_active else "CORE_002 bloqueado",
+        "ML analítico" if not ml_active else "ML supervisionado",
     ]
     st.markdown(
         " · ".join(f"`{chip}`" for chip in chips),

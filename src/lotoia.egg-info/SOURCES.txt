@@ -185,6 +185,9 @@ src/lotoia/memory/memory_registry.py
 src/lotoia/memory/memory_repository.py
 src/lotoia/memory/memory_timeline.py
 src/lotoia/ml/__init__.py
+src/lotoia/ml/agent_operador_ml_executor.py
+src/lotoia/ml/authorized_ml_calibration_plan.py
+src/lotoia/ml/calibration_causal_diagnostic.py
 src/lotoia/ml/calibration_governance.py
 src/lotoia/ml/dataset.py
 src/lotoia/ml/drift_detection.py
@@ -237,6 +240,7 @@ src/lotoia/observability/real_time_governance.py
 src/lotoia/observability/runtime_storytelling.py
 src/lotoia/observability/structured_logging.py
 src/lotoia/operations/lot_operational_status.py
+src/lotoia/operations/partial_game_promotion.py
 src/lotoia/orchestration/__init__.py
 src/lotoia/orchestration/intelligent_orchestration.py
 src/lotoia/persistence/__init__.py
@@ -299,6 +303,7 @@ src/lotoia/statistics/generation_trace.py
 src/lotoia/statistics/historical_intelligence.py
 src/lotoia/statistics/patterns.py
 src/lotoia/statistics/scoring.py
+src/lotoia/statistics/similarity_overlap_decomposition.py
 src/lotoia/statistics/temporal.py
 src/lotoia/storage/__init__.py
 src/lotoia/storage/distributed_artifact_store.py
