@@ -7374,6 +7374,7 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
             events_query = events_query.limit(int(limit))
         events = events_query.all()
         for event in events:
+            event_context = dict(getattr(event, "context_json", {}) or {})
             games_rows = (
                 session.query(GeneratedGame)
                 .filter(GeneratedGame.generation_event_id == event.id)
@@ -7447,7 +7448,6 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
             structural_summary = _summarize_games_structurally([game["numbers"] for game in games]) if games else {}
             top_games = sorted(games, key=lambda item: (-float(item["score"]), item["game_index"]))
             first_context = dict(games[0].get("generation_context") or {}) if games and isinstance(games[0], dict) else {}
-            event_context = dict(getattr(event, "context_json", {}) or {})
             merged_context = {**event_context, **first_context}
             visibility_context = _classify_generation_visibility(
                 generation={
