@@ -11,7 +11,7 @@ from dashboard.institutional_structural_policy_coverage import (
 
 
 def test_build_marker_v59() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_cobertura_page_renders_policy_block_before_diagnostics() -> None:

@@ -9,7 +9,7 @@ from dashboard.institutional_build import BUILD_MARKER
 
 
 def test_build_marker_v79_native_render() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_metric_grid_uses_native_streamlit_components() -> None:

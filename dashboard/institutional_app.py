@@ -227,6 +227,13 @@ from lotoia.operations.lot_operational_status import (
     promote_post_calibration_consumer_lot_visibility,
     supersede_status_update,
 )
+from lotoia.operations.partial_game_promotion import (
+    MISSION_ID as PARTIAL_PROMOTION_MISSION_ID,
+    apply_partial_promotion_to_payload_games,
+    filter_analytical_games,
+    filter_conference_games,
+    resolve_game_quality_fields,
+)
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
     is_multidezena_persistence_supported,
@@ -6425,6 +6432,7 @@ def _load_persisted_generation_event_groups_uncached(
                 game_count = len(rows)
                 games = []
             reconciliation_summary = _load_latest_reconciliation_for_generation(session, int(event.id or 0))
+            event_context = dict(getattr(event, "context_json", {}) or {})
             if not summary_only:
                 for row in rows:
                     numbers = [int(number) for number in (row.numbers or [])]
@@ -6464,6 +6472,11 @@ def _load_persisted_generation_event_groups_uncached(
                             "even": sum(1 for number in numbers if number % 2 == 0),
                             "frame": len({((number - 1) // 5) for number in numbers}),
                             "center": sum(1 for number in numbers if 8 <= number <= 18),
+                            **resolve_game_quality_fields(
+                                context_json,
+                                game={"game_index": int(row.game_index or 0), "numbers": numbers, **context_json},
+                                parent_lot_context=event_context,
+                            ),
                         }
                     )
             target_contests: list[int] = []
@@ -6472,7 +6485,8 @@ def _load_persisted_generation_event_groups_uncached(
                     value = _safe_int(_safe_get(row, "target_contest"), default=None)
                     if value is not None and value > 0:
                         target_contests.append(value)
-            event_context = dict(getattr(event, "context_json", {}) or {})
+            if summary_only:
+                event_context = dict(getattr(event, "context_json", {}) or {})
             first_row_context = dict(rows[0].context_json or {}) if rows else {}
             batch_id_value = str(
                 event_context.get("batch_id") or first_row_context.get("batch_id", "") or ""
@@ -6500,6 +6514,9 @@ def _load_persisted_generation_event_groups_uncached(
                     "ml_verdict_reason": str(
                         event_context.get("ml_verdict_reason") or event_context.get("motivo_principal") or ""
                     ),
+                    "games_promoted_to_analytical": int(event_context.get("games_promoted_to_analytical", 0) or 0),
+                    "games_promoted_to_conference": int(event_context.get("games_promoted_to_conference", 0) or 0),
+                    "partial_promotion_enabled": bool(event_context.get("partial_promotion_enabled")),
                     "games": games,
                     "structural_summary": (
                         _summarize_games_structurally([game["numbers"] for game in games])
@@ -6515,26 +6532,32 @@ def _load_official_conference_generation_groups(
     *,
     page_load: bool = False,
 ) -> list[dict[str, Any]]:
-    """Grupos elegíveis para Conferir Resultados — apenas lotes oficializados/aprovados."""
-    if page_load:
-        groups = _load_persisted_generation_event_groups(
-            batch_id=None,
-            conference_eligible_only=True,
-            limit=CONFERENCE_EVENTS_LIMIT,
-            summary_only=True,
-            use_cache=False,
-        )
-        return filter_unconferred_groups(groups)
-    groups = [
-        group
-        for group in _load_persisted_generation_event_groups(
-            batch_id=None,
-            conference_eligible_only=True,
-            limit=CONFERENCE_EVENTS_LIMIT,
-        )
-        if bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False)))
-    ]
-    return filter_unconferred_groups(groups)
+    """Grupos elegíveis para Conferir — jogos com game_conference_eligible (M-OPS-078)."""
+    raw_groups = _load_persisted_generation_event_groups(
+        batch_id=None,
+        conference_eligible_only=False,
+        limit=CONFERENCE_EVENTS_LIMIT,
+        summary_only=page_load,
+        use_cache=not page_load,
+    )
+    groups: list[dict[str, Any]] = []
+    for group in filter_unconferred_groups(raw_groups):
+        event_context = dict(group.get("context_json") or group)
+        if page_load:
+            promoted = int(group.get("games_promoted_to_conference", 0) or event_context.get("games_promoted_to_conference", 0) or 0)
+            if promoted > 0 or bool(group.get("is_official_conference_eligible", group.get("official_release_allowed", False))):
+                groups.append(dict(group))
+            continue
+        games = list(group.get("games") or [])
+        eligible_games = filter_conference_games(event_context, games)
+        if not eligible_games:
+            continue
+        enriched = dict(group)
+        enriched["games"] = eligible_games
+        enriched["total_games"] = len(eligible_games)
+        enriched["partial_conference_games"] = len(eligible_games) < len(games)
+        groups.append(enriched)
+    return groups
 
 
 def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
@@ -7381,6 +7404,11 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                 odd_count = sum(1 for number in numbers if number % 2 != 0)
                 even_count = len(numbers) - odd_count
                 reconciliation_row = reconciliation_games.get(int(row.game_index or 0), {})
+                quality_fields = resolve_game_quality_fields(
+                    context_json,
+                    game={"game_index": int(row.game_index or 0), "numbers": numbers, **context_json},
+                    parent_lot_context=event_context,
+                )
                 games.append(
                     {
                         "game_index": int(row.game_index or 0),
@@ -7388,7 +7416,8 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                         "profile_type": str(row.profile_type or ""),
                         "origin": str(getattr(row, "origin", "") or "institutional"),
                         "generation_mode": str(getattr(row, "generation_mode", "") or ""),
-                        "generation_context": dict(context_json),
+                        "generation_context": {**dict(context_json), **quality_fields},
+                        **quality_fields,
                         "score": score_value,
                         "final_score": final_score,
                         "quadra_score": quadra_score,
@@ -7468,6 +7497,12 @@ def _load_generation_history(limit: int | None = 12) -> list[dict[str, Any]]:
                     "total_jogos_duplicados": int(first_context.get("total_jogos_duplicados", 0) or 0),
                     "taxa_duplicidade": float(first_context.get("taxa_duplicidade", 0.0) or 0.0),
                     **visibility_context,
+                    "context_json": event_context,
+                    "partial_promotion_enabled": bool(event_context.get("partial_promotion_enabled")),
+                    "games_promoted_to_analytical": int(event_context.get("games_promoted_to_analytical", 0) or 0),
+                    "games_promoted_to_conference": int(event_context.get("games_promoted_to_conference", 0) or 0),
+                    "ml_verdict": str(event_context.get("ml_verdict") or ""),
+                    "lot_operational_status": str(event_context.get("lot_operational_status") or ""),
                     "reconciliation": reconciliation_summary or {},
                     "games": games,
                     "top_games": sorted(
@@ -7732,6 +7767,23 @@ def _analytical_row_from_game(
     )
     ge_id = int(generation.get("generation_event_id", 0) or 0)
     hits_value = game.get("hits")
+    game_quality_status = str(
+        game.get("game_quality_status")
+        or context_json.get("game_quality_status")
+        or ""
+    )
+    parent_lot_verdict = str(
+        game.get("parent_lot_verdict")
+        or context_json.get("parent_lot_verdict")
+        or generation.get("ml_verdict")
+        or ""
+    )
+    parent_lot_status = str(
+        game.get("parent_lot_status")
+        or context_json.get("parent_lot_status")
+        or generation.get("lot_operational_status")
+        or ""
+    )
     return {
         "geração": generation_label,
         "generation_event_id": ge_id,
@@ -7778,6 +7830,29 @@ def _analytical_row_from_game(
         "is_analytical_official": bool(generation.get("is_analytical_official", False)),
         "is_active_reading": bool(generation.get("is_active_reading", True)),
         "operational_status": str(generation.get("operational_status", OPERATIONAL_STATUS_PENDING) or OPERATIONAL_STATUS_PENDING),
+        "status individual": game_quality_status or "-",
+        "game_quality_status": game_quality_status or "-",
+        "parent_lot_verdict": parent_lot_verdict or "-",
+        "parent_lot_status": parent_lot_status or "-",
+    }
+
+
+def _generation_partial_promotion_context(generation: Mapping[str, Any]) -> dict[str, Any]:
+    event_context = dict(generation.get("context_json") or {})
+    return {
+        **event_context,
+        "lot_operational_status": str(
+            generation.get("lot_operational_status") or event_context.get("lot_operational_status") or ""
+        ),
+        "official_release_allowed": generation.get("official_release_allowed", event_context.get("official_release_allowed")),
+        "ml_verdict": str(generation.get("ml_verdict") or event_context.get("ml_verdict") or ""),
+        "partial_promotion_enabled": bool(
+            generation.get("partial_promotion_enabled", event_context.get("partial_promotion_enabled"))
+        ),
+        "games_promoted_to_analytical": int(
+            generation.get("games_promoted_to_analytical", event_context.get("games_promoted_to_analytical", 0)) or 0
+        ),
+        "generation_event_id": int(generation.get("generation_event_id", 0) or 0),
     }
 
 
@@ -7785,13 +7860,18 @@ def _load_accumulated_analytical_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=25):
-        if not is_analytical_history_eligible({"lot_operational_status": generation.get("lot_operational_status"), "official_release_allowed": generation.get("official_release_allowed")}):
-            continue
         if not bool(generation.get("is_active_reading", True)):
             continue
         if is_lot_conferred(reconciliation=generation.get("reconciliation") or {}):
             continue
-        for game in generation.get("games", []) or []:
+        promotion_context = _generation_partial_promotion_context(generation)
+        eligible_games = filter_analytical_games(
+            {"context_json": promotion_context, **promotion_context},
+            generation.get("games", []) or [],
+        )
+        if not eligible_games:
+            continue
+        for game in eligible_games:
             rows.append(
                 _analytical_row_from_game(
                     generation=generation,
@@ -7806,13 +7886,18 @@ def _load_accumulated_analytical_rows_light(limit: int = 25) -> list[dict[str, A
     rows: list[dict[str, Any]] = []
     operational_index = build_operational_generation_index(_load_sovereign_generation_event_rows())
     for generation in _load_generation_history_light(limit=limit):
-        if not is_analytical_history_eligible({"lot_operational_status": generation.get("lot_operational_status"), "official_release_allowed": generation.get("official_release_allowed")}):
-            continue
         if not bool(generation.get("is_active_reading", True)):
             continue
         if is_lot_conferred(reconciliation=generation.get("reconciliation") or {}):
             continue
-        for game in generation.get("games", []) or []:
+        promotion_context = _generation_partial_promotion_context(generation)
+        eligible_games = filter_analytical_games(
+            {"context_json": promotion_context, **promotion_context},
+            generation.get("games", []) or [],
+        )
+        if not eligible_games:
+            continue
+        for game in eligible_games:
             rows.append(
                 _analytical_row_from_game(
                     generation=generation,
@@ -7869,6 +7954,10 @@ def _ensure_analytical_games_schema(df: pd.DataFrame | None) -> pd.DataFrame:
                 "is_analytical_official",
                 "is_active_reading",
                 "operational_status",
+                "status individual",
+                "game_quality_status",
+                "parent_lot_verdict",
+                "parent_lot_status",
             ]
         )
 
@@ -10066,6 +10155,21 @@ def _persist_generation_snapshot(
                 per_game_context["core_realignment_v3_applied"] = bool(game.get("core_realignment_v3_applied"))
             if "realignment_applied" in game:
                 per_game_context["realignment_applied"] = bool(game.get("realignment_applied"))
+            for quality_field in (
+                "game_quality_status",
+                "game_quality_reason",
+                "game_analytical_eligible",
+                "game_conference_eligible",
+                "source_generation_event_id",
+                "parent_lot_verdict",
+                "parent_lot_status",
+                "partial_promotion_mission_id",
+            ):
+                if quality_field in game:
+                    per_game_context[quality_field] = game.get(quality_field)
+            per_game_context["source_generation_event_id"] = int(
+                game.get("source_generation_event_id") or generation_event_id
+            )
             session.add(
                 GeneratedGame(
                     generation_event_id=generation_event_id,
@@ -12472,6 +12576,12 @@ def _persist_clean_law15_generation_history(
         )
     )
     generation_context = sync_persisted_event_operational_status(generation_context)
+    payload_games, partial_promotion_patch = apply_partial_promotion_to_payload_games(
+        payload_games,
+        generation_context=dict(generation_context),
+        card_format=int(selected_card_format),
+    )
+    generation_context.update(partial_promotion_patch)
     try:
         persisted = _attach_operational_generation_label(
             _persist_generation_snapshot(

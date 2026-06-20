@@ -49,7 +49,7 @@ def _promo_context(**overrides: Any) -> dict[str, Any]:
 
 
 def test_build_marker_v75() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v82"
+    assert BUILD_MARKER == "institutional-adm-runtime-v83"
 
 
 def test_n1_aprovado_promoted_to_officialized() -> None:
@@ -210,6 +210,7 @@ def test_n1_aprovado_in_analytical_history_loader(monkeypatch: pytest.MonkeyPatc
 
 
 def test_n1_aprovado_in_official_conference_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    sample_game = {"game_index": 1, "numbers": list(range(1, 16)), "generation_context": {}}
     groups = [
         {
             "generation_event_id": 301,
@@ -217,7 +218,8 @@ def test_n1_aprovado_in_official_conference_groups(monkeypatch: pytest.MonkeyPat
             "is_official_conference_eligible": True,
             "official_release_allowed": True,
             "post_calibration_consumer_lot": True,
-            "games": [],
+            "context_json": {"lot_operational_status": STATUS_OFFICIALIZED, "official_release_allowed": True},
+            "games": [sample_game],
         },
         {
             "generation_event_id": 300,
