@@ -260,7 +260,7 @@ def test_streamlit_regression_loaders() -> None:
 
 
 def test_build_marker_v84() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v86"
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
 
 
 def test_governance_contract_check_passes() -> None:

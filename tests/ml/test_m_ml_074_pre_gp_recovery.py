@@ -18,7 +18,9 @@ from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATI
 from lotoia.generator.basic_generator import _attach_scores, _build_game, generate_best_games
 from lotoia.ml.ml_operational_hierarchy import (
     QUALITY_TIER_APROVADO,
+    QUALITY_TIER_ATENCAO,
     QUALITY_TIER_REPROVADO,
+    STAGE_CONFORMITY,
     STAGE_COVERAGE,
     STAGE_DIVERSITY,
     STAGE_GP_CLOSURE,
@@ -61,13 +63,21 @@ def _pool(size: int = 100) -> list[dict[str, Any]]:
 def _failed_hierarchy_bundle(*, stage: str = STAGE_DIVERSITY) -> dict[str, Any]:
     return {
         "hierarchy_applied": True,
-        "gp_closure_allowed": False,
+        "gp_closure_allowed": stage != STAGE_CONFORMITY,
         "gp_delivery_blocked": False,
-        "gp_quality_tier": QUALITY_TIER_REPROVADO,
+        "gp_quality_tier": QUALITY_TIER_ATENCAO if stage != STAGE_CONFORMITY else QUALITY_TIER_REPROVADO,
+        "gp_delivery_status": "GP_ENTREGUE_COM_ALERTA" if stage != STAGE_CONFORMITY else "",
         "gp_quality_reasons": ["diversity_score abaixo do limite"],
         "blocking_reason": "diversity_score abaixo do limite",
         "current_stage": stage,
         "stage_results": {
+            STAGE_CONFORMITY: {
+                "passed": stage != STAGE_CONFORMITY,
+                "status": "rejected" if stage == STAGE_CONFORMITY else "approved",
+                "stage_id": STAGE_CONFORMITY,
+                "metrics": {},
+                "failures": ["compliance_rate=0.50 abaixo de 0.70"] if stage == STAGE_CONFORMITY else [],
+            },
             STAGE_DIVERSITY: {
                 "passed": stage != STAGE_DIVERSITY,
                 "status": "rejected" if stage == STAGE_DIVERSITY else "approved",
@@ -138,7 +148,11 @@ def test_recovery_first_fail_second_pass() -> None:
     def _mock_hierarchy(games, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            return list(games), _failed_hierarchy_bundle(), {"structural_pool": {}, "pre_final": {}}
+            return (
+                list(games),
+                _failed_hierarchy_bundle(stage=STAGE_CONFORMITY),
+                {"structural_pool": {}, "pre_final": {}},
+            )
         return list(games), _passed_hierarchy_bundle(), {"structural_pool": {}, "pre_final": {}}
 
     with patch(
@@ -162,11 +176,35 @@ def test_recovery_first_fail_second_pass() -> None:
     assert calls["n"] == 2
 
 
+def test_recovery_succeeds_on_atencao_when_operational_validity_met() -> None:
+    def _mock_hierarchy(games, **kwargs):
+        return list(games), _failed_hierarchy_bundle(stage=STAGE_DIVERSITY), {"structural_pool": {}, "pre_final": {}}
+
+    with patch(
+        "lotoia.ml.pre_gp_deterministic_recovery.execute_ml_operational_hierarchy",
+        side_effect=_mock_hierarchy,
+    ):
+        _pool_rows, bundle, _missions, recovery = execute_pre_gp_recovery_cycle(
+            _pool(80),
+            game_size=15,
+            requested_count=10,
+            history=_history(),
+            seed=42,
+            batch_label=BATCH_LABEL,
+        )
+
+    assert recovery["internal_recovery_success"] is True
+    assert recovery["internal_recovery_attempts"] == 1
+    assert bundle["gp_closure_allowed"] is True
+    assert bundle["gp_quality_tier"] == QUALITY_TIER_ATENCAO
+    assert bundle.get("gp_delivery_status") == "GP_ENTREGUE_COM_ALERTA"
+
+
 def test_recovery_all_attempts_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOTOIA_ML_PRE_GP_RECOVERY_ATTEMPTS", "3")
 
     def _mock_hierarchy(games, **kwargs):
-        return list(games), _failed_hierarchy_bundle(), {"structural_pool": {}, "pre_final": {}}
+        return list(games), _failed_hierarchy_bundle(stage=STAGE_CONFORMITY), {"structural_pool": {}, "pre_final": {}}
 
     with patch(
         "lotoia.ml.pre_gp_deterministic_recovery.execute_ml_operational_hierarchy",
@@ -224,7 +262,7 @@ def test_diversity_improves_between_attempts(monkeypatch: pytest.MonkeyPatch) ->
     def _mock_hierarchy(games, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            return list(games), _failed_hierarchy_bundle(), {}
+            return list(games), _failed_hierarchy_bundle(stage=STAGE_CONFORMITY), {}
         return list(games), _passed_hierarchy_bundle(), {}
 
     with patch(
@@ -388,6 +426,9 @@ def test_delivers_with_quality_warning_after_recovery_exhaustion(
 
     def _mock_recovery(games, **kwargs):
         bundle = _failed_hierarchy_bundle()
+        bundle["gp_quality_tier"] = QUALITY_TIER_ATENCAO
+        bundle["gp_closure_allowed"] = True
+        bundle["gp_delivery_status"] = "GP_ENTREGUE_COM_ALERTA"
         bundle["pre_gp_recovery"] = {
             "internal_recovery_attempted": True,
             "internal_recovery_attempts": 2,
@@ -421,9 +462,11 @@ def test_delivers_with_quality_warning_after_recovery_exhaustion(
                     )
 
     assert result["count"] == 20
-    assert result.get("gp_quality_tier") == QUALITY_TIER_REPROVADO
+    assert result.get("gp_quality_tier") == QUALITY_TIER_ATENCAO
+    assert result.get("gp_closure_allowed") is True
+    assert result.get("gp_delivery_status") == "GP_ENTREGUE_COM_ALERTA"
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
     assert is_pre_gp_recovery_enabled() is True

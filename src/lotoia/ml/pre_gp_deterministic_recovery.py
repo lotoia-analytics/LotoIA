@@ -12,6 +12,7 @@ from typing import Any, Callable, Mapping, Sequence
 from lotoia.governance.institutional_agent_routing_matrix import enrich_hierarchy_bundle
 from lotoia.ml.ml_operational_hierarchy import (
     QUALITY_TIER_APROVADO,
+    QUALITY_TIER_ATENCAO,
     STAGE_CONFORMITY,
     STAGE_COVERAGE,
     STAGE_DIVERSITY,
@@ -497,7 +498,7 @@ def execute_pre_gp_recovery_cycle(
             best_missions = dict(mission_bundles)
 
         if (
-            hierarchy_bundle.get("gp_quality_tier") == QUALITY_TIER_APROVADO
+            hierarchy_bundle.get("gp_closure_allowed")
             and not hierarchy_bundle.get("gp_delivery_blocked")
         ):
             successful_pool = [dict(game) for game in pool]

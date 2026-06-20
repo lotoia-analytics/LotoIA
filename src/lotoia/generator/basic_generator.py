@@ -1071,6 +1071,7 @@ def generate_best_games(
         payload["hierarchy_compliance"] = _hierarchy_bundle.get("hierarchy_compliance")
         payload["gp_closure_allowed"] = _hierarchy_bundle.get("gp_closure_allowed")
         payload["gp_quality_tier"] = _hierarchy_bundle.get("gp_quality_tier")
+        payload["gp_delivery_status"] = _hierarchy_bundle.get("gp_delivery_status")
         payload["gp_quality_reasons"] = list(_hierarchy_bundle.get("gp_quality_reasons") or [])
         payload["gp_delivery_blocked"] = bool(_hierarchy_bundle.get("gp_delivery_blocked"))
         payload["agent_routing_mission_id"] = _hierarchy_bundle.get("agent_routing_mission_id")

@@ -152,7 +152,9 @@ def test_build_hierarchy_trace_safe() -> None:
 def _failed_hierarchy_bundle() -> dict[str, Any]:
     return {
         "hierarchy_applied": True,
-        "gp_closure_allowed": False,
+        "gp_closure_allowed": True,
+        "gp_delivery_blocked": False,
+        "gp_delivery_status": "GP_ENTREGUE_COM_ALERTA",
         "blocking_reason": "diversity_score abaixo do limite",
         "current_stage": STAGE_DIVERSITY,
         "stage_results": {
@@ -290,7 +292,8 @@ def test_hierarchy_delivers_with_quality_warning_when_diversity_fails(
     def _mock_recovery(games, **kwargs):
         bundle = _failed_hierarchy_bundle()
         bundle["gp_delivery_blocked"] = False
-        bundle["gp_quality_tier"] = QUALITY_TIER_REPROVADO
+        bundle["gp_quality_tier"] = QUALITY_TIER_ATENCAO
+        bundle["gp_delivery_status"] = "GP_ENTREGUE_COM_ALERTA"
         bundle["gp_quality_reasons"] = ["diversity_score abaixo do limite"]
         bundle["pre_gp_recovery"] = {
             "internal_recovery_attempted": True,
@@ -323,9 +326,10 @@ def test_hierarchy_delivers_with_quality_warning_when_diversity_fails(
                     result = generate_best_games(count=5, pool_size=40, ml_enabled=True, batch_label=BATCH_LABEL)
 
     assert result["count"] == 5
-    assert result.get("gp_quality_tier") == QUALITY_TIER_REPROVADO
+    assert result.get("gp_quality_tier") == QUALITY_TIER_ATENCAO
+    assert result.get("gp_delivery_status") == "GP_ENTREGUE_COM_ALERTA"
     hierarchy = dict(result.get("ml_operational_hierarchy") or {})
-    assert hierarchy.get("gp_closure_allowed") is False
+    assert hierarchy.get("gp_closure_allowed") is True
     assert hierarchy.get("gp_delivery_blocked") is not True
 
 
@@ -362,6 +366,6 @@ def test_hierarchy_blocks_only_on_critical_delivery_failure(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
     assert MISSION_ID == "M-ML-073"
     assert HIERARCHY_VERSION == "M-ML-073-v2"
