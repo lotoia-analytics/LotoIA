@@ -10,7 +10,6 @@ import dashboard.institutional_app as institutional_app
 from dashboard.institutional_build import BUILD_MARKER
 from dashboard.institutional_operational_structural_coverage import (
     EMPTY_OPERATIONAL_MESSAGE,
-    HISTORICAL_SECTION_TITLE,
     OPERATIONAL_COVERAGE_TITLE,
     OPERATIONAL_GENERATION_ALL_LABEL,
     OPERATIONAL_SOURCE_CAPTION,
@@ -63,7 +62,8 @@ def test_cobertura_page_prioritizes_operational_core_002_source() -> None:
     source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
     assert "OPERATIONAL_COVERAGE_TITLE" in source
     assert "OPERATIONAL_SOURCE_CAPTION" in source
-    assert "load_operational_core_002_generations(DB_PATH)" in source
+    assert "load_operational_core_002_generations(DB_PATH)" not in source
+    assert "_load_operational_generations_cached" in source
     assert "diagnose_operational_coverage_gap" in source
     assert "_cached_operational_card_structure_diagnostics_from_db" in source
     assert "structural_coverage_operational_generation" in source
@@ -71,16 +71,16 @@ def test_cobertura_page_prioritizes_operational_core_002_source() -> None:
     assert "build_operational_generations_aggregate_summary" in source
     assert "is_all_operational_generations_selection" in source
     assert "EMPTY_OPERATIONAL_MESSAGE" in source
-    assert "_render_historical_structural_coverage_section" in source
+    assert "_render_historical_structural_coverage_section" not in source
     assert "batch_select_options" not in source
     assert "STRUCT_TEST_15D" not in source
+    assert "Histórico / evidência legada" not in source
 
 
-def test_historical_section_uses_reconciliation_source() -> None:
-    source = inspect.getsource(institutional_app._render_historical_structural_coverage_section)
-    assert "_cached_card_structure_diagnostics_from_db" in source
-    assert "historical_reconciliation" in source
-    assert "batch_select_options" in source
+def test_cobertura_page_does_not_render_legacy_historical_section() -> None:
+    import dashboard.institutional_app as institutional_app
+
+    assert not hasattr(institutional_app, "_render_historical_structural_coverage_section")
 
 
 @pytest.fixture
