@@ -113,7 +113,7 @@ from dashboard.institutional_governance import (
     render_governance_read_only_page,
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
-from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
+from dashboard.institutional_m_core_003_monitoring import render_m_core_003_bias_monitoring_panel
 from dashboard.institutional_structural_policy_coverage import (
     build_structural_policy_coverage_context,
     render_structural_policy_15d_operational_block,
@@ -9752,6 +9752,20 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         )
 
     _render_structural_coverage_diagnostics_body(payload)
+
+    monitoring_ids = (
+        [
+            int(row.get("generation_event_id", 0) or 0)
+            for row in operational_generations
+            if int(row.get("generation_event_id", 0) or 0) > 0
+        ]
+        if is_all_operational_generations_selection(selected_label)
+        else ([selected_ge_id] if selected_ge_id > 0 else [])
+    )
+    render_m_core_003_bias_monitoring_panel(
+        db_path=DB_PATH,
+        generation_event_ids=monitoring_ids,
+    )
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
