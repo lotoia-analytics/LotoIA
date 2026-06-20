@@ -107,17 +107,54 @@ def _passes_anti_clone(
     *,
     arch_counts: Counter,
     gp_target: int,
+    max_overlap: int | None = None,
 ) -> bool:
     nums = list(candidate.get("numbers") or [])
+    overlap_limit = int(max_overlap if max_overlap is not None else _GP_MAX_OVERLAP)
     if is_v1_strong_pattern(nums):
         return True
     for other in selected:
-        if _pairwise_overlap(nums, list(other.get("numbers") or [])) > _GP_MAX_OVERLAP:
+        if _pairwise_overlap(nums, list(other.get("numbers") or [])) > overlap_limit:
             return False
     arch = _architecture_key(candidate)
     if selected and arch_counts[arch] / max(len(selected), 1) > _GP_MAX_ARCH_PCT:
         return False
     return True
+
+
+def _append_anti_clone_candidates(
+    selected: list[dict],
+    candidates: list[dict],
+    *,
+    arch_counts: Counter,
+    seen_keys: set[tuple[int, ...]],
+    gp_target: int,
+    max_overlap: int,
+    completion: bool,
+    relaxed: bool,
+) -> None:
+    for game in candidates:
+        if len(selected) >= gp_target:
+            break
+        key = tuple(game.get("numbers") or [])
+        if not key or key in seen_keys:
+            continue
+        if not _passes_anti_clone(
+            game,
+            selected,
+            arch_counts=arch_counts,
+            gp_target=gp_target,
+            max_overlap=max_overlap,
+        ):
+            continue
+        enriched = dict(game)
+        if completion:
+            enriched["anti_clone_completion"] = True
+        if relaxed:
+            enriched["anti_clone_relaxed_overlap"] = max_overlap
+        selected.append(enriched)
+        seen_keys.add(key)
+        arch_counts[_architecture_key(enriched)] += 1
 
 
 def apply_anti_clone_gp(
@@ -126,6 +163,7 @@ def apply_anti_clone_gp(
     count: int,
     *,
     game_size: int = 15,
+    fallback_pool: list[dict] | None = None,
 ) -> list[dict]:
     """L4 — limita redundância no GP; exceção para padrões V1-strong."""
     selected: list[dict] = []
@@ -139,34 +177,65 @@ def apply_anti_clone_gp(
             -float(g.get("final_score", {}).get("final_score", 0) or 0),
         ),
     )
-    for game in ordered:
-        key = tuple(game.get("numbers") or [])
-        if key in seen_keys:
-            continue
-        if _passes_anti_clone(game, selected, arch_counts=arch_counts, gp_target=count):
-            selected.append(game)
-            seen_keys.add(key)
-            arch_counts[_architecture_key(game)] += 1
-        if len(selected) >= count:
-            break
+    _append_anti_clone_candidates(
+        selected,
+        ordered,
+        arch_counts=arch_counts,
+        seen_keys=seen_keys,
+        gp_target=count,
+        max_overlap=_GP_MAX_OVERLAP,
+        completion=False,
+        relaxed=False,
+    )
 
     if len(selected) < count:
-        pool_ordered = sorted(
-            pool,
-            key=lambda g: -float(g.get("profile_score", 0) or 0),
-        )
-        for game in pool_ordered:
-            key = tuple(game.get("numbers") or [])
-            if key in seen_keys:
+        pool_sources: list[list[dict]] = []
+        for source in (pool, list(fallback_pool or [])):
+            if not source:
                 continue
-            if _passes_anti_clone(game, selected, arch_counts=arch_counts, gp_target=count):
-                enriched = dict(game)
-                enriched["anti_clone_completion"] = True
-                selected.append(enriched)
-                seen_keys.add(key)
-                arch_counts[_architecture_key(enriched)] += 1
+            pool_sources.append(
+                sorted(source, key=lambda g: -float(g.get("profile_score", 0) or 0))
+            )
+        for source in pool_sources:
+            _append_anti_clone_candidates(
+                selected,
+                source,
+                arch_counts=arch_counts,
+                seen_keys=seen_keys,
+                gp_target=count,
+                max_overlap=_GP_MAX_OVERLAP,
+                completion=True,
+                relaxed=False,
+            )
             if len(selected) >= count:
                 break
+
+    if len(selected) < count:
+        relaxed_limits = (_GP_MAX_OVERLAP + 1, _GP_MAX_OVERLAP + 2)
+        completion_sources = [
+            ordered,
+            *[
+                sorted(source, key=lambda g: -float(g.get("profile_score", 0) or 0))
+                for source in (pool, list(fallback_pool or []))
+                if source
+            ],
+        ]
+        for overlap_limit in relaxed_limits:
+            if len(selected) >= count:
+                break
+            for source in completion_sources:
+                _append_anti_clone_candidates(
+                    selected,
+                    source,
+                    arch_counts=arch_counts,
+                    seen_keys=seen_keys,
+                    gp_target=count,
+                    max_overlap=overlap_limit,
+                    completion=True,
+                    relaxed=True,
+                )
+                if len(selected) >= count:
+                    break
 
     for game in selected:
         game["anti_clone_gp_applied"] = True
@@ -207,7 +276,13 @@ def compose_sovereign_gp(
         count,
         fallback_pool=pool,
     )
-    gp = apply_anti_clone_gp(capped, filtered_pool, count, game_size=game_size)
+    gp = apply_anti_clone_gp(
+        capped,
+        filtered_pool,
+        count,
+        game_size=game_size,
+        fallback_pool=pool,
+    )
     gp = enforce_gp_diversity_cap(gp, filtered_pool, count, fallback_pool=pool)
     tag_sovereign_gp_metadata(gp, config=config)
     return gp

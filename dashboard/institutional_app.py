@@ -817,7 +817,8 @@ def _sovereign_adm_pool_size(*, requested_count: int, pool_size: int | None = No
         return max(int(pool_size), count)
     from lotoia.ml.structural_pool_15d_generator import MIN_COMPLIANT_POOL_SIZE
 
-    return max(count * 3, count, 30, MIN_COMPLIANT_POOL_SIZE)
+    scale = 4 if count > 30 else 3
+    return max(count * scale, count, 30, MIN_COMPLIANT_POOL_SIZE)
 
 
 def _invoke_sovereign_adm_generate_best_games(

@@ -772,12 +772,16 @@ def generate_best_games(
             from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
 
             if is_structural_policy_15d_format(_sovereign_game_size):
-                from lotoia.ml.structural_pool_15d_generator import build_ml_structural_15d_pool
+                from lotoia.ml.structural_pool_15d_generator import (
+                    build_ml_structural_15d_pool,
+                    resolve_structural_pool_target,
+                )
 
                 games, _structural_pool_bundle = build_ml_structural_15d_pool(
                     games,
                     history=history,
                     seed=seed_offset,
+                    min_compliant=resolve_structural_pool_target(requested_count=count),
                 )
             games, _calibration_bundle = apply_pre_final_pool_ml_calibration(
                 games,
@@ -797,6 +801,51 @@ def generate_best_games(
 
         _gp_candidate_pool = [dict(game) for game in games]
         best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=_sovereign_game_size)
+        if len(best_games) < count:
+            from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
+
+            expanded_pool_size = max(pool_size * 2, count * 4, pool_size + count)
+            logger.warning(
+                "[LEI15_CORE_002] compose_sovereign_gp entregou %d/%d — expandindo pool para %d",
+                len(best_games),
+                count,
+                expanded_pool_size,
+            )
+            from lotoia.generation.lei15_core_002 import build_sovereign_pool
+
+            extra_pool = build_sovereign_pool(
+                expanded_pool_size,
+                seed=seed_offset + 17,
+                history=history,
+                config=_sovereign_cfg,
+            )
+            merged_by_key: dict[tuple[int, ...], dict[str, object]] = {
+                tuple(dict(game).get("numbers") or []): dict(game) for game in games
+            }
+            for game in extra_pool:
+                key = tuple(game.get("numbers") or [])
+                if key and key not in merged_by_key:
+                    merged_by_key[key] = dict(game)
+            expanded_games = list(merged_by_key.values())
+            if is_structural_policy_15d_format(_sovereign_game_size) and ml_enabled:
+                from lotoia.ml.structural_pool_15d_generator import (
+                    build_ml_structural_15d_pool,
+                    resolve_structural_pool_target,
+                )
+
+                expanded_games, _structural_pool_bundle = build_ml_structural_15d_pool(
+                    expanded_games,
+                    history=history,
+                    seed=seed_offset + 17,
+                    min_compliant=resolve_structural_pool_target(requested_count=count),
+                )
+            best_games = compose_sovereign_gp(
+                expanded_games,
+                count,
+                _sovereign_cfg,
+                game_size=_sovereign_game_size,
+            )
+            _gp_candidate_pool = [dict(game) for game in expanded_games]
         if len(best_games) < count:
             raise RuntimeError(
                 f"[LEI15_CORE_002] compose_sovereign_gp retornou {len(best_games)}/{count} "
