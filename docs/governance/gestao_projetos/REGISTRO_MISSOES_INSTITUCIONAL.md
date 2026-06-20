@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-ML-079](#m-ml-079--reconciliação-dos-validadores--remoção-do-conflito-de-núcleos) | Reconciliação validadores / conflito núcleos | `CONCLUIDA` | `CONFLITO DE NÚCLEOS REMOVIDO / POOL >= 0.90` |
 | [M-ML-VIS-056](#m-ml-vis-056--central-ml-cockpit-de-calibração-supervisionada) | Central ML — cockpit calibração | `CONCLUIDA` | `COCKPIT OPERACIONAL / CALIBRAÇÃO ML ATIVA` |
 | [M-ML-054](#m-ml-054--central-ml-como-motor-de-calibração-supervisionada-da-saída) | Central ML — calibração supervisionada saída | `CONCLUIDA` | `CALIBRAÇÃO AUTOMÁTICA / TRACE POSTGRESQL` |
 | [M-ML-VIS-053B](#m-ml-vis-053b--corrigir-rota-da-central-ml-no-painel-adm) | Rota Central ML — fallback corrigido | `CONCLUIDA` | `CENTRAL ML ABRE / SEM FALLBACK M-PLAT-040` |
@@ -47,6 +48,26 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-ML-079 — Reconciliação dos Validadores — Remoção do Conflito de Núcleos
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v87` |
+| **Pré-requisito** | ADR-046, ADR-047, M-ML-070, M-ML-072 |
+| **Desbloqueia** | M-ML-080 (Limiares Adaptativos por Tamanho de Lote) |
+
+**Objetivo:** Reconciliar `validate_game_structural_policy_15d` com a soberania operacional do CORE_002,
+eliminando o conflito entre o núcleo antigo congelado (GP50–GP10) e o gerador dinâmico.
+
+**Correções:** `core_numbers`/`discouraged_numbers` reclassificados como diagnóstico (sem `violations`);
+`analyze_batch` deixa de misturar diagnósticos em `policy_violations` nem rebaixar `APROVADO`→`ATENÇÃO`
+por alertas core/discouraged; `NUCLEO_LEI15_15D_CONGELADO` documentado como referência histórica apenas.
+
+**Veredicto:** **M-ML-079 CONCLUÍDA — CONFLITO DE NÚCLEOS REMOVIDO**
+
+---
 
 ### M-ML-VIS-056 — Central ML Cockpit de Calibração Supervisionada
 

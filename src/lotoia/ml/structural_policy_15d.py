@@ -17,13 +17,15 @@ from lotoia.statistics.advanced import calculate_sequence_stats
 from lotoia.statistics.card_structure import resolve_cartao_final_from_game
 
 MISSION_ID = "M-ML-070"
-POLICY_VERSION = "M-ML-070-v1"
+POLICY_ERRATA = "M-ML-079"
+POLICY_VERSION = "M-ML-079-v1"
 MEMORY_KIND = "structural_policy_15d"
 MEMORY_KIND_BATCH = "structural_policy_15d_batch"
 MEMORY_STATUS_ACTIVE = "active"
 COMPLIANCE_LABEL_APROVADO = "APROVADO"
 COMPLIANCE_LABEL_ATENCAO = "ATENÇÃO"
 COMPLIANCE_LABEL_REPROVADO = "REPROVADO"
+# Referência estatística GP50–GP10 (núcleo antigo) — diagnóstico apenas, sem reprovação (M-ML-079).
 CORE_MIN_PRESENT = 2
 DISCOURAGED_MAX_PRESENT = 3
 MEMORY_ORIGIN = "institutional_sovereign_base_15d"
@@ -41,6 +43,7 @@ APPLIED_RULES: tuple[str, ...] = (RULE_REPEAT, RULE_PARITY, RULE_SEQUENCE)
 PREFERRED_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((7, 8), (8, 7))
 ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = PREFERRED_PARITY_PAIRS
 NON_COMPLIANT_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((6, 9), (9, 6))
+# Métricas de diagnóstico institucional — não são critérios de conformidade soberana CORE_002.
 CORE_NUMBERS: tuple[int, ...] = (7, 12, 16, 23)
 DISCOURAGED_NUMBERS: tuple[int, ...] = (2, 4, 11, 15, 24, 25)
 
@@ -90,6 +93,7 @@ def build_structural_policy_15d_memory() -> dict[str, Any]:
         "formato": "15D",
         "tipo": MEMORY_KIND,
         "policy_version": POLICY_VERSION,
+        "policy_errata": POLICY_ERRATA,
         "status": MEMORY_STATUS_ACTIVE,
         "origem_institucional": MEMORY_ORIGIN,
         "motivo": MEMORY_REASON,
@@ -567,8 +571,6 @@ def analyze_batch_structural_policy_15d(
         total_games,
         unique_violations,
     )
-    if unique_diagnostics and compliance_label == COMPLIANCE_LABEL_APROVADO:
-        compliance_label = COMPLIANCE_LABEL_ATENCAO
     compliance_score = round(compliant_count / total_games, 4) if total_games else 0.0
     policy_compliance_status = _resolve_policy_compliance_status(compliance_label)
 
@@ -587,7 +589,8 @@ def analyze_batch_structural_policy_15d(
         "violations": unique_violations,
         "violated_rules": unique_violations,
         "diagnostics": unique_diagnostics,
-        "policy_violations": unique_violations + unique_diagnostics,
+        "policy_violations": unique_violations,
+        "policy_diagnostics": unique_diagnostics,
         "core_coverage_stats": {
             "core_numbers": list(resolved_policy.get("core_numbers") or CORE_NUMBERS),
             "hits_by_number": dict(core_hits),

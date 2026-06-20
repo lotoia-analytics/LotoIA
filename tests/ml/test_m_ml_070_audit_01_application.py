@@ -28,7 +28,7 @@ NON_COMPLIANT_SEQ = list(range(1, 16))  # repetição 15 e sequência 15 → nã
 
 def test_policy_memory_catalog_matches_spec() -> None:
     memory = build_structural_policy_15d_memory()
-    assert memory["policy_version"] == POLICY_VERSION == "M-ML-070-v1"
+    assert memory["policy_version"] == POLICY_VERSION == "M-ML-079-v1"
     assert memory["formato"] == "15D"
     assert memory["repeticao_ultimo_concurso_min"] == 7
     assert memory["repeticao_ultimo_concurso_max"] == 10

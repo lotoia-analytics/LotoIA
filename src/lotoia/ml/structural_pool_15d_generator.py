@@ -54,6 +54,11 @@ def _generate_compliant_card(
     *,
     policy: Mapping[str, Any],
 ) -> list[int] | None:
+    """Gera cartão 15D conforme repetição, paridade e sequência.
+
+    ``core_numbers``/``discouraged_numbers`` orientam preferência de composição apenas;
+    a aprovação final usa ``validate_game_structural_policy_15d`` (regras reais, M-ML-079).
+    """
     if len(previous_numbers) < 10:
         return None
     core_numbers = {int(value) for value in policy.get("core_numbers") or CORE_NUMBERS}
