@@ -132,7 +132,7 @@ ML_OPERATIONAL_PROHIBITIONS: tuple[str, ...] = (
 def is_ml_operational_enabled() -> bool:
     import os
 
-    raw = os.getenv(ENV_ML_OPERATIONAL_ENABLED, "1").strip().lower()
+    raw = os.getenv(ENV_ML_OPERATIONAL_ENABLED, "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 

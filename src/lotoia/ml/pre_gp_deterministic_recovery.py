@@ -39,7 +39,7 @@ DEFAULT_MAX_RECOVERY_ATTEMPTS = 5
 
 
 def is_pre_gp_recovery_enabled() -> bool:
-    raw = os.getenv(ENV_PRE_GP_RECOVERY_ENABLED, "1").strip().lower()
+    raw = os.getenv(ENV_PRE_GP_RECOVERY_ENABLED, "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 

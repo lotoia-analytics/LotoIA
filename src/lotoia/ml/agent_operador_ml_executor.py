@@ -50,7 +50,7 @@ DOMINANCE_SHARE_THRESHOLD = 0.35
 
 
 def is_agent_operador_ml_enabled() -> bool:
-    raw = os.getenv(ENV_AGENT_ENABLED, "1").strip().lower()
+    raw = os.getenv(ENV_AGENT_ENABLED, "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
