@@ -18,6 +18,7 @@ REMOVED_SIDEBAR_LABELS = (
     "Dezenas sobrando",
     "Simulação Institucional / Backtesting",
     "Central ML Assistiva",
+    "Central ML — Calibração Supervisionada",
     "Vazamento Lateral Constitucional",
     "Evolução 13 -> 14",
     "Evolução 14 -> 15",
@@ -32,21 +33,20 @@ OFFICIAL_SIDEBAR_LABELS = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Central ML — Calibração Supervisionada",
     "Histórico Analítico",
     "Painel Inicial Institucional",
     "Histórico Institucional",
 )
 
 
-def test_build_marker_v82_menu_cleanup() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+def test_build_marker_v88_menu_cleanup() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
-def test_official_sidebar_menu_has_eight_items() -> None:
+def test_official_sidebar_menu_has_seven_items() -> None:
     page_ids = route_inventory.official_sidebar_page_ids()
-    assert len(page_ids) == 8
+    assert len(page_ids) == 7
     assert page_ids <= route_inventory.INSTITUTIONAL_ALLOWED_PAGES
 
 

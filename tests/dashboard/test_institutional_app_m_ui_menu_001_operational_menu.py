@@ -15,6 +15,7 @@ HIDDEN_MENU_LABELS = (
     "Governança Institucional — read-only",
     "Área Restrita — Limpeza Controlada",
     "Status Constitucional",
+    "Central ML — Calibração Supervisionada",
 )
 
 OPERATIONAL_MENU_LABELS = (
@@ -22,26 +23,30 @@ OPERATIONAL_MENU_LABELS = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Central ML — Calibração Supervisionada",
     "Histórico Analítico",
 )
 
 
-def test_build_marker_v82() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+def test_build_marker_v88() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v88"
 
 
-def test_official_sidebar_menu_has_eight_operational_items() -> None:
+def test_official_sidebar_menu_has_seven_operational_items() -> None:
     page_ids = route_inventory.official_sidebar_page_ids()
-    assert len(page_ids) == 8
+    assert len(page_ids) == 7
     assert "governance_read_only" not in page_ids
     assert "restricted_controlled_cleanup" not in page_ids
+    assert "central_ml_diagnostics" not in page_ids
     assert page_ids <= route_inventory.INSTITUTIONAL_ALLOWED_PAGES
 
 
 def test_hidden_sidebar_pages_remain_allowed() -> None:
     assert route_inventory.HIDDEN_SIDEBAR_PAGE_IDS == frozenset(
-        {"governance_read_only", "restricted_controlled_cleanup"}
+        {
+            "governance_read_only",
+            "restricted_controlled_cleanup",
+            "central_ml_diagnostics",
+        }
     )
     for page_id in route_inventory.HIDDEN_SIDEBAR_PAGE_IDS:
         assert page_id in route_inventory.INSTITUTIONAL_ALLOWED_PAGES
@@ -67,10 +72,12 @@ def test_quick_access_excludes_governance() -> None:
     page_ids = [item["page_id"] for item in institutional_app.INSTITUTIONAL_QUICK_ACCESS]
     assert "Governança Institucional — read-only" not in labels
     assert "governance_read_only" not in page_ids
+    assert "Central ML — Calibração Supervisionada" not in labels
+    assert "central_ml_diagnostics" not in page_ids
     assert labels[:3] == [
         "Gerar Jogos",
         "Cobertura Estrutural",
-        "Central ML — Calibração Supervisionada",
+        "Histórico Analítico",
     ]
 
 
@@ -102,6 +109,8 @@ def test_route_inventory_snapshot_marks_hidden_pages(monkeypatch: pytest.MonkeyP
     assert payload["menu_ui_mission"] == "M-UI-MENU-001"
     assert "governance_read_only" not in active_ids
     assert "restricted_controlled_cleanup" not in active_ids
+    assert "central_ml_diagnostics" not in active_ids
     assert "governance_read_only" in removed_ids
     assert "restricted_controlled_cleanup" in removed_ids
+    assert "central_ml_diagnostics" in removed_ids
     assert set(payload["hidden_sidebar_page_ids"]) == set(route_inventory.HIDDEN_SIDEBAR_PAGE_IDS)
