@@ -39,12 +39,13 @@ def test_route_inventory_snapshot_lists_constitutional_pages() -> None:
 
     assert payload["mission_id"] == "M-PLAT-040"
     active_ids = {row["page_id"] for row in payload["active_routes"]}
-    assert "governance_read_only" in active_ids
-    assert "core_002_read_only" not in active_ids
-    assert "structural_coverage" in active_ids
-    assert "central_ml_diagnostics" in active_ids
-    assert "restricted_controlled_cleanup" in active_ids
-    assert "Conferir Resultados — Auditoria de Lotes Persistidos" in text_blob
+    assert "governance_read_only" not in active_ids
+    assert "restricted_controlled_cleanup" not in active_ids
+    assert "governance_read_only" in payload["hidden_sidebar_page_ids"]
+    assert "restricted_controlled_cleanup" in payload["hidden_sidebar_page_ids"]
+    assert "Conferir Resultados" in text_blob
+    assert "structural_coverage" in {row["page_id"] for row in payload["active_routes"]}
+    assert "central_ml_diagnostics" in {row["page_id"] for row in payload["active_routes"]}
     assert "Cobertura Estrutural" in payload["constitutional_labels"]
     assert any("Lei 15A" in label and "inoperante" in label for label in payload["constitutional_labels"])
     alias_sources = {row["alias"] for row in payload["alias_routes"]}

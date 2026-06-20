@@ -71,13 +71,15 @@ def test_restricted_cleanup_page_integrated_in_institutional_app() -> None:
     assert "_purge_institutional_history_tables" not in source
 
 
-def test_sidebar_uses_restricted_controlled_cleanup_label() -> None:
+def test_sidebar_uses_official_menu_without_restricted_entries() -> None:
     source = inspect.getsource(institutional_app._render_sidebar)
     assert "OFFICIAL_SIDEBAR_MENU" in source
     page_ids = [page_id for _group, entries in route_inventory.OFFICIAL_SIDEBAR_MENU for _label, page_id in entries]
     labels = [label for _group, entries in route_inventory.OFFICIAL_SIDEBAR_MENU for label, _pid in entries]
-    assert "restricted_controlled_cleanup" in page_ids
-    assert "Área Restrita — Limpeza Controlada" in labels
+    assert "restricted_controlled_cleanup" not in page_ids
+    assert "governance_read_only" not in page_ids
+    assert "Área Restrita — Limpeza Controlada" not in labels
+    assert "Governança Institucional — read-only" not in labels
 
 
 def test_delete_history_alias_routes_to_restricted_area() -> None:

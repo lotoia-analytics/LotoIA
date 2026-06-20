@@ -28,28 +28,26 @@ REMOVED_SIDEBAR_LABELS = (
 )
 
 OFFICIAL_SIDEBAR_LABELS = (
-    "Painel Inicial Institucional",
-    "Gerador ADM CORE_002 — Geração Soberana Controlada",
-    "Conferir Resultados — Auditoria de Lotes Persistidos",
+    "Gerar Jogos",
+    "Conferir Resultados",
     "Simular Resultados",
-    "Histórico Analítico",
-    "Histórico Institucional",
     "Cobertura Estrutural",
     "Central ML — Calibração Supervisionada",
-    "Governança Institucional — read-only",
-    "Área Restrita — Limpeza Controlada",
+    "Histórico Analítico",
+    "Painel Inicial Institucional",
+    "Histórico Institucional",
 )
 
 
-def test_build_marker_v38() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v51"
+def test_build_marker_v82_menu_cleanup() -> None:
+    assert BUILD_MARKER == "institutional-adm-runtime-v82"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
-def test_official_sidebar_menu_has_ten_items() -> None:
+def test_official_sidebar_menu_has_eight_items() -> None:
     page_ids = route_inventory.official_sidebar_page_ids()
-    assert len(page_ids) == 10
-    assert page_ids == frozenset(route_inventory.INSTITUTIONAL_ALLOWED_PAGES) - {"fallback"}
+    assert len(page_ids) == 8
+    assert page_ids <= route_inventory.INSTITUTIONAL_ALLOWED_PAGES
 
 
 def test_sidebar_source_uses_official_menu_constant() -> None:
@@ -120,6 +118,7 @@ def test_route_inventory_active_routes_match_official_menu() -> None:
     payload = route_inventory.build_route_inventory_snapshot(app_build=BUILD_MARKER)
     active_ids = {row["page_id"] for row in payload["active_routes"]}
     assert active_ids == route_inventory.official_sidebar_page_ids()
+    assert "governance_read_only" not in active_ids
     assert "core_002_read_only" not in active_ids
     assert payload["menu_cleanup_mission"] == "M-VIS-057"
 

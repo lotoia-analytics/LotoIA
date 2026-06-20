@@ -23,7 +23,7 @@ def test_session_constant_defined() -> None:
 
 
 def test_build_marker_bumped() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v81"
+    assert BUILD_MARKER == "institutional-adm-runtime-v82"
 
 
 def test_run_conference_does_not_write_widget_session_key() -> None:
