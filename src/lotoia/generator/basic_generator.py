@@ -791,9 +791,11 @@ def generate_best_games(
                 compose_gp=compose_sovereign_gp,
                 compose_config=_sovereign_cfg,
             )
+    _gp_candidate_pool: list[dict[str, object]] = []
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import compose_sovereign_gp
 
+        _gp_candidate_pool = [dict(game) for game in games]
         best_games = compose_sovereign_gp(games, count, _sovereign_cfg, game_size=_sovereign_game_size)
         if len(best_games) < count:
             raise RuntimeError(
@@ -1054,6 +1056,7 @@ def generate_best_games(
         "pre_gp_recovery": dict(_recovery_bundle or {}),
         "diverse_top_slice_m_stat_002": dict(_diverse_top_slice_bundle or {}),
         "games": best_games,
+        "gp_candidate_pool": _gp_candidate_pool if _apply_sovereign else [],
         "profile_counts": profile_counts,
         "profile_percentages": {
             profile: round((amount / len(best_games)) * 100, 2) if best_games else 0.0

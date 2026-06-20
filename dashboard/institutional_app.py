@@ -242,6 +242,7 @@ from dashboard.institutional_clean_law15_runtime import (
     render_compact_status_chips,
     render_generation_games_table,
     render_generation_operation_block,
+    render_agent_operador_ml_summary,
     render_generation_result_summary,
     render_governance_expander,
     render_six_bases_expander,
@@ -12516,6 +12517,7 @@ def _persist_clean_law15_generation_history(
             "successful_attempt_index": _pre_gp_recovery_trace.get("successful_attempt_index"),
             "diverse_top_slice_m_stat_002": _diverse_top_slice_trace,
             "diverse_top_slice_applied": bool(_diverse_top_slice_trace.get("diverse_top_slice_applied")),
+            **dict(result.get("agent_operador_ml") or {}),
             "diversity_score_before_top_slice": float(
                 _diverse_top_slice_trace.get("diversity_score_before", 0.0) or 0.0
             ),
@@ -13989,6 +13991,32 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
     games = list(sovereign_payload.get("games") or [])
     ml_enabled = bool(sovereign_payload.get("ml_enabled", False))
     structural_policy_bundle = dict(sovereign_payload.get("structural_policy_15d_bundle") or {})
+    agent_operador_ml_trace: dict[str, Any] = {}
+    agent_delivery_status = ""
+    if games:
+        from lotoia.ml.agent_operador_ml_executor import (
+            execute_agent_operador_ml_pre_delivery,
+            is_agent_operador_ml_enabled,
+        )
+
+        if is_agent_operador_ml_enabled():
+            agent_result = execute_agent_operador_ml_pre_delivery(
+                requested_quantity=total_games,
+                card_format=15,
+                selected_games=games,
+                candidate_pool=list(
+                    sovereign_payload.get("gp_candidate_pool") or sovereign_payload.get("games") or []
+                ),
+                batch_label=analysis_batch_label,
+                ml_metrics=dict(sovereign_payload.get("calibration_bundle") or {}),
+                structural_policy_bundle=structural_policy_bundle,
+                core_002_status="sovereign",
+                law_15_status="active",
+            )
+            agent_operador_ml_trace = dict(agent_result.get("trace") or {})
+            agent_delivery_status = str(agent_result.get("delivery_status") or "")
+            if agent_result.get("games"):
+                games = list(agent_result["games"])
     fill_diagnostics: dict[str, Any] = {
         "fill_completed": len(games) >= total_games,
         "sovereign_generation_path": "generate_best_games",
@@ -14110,6 +14138,10 @@ def _run_clean_law15_generation(*, requested_count: int) -> dict[str, Any]:
         "gp_quality_tier": str(sovereign_payload.get("gp_quality_tier") or ""),
         "gp_quality_reasons": list(sovereign_payload.get("gp_quality_reasons") or []),
         "gp_quality": _gp_quality_panel_from_payload(sovereign_payload, delivered_count=len(games)),
+        "agent_operador_ml": agent_operador_ml_trace,
+        "agent_operador_ml_applied": bool(agent_operador_ml_trace.get("agent_operador_ml_applied")),
+        "gp_delivery_status": agent_delivery_status
+        or str(agent_operador_ml_trace.get("gp_delivery_status") or ""),
     }
 
 
@@ -14180,6 +14212,7 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
             render_ml_hierarchy_block_panel(result)
         else:
             render_generation_result_summary(result)
+            render_agent_operador_ml_summary(result)
             render_gp_quality_classification_panel(result)
         games = list(
             result.get("display_games")

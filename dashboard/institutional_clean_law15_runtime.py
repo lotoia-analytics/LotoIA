@@ -138,6 +138,37 @@ def render_generation_operation_block(*, ml_active: bool) -> tuple[int, int]:
     return int(requested_count or MIN_REQUESTED_GAMES), selected_format
 
 
+def render_agent_operador_ml_summary(result: dict[str, Any]) -> None:
+    """Resumo discreto do agent_operador_ml após geração GP (M-AGENT-002)."""
+    from lotoia.ml.agent_operador_ml_executor import build_agent_operador_ml_ui_summary
+
+    summary = build_agent_operador_ml_ui_summary(dict(result.get("agent_operador_ml") or {}))
+    if not summary.get("visible"):
+        return
+
+    st.markdown("#### Agent Operador ML")
+    cols = st.columns(5)
+    cols[0].metric("Status entrega", str(summary.get("status") or "-"))
+    cols[1].metric("Solicitados", int(summary.get("requested", 0) or 0))
+    cols[2].metric("Entregues", int(summary.get("delivered", 0) or 0))
+    cols[3].metric("Ação corretiva", str(summary.get("primary_action") or "-")[:18])
+    cols[4].metric("trace_id", str(summary.get("trace_id") or "-")[-12:])
+    st.caption(str(summary.get("improvement") or ""))
+    with st.expander("Detalhes técnicos — agent_operador_ml", expanded=False):
+        trace = dict(summary.get("trace") or {})
+        st.json(
+            {
+                "gp_delivery_status": trace.get("gp_delivery_status"),
+                "agent_attempts_count": trace.get("agent_attempts_count"),
+                "agent_actions_applied": trace.get("agent_actions_applied"),
+                "agent_before_metrics": trace.get("agent_before_metrics"),
+                "agent_after_metrics": trace.get("agent_after_metrics"),
+                "agent_improvement_summary": trace.get("agent_improvement_summary"),
+                "gp_failure_evidence": trace.get("gp_failure_evidence"),
+            }
+        )
+
+
 def render_generation_result_summary(result: dict[str, Any]) -> None:
     games = list(result.get("games") or [])
     display_games = list(result.get("display_games") or games)
