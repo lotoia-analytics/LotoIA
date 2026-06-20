@@ -17,6 +17,21 @@ LEGACY_NEAR_DUPLICATE_OVERLAP_15D = 13
 SIMILARITY_HIGH_THRESHOLD = 0.55
 NEAR_DUP_HIGH_THRESHOLD = 20
 DIVERSITY_LOW_THRESHOLD = 0.55
+MISSION_ID_080 = "M-ML-080"
+
+
+def resolve_diversity_low_threshold(requested_count: int) -> float:
+    """Limiar adaptativo de diversidade por tamanho de lote (M-ML-080)."""
+    count = max(int(requested_count or 0), 1)
+    if count <= 5:
+        return 0.35
+    if count <= 10:
+        return 0.42
+    if count <= 20:
+        return 0.48
+    if count <= 50:
+        return 0.52
+    return DIVERSITY_LOW_THRESHOLD
 
 LEVEL_BOM = "bom"
 LEVEL_ATENCAO = "atencao"
