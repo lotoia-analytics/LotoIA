@@ -31,22 +31,23 @@ REMOVED_SIDEBAR_LABELS = (
 OFFICIAL_SIDEBAR_LABELS = (
     "Gerar Jogos",
     "Conferir Resultados",
-    "Simular Resultados",
-    "Cobertura Estrutural",
     "Histórico Analítico",
+    "Cobertura Estrutural",
+    "Simular Resultados",
+    "Análise ML",
     "Painel Inicial Institucional",
     "Histórico Institucional",
 )
 
 
 def test_build_marker_v88_menu_cleanup() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v89"
+    assert BUILD_MARKER == "institutional-adm-runtime-v90"
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
 
-def test_official_sidebar_menu_has_seven_items() -> None:
+def test_official_sidebar_menu_has_eight_items() -> None:
     page_ids = route_inventory.official_sidebar_page_ids()
-    assert len(page_ids) == 7
+    assert len(page_ids) == 8
     assert page_ids <= route_inventory.INSTITUTIONAL_ALLOWED_PAGES
 
 
