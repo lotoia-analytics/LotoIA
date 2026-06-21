@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-UI-MODERN-001](#m-ui-modern-001--modernização-da-cobertura-estrutural-uiux-20) | Dashboard visual Cobertura Estrutural | `CONCLUIDA` | `HEALTH SCORE + TIMELINE ATIVOS` |
 | [M-MEMORY-001](#m-memory-001--persistência-de-cobertura-e-memória-evolutiva) | Memória evolutiva cobertura estrutural | `CONCLUIDA` | `MEMÓRIA PERSISTIDA / TIMELINE ATIVA` |
 | [M-ML-079](#m-ml-079--reconciliação-dos-validadores--remoção-do-conflito-de-núcleos) | Reconciliação validadores / conflito núcleos | `CONCLUIDA` | `CONFLITO DE NÚCLEOS REMOVIDO / POOL >= 0.90` |
 | [M-ML-VIS-056](#m-ml-vis-056--central-ml-cockpit-de-calibração-supervisionada) | Central ML — cockpit calibração | `CONCLUIDA` | `COCKPIT OPERACIONAL / CALIBRAÇÃO ML ATIVA` |
@@ -49,6 +50,26 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-UI-MODERN-001 — Modernização da Cobertura Estrutural (UI/UX 2.0)
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v94` |
+| **Pré-requisito** | M-MEMORY-001, M-CORE-003 |
+| **Desbloqueia** | Leitura visual histórica e calibração assistida por tendência |
+
+**Objetivo:** Substituir interface tabular por dashboard de inteligência visual com Health Score
+(Structural Fidelity Score), radar de dezenas, linha do tempo de viés, heatmap de quadrantes
+e modo Time Travel integrado à memória PostgreSQL.
+
+**Entregas:** `structural_fidelity_analytics.py`, `institutional_structural_coverage_modern.py`,
+refatoração de `_render_cobertura_estrutural_page`, Plotly gauge/radar/heatmap.
+
+**Veredicto:** **M-UI-MODERN-001 CONCLUÍDA — DASHBOARD VISUAL ATIVO**
+
+---
 
 ### M-MEMORY-001 — Persistência de Cobertura e Memória Evolutiva
 
