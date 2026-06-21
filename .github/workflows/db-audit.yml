@@ -6,10 +6,16 @@ on:
     paths:
       - ".github/workflows/db-audit.yml"
 
+permissions:
+  contents: write
+
 jobs:
   db-access:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
@@ -23,6 +29,20 @@ jobs:
             exit 1
           fi
 
-          echo "Testando acesso ao PostgreSQL..."
+          mkdir -p runtime
+          echo "db_access_check_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/db-access-confirmation.txt
+          echo "commit_sha=${GITHUB_SHA}" >> runtime/db-access-confirmation.txt
+          echo "status=OK" >> runtime/db-access-confirmation.txt
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "SELECT 'database=' || current_database();" >> runtime/db-access-confirmation.txt
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -c "SELECT 'db_user=' || current_user;" >> runtime/db-access-confirmation.txt
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_access_ok;"
-          echo "DB_ACCESS_OK"
+          cat runtime/db-access-confirmation.txt
+
+      - name: Commit DB access confirmation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/db-access-confirmation.txt
+          git commit -m "chore: confirm database access" || echo "No confirmation changes to commit"
+          git push
