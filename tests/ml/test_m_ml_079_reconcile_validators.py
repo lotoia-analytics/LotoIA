@@ -153,4 +153,8 @@ def test_nucleo_congelado_is_informational_not_validation_gate() -> None:
 
 def test_policy_version_errata_m_ml_079() -> None:
     assert POLICY_VERSION == "M-ML-079-v1"
+<<<<<<< HEAD
+    assert BUILD_MARKER == "institutional-adm-runtime-v93"
+=======
     assert BUILD_MARKER == "institutional-adm-runtime-v92"
+>>>>>>> origin/main
