@@ -6809,6 +6809,18 @@ def _run_institutional_conference(
             return
         probe_context = dict(persisted_probe[0].get("context_json") or persisted_probe[0])
         analytical_promoted = int(probe_context.get("games_promoted_to_analytical", 0) or 0)
+        if is_official_conference_eligible(probe_context):
+            st.session_state["institutional_check_result"] = {
+                "status": "waiting_games",
+                "warning": (
+                    "O lote consta como conferível, mas nenhum jogo passou no filtro "
+                    "game_conference_eligible na leitura atual. Isso costuma ocorrer em lotes "
+                    "gerados antes da injeção de previous_contest_numbers (GE legado). "
+                    "Gere um lote novo após o deploy ou revise a promoção parcial na Central ML."
+                ),
+                "generation_event_id": int(resolved_ge_id or 0),
+            }
+            return
         if analytical_promoted > 0 or is_analytical_history_eligible(probe_context):
             st.session_state["institutional_check_result"] = {
                 "warning": (

@@ -367,7 +367,17 @@ def is_game_conference_eligible(
     parent = dict(parent_lot_context or {})
     context = dict(game_context or {})
     if context.get("game_quality_status"):
-        return bool(context.get("game_conference_eligible"))
+        if bool(context.get("game_conference_eligible")):
+            return True
+        status = str(context.get("game_quality_status") or "")
+        if status == GAME_QUALITY_CRITICAL:
+            return False
+        # Read-time: lote promovido após persistência (ex. approved_with_warning na Central ML).
+        if is_official_conference_eligible(parent):
+            if status == GAME_QUALITY_ACCEPTABLE:
+                return True
+            if status == GAME_QUALITY_ATTENTION and _attention_conference_allowed(parent):
+                return True
     if bool(parent.get("partial_promotion_enabled")):
         fields = resolve_game_quality_fields(
             context,
@@ -377,6 +387,8 @@ def is_game_conference_eligible(
         )
         if fields.get("game_quality_status"):
             return bool(fields.get("game_conference_eligible"))
+    if context.get("game_quality_status"):
+        return bool(context.get("game_conference_eligible"))
     return is_official_conference_eligible(parent)
 
 

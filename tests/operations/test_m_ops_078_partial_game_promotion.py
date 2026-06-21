@@ -13,6 +13,7 @@ from dashboard.institutional_build import BUILD_MARKER
 from lotoia.ml.ml_operational_verdict import VERDICT_APROVADO, VERDICT_REPROVADO
 from lotoia.operations.lot_operational_status import (
     STATUS_APPROVED_FOR_OFFICIALIZATION,
+    STATUS_APPROVED_WITH_WARNING,
     STATUS_REJECTED,
     is_analytical_history_eligible,
     is_official_conference_eligible,
@@ -27,6 +28,7 @@ from lotoia.operations.partial_game_promotion import (
     classify_lot_partial_promotion,
     filter_analytical_games,
     filter_conference_games,
+    is_game_conference_eligible,
 )
 
 
@@ -121,6 +123,23 @@ def _approved_lot_context(**overrides: Any) -> dict[str, Any]:
     }
     base.update(overrides)
     return base
+
+
+def test_stale_false_flag_reopened_when_parent_approved_with_warning() -> None:
+    """Lote promovido na Central ML após persistência com game_conference_eligible=false."""
+    parent = _approved_lot_context(
+        lot_operational_status=STATUS_APPROVED_WITH_WARNING,
+        official_release_allowed=True,
+    )
+    game_ctx = {
+        "game_quality_status": GAME_QUALITY_ATTENTION,
+        "game_conference_eligible": False,
+        "game_quality_reason": "repeticao:concurso_anterior_indisponivel",
+    }
+    assert is_game_conference_eligible(game_ctx, parent_lot_context=parent) is True
+    games = [{"game_index": 1, "numbers": _diverse_card(1), "context_json": game_ctx}]
+    selected = filter_conference_games({"context_json": parent}, games)
+    assert len(selected) == 1
 
 
 def test_build_marker_v83() -> None:
