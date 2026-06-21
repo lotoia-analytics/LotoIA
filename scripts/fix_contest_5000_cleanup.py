@@ -1,145 +1,139 @@
 """
 Limpeza cirúrgica do banco — concurso fantasma 5000
 Operações:
-  1. Deletar concursos fantasma da lotofacil_official_history (3801, 3802, 3901, 3902, 4001, 5000)
-  2. Deletar registro de imported_contests com contest_number=5000
-  3. Corrigir target_contest dos jogos elegíveis (game_conference_eligible=true) → 3717
+  1. Deletar concursos fantasma da lotofacil_official_history
+  2. Deletar registro de imported_contests fantasma
+  3. Corrigir target_contest dos jogos elegíveis → próximo concurso real
   4. Deletar jogos não elegíveis e sem valor (game_conference_eligible=false, null com status crítico)
-  5. Corrigir context_json dos jogos elegíveis: atualizar target_contest e limpar parent_lot_verdict
+  5. Corrigir context_json dos jogos elegíveis
 
 Lei 001: toda operação é transacional — ou tudo passa ou nada é aplicado.
+Requer DATABASE_URL / DATABASE_PUBLIC_URL / LOTOIA_DATABASE_URL no ambiente.
 """
-import psycopg2
+from __future__ import annotations
+
 import json
+import os
+import sys
 
-DB = "postgresql://postgres:gbkOvFoWDNlEWyywiqGtareFHpXALtzN@shortline.proxy.rlwy.net:32647/railway"
-NEXT_REAL_CONTEST = 3717
-PHANTOM_CONTESTS = [3801, 3802, 3901, 3902, 4001, 5000]
+import psycopg2
+
+from lotoia.clients.conference_utils import PHANTOM_TARGET_CONTEST_NUMBERS, resolve_next_target_contest
+
+PHANTOM_CONTESTS = sorted(PHANTOM_TARGET_CONTEST_NUMBERS | {3801, 3802, 3901, 3902, 4001})
+PHANTOM_TARGET_LIST = sorted(PHANTOM_TARGET_CONTEST_NUMBERS)
 
 
-def cleanup():
-    conn = psycopg2.connect(DB)
+def _database_url() -> str:
+    for key in ("DATABASE_URL", "DATABASE_PUBLIC_URL", "LOTOIA_DATABASE_URL"):
+        value = str(os.environ.get(key, "") or "").strip()
+        if value and value != key:
+            return value
+    raise SystemExit(
+        "DATABASE_URL (ou DATABASE_PUBLIC_URL / LOTOIA_DATABASE_URL) é obrigatório — "
+        "não use credenciais hardcoded."
+    )
+
+
+def cleanup() -> bool:
+    next_real = resolve_next_target_contest()
+    if next_real is None or next_real <= 0:
+        raise SystemExit("Não foi possível resolver o próximo concurso real a partir do PostgreSQL.")
+
+    conn = psycopg2.connect(_database_url())
     conn.autocommit = False
     cur = conn.cursor()
 
     try:
         print("=" * 70)
         print("LIMPEZA CIRÚRGICA — CONCURSOS FANTASMA")
+        print(f"Próximo concurso alvo: {next_real}")
         print("=" * 70)
 
-        # ── 1. Deletar concursos fantasma da tabela oficial ──────────────────
         cur.execute(
-            "DELETE FROM lotofacil_official_history "
-            "WHERE contest_number = ANY(%s)",
-            (PHANTOM_CONTESTS,)
+            "DELETE FROM lotofacil_official_history WHERE contest_number = ANY(%s)",
+            (PHANTOM_CONTESTS,),
         )
-        deleted_official = cur.rowcount
-        print(f"\n[1] Deletados {deleted_official} concursos fantasma de lotofacil_official_history")
+        print(f"\n[1] Deletados {cur.rowcount} concursos fantasma de lotofacil_official_history")
 
-        # ── 2. Deletar imported_contests fantasma ────────────────────────────
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='imported_contests' ORDER BY ordinal_position"
         )
         cols = [r[0] for r in cur.fetchall()]
-        if 'contest_number' in cols:
+        if "contest_number" in cols:
             cur.execute(
                 "DELETE FROM imported_contests WHERE contest_number = ANY(%s)",
-                (PHANTOM_CONTESTS,)
+                (PHANTOM_CONTESTS,),
             )
-            deleted_imported = cur.rowcount
-            print(f"[2] Deletados {deleted_imported} registros de imported_contests")
+            print(f"[2] Deletados {cur.rowcount} registros de imported_contests")
         else:
-            print(f"[2] imported_contests não tem coluna contest_number — pulando")
+            print("[2] imported_contests não tem coluna contest_number — pulando")
 
-        # ── 3. Identificar jogos elegíveis para recuperação ──────────────────
-        # Elegíveis: game_conference_eligible=true OU null (sem veredicto explícito)
-        # Não elegíveis: game_conference_eligible=false E game_quality_status='critical'
         cur.execute(
             """
             SELECT id,
                    context_json->>'game_conference_eligible' as eligible,
                    context_json->>'game_quality_status' as quality
             FROM generated_games
-            WHERE target_contest = 5000
-            """
+            WHERE target_contest = ANY(%s)
+            """,
+            (PHANTOM_TARGET_LIST,),
         )
         rows = cur.fetchall()
 
-        eligible_ids = []
-        delete_ids = []
+        eligible_ids: list[int] = []
+        delete_ids: list[int] = []
         for row_id, eligible, quality in rows:
-            if eligible == 'true':
+            if eligible == "true":
                 eligible_ids.append(row_id)
-            elif eligible == 'false' and quality == 'critical':
+            elif eligible == "false" and quality == "critical":
                 delete_ids.append(row_id)
             else:
-                # null eligible — recuperar (podem ser jogos antigos sem o campo)
                 eligible_ids.append(row_id)
 
-        print(f"\n[3] Jogos target=5000:")
+        print(f"\n[3] Jogos target fantasma:")
         print(f"    Elegíveis para recuperação: {len(eligible_ids)}")
         print(f"    Para deletar (não elegíveis + críticos): {len(delete_ids)}")
 
-        # ── 4. Deletar jogos não elegíveis ───────────────────────────────────
         if delete_ids:
-            cur.execute(
-                "DELETE FROM generated_games WHERE id = ANY(%s)",
-                (delete_ids,)
-            )
+            cur.execute("DELETE FROM generated_games WHERE id = ANY(%s)", (delete_ids,))
             print(f"[4] Deletados {cur.rowcount} jogos não elegíveis")
         else:
-            print(f"[4] Nenhum jogo para deletar")
+            print("[4] Nenhum jogo para deletar")
 
-        # ── 5. Corrigir target_contest dos jogos elegíveis → 3717 ────────────
         if eligible_ids:
             cur.execute(
                 "UPDATE generated_games SET target_contest = %s WHERE id = ANY(%s)",
-                (NEXT_REAL_CONTEST, eligible_ids)
+                (next_real, eligible_ids),
             )
-            updated_target = cur.rowcount
-            print(f"[5] Atualizados {updated_target} jogos: target_contest 5000 → {NEXT_REAL_CONTEST}")
+            print(f"[5] Atualizados {cur.rowcount} jogos: target fantasma → {next_real}")
         else:
-            print(f"[5] Nenhum jogo elegível para atualizar")
+            print("[5] Nenhum jogo elegível para atualizar")
 
-        # ── 6. Corrigir context_json dos jogos elegíveis ─────────────────────
-        # Remover parent_lot_verdict=REPROVADO e parent_lot_status=pending_structural_review
-        # Atualizar target_contest no context_json
         if eligible_ids:
             cur.execute(
                 "SELECT id, context_json FROM generated_games WHERE id = ANY(%s)",
-                (eligible_ids,)
+                (eligible_ids,),
             )
-            game_rows = cur.fetchall()
             fixed_count = 0
-            for game_id, ctx in game_rows:
+            for game_id, ctx in cur.fetchall():
                 if not ctx:
                     continue
-                changed = False
-                # Corrigir parent_lot_verdict
-                if ctx.get('parent_lot_verdict') == 'REPROVADO':
-                    ctx['parent_lot_verdict'] = 'PENDENTE_REVISAO'
-                    changed = True
-                if ctx.get('parent_lot_status') == 'pending_structural_review':
-                    ctx['parent_lot_status'] = 'recovered_from_phantom_contest'
-                    changed = True
-                # Marcar como recuperado
-                ctx['phantom_contest_fix_applied'] = True
-                ctx['original_target_contest'] = 5000
-                ctx['corrected_target_contest'] = NEXT_REAL_CONTEST
-                changed = True
-
-                if changed:
-                    cur.execute(
-                        "UPDATE generated_games SET context_json = %s WHERE id = %s",
-                        (json.dumps(ctx), game_id)
-                    )
-                    fixed_count += 1
-
+                if ctx.get("parent_lot_verdict") == "REPROVADO":
+                    ctx["parent_lot_verdict"] = "PENDENTE_REVISAO"
+                if ctx.get("parent_lot_status") == "pending_structural_review":
+                    ctx["parent_lot_status"] = "recovered_from_phantom_contest"
+                ctx["phantom_contest_fix_applied"] = True
+                ctx["original_target_contest"] = PHANTOM_TARGET_LIST[0]
+                ctx["corrected_target_contest"] = next_real
+                cur.execute(
+                    "UPDATE generated_games SET context_json = %s WHERE id = %s",
+                    (json.dumps(ctx), game_id),
+                )
+                fixed_count += 1
             print(f"[6] Corrigidos context_json de {fixed_count} jogos")
 
-        # ── 7. Corrigir generation_events ligados ────────────────────────────
-        # Os generation_events não têm target_contest diretamente, mas o context_json pode ter
         cur.execute(
             """
             SELECT id, context_json FROM generation_events
@@ -148,54 +142,57 @@ def cleanup():
                 WHERE target_contest = %s
             )
             """,
-            (NEXT_REAL_CONTEST,)
+            (next_real,),
         )
-        evt_rows = cur.fetchall()
         evt_fixed = 0
-        for evt_id, ctx in evt_rows:
+        for evt_id, ctx in cur.fetchall():
             if not ctx:
                 continue
             if isinstance(ctx, str):
                 ctx = json.loads(ctx)
-            ctx['phantom_contest_fix_applied'] = True
-            ctx['original_target_contest'] = 5000
-            ctx['corrected_target_contest'] = NEXT_REAL_CONTEST
+            ctx["phantom_contest_fix_applied"] = True
+            ctx["original_target_contest"] = PHANTOM_TARGET_LIST[0]
+            ctx["corrected_target_contest"] = next_real
             cur.execute(
                 "UPDATE generation_events SET context_json = %s WHERE id = %s",
-                (json.dumps(ctx), evt_id)
+                (json.dumps(ctx), evt_id),
             )
             evt_fixed += 1
         print(f"[7] Corrigidos context_json de {evt_fixed} generation_events")
 
-        # ── 8. Verificar estado final ────────────────────────────────────────
-        cur.execute("SELECT COUNT(*) FROM generated_games WHERE target_contest = 5000")
-        remaining_5000 = cur.fetchone()[0]
-        cur.execute(f"SELECT COUNT(*) FROM generated_games WHERE target_contest = {NEXT_REAL_CONTEST}")
-        total_3717 = cur.fetchone()[0]
         cur.execute(
-            "SELECT COUNT(*) FROM lotofacil_official_history "
-            "WHERE contest_number = ANY(%s)", (PHANTOM_CONTESTS,)
+            "SELECT COUNT(*) FROM generated_games WHERE target_contest = ANY(%s)",
+            (PHANTOM_TARGET_LIST,),
+        )
+        remaining_phantom_targets = cur.fetchone()[0]
+        cur.execute(
+            "SELECT COUNT(*) FROM generated_games WHERE target_contest = %s",
+            (next_real,),
+        )
+        total_next_real = cur.fetchone()[0]
+        cur.execute(
+            "SELECT COUNT(*) FROM lotofacil_official_history WHERE contest_number = ANY(%s)",
+            (PHANTOM_CONTESTS,),
         )
         remaining_phantom = cur.fetchone()[0]
 
         print(f"\n[8] Estado final:")
-        print(f"    jogos target=5000 restantes: {remaining_5000} (deve ser 0)")
-        print(f"    jogos target={NEXT_REAL_CONTEST}: {total_3717}")
+        print(f"    jogos target fantasma restantes: {remaining_phantom_targets} (deve ser 0)")
+        print(f"    jogos target={next_real}: {total_next_real}")
         print(f"    concursos fantasma restantes: {remaining_phantom} (deve ser 0)")
 
-        if remaining_5000 > 0 or remaining_phantom > 0:
+        if remaining_phantom_targets > 0 or remaining_phantom > 0:
             conn.rollback()
             print("\n❌ ROLLBACK — estado inconsistente detectado")
             return False
 
-        # ── COMMIT ───────────────────────────────────────────────────────────
         conn.commit()
         print("\n✅ COMMIT — limpeza aplicada com sucesso")
         return True
 
-    except Exception as e:
+    except Exception as exc:
         conn.rollback()
-        print(f"\n❌ ROLLBACK — erro: {e}")
+        print(f"\n❌ ROLLBACK — erro: {exc}")
         raise
     finally:
         conn.close()
