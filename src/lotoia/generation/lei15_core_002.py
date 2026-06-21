@@ -46,6 +46,8 @@ def _relaxed_overlap_limits(count: int) -> tuple[int, ...]:
         limits.append(_GP_MAX_OVERLAP + 3)
     if target >= 35:
         limits.append(min(14, _GP_MAX_OVERLAP + 4))
+    if target >= 50:
+        limits.append(15)
     return tuple(sorted(set(limits)))
 
 

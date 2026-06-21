@@ -809,9 +809,9 @@ def generate_best_games(
         )
         attempt = 0
         working_pool_size = int(pool_size)
-        while len(best_games) < count and attempt < 4:
+        while len(best_games) < count and attempt < 6:
             attempt += 1
-            working_pool_size = max(working_pool_size * 2, count * (4 + attempt), count + 100)
+            working_pool_size = max(working_pool_size * 3, count * (5 + attempt * 2), count + 200)
             logger.warning(
                 "[LEI15_CORE_002] compose_sovereign_gp entregou %d/%d — tentativa %d pool=%d",
                 len(best_games),
