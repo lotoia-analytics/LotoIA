@@ -329,8 +329,13 @@ def render_modern_structural_coverage_dashboard(
         )
 
     if render_legacy_diagnostics is not None:
-        with st.expander("Diagnóstico estrutural detalhado (modo legado)", expanded=False):
-            render_legacy_diagnostics()
+        st.divider()
+        st.subheader("Diagnóstico estrutural detalhado (modo legado)")
+        st.caption(
+            "Leitura observacional por geração — abertura, fechamento, gaps, redundância "
+            "e comparação com concursos oficiais."
+        )
+        render_legacy_diagnostics()
 
     st.caption(
         f"missão={MISSION_ID} · integração M-MEMORY-001 · geração selecionada={selected_ge_id}"

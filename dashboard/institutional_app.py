@@ -9319,13 +9319,7 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 
 
 
-def _render_active_reading_exclusions_banner(payload: dict[str, Any]) -> None:
-    """Auditoria de lotes excluídos — sem st.expander (pode renderizar dentro de expander legado)."""
-    _render_excluded_batches_audit_inline(payload)
-
-
 def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> None:
-    _render_active_reading_exclusions_banner(payload)
     summary = dict(payload.get("summary") or {})
     summary_cols = st.columns(4)
     summary_cols[0].metric("Gerações", int(summary.get("total_geracoes", 0) or 0))

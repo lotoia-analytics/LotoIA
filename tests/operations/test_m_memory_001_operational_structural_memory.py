@@ -158,4 +158,4 @@ def test_institutional_app_wires_structural_memory(tmp_path, monkeypatch: pytest
 def test_build_marker_v93() -> None:
     from dashboard.institutional_build import BUILD_MARKER
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v96"
+    assert BUILD_MARKER == "institutional-adm-runtime-v97"
