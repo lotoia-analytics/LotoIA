@@ -6860,6 +6860,23 @@ def _run_institutional_conference(
         battery_groups,
         selected_battery_id=resolved_battery_id,
     )
+    known_battery_ids = {
+        str(battery.get("battery_id") or "").strip()
+        for battery in battery_groups
+        if str(battery.get("battery_id") or "").strip()
+    }
+    if (
+        battery_id is not None
+        and resolved_battery_id
+        and resolved_battery_id != OPERATIONAL_BATTERY_ALL_ID
+        and resolved_battery_id not in known_battery_ids
+    ):
+        st.session_state["institutional_check_result"] = {
+            "status": "waiting_lot",
+            "warning": INVALID_LOT_WARNING,
+            "battery_id": str(resolved_battery_id or ""),
+        }
+        return
     grouped_generations: list[dict[str, Any]] = []
     for group in list(selected_battery.get("groups") or []):
         prepared = _prepare_conference_group(group)

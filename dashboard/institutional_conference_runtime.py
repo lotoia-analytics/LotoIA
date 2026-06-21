@@ -124,11 +124,9 @@ def _safe_positive_generation_event_id(value: Any) -> int | None:
 
 def _safe_battery_id(value: Any) -> str | None:
     battery_id = str(value or "").strip()
-    if not battery_id:
+    if not battery_id or battery_id in {"-", "None", "null", "unresolved"}:
         return None
-    if battery_id == OPERATIONAL_BATTERY_ALL_ID:
-        return battery_id
-    return battery_id if battery_id.startswith("BAT-") else None
+    return battery_id
 
 
 def ensure_conference_session_defaults(*, default_battery_id: str | None = None, default_ge_id: int | None = None) -> None:

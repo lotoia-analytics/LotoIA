@@ -35,9 +35,10 @@ def test_run_conference_does_not_write_widget_session_key() -> None:
 
 def test_is_valid_resolved_battery_id() -> None:
     assert is_valid_resolved_battery_id("BAT-001")
+    assert is_valid_resolved_battery_id("ALL")
     assert not is_valid_resolved_battery_id(None)
     assert not is_valid_resolved_battery_id("")
-    assert not is_valid_resolved_battery_id("GE-1")
+    assert not is_valid_resolved_battery_id("unresolved")
 
 
 def test_ensure_conference_session_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,7 +105,7 @@ def test_run_conference_rejects_invalid_explicit_battery_id(
 def test_run_conference_succeeds_without_touching_widget_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_BATTERY: "BAT-001"}
+    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_BATTERY: "batch-35"}
     monkeypatch.setattr(admin_app.st, "session_state", session, raising=False)
     monkeypatch.setattr(admin_app, "_is_valid_conference_contest", lambda _contest: True)
     monkeypatch.setattr(
@@ -157,14 +158,14 @@ def test_run_conference_succeeds_without_touching_widget_key(
 
     admin_app._run_institutional_conference(
         contest_number=3713,
-        battery_id="BAT-001",
+        battery_id="batch-35",
         conference_all_official=False,
     )
 
-    assert session[SESSION_CONFERENCE_SELECTED_BATTERY] == "BAT-001"
+    assert session[SESSION_CONFERENCE_SELECTED_BATTERY] == "batch-35"
     result = session["institutional_check_result"]
     assert result["status"] == "checked"
-    assert result.get("battery_id") == "BAT-001"
+    assert result.get("battery_id") == "batch-35"
 
 
 def test_mission_id_declared() -> None:

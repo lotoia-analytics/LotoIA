@@ -96,14 +96,14 @@ def test_conference_cache_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
         raising=False,
     )
     store_cached_conference_result(
-        battery_id="BAT-001",
+        battery_id="batch-35",
         contest_number=3713,
-        check_result={"status": "checked", "battery_id": "BAT-001", "contest_number": 3713},
+        check_result={"status": "checked", "battery_id": "batch-35", "contest_number": 3713},
     )
-    assert conference_cache_key(battery_id="BAT-001", contest_number=3713) in session[SESSION_CONFERENCE_CACHE]
-    cached = read_cached_conference_result(battery_id="BAT-001", contest_number=3713)
+    assert conference_cache_key(battery_id="batch-35", contest_number=3713) in session[SESSION_CONFERENCE_CACHE]
+    cached = read_cached_conference_result(battery_id="batch-35", contest_number=3713)
     assert cached is not None
-    assert cached["battery_id"] == "BAT-001"
+    assert cached["battery_id"] == "batch-35"
 
 
 def test_run_institutional_conference_single_lot_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,14 +162,14 @@ def test_run_institutional_conference_single_lot_only(monkeypatch: pytest.Monkey
 
     institutional_app._run_institutional_conference(
         contest_number=3713,
-        battery_id="BAT-001",
+        battery_id="batch-35",
         conference_all_official=False,
     )
 
     result = institutional_app.st.session_state.get("institutional_check_result")
     assert isinstance(result, dict)
     assert result.get("scope") == "operational_battery"
-    assert result.get("battery_id") == "BAT-001"
+    assert result.get("battery_id") == "batch-35"
     assert int(result.get("total_games_checked", 0) or 0) == 20
 
 
