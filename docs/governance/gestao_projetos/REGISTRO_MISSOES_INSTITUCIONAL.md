@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-MEMORY-001](#m-memory-001--persistência-de-cobertura-e-memória-evolutiva) | Memória evolutiva cobertura estrutural | `CONCLUIDA` | `MEMÓRIA PERSISTIDA / TIMELINE ATIVA` |
 | [M-ML-079](#m-ml-079--reconciliação-dos-validadores--remoção-do-conflito-de-núcleos) | Reconciliação validadores / conflito núcleos | `CONCLUIDA` | `CONFLITO DE NÚCLEOS REMOVIDO / POOL >= 0.90` |
 | [M-ML-VIS-056](#m-ml-vis-056--central-ml-cockpit-de-calibração-supervisionada) | Central ML — cockpit calibração | `CONCLUIDA` | `COCKPIT OPERACIONAL / CALIBRAÇÃO ML ATIVA` |
 | [M-ML-054](#m-ml-054--central-ml-como-motor-de-calibração-supervisionada-da-saída) | Central ML — calibração supervisionada saída | `CONCLUIDA` | `CALIBRAÇÃO AUTOMÁTICA / TRACE POSTGRESQL` |
@@ -48,6 +49,27 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-MEMORY-001 — Persistência de Cobertura e Memória Evolutiva
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v93` |
+| **Pré-requisito** | M-CORE-003, M-OPS-080, LEI 001 (PostgreSQL) |
+| **Desbloqueia** | Calibrações ML com histórico de viés estrutural |
+
+**Objetivo:** Automatizar persistência da Cobertura Estrutural no PostgreSQL e transformar o painel
+institucional em ferramenta de leitura de memória histórica — sem perda de dados de viés após geração
+ou limpeza da fila operacional.
+
+**Entregas:** tabela `operational_structural_memory`; hook pós-`compose_sovereign_gp` em
+`basic_generator.py`; persistência em `_persist_generation_snapshot`; painel **Linha do Tempo de Viés**
+na Cobertura Estrutural; status `STATUS_CRITICAL_BIAS` quando divergência oficial >= 15%.
+
+**Veredicto:** **M-MEMORY-001 CONCLUÍDA — MEMÓRIA EVOLUTIVA ATIVA**
+
+---
 
 ### M-ML-079 — Reconciliação dos Validadores — Remoção do Conflito de Núcleos
 

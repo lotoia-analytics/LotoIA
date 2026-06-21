@@ -788,6 +788,34 @@ class GeneratedGame(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class OperationalStructuralMemory(Base):
+    __tablename__ = "operational_structural_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    generation_event_id: Mapped[int] = mapped_column(
+        ForeignKey("generation_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    prefix_distribution: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    suffix_distribution: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    official_divergence_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    bias_alerts: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    mission_id: Mapped[str] = mapped_column(String(32), default="M-MEMORY-001", nullable=False)
+    memory_status: Mapped[str] = mapped_column(String(48), default="PERSISTED", nullable=False)
+    coverage_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("ix_operational_structural_memory_recorded_at", "recorded_at"),
+        Index("ix_operational_structural_memory_generation_event_id", "generation_event_id"),
+        Index("ix_operational_structural_memory_memory_status", "memory_status"),
+    )
+
+
 class InstitutionalOutputSignature(Base):
     __tablename__ = "institutional_output_signatures"
 

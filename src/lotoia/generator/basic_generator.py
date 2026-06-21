@@ -1228,4 +1228,12 @@ def generate_best_games(
             merged_bundle["ml_operational_hierarchy"] = _hierarchy_bundle
         merged_bundle["structural_policy_15d"] = _structural_policy_bundle
         payload["calibration_bundle"] = merged_bundle
+    if _apply_sovereign and best_games:
+        from lotoia.operations.operational_structural_memory import (
+            compute_operational_structural_memory_snapshot,
+        )
+
+        payload["operational_structural_memory_snapshot"] = (
+            compute_operational_structural_memory_snapshot(best_games)
+        )
     return payload

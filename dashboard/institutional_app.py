@@ -114,6 +114,7 @@ from dashboard.institutional_governance import (
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_m_core_003_monitoring import render_m_core_003_bias_monitoring_panel
+from dashboard.institutional_structural_memory import render_structural_memory_timeline_panel
 from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
 from dashboard.institutional_structural_policy_coverage import (
     build_structural_policy_coverage_context,
@@ -240,6 +241,11 @@ from lotoia.operations.structural_coverage_exit_cleanup import (
     execute_structural_coverage_exit_cleanup,
     persist_structural_coverage_review_completed,
     resolve_post_coverage_deletion_targets,
+)
+from lotoia.operations.operational_structural_memory import (
+    compute_operational_structural_memory_snapshot,
+    persist_operational_structural_memory,
+    should_persist_structural_memory_for_batch,
 )
 from dashboard.institutional_clean_law15_runtime import (
     GENERATOR_PAGE_TITLE,
@@ -9573,7 +9579,13 @@ def _render_structural_coverage_queue_cleanup_panel(
             "Gerações já conferidas oficialmente permanecem no banco por governança."
         )
         if ineligible_count > 0:
-            with st.expander("Gerações bloqueadas para remoção", expanded=False):
+            st.markdown("**Gerações bloqueadas para remoção**")
+            show_blocked = st.checkbox(
+                "Exibir gerações bloqueadas para remoção",
+                value=False,
+                key="structural_coverage_show_blocked_generations",
+            )
+            if show_blocked:
                 st.dataframe(
                     pd.DataFrame(list(summary.get("ineligible_details") or [])),
                     hide_index=True,
@@ -9619,7 +9631,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     st.caption(OPERATIONAL_SOURCE_CAPTION)
     st.caption(
         "Referência constitucional: **LEI15_CORE_002**. Geração operacional via "
-        "**Gerador ADM CORE_002** — leitura soberana em PostgreSQL."
+        "**Gerador ADM CORE_002** — leitura soberana em PostgreSQL / memória evolutiva (M-MEMORY-001)."
     )
     _render_diagnostic_observational_caption()
     st.write(
@@ -9830,6 +9842,11 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         ]
         if is_all_operational_generations_selection(selected_label)
         else ([selected_ge_id] if selected_ge_id > 0 else [])
+    )
+    st.divider()
+    render_structural_memory_timeline_panel(
+        DB_PATH,
+        selected_generation_event_id=selected_ge_id if selected_ge_id > 0 else None,
     )
     st.divider()
     render_m_core_003_bias_monitoring_panel(
@@ -10442,12 +10459,41 @@ def _persist_generation_snapshot(
             raise RuntimeError(
                 f"Comandante de Saída bloqueou a persistência por assinatura duplicada na bateria {batch_id or 'global'}."
             ) from exc
+        memory_persist_result: dict[str, Any] = {}
+        card_format = int((games[0] or {}).get("card_format", 15) or 15) if games else 15
+        if should_persist_structural_memory_for_batch(batch_label) and card_format == 15:
+            memory_snapshot = dict((generation_context or {}).get("operational_structural_memory_snapshot") or {})
+            if not memory_snapshot.get("available"):
+                memory_snapshot = compute_operational_structural_memory_snapshot(
+                    games,
+                    db_path=DB_PATH,
+                    generation_event_id=generation_event_id,
+                )
+            else:
+                memory_snapshot = dict(memory_snapshot)
+                memory_snapshot["generation_event_id"] = generation_event_id
+            memory_persist_result = persist_operational_structural_memory(
+                DB_PATH,
+                generation_event_id=generation_event_id,
+                snapshot=memory_snapshot,
+            )
+            if memory_persist_result.get("persisted"):
+                event.context_json = {
+                    **dict(event.context_json or {}),
+                    "operational_structural_memory_persisted": True,
+                    "operational_structural_memory_row_id": memory_persist_result.get("memory_row_id"),
+                    "structural_memory_mission_id": "M-MEMORY-001",
+                    "structural_memory_status": memory_persist_result.get("memory_status"),
+                    "official_divergence_score": memory_persist_result.get("official_divergence_score"),
+                }
+                session.commit()
         return {
             "generation_event_id": generation_event_id,
             "seed": seed,
             "games_count": len(games),
             "target_contest": target_contest,
             "batch_id": batch_id,
+            "operational_structural_memory": memory_persist_result,
         }
 
 
@@ -12735,6 +12781,10 @@ def _persist_clean_law15_generation_history(
             gp_quality_tier=gp_quality_tier,
         )
     )
+    memory_snapshot = dict(result.get("operational_structural_memory_snapshot") or {})
+    if memory_snapshot.get("available"):
+        generation_context["operational_structural_memory_snapshot"] = memory_snapshot
+        generation_context["structural_memory_mission_id"] = "M-MEMORY-001"
     generation_context = sync_persisted_event_operational_status(generation_context)
     payload_games, partial_promotion_patch = apply_partial_promotion_to_payload_games(
         payload_games,
