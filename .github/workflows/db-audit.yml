@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       sql:
-        description: "SQL para executar no PostgreSQL institucional"
+        description: "SQL opcional para executar no PostgreSQL institucional"
         required: false
-        default: "SELECT current_database(), now();"
+        default: ""
         type: string
   push:
     paths:
@@ -19,32 +19,39 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Run connection smoke test
+      - name: Connection smoke test
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          if [ -z "$DATABASE_URL" ]; then
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
             echo "DATABASE_URL secret não configurado."
             exit 1
           fi
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_database(), now();"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_database() AS database, now() AS checked_at;"
 
       - name: Audit latest Lotofacil contest
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
-          DO $$\
-          BEGIN\
-            IF to_regclass('public.lotofacil_official_history') IS NOT NULL THEN\
-              RAISE NOTICE 'table=lotofacil_official_history';\
-            ELSIF to_regclass('public.imported_contests') IS NOT NULL THEN\
-              RAISE NOTICE 'table=imported_contests';\
-            ELSE\
-              RAISE EXCEPTION 'Nenhuma tabela institucional encontrada';\
-            END IF;\
-          END $$;"
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
-          SELECT * FROM lotofacil_official_history ORDER BY contest_number DESC LIMIT 1;" \
-          || psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
-          SELECT * FROM imported_contests ORDER BY contest_number DESC LIMIT 1;"
+          set -euo pipefail
+          TABLE_NAME=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass('public.lotofacil_official_history') IS NOT NULL THEN 'lotofacil_official_history' WHEN to_regclass('public.imported_contests') IS NOT NULL THEN 'imported_contests' ELSE '' END;")
+
+          if [ -z "$TABLE_NAME" ]; then
+            echo "Nenhuma tabela institucional encontrada: lotofacil_official_history/imported_contests."
+            echo "Tabelas públicas disponíveis:"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+            exit 1
+          fi
+
+          echo "Tabela institucional encontrada: $TABLE_NAME"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT * FROM public.$TABLE_NAME ORDER BY contest_number DESC LIMIT 1;"
+
+      - name: Optional manual SQL
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sql != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SQL: ${{ inputs.sql }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$SQL"
