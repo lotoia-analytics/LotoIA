@@ -425,4 +425,8 @@ def test_delivers_with_quality_warning_after_recovery_exhaustion(
 
 
 def test_build_marker_updated() -> None:
+<<<<<<< HEAD
     assert BUILD_MARKER == "institutional-adm-runtime-v93"
+=======
+    assert BUILD_MARKER == "institutional-adm-runtime-v92"
+>>>>>>> origin/main
