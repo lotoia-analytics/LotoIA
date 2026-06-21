@@ -294,16 +294,29 @@ from dashboard.institutional_conference_runtime import (
     INVALID_LOT_WARNING,
     NO_LOT_SELECTED_WARNING,
     SESSION_CONFERENCE_PAGE,
+    SESSION_CONFERENCE_SELECTED_BATTERY,
     SESSION_CONFERENCE_SELECTED_GE,
+    default_conference_battery_id,
     default_conference_generation_event_id,
     ensure_conference_session_defaults,
     format_conference_lot_label,
+    is_valid_resolved_battery_id,
     is_valid_resolved_generation_event_id,
     paginate_conference_lots,
     read_cached_conference_result,
+    read_conference_selected_battery,
     read_conference_selected_ge,
+    resolve_conference_battery_selection,
     store_cached_conference_result,
+    sync_conference_battery_selection,
     sync_conference_selectbox_selection,
+)
+from dashboard.institutional_operational_battery import (
+    build_operational_battery_aggregate,
+    build_operational_battery_groups,
+    format_operational_battery_label,
+    merge_battery_conference_results,
+    OPERATIONAL_BATTERY_ALL_ID,
 )
 from dashboard.institutional_conferred_lots_runtime import (
     MISSION_ID as CONFERRED_LOTS_MISSION_ID,
@@ -6704,19 +6717,95 @@ def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
     return is_valid_lotofacil_contest_record(contest)
 
 
+def _confer_persisted_generation_group(
+    *,
+    group: dict[str, Any],
+    selected_contest: int | None,
+    official_contest: dict[str, Any],
+    selected_batch_id: str,
+    battery_id: str,
+) -> dict[str, Any]:
+    group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
+    contest_to_use = selected_contest or group_target_contest or _safe_int(_safe_get(official_contest, "concurso"), default=None)
+    contest_payload = _get_conference_contest_from_imported(contest_to_use) or (
+        _load_official_history_contest(contest_to_use) if contest_to_use is not None else official_contest
+    )
+    if contest_payload is None:
+        contest_payload = official_contest
+    comparison = _compare_games_against_contest(
+        generation_event_id=int(group.get("generation_event_id") or 0),
+        games=list(group.get("games") or []),
+        contest=contest_payload,
+    )
+    comparison_diagnostics = dict(comparison.get("diagnostics") or {})
+    group_games = list(group.get("games") or [])
+    group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
+    scientific_policy_snapshot = discover_scientific_generation_policy(
+        group_game_size or int(group.get("total_games", 0) or 0) or 15,
+        db_path=DB_PATH,
+    )
+    scientific_memory_payload = build_post_reconciliation_scientific_memory(
+        generation_event_id=int(group.get("generation_event_id") or 0),
+        batch_id=str(group.get("batch_id", "") or selected_batch_id or ""),
+        contest=contest_payload,
+        games=list(group.get("games") or []),
+        reconciliation_results=list(comparison.get("results", [])),
+        policy_before=dict(scientific_policy_snapshot.get("policy_before") or scientific_policy_snapshot.get("policy") or {}),
+        policy_after=dict(scientific_policy_snapshot.get("policy_after") or scientific_policy_snapshot.get("policy") or {}),
+        db_path=DB_PATH,
+    )
+    persisted_scientific_memory = _persist_scientific_reconciliation_memory(scientific_memory_payload)
+    st.session_state["institutional_post_reconciliation_memory"] = dict(persisted_scientific_memory or scientific_memory_payload)
+    hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
+    group_hit_values = [int(row.get("hits", 0) or 0) for row in comparison.get("results", [])]
+    group_hit_decomposition = _decompose_hit_counts(group_hit_values)
+    persist_generation_event_conference_mark(
+        db_path=DB_PATH,
+        generation_event_id=int(group.get("generation_event_id") or 0),
+        checked_against_contest=int(comparison.get("contest_number", contest_to_use or 0) or 0),
+        checked_result_summary=build_checked_result_summary(
+            comparison=comparison,
+            hit_distribution=dict(hit_counts),
+            batch_hit_decomposition=group_hit_decomposition,
+        ),
+    )
+    return {
+        "generation_event_id": int(group.get("generation_event_id") or 0),
+        "battery_id": battery_id,
+        "batch_id": str(group.get("batch_id", "") or selected_batch_id or ""),
+        "created_at": group.get("created_at", ""),
+        "seed": int(group.get("seed") or 0),
+        "total_games": int(group.get("total_games") or 0),
+        "target_contest": contest_to_use,
+        "best_hits": int(comparison.get("best_hits", 0) or 0),
+        "total_hits": int(comparison.get("total_hits", 0) or 0),
+        "prize_count": int(comparison.get("prize_count", 0) or 0),
+        "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
+        "results": list(comparison.get("results", [])),
+        "games": list(group.get("games") or []),
+        "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
+        "contest_date": str(comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""),
+        "formato_cartao": int(comparison_diagnostics.get("formato_cartao", group_game_size or 15) or (group_game_size or 15)),
+        "dezenas_conferidas_count": int(comparison_diagnostics.get("dezenas_conferidas_count", group_game_size or 0) or (group_game_size or 0)),
+        "origem_dezenas_conferencia": str(comparison_diagnostics.get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
+        "expected_card_size": int(comparison_diagnostics.get("expected_card_size", group_game_size or 15) or (group_game_size or 15)),
+        "actual_card_size": int(comparison_diagnostics.get("actual_card_size", group_game_size or 0) or (group_game_size or 0)),
+        "post_reconciliation_memory_id": int((persisted_scientific_memory or scientific_memory_payload).get("memory_id", 0) or 0),
+        "post_reconciliation_local_classification": str((persisted_scientific_memory or scientific_memory_payload).get("local_classification", "") or ""),
+        "post_reconciliation_recommended_action": str((persisted_scientific_memory or scientific_memory_payload).get("recommended_action", "") or ""),
+    }
+
+
 def _run_institutional_conference(
     contest_number: int | None = None,
     generation_event_id: int | None = None,
+    battery_id: str | None = None,
     batch_id: str | None = None,
     *,
     conference_all_official: bool = False,
 ) -> None:
     selected_contest = _safe_int(contest_number, default=None)
     selected_batch_id = str(batch_id or st.session_state.get("institutional_active_batch_id", "") or "").strip()
-    selected_generation_event_id = _safe_int(generation_event_id, default=None) or _safe_int(
-        st.session_state.get("active_reconciliation_generation_event_id"),
-        default=None,
-    )
     if conference_all_official or selected_contest is None:
         auto_contest = _resolve_latest_official_conference_contest()
         if auto_contest is not None:
@@ -6737,62 +6826,66 @@ def _run_institutional_conference(
         }
         return
 
+    resolved_battery_id = str(battery_id or read_conference_selected_battery() or "").strip()
+    official_groups = _load_official_conference_generation_groups(page_load=False)
+    battery_groups = build_operational_battery_groups(official_groups)
     if conference_all_official:
-        selected_generation_event_id = (
-            _safe_int(generation_event_id, default=None)
-            or default_conference_generation_event_id(
-                _load_persisted_generation_event_groups(
-                    conference_eligible_only=True,
-                    limit=CONFERENCE_EVENTS_LIMIT,
-                    summary_only=True,
-                    use_cache=False,
-                )
-            )
-        )
+        resolved_battery_id = str(
+            battery_id
+            or default_conference_battery_id(battery_groups)
+            or OPERATIONAL_BATTERY_ALL_ID
+        ).strip()
 
-    resolved_ge_id = _safe_int(generation_event_id, default=None) or _safe_int(
-        selected_generation_event_id,
-        default=None,
-    )
+    if generation_event_id is not None and not resolved_battery_id:
+        legacy_ge_id = _safe_int(generation_event_id, default=None)
+        if legacy_ge_id and legacy_ge_id > 0:
+            for battery in battery_groups:
+                if legacy_ge_id in list(battery.get("generation_event_ids") or []):
+                    resolved_battery_id = str(battery.get("battery_id") or "").strip()
+                    break
+
     if (
         not conference_all_official
-        and generation_event_id is not None
-        and not is_valid_resolved_generation_event_id(resolved_ge_id)
+        and (battery_id is not None or resolved_battery_id)
+        and not is_valid_resolved_battery_id(resolved_battery_id)
     ):
         st.session_state["institutional_check_result"] = {
             "status": "waiting_lot",
             "warning": INVALID_LOT_WARNING,
-            "generation_event_id": int(resolved_ge_id or 0),
+            "battery_id": str(resolved_battery_id or ""),
         }
         return
-    if resolved_ge_id is not None and resolved_ge_id > 0:
-        raw_groups = _load_persisted_generation_event_groups(
-            generation_event_id=resolved_ge_id,
-            summary_only=False,
-            use_cache=True,
-        )
-        grouped_generations = []
-        for group in raw_groups:
-            prepared = _prepare_conference_group(group)
-            if prepared:
-                grouped_generations.append(prepared)
-    else:
-        grouped_generations = _load_persisted_generation_event_groups(
-            batch_id=selected_batch_id or None,
-            conference_eligible_only=True,
-            limit=1,
-            summary_only=False,
-            use_cache=True,
-        )
-        grouped_generations = [
-            prepared
-            for group in grouped_generations
-            if (prepared := _prepare_conference_group(group)) is not None
-        ]
+
+    selected_battery = resolve_conference_battery_selection(
+        battery_groups,
+        selected_battery_id=resolved_battery_id,
+    )
+    known_battery_ids = {
+        str(battery.get("battery_id") or "").strip()
+        for battery in battery_groups
+        if str(battery.get("battery_id") or "").strip()
+    }
+    if (
+        battery_id is not None
+        and resolved_battery_id
+        and resolved_battery_id != OPERATIONAL_BATTERY_ALL_ID
+        and resolved_battery_id not in known_battery_ids
+    ):
+        st.session_state["institutional_check_result"] = {
+            "status": "waiting_lot",
+            "warning": INVALID_LOT_WARNING,
+            "battery_id": str(resolved_battery_id or ""),
+        }
+        return
+    grouped_generations: list[dict[str, Any]] = []
+    for group in list(selected_battery.get("groups") or []):
+        prepared = _prepare_conference_group(group)
+        if prepared is not None:
+            grouped_generations.append(prepared)
 
     if not grouped_generations:
         persisted_probe = _load_persisted_generation_event_groups(
-            generation_event_id=resolved_ge_id if resolved_ge_id and resolved_ge_id > 0 else None,
+            generation_event_id=_safe_int(generation_event_id, default=None),
             batch_id=selected_batch_id or None,
             conference_eligible_only=False,
             limit=1,
@@ -6825,89 +6918,34 @@ def _run_institutional_conference(
         }
         return
 
-    if is_valid_resolved_generation_event_id(resolved_ge_id):
-        selected_generation_event_id = int(resolved_ge_id or 0)
-        st.session_state["active_reconciliation_generation_event_id"] = selected_generation_event_id
+    resolved_battery_id = str(
+        selected_battery.get("battery_id")
+        or resolved_battery_id
+        or default_conference_battery_id(battery_groups)
+        or ""
+    ).strip()
+    if not selected_batch_id:
+        selected_batch_id = str(selected_battery.get("batch_id") or grouped_generations[0].get("batch_id", "") or "").strip()
+    if grouped_generations:
+        st.session_state["active_reconciliation_generation_event_id"] = int(
+            grouped_generations[-1].get("generation_event_id", 0) or 0
+        )
 
     generation_results: list[dict[str, Any]] = []
-    total_prizes = 0
-    total_hits = 0
-    best_hits_global = 0
-    selected_generation_groups = grouped_generations[:1]
-
-    for group in selected_generation_groups:
-        group_target_contest = _safe_int(_safe_get(group, "target_contest"), default=None)
-        contest_to_use = selected_contest or group_target_contest or _safe_int(_safe_get(official_contest, "concurso"), default=None)
-        contest_payload = _get_conference_contest_from_imported(contest_to_use) or (
-            _load_official_history_contest(contest_to_use) if contest_to_use is not None else official_contest
-        )
-        if contest_payload is None:
-            contest_payload = official_contest
-        comparison = _compare_games_against_contest(
-            generation_event_id=int(group.get("generation_event_id") or 0),
-            games=list(group.get("games") or []),
-            contest=contest_payload,
-        )
-        comparison_diagnostics = dict(comparison.get("diagnostics") or {})
-        group_games = list(group.get("games") or [])
-        group_game_size = len(group_games[0].get("numbers", [])) if group_games and isinstance(group_games[0], dict) else 0
-        scientific_policy_snapshot = discover_scientific_generation_policy(
-            group_game_size or int(group.get("total_games", 0) or 0) or 15,
-            db_path=DB_PATH,
-        )
-        scientific_memory_payload = build_post_reconciliation_scientific_memory(
-            generation_event_id=int(group.get("generation_event_id") or 0),
-            batch_id=str(group.get("batch_id", "") or selected_batch_id or ""),
-            contest=contest_payload,
-            games=list(group.get("games") or []),
-            reconciliation_results=list(comparison.get("results", [])),
-            policy_before=dict(scientific_policy_snapshot.get("policy_before") or scientific_policy_snapshot.get("policy") or {}),
-            policy_after=dict(scientific_policy_snapshot.get("policy_after") or scientific_policy_snapshot.get("policy") or {}),
-            db_path=DB_PATH,
-        )
-        persisted_scientific_memory = _persist_scientific_reconciliation_memory(scientific_memory_payload)
-        st.session_state["institutional_post_reconciliation_memory"] = dict(persisted_scientific_memory or scientific_memory_payload)
-        hit_counts = Counter(int(row.get("hits", 0) or 0) for row in comparison.get("results", []))
-        group_hit_values = [int(row.get("hits", 0) or 0) for row in comparison.get("results", [])]
-        group_hit_decomposition = _decompose_hit_counts(group_hit_values)
-        persist_generation_event_conference_mark(
-            db_path=DB_PATH,
-            generation_event_id=int(group.get("generation_event_id") or 0),
-            checked_against_contest=int(comparison.get("contest_number", contest_to_use or 0) or 0),
-            checked_result_summary=build_checked_result_summary(
-                comparison=comparison,
-                hit_distribution=dict(hit_counts),
-                batch_hit_decomposition=group_hit_decomposition,
-            ),
-        )
+    for group in grouped_generations:
         generation_results.append(
-            {
-                "generation_event_id": int(group.get("generation_event_id") or 0),
-                "created_at": group.get("created_at", ""),
-                "seed": int(group.get("seed") or 0),
-                "total_games": int(group.get("total_games") or 0),
-                "target_contest": contest_to_use,
-                "best_hits": int(comparison.get("best_hits", 0) or 0),
-                "total_hits": int(comparison.get("total_hits", 0) or 0),
-                "prize_count": int(comparison.get("prize_count", 0) or 0),
-                "hit_distribution": dict(sorted(hit_counts.items(), key=lambda item: (-item[0], item[1]))),
-                "results": list(comparison.get("results", [])),
-                "games": list(group.get("games") or []),
-                "contest_number": int(comparison.get("contest_number", contest_to_use or 0) or 0),
-                "contest_date": str(comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""),
-                "formato_cartao": int(comparison_diagnostics.get("formato_cartao", group_game_size or 15) or (group_game_size or 15)),
-                "dezenas_conferidas_count": int(comparison_diagnostics.get("dezenas_conferidas_count", group_game_size or 0) or (group_game_size or 0)),
-                "origem_dezenas_conferencia": str(comparison_diagnostics.get("origem_dezenas_conferencia", "indisponivel") or "indisponivel"),
-                "expected_card_size": int(comparison_diagnostics.get("expected_card_size", group_game_size or 15) or (group_game_size or 15)),
-                "actual_card_size": int(comparison_diagnostics.get("actual_card_size", group_game_size or 0) or (group_game_size or 0)),
-                "post_reconciliation_memory_id": int((persisted_scientific_memory or scientific_memory_payload).get("memory_id", 0) or 0),
-                "post_reconciliation_local_classification": str((persisted_scientific_memory or scientific_memory_payload).get("local_classification", "") or ""),
-                "post_reconciliation_recommended_action": str((persisted_scientific_memory or scientific_memory_payload).get("recommended_action", "") or ""),
-            }
+            _confer_persisted_generation_group(
+                group=group,
+                selected_contest=selected_contest,
+                official_contest=official_contest,
+                selected_batch_id=selected_batch_id,
+                battery_id=resolved_battery_id,
+            )
         )
-        total_prizes += int(comparison.get("prize_count", 0) or 0)
-        total_hits += int(comparison.get("total_hits", 0) or 0)
-        best_hits_global = max(best_hits_global, int(comparison.get("best_hits", 0) or 0))
+    merged_battery = merge_battery_conference_results(generation_results)
+    total_prizes = int(merged_battery.get("prize_count", 0) or 0)
+    total_hits = int(merged_battery.get("total_hits", 0) or 0)
+    best_hits_global = int(merged_battery.get("best_hits", 0) or 0)
     latest_contest = official_contest
     batch_hit_values = [
         int(result.get("hits", 0) or 0)
@@ -6956,10 +6994,16 @@ def _run_institutional_conference(
     batch_conference_result = {
         "runtime_status": "checked",
         "status": "checked",
+        "scope": "operational_battery",
+        "battery_id": resolved_battery_id,
         "contest_number": int(official_contest.get("concurso", 0) or 0),
         "contest_date": str(official_contest.get("data", "") or ""),
         "batch_id": str(batch_reconciliation_payload.get("batch_id", selected_batch_id) or selected_batch_id or ""),
-        "generation_event_ids": list(batch_generation_range.get("generation_event_ids", []) or [int(item.get("generation_event_id", 0) or 0) for item in generation_results if int(item.get("generation_event_id", 0) or 0) > 0]),
+        "generation_event_ids": list(
+            merged_battery.get("generation_event_ids")
+            or batch_generation_range.get("generation_event_ids", [])
+            or [int(item.get("generation_event_id", 0) or 0) for item in generation_results if int(item.get("generation_event_id", 0) or 0) > 0]
+        ),
         "first_generation_event_id": batch_generation_range.get("first_generation_event_id"),
         "last_generation_event_id": batch_generation_range.get("last_generation_event_id"),
         "total_generations": int(batch_generation_range.get("total_generations", len(generation_results)) or len(generation_results)),
@@ -7016,12 +7060,17 @@ def _run_institutional_conference(
     }
     st.session_state["institutional_check_result"] = {
         "status": "checked",
+        "scope": "operational_battery",
+        "battery_id": resolved_battery_id,
         "contest_number": int(official_contest.get("concurso", 0) or 0),
         "contest_date": str(official_contest.get("data", "") or ""),
         "dezenas": list(official_contest.get("dezenas", []) or []),
         "official_numbers_from_db": list(official_contest.get("dezenas", []) or []),
         "generation_results": generation_results,
-        "generation_event_id": int(selected_generation_event_id or 0),
+        "generation_event_ids": list(merged_battery.get("generation_event_ids") or []),
+        "generation_event_id": int((merged_battery.get("generation_event_ids") or [0])[-1] if merged_battery.get("generation_event_ids") else 0),
+        "results": list(merged_battery.get("results") or []),
+        "total_games_checked": int(merged_battery.get("total_games_checked", 0) or 0),
         "best_hits": best_hits_global,
         "total_hits": total_hits,
         "prize_count": total_prizes,
@@ -7049,11 +7098,11 @@ def _run_institutional_conference(
         "selected_contest": int(official_contest.get("concurso", 0) or 0),
     }
     check_payload = dict(st.session_state["institutional_check_result"])
-    cache_ge_id = int(check_payload.get("generation_event_id", 0) or selected_generation_event_id or 0)
+    cache_battery_id = str(check_payload.get("battery_id") or resolved_battery_id or "").strip()
     cache_contest = int(check_payload.get("contest_number", 0) or 0)
-    if cache_ge_id > 0 and cache_contest > 0:
+    if cache_battery_id and cache_contest > 0:
         store_cached_conference_result(
-            generation_event_id=cache_ge_id,
+            battery_id=cache_battery_id,
             contest_number=cache_contest,
             check_result=check_payload,
         )
@@ -9733,16 +9782,30 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     _render_structural_coverage_cleanup_feedback()
 
     operational_generations = _load_operational_generations_cached(limit=OPERATIONAL_EVENTS_LIMIT)
+    operational_groups_for_battery = [
+        {
+            "generation_event_id": int(row.get("generation_event_id", 0) or 0),
+            "batch_id": str(row.get("batch_id") or row.get("analysis_batch_label") or ""),
+            "total_games": int(row.get("games_count", 0) or 0),
+            "lot_operational_status": str(row.get("operational_status") or row.get("lot_operational_status") or ""),
+            "created_at": str(row.get("created_at") or ""),
+        }
+        for row in operational_generations
+        if int(row.get("generation_event_id", 0) or 0) > 0
+    ]
+    battery_groups = build_operational_battery_groups(operational_groups_for_battery)
+    battery_aggregate = build_operational_battery_aggregate(battery_groups) if battery_groups else {}
     exclusions_summary = summarize_active_reading_exclusions(DB_PATH)
     scope_summary = build_active_coverage_scope_summary(
         operational_generations,
         exclusions_summary=exclusions_summary,
     )
-    scope_cols = st.columns(4)
+    scope_cols = st.columns(5)
     scope_cols[0].metric("Lotes ativos", int(scope_summary.get("active_lots_count", 0) or 0))
-    scope_cols[1].metric("Excluídos da leitura ativa", int(scope_summary.get("excluded_lots_count", 0) or 0))
-    scope_cols[2].metric("Último GE", int(scope_summary.get("latest_generation_event_id", 0) or 0) or "-")
-    scope_cols[3].metric("Status último lote", str(scope_summary.get("latest_operational_status") or "-"))
+    scope_cols[1].metric("Baterias ativas", len(battery_groups))
+    scope_cols[2].metric("Jogos (Todos)", int(battery_aggregate.get("total_games", 0) or 0))
+    scope_cols[3].metric("Excluídos da leitura ativa", int(scope_summary.get("excluded_lots_count", 0) or 0))
+    scope_cols[4].metric("Status último lote", str(scope_summary.get("latest_operational_status") or "-"))
     if scope_summary.get("latest_summary"):
         st.caption(f"Último lote recebido: {scope_summary['latest_summary']}")
     else:
@@ -13884,13 +13947,17 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     # ficam recolhidos no expansor "Detalhes técnicos e governança" no final.
     st.markdown("### Conferência oficial")
     st.caption(
-        "Conferir Resultados = **último concurso oficial** × **lote conferível selecionado**. "
-        "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — um lote por vez."
+        "Conferir Resultados = **último concurso oficial** × **bateria operacional selecionada**. "
+        "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — uma bateria por vez."
     )
     official_groups = _load_official_conference_generation_groups(page_load=True)
-    official_groups = sorted(
-        official_groups,
-        key=lambda group: int(group.get("generation_event_id", 0) or 0),
+    battery_groups = build_operational_battery_groups(official_groups)
+    battery_groups = sorted(
+        battery_groups,
+        key=lambda battery: max(
+            [int(value) for value in list(battery.get("generation_event_ids") or []) if int(value or 0) > 0]
+            or [0]
+        ),
         reverse=True,
     )
     status_by_event = {
@@ -13898,16 +13965,17 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         for group in official_groups
     }
     official_generation_event_ids = [
-        int(group.get("generation_event_id", 0) or 0)
-        for group in official_groups
-        if int(group.get("generation_event_id", 0) or 0) > 0
+        int(ge_id)
+        for battery in battery_groups
+        for ge_id in list(battery.get("generation_event_ids") or [])
+        if int(ge_id or 0) > 0
     ]
-    default_ge_id = default_conference_generation_event_id(official_groups)
-    ensure_conference_session_defaults(default_ge_id=default_ge_id)
+    default_battery = default_conference_battery_id(battery_groups)
+    ensure_conference_session_defaults(default_battery_id=default_battery, default_ge_id=default_conference_generation_event_id(official_groups))
 
     page_index = int(st.session_state.get(SESSION_CONFERENCE_PAGE, 0) or 0)
     page_groups, total_pages, page_index = paginate_conference_lots(
-        official_groups,
+        battery_groups,
         page_index=page_index,
         page_size=CONFERENCE_LOTS_PAGE_SIZE,
     )
@@ -13918,12 +13986,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     has_valid_official_contest = bool(latest_official_contest) and latest_contest_number > 0
     conf_cols = st.columns(4)
     conf_cols[0].metric("Último concurso oficial", latest_contest_number if has_valid_official_contest else "-")
-    conf_cols[1].metric("Lotes conferíveis", len(official_generation_event_ids))
+    conf_cols[1].metric("Baterias conferíveis", len(battery_groups))
     conf_cols[2].metric(
         "Jogos (página atual)",
-        sum(int(group.get("total_games", 0) or 0) for group in page_groups),
+        sum(int(battery.get("total_games", 0) or 0) for battery in page_groups),
     )
-    conf_cols[3].metric("Modo", "Lote único")
+    conf_cols[3].metric("Modo", "Bateria operacional")
     if has_valid_official_contest:
         st.caption(
             f"Concurso oficial: {latest_contest_number} | data: "
@@ -13940,32 +14008,39 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         )
 
     if not official_generation_event_ids:
-        st.info("Nenhuma geração oficializada disponível para conferência.")
+        st.info("Nenhuma bateria oficializada disponível para conferência.")
     else:
-        page_labels = {int(group.get("generation_event_id", 0) or 0): format_conference_lot_label(group) for group in page_groups}
-        selectable_ids = [ge_id for ge_id in page_labels if ge_id > 0]
-        sync_conference_selectbox_selection(selectable_ids=selectable_ids, default_ge_id=default_ge_id)
-        st.selectbox(
-            "Lote conferível (último por padrão)",
-            options=selectable_ids or official_generation_event_ids[:1],
-            format_func=lambda ge_id: page_labels.get(int(ge_id), f"GE {ge_id}"),
-            key=SESSION_CONFERENCE_SELECTED_GE,
+        page_labels = {
+            str(battery.get("battery_id") or ""): format_operational_battery_label(battery)
+            for battery in page_groups
+            if str(battery.get("battery_id") or "").strip()
+        }
+        selectable_battery_ids = [battery_id for battery_id in page_labels if battery_id]
+        sync_conference_battery_selection(
+            selectable_battery_ids=selectable_battery_ids,
+            default_battery_id=default_battery,
         )
-        selected_ge_id = read_conference_selected_ge() or 0
+        st.selectbox(
+            "Bateria conferível (última por padrão)",
+            options=selectable_battery_ids or [str(battery_groups[0].get("battery_id") or "")],
+            format_func=lambda battery_key: page_labels.get(str(battery_key), str(battery_key)),
+            key=SESSION_CONFERENCE_SELECTED_BATTERY,
+        )
+        selected_battery_id = read_conference_selected_battery() or ""
         if total_pages > 1:
             nav_cols = st.columns([1, 1, 4])
-            if nav_cols[0].button("◀ Lotes anteriores", disabled=page_index <= 0, key="conference_page_prev"):
+            if nav_cols[0].button("◀ Baterias anteriores", disabled=page_index <= 0, key="conference_page_prev"):
                 st.session_state[SESSION_CONFERENCE_PAGE] = max(0, page_index - 1)
                 st.rerun()
             if nav_cols[1].button(
-                "Próximos lotes ▶",
+                "Próximas baterias ▶",
                 disabled=page_index >= total_pages - 1,
                 key="conference_page_next",
             ):
                 st.session_state[SESSION_CONFERENCE_PAGE] = min(total_pages - 1, page_index + 1)
                 st.rerun()
             nav_cols[2].caption(
-                f"Página {page_index + 1} de {total_pages} — até {CONFERENCE_LOTS_PAGE_SIZE} lotes por página "
+                f"Página {page_index + 1} de {total_pages} — até {CONFERENCE_LOTS_PAGE_SIZE} baterias por página "
                 f"(máx. {CONFERENCE_EVENTS_LIMIT} elegíveis)."
             )
 
@@ -13977,12 +14052,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     action_cols = st.columns([0.5, 0.5])
     run_conference = action_cols[0].button(
-        "Conferir lote selecionado",
+        "Conferir bateria selecionada",
         type="primary",
         disabled=not bool(
             has_valid_official_contest
             and official_generation_event_ids
-            and read_conference_selected_ge()
+            and read_conference_selected_battery()
         ),
         key="conference_run_selected_lot",
     )
@@ -13994,25 +14069,29 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     _render_official_sync_feedback()
 
-    selected_ge_for_result = read_conference_selected_ge() or 0
+    selected_battery_for_result = read_conference_selected_battery() or ""
     check_result = st.session_state.get("institutional_check_result")
     cached_result = (
         read_cached_conference_result(
-            generation_event_id=selected_ge_for_result,
+            battery_id=selected_battery_for_result,
             contest_number=latest_contest_number,
         )
-        if selected_ge_for_result > 0 and latest_contest_number > 0
+        if selected_battery_for_result and latest_contest_number > 0
         else None
     )
 
-    if run_conference and selected_ge_for_result > 0:
+    if run_conference and selected_battery_for_result:
+        selected_battery = resolve_conference_battery_selection(
+            battery_groups,
+            selected_battery_id=selected_battery_for_result,
+        )
         with st.spinner(
-            f"Conferindo GE {selected_ge_for_result} × concurso {latest_contest_number} "
-            f"(apenas jogos do lote selecionado)…"
+            f"Conferindo {format_operational_battery_label(selected_battery)} × concurso {latest_contest_number} "
+            f"({int(selected_battery.get('total_games', 0) or 0)} jogos)…"
         ):
             _run_institutional_conference(
                 contest_number=latest_contest_number if latest_contest_number > 0 else None,
-                generation_event_id=selected_ge_for_result,
+                battery_id=selected_battery_for_result,
                 conference_all_official=False,
             )
         check_result = st.session_state.get("institutional_check_result")
@@ -14025,8 +14104,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         else:
             check_result = None
     elif (
-        selected_ge_for_result > 0
-        and int(check_result.get("generation_event_id", 0) or 0) not in {0, selected_ge_for_result}
+        selected_battery_for_result
+        and str(check_result.get("battery_id") or "") not in {"", selected_battery_for_result}
         and isinstance(cached_result, dict)
     ):
         check_result = cached_result
