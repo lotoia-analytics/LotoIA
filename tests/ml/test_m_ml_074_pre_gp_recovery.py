@@ -425,4 +425,4 @@ def test_delivers_with_quality_warning_after_recovery_exhaustion(
 
 
 def test_build_marker_updated() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v94"
+    assert BUILD_MARKER == "institutional-adm-runtime-v95"

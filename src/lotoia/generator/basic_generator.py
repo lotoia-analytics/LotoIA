@@ -692,8 +692,27 @@ def generate_best_games(
     _sovereign_game_size = 15
     _game_size_contract: dict[str, object] = {}
     _baseline_gp_for_trace: list[dict[str, object]] = []
+    _sanity_bundle: dict[str, object] = {}
     if _apply_sovereign:
         from lotoia.ml.supervised_output_calibration import resolve_pool_game_size
+        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
+
+        def _compose_sovereign_gp_with_sanity(
+            pool: list[dict[str, object]],
+            requested_count: int,
+            config: object,
+            *,
+            game_size: int = 15,
+            **kwargs: object,
+        ) -> list[dict[str, object]]:
+            _ = kwargs
+            return compose_sovereign_gp(
+                list(pool),
+                int(requested_count),
+                config,  # type: ignore[arg-type]
+                game_size=int(game_size),
+                official_history=history,
+            )
 
         _sovereign_game_size, _game_size_contract = resolve_pool_game_size(
             games,
@@ -701,7 +720,6 @@ def generate_best_games(
             requested_count=count,
         )
     if _apply_sovereign and ml_enabled:
-        from lotoia.generation.lei15_core_002 import compose_sovereign_gp
         from lotoia.ml.ml_operational_hierarchy import (
             execute_ml_operational_hierarchy,
             is_ml_operational_hierarchy_enabled,
@@ -710,7 +728,7 @@ def generate_best_games(
 
         _pre_final_baseline_pool = [dict(game) for game in games]
         try:
-            _baseline_gp_for_trace = compose_sovereign_gp(
+            _baseline_gp_for_trace = _compose_sovereign_gp_with_sanity(
                 _pre_final_baseline_pool,
                 count,
                 _sovereign_cfg,
@@ -743,7 +761,7 @@ def generate_best_games(
                         batch_label=batch_label,
                         calibration_plan=calibration_plan,
                         event_context=_event_context,
-                        compose_gp=compose_sovereign_gp,
+                        compose_gp=_compose_sovereign_gp_with_sanity,
                         compose_config=_sovereign_cfg,
                     )
                 )
@@ -757,7 +775,7 @@ def generate_best_games(
                     batch_label=batch_label,
                     calibration_plan=calibration_plan,
                     event_context=_event_context,
-                    compose_gp=compose_sovereign_gp,
+                    compose_gp=_compose_sovereign_gp_with_sanity,
                     compose_config=_sovereign_cfg,
                 )
             _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
@@ -792,21 +810,22 @@ def generate_best_games(
                 calibration_plan=calibration_plan,
                 event_context=_event_context,
                 baseline_pool=_pre_final_baseline_pool,
-                compose_gp=compose_sovereign_gp,
+                compose_gp=_compose_sovereign_gp_with_sanity,
                 compose_config=_sovereign_cfg,
             )
     _gp_candidate_pool: list[dict[str, object]] = []
     if _apply_sovereign:
-        from lotoia.generation.lei15_core_002 import build_sovereign_pool, compose_sovereign_gp
+        from lotoia.generation.lei15_core_002 import build_sovereign_pool
 
         compose_pool = [dict(game) for game in games]
         _gp_candidate_pool = list(compose_pool)
-        best_games = compose_sovereign_gp(
+        best_games = _compose_sovereign_gp_with_sanity(
             compose_pool,
             count,
             _sovereign_cfg,
             game_size=_sovereign_game_size,
         )
+        _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or {}) if best_games else {}
         attempt = 0
         working_pool_size = int(pool_size)
         while len(best_games) < count and attempt < 6:
@@ -834,12 +853,13 @@ def generate_best_games(
                     merged_by_key[key] = dict(game)
             compose_pool = list(merged_by_key.values())
             _gp_candidate_pool = list(compose_pool)
-            best_games = compose_sovereign_gp(
+            best_games = _compose_sovereign_gp_with_sanity(
                 compose_pool,
                 count,
                 _sovereign_cfg,
                 game_size=_sovereign_game_size,
             )
+            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or _sanity_bundle)
         if len(best_games) < count:
             from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
 
@@ -878,12 +898,13 @@ def generate_best_games(
                     seed=seed_offset + 17,
                     min_compliant=resolve_structural_pool_target(requested_count=count),
                 )
-            best_games = compose_sovereign_gp(
+            best_games = _compose_sovereign_gp_with_sanity(
                 expanded_games,
                 count,
                 _sovereign_cfg,
                 game_size=_sovereign_game_size,
             )
+            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or _sanity_bundle)
             _gp_candidate_pool = [dict(game) for game in expanded_games]
         if len(best_games) < count:
             raise RuntimeError(
@@ -1233,7 +1254,13 @@ def generate_best_games(
             compute_operational_structural_memory_snapshot,
         )
 
+        if not _sanity_bundle:
+            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or {})
+        payload["structural_sovereignty_sanity"] = dict(_sanity_bundle)
         payload["operational_structural_memory_snapshot"] = (
-            compute_operational_structural_memory_snapshot(best_games)
+            compute_operational_structural_memory_snapshot(
+                best_games,
+                sanity_bundle=dict(_sanity_bundle),
+            )
         )
     return payload

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 from lotoia.generation.lei15_core_structural_payload import (
     apply_core_traceability_payload,
@@ -26,9 +26,6 @@ from lotoia.governance.lei15_core_002_sovereign import (
     Core002SovereignConfig,
     SOVEREIGN_STATUS,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +272,7 @@ def compose_sovereign_gp(
     config: Core002SovereignConfig,
     *,
     game_size: int = 15,
+    official_history: Sequence[object] | None = None,
 ) -> list[dict]:
     """L2 compose V1 + M-CORE-003 diversity caps + L4 anti-clone + payload soberano."""
     from lotoia.generation.m_core_003_prefix_suffix_policy import (
@@ -305,7 +303,23 @@ def compose_sovereign_gp(
         fallback_pool=pool,
     )
     gp = enforce_gp_diversity_cap(gp, filtered_pool, count, fallback_pool=pool)
+    sanity_bundle: dict[str, object] = {}
+    if official_history:
+        from lotoia.generation.structural_sovereignty_validator import (
+            apply_structural_sovereignty_to_gp,
+        )
+
+        gp, sanity_bundle = apply_structural_sovereignty_to_gp(
+            gp,
+            filtered_pool,
+            count,
+            official_history,
+            fallback_pool=pool,
+        )
     tag_sovereign_gp_metadata(gp, config=config)
+    if sanity_bundle:
+        for game in gp:
+            game.setdefault("structural_sovereignty_sanity", dict(sanity_bundle))
     return gp
 
 

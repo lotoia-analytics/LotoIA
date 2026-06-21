@@ -97,4 +97,4 @@ def test_institutional_app_wires_modern_coverage_dashboard() -> None:
 def test_build_marker_v94() -> None:
     from dashboard.institutional_build import BUILD_MARKER
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v94"
+    assert BUILD_MARKER == "institutional-adm-runtime-v95"

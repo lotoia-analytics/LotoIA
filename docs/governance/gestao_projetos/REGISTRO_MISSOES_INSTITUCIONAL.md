@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-SANITY-001](#m-sanity-001--saneamento-estrutural-e-tolerância-zero-ao-vazio-estatístico) | Filtro Soberania Oficial | `CONCLUIDA` | `HARD BLOCK ATIVO / ZERO VOID` |
 | [M-UI-MODERN-001](#m-ui-modern-001--modernização-da-cobertura-estrutural-uiux-20) | Dashboard visual Cobertura Estrutural | `CONCLUIDA` | `HEALTH SCORE + TIMELINE ATIVOS` |
 | [M-MEMORY-001](#m-memory-001--persistência-de-cobertura-e-memória-evolutiva) | Memória evolutiva cobertura estrutural | `CONCLUIDA` | `MEMÓRIA PERSISTIDA / TIMELINE ATIVA` |
 | [M-ML-079](#m-ml-079--reconciliação-dos-validadores--remoção-do-conflito-de-núcleos) | Reconciliação validadores / conflito núcleos | `CONCLUIDA` | `CONFLITO DE NÚCLEOS REMOVIDO / POOL >= 0.90` |
@@ -50,6 +51,26 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-SANITY-001 — Saneamento Estrutural e Tolerância Zero ao Vazio Estatístico
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v95` |
+| **Pré-requisito** | M-CORE-003, M-MEMORY-001, LEI15_CORE_002 |
+| **Desbloqueia** | Geração com DNA compatível ao histórico oficial |
+
+**Objetivo:** Eliminar "alucinação estatística" — jogos com prefixos/sufixos de 3 dezenas
+nunca observados na base oficial (janela 3.000 concursos) ou fora do allowlist M-CORE-003.
+
+**Entregas:** `StructuralSovereigntyValidator` (hard block `prefix_3`/`suffix_3`),
+integração no `compose_sovereign_gp`, retry v93 e contagem de descartes em
+`operational_structural_memory`.
+
+**Veredicto:** **M-SANITY-001 CONCLUÍDA — FILTRO DE SOBERANIA OFICIAL ATIVO**
+
+---
 
 ### M-UI-MODERN-001 — Modernização da Cobertura Estrutural (UI/UX 2.0)
 
