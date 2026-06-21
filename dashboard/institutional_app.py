@@ -9320,14 +9320,8 @@ def _render_metrics_hb_page(snapshot: dict[str, Any]) -> None:
 
 
 def _render_active_reading_exclusions_banner(payload: dict[str, Any]) -> None:
-    excluded_count = int(payload.get("excluded_batches_count", 0) or 0)
-    if excluded_count <= 0:
-        return
-    st.info(str(payload.get("excluded_batches_message") or f"{excluded_count} lotes removidos da leitura ativa."))
-    with st.expander("Lotes excluídos da leitura ativa (auditoria técnica)", expanded=False):
-        audit_rows = list(payload.get("excluded_batches_audit") or [])
-        if audit_rows:
-            st.dataframe(pd.DataFrame(audit_rows), hide_index=True, use_container_width=True)
+    """Auditoria de lotes excluídos — sem st.expander (pode renderizar dentro de expander legado)."""
+    _render_excluded_batches_audit_inline(payload)
 
 
 def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> None:
@@ -9416,8 +9410,8 @@ def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> Non
             use_container_width=True,
         )
     if travamento.get("jogos_com_13_hits"):
-        with st.expander("Estrutura dos jogos travados em 13 hits", expanded=False):
-            st.dataframe(pd.DataFrame(travamento["jogos_com_13_hits"]), hide_index=True, use_container_width=True)
+        st.markdown("#### Estrutura dos jogos travados em 13 hits")
+        st.dataframe(pd.DataFrame(travamento["jogos_com_13_hits"]), hide_index=True, use_container_width=True)
 
     redundancia = dict(payload.get("redundancia_gp") or {})
     st.markdown("### Redundância GP")

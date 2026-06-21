@@ -94,7 +94,19 @@ def test_institutional_app_wires_modern_coverage_dashboard() -> None:
     )
 
 
-def test_build_marker_v94() -> None:
+def test_build_marker_v96() -> None:
     from dashboard.institutional_build import BUILD_MARKER
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v95"
+    assert BUILD_MARKER == "institutional-adm-runtime-v96"
+
+
+def test_structural_coverage_legacy_diagnostics_no_nested_expanders() -> None:
+    """Diagnóstico legado renderiza dentro de expander do dashboard moderno (M-UI-MODERN-001)."""
+    import dashboard.institutional_app as institutional_app
+
+    sources = [
+        inspect.getsource(institutional_app._render_active_reading_exclusions_banner),
+        inspect.getsource(institutional_app._render_structural_coverage_diagnostics_body),
+    ]
+    for source in sources:
+        assert "st.expander(" not in source
