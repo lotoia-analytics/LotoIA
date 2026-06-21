@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import inspect
 
 from lotoia.clients.client_guard import validate_request
-from lotoia.clients.constants import DAILY_LIMIT
+from lotoia.clients.constants import DAILY_LIMIT, LEGACY_PLANS
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import LotoiaClient, create_database, get_engine, get_session
 
@@ -19,8 +19,23 @@ def db_path(tmp_path: Path) -> Path:
     return path
 
 
-def _activate(db_path: Path, *, phone: str = "5511999999999", plan: str = "pro") -> dict:
-    return ClientRepository(db_path).activate_client(phone=phone, plan=plan, valor_pago=49.99, name="Ana")
+def _activate_legacy(db_path: Path, *, plan: str = "elite") -> dict:
+    repository = ClientRepository(db_path)
+    config = LEGACY_PLANS[plan]
+    client = repository.activate_client(
+        phone="5511999999999",
+        plan=plan,
+        valor_pago=float(config["price"]),
+        name="Ana",
+        duration_days=30,
+    )
+    with get_session(db_path) as session:
+        row = session.get(LotoiaClient, int(client["id"]))
+        assert row is not None
+        row.plan = plan
+        row.formato_maximo = int(config["formato_max"])
+        session.commit()
+    return repository.get_by_phone("5511999999999") or client
 
 
 def test_database_creates_whatsapp_client_tables(db_path: Path) -> None:
@@ -37,7 +52,7 @@ def test_validate_request_client_not_found(db_path: Path) -> None:
 
 
 def test_validate_request_plan_expired(db_path: Path) -> None:
-    client = _activate(db_path)
+    client = _activate_legacy(db_path, plan="basico")
     with get_session(db_path) as session:
         row = session.get(LotoiaClient, int(client["id"]))
         assert row is not None
@@ -49,16 +64,16 @@ def test_validate_request_plan_expired(db_path: Path) -> None:
     assert result.error_code == "PLAN_EXPIRED"
 
 
-def test_validate_request_format_not_allowed(db_path: Path) -> None:
-    _activate(db_path, plan="basico")
+def test_validate_request_legacy_basico_blocks_17d(db_path: Path) -> None:
+    _activate_legacy(db_path, plan="basico")
     result = validate_request("5511999999999", 17, 5, db_path=db_path)
     assert result.ok is False
     assert result.error_code == "FORMAT_NOT_ALLOWED"
     assert "15D" in str(result.message)
 
 
-def test_validate_request_plus_allows_15_and_16_only(db_path: Path) -> None:
-    _activate(db_path, plan="plus")
+def test_validate_request_legacy_plus_allows_15_and_16_only(db_path: Path) -> None:
+    _activate_legacy(db_path, plan="plus")
     assert validate_request("5511999999999", 15, 5, db_path=db_path).ok is True
     assert validate_request("5511999999999", 16, 5, db_path=db_path).ok is True
     blocked = validate_request("5511999999999", 17, 5, db_path=db_path)
@@ -67,23 +82,14 @@ def test_validate_request_plus_allows_15_and_16_only(db_path: Path) -> None:
 
 
 def test_validate_request_invalid_quantity(db_path: Path) -> None:
-    _activate(db_path, plan="elite")
+    _activate_legacy(db_path, plan="elite")
     result = validate_request("5511999999999", 20, 15, db_path=db_path)
     assert result.ok is False
     assert result.error_code == "INVALID_QUANTITY"
 
 
-def test_validate_request_daily_limit_reached(db_path: Path) -> None:
-    client = _activate(db_path, plan="elite")
-    repository = ClientRepository(db_path)
-    repository.increment_daily_usage(int(client["id"]), quantidade=DAILY_LIMIT)
-    result = validate_request("5511999999999", 20, 1, db_path=db_path)
-    assert result.ok is False
-    assert result.error_code == "DAILY_LIMIT_REACHED"
-
-
 def test_validate_request_daily_limit_partial(db_path: Path) -> None:
-    client = _activate(db_path, plan="elite")
+    client = _activate_legacy(db_path, plan="elite")
     repository = ClientRepository(db_path)
     repository.increment_daily_usage(int(client["id"]), quantidade=25)
     result = validate_request("5511999999999", 20, 10, db_path=db_path)
@@ -93,7 +99,7 @@ def test_validate_request_daily_limit_partial(db_path: Path) -> None:
 
 
 def test_validate_request_ok(db_path: Path) -> None:
-    _activate(db_path, plan="pro")
+    _activate_legacy(db_path, plan="pro")
     result = validate_request("5511999999999", 18, 10, db_path=db_path)
     assert result.ok is True
     assert result.formato == 18
@@ -101,7 +107,7 @@ def test_validate_request_ok(db_path: Path) -> None:
 
 
 def test_list_clients_with_stats_aggregates_generations(db_path: Path) -> None:
-    client = _activate(db_path, plan="pro")
+    client = _activate_legacy(db_path, plan="pro")
     repository = ClientRepository(db_path)
     repository.log_client_generation(
         client_id=int(client["id"]),

@@ -53,7 +53,7 @@ class FreemiumGuard:
             "🔒 Você usou suas 3 conferências gratuitas.\n\n"
             "Para conferências ilimitadas + geração de jogos:\n\n"
             f"👉 {OFFICIAL_LANDING_URL}\n"
-            "Planos a partir de R$15,99/mês 🎯"
+            "Plano Completo — R$99,90 🎯"
         )
 
     def is_active_client(self, psid: str, client: dict | None) -> bool:

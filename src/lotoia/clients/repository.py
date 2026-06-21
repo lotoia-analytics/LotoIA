@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from lotoia.clients.constants import DAILY_LIMIT, PLANS
+from lotoia.clients.plan_entitlements import enrich_client_entitlements, resolve_plan_for_activation, subscription_duration_days
 from lotoia.database.database import (
     DEFAULT_DATABASE_PATH,
     LotoiaClient,
@@ -91,12 +92,13 @@ class ClientRepository:
         normalized_phone = str(phone or "").strip()
         if not normalized_phone.startswith("m:"):
             normalized_phone = canonical_brazil_phone(phone)
-        plan_key = str(plan or "basico").strip().lower()
+        plan_key = resolve_plan_for_activation(plan)
         if plan_key not in PLANS:
             raise ValueError(f"Plano inválido: {plan}")
         plan_config = PLANS[plan_key]
         now = datetime.now(UTC)
-        expiration = now + timedelta(days=int(duration_days))
+        resolved_duration = int(duration_days) if int(duration_days) > 0 else subscription_duration_days(plan_key)
+        expiration = now + timedelta(days=resolved_duration)
         values = {
             "phone": normalized_phone,
             "name": str(name or "").strip(),
@@ -357,12 +359,14 @@ class ClientRepository:
             expiration_utc = expiration if expiration.tzinfo else expiration.replace(tzinfo=UTC)
             dias_restantes = max((expiration_utc.date() - datetime.now(UTC).date()).days, 0)
         saldo_hoje = max(DAILY_LIMIT - jogos_hoje, 0)
-        return {
-            **client,
-            "jogos_hoje": jogos_hoje,
-            "saldo_hoje": saldo_hoje,
-            "dias_restantes": dias_restantes,
-        }
+        return enrich_client_entitlements(
+            {
+                **client,
+                "jogos_hoje": jogos_hoje,
+                "saldo_hoje": saldo_hoje,
+                "dias_restantes": dias_restantes,
+            }
+        )
 
     def get_client_status(self, phone: str) -> dict[str, Any] | None:
         client = self.get_by_phone(phone)
@@ -374,13 +378,16 @@ class ClientRepository:
         if isinstance(expiration, datetime):
             expiration_utc = expiration if expiration.tzinfo else expiration.replace(tzinfo=UTC)
             dias_restantes = max((expiration_utc.date() - datetime.now(UTC).date()).days, 0)
-        return {
-            "name": str(client.get("name", "") or ""),
-            "plan": str(client.get("plan", "") or ""),
-            "formato_maximo": int(client.get("formato_maximo", 15) or 15),
-            "data_expiracao": expiration.isoformat() if isinstance(expiration, datetime) else str(expiration or ""),
-            "dias_restantes": dias_restantes,
-            "jogos_hoje": jogos_hoje,
-            "saldo_hoje": max(DAILY_LIMIT - jogos_hoje, 0),
-            "status": str(client.get("status", "") or ""),
-        }
+        return enrich_client_entitlements(
+            {
+                "name": str(client.get("name", "") or ""),
+                "plan": str(client.get("plan", "") or ""),
+                "formato_maximo": int(client.get("formato_maximo", 15) or 15),
+                "data_expiracao": expiration.isoformat() if isinstance(expiration, datetime) else str(expiration or ""),
+                "dias_restantes": dias_restantes,
+                "jogos_hoje": jogos_hoje,
+                "saldo_hoje": max(DAILY_LIMIT - jogos_hoje, 0),
+                "status": str(client.get("status", "") or ""),
+                "data_inicio": client.get("data_inicio"),
+            }
+        )

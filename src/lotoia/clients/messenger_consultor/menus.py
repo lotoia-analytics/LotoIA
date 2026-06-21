@@ -20,15 +20,16 @@ CONFERIR_PROMPT = (
 
 GERAR_CURIOSO_MESSAGE = (
     "🎯 Para gerar jogos seja assinante LotoIA!\n\n"
-    "📊 Planos a partir de R$15,99/mês\n"
+    "📊 Plano Completo — R$99,90\n"
+    "7 dias (15D) + 12 meses (15D + 20D)\n"
     "👉 www.lotoia.chat\n\n"
     "Após assinar, volte aqui e gere seus jogos direto no Messenger. 🚀"
 )
 
 PLANOS_MESSAGE = (
-    "📊 Planos LotoIA — 30 dias de acesso:\n\n"
-    "Básico R$15,99 | Plus R$29,99 | Avançado R$39,99\n"
-    "Pro R$49,99 | Master R$59,99 | Elite R$69,99\n\n"
+    "📊 Plano LotoIA Completo — R$99,90\n\n"
+    "• 7 primeiros dias: 30 jogos/dia em 15D\n"
+    "• Depois: 30 jogos/dia em 15D + 20D por 12 meses\n\n"
     "👉 www.lotoia.chat"
 )
 

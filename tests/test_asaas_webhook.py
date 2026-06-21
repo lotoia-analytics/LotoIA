@@ -118,8 +118,8 @@ def test_asaas_webhook_activates_client_on_payment_received(isolated_db: Path) -
         "event": "PAYMENT_RECEIVED",
         "payment": {
             "id": "pay_test_001",
-            "value": 49.99,
-            "externalReference": "lotoia:pro:5566992358330",
+            "value": 99.90,
+            "externalReference": "lotoia:completo:5566992358330",
             "customer": "cus_test",
         },
     }
@@ -127,13 +127,14 @@ def test_asaas_webhook_activates_client_on_payment_received(isolated_db: Path) -
     assert status_code == 200
     assert body["status"] == "ok"
     assert body["phone"] == "5566992358330"
-    assert body["plan"] == "pro"
+    assert body["plan"] == "completo"
     assert body["welcome_delivered"] is True
 
     status_code, status_body = _request("GET", "/client/5566992358330/status")
     assert status_code == 200
-    assert status_body["plan"] == "pro"
+    assert status_body["plan"] == "completo"
     assert status_body["status"] == "ativo"
+    assert status_body["formato_maximo_efetivo"] == 15
 
 
 def test_asaas_webhook_ignores_unrelated_events() -> None:
@@ -151,7 +152,7 @@ def test_asaas_webhook_is_idempotent_by_payment_id(isolated_db: Path) -> None:
         "event": "PAYMENT_RECEIVED",
         "payment": {
             "id": "pay_test_dup",
-            "value": 15.99,
+            "value": 99.90,
             "externalReference": "lotoia:basico:5566996158937",
         },
     }

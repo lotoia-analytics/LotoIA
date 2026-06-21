@@ -115,7 +115,7 @@ export async function createPixCharge(
       billingType: "PIX",
       value: Number(valor.toFixed(2)),
       dueDate: formatDueDate(),
-      description: `LotoIA — Plano ${plano} (30 dias)`,
+      description: `LotoIA — Plano Completo (7 dias + 12 meses)`,
       externalReference: `lotoia:${plano}:${phone}`,
     }),
   });

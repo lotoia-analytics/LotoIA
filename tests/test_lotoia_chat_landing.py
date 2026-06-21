@@ -6,7 +6,6 @@ from urllib.parse import urlsplit
 import anyio
 
 from backend.main import app
-from lotoia.clients.constants import PLANS
 
 
 def _html_request(path: str) -> tuple[int, str]:
@@ -65,5 +64,5 @@ def test_lotoia_chat_landing_returns_html() -> None:
 
 def test_lotoia_chat_landing_lists_all_plans() -> None:
     _, body = _html_request("/")
-    for plan_key in PLANS:
-        assert f'value="{plan_key}"' in body
+    assert 'value="completo"' in body
+    assert "R$ 99.90" in body
