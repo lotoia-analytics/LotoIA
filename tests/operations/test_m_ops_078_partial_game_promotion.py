@@ -143,7 +143,7 @@ def test_stale_false_flag_reopened_when_parent_approved_with_warning() -> None:
 
 
 def test_build_marker_v83() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v84"
+    assert BUILD_MARKER == "institutional-adm-runtime-v100"
 
 
 def _mock_policy_audit(games: list[dict[str, Any]], **_: Any) -> dict[str, Any]:
