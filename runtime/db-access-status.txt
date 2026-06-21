@@ -1,7 +1,9 @@
-db_access_check_at=2026-06-21T06:33:27Z
-commit_sha=d247687332727d330685981229374d007ed0d3d1
+db_access_check_at=2026-06-21T06:37:08Z
+commit_sha=cd12dc3b727bcf5f856ab7501d9c6942d54d4f02
+check_generation=public-url-retest
 status=FAILED
 reason=PostgreSQL connection failed
 psql_error_sanitized<<EOF
-psql: error: could not translate host name "postgres.railway.internal" to address: Name or service not known
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+	Is the server running locally and accepting connections on that socket?
 EOF
