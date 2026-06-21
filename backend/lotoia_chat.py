@@ -11,35 +11,21 @@ router = APIRouter(tags=["lotoia-chat"])
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "lotoia_chat.html"
 
-_PLAN_LABELS: dict[str, str] = {
-    "basico": "Básico",
-    "plus": "Plus",
-    "avancado": "Avançado",
-    "pro": "Pro",
-    "master": "Master",
-    "elite": "Elite",
-}
-
 
 def _build_plan_cards_html() -> str:
-    cards: list[str] = []
-    for index, (plan_key, config) in enumerate(PLANS.items()):
-        price = float(config["price"])
-        formato_max = int(config["formato_max"])
-        label = _PLAN_LABELS.get(plan_key, plan_key.title())
-        featured = " featured" if plan_key == "pro" else ""
-        checked = " checked" if plan_key == "pro" else ""
-        cards.append(
-            f"""
-            <label class="plan-card{featured}">
-              <input type="radio" name="plan" value="{plan_key}"{checked} required />
-              <span class="plan-badge">{label}</span>
+    config = PLANS["completo"]
+    price = float(config["price"])
+    cards = [
+        f"""
+            <label class="plan-card featured">
+              <input type="radio" name="plan" value="completo" checked required />
+              <span class="plan-badge">Completo</span>
               <strong class="plan-price">R$ {price:,.2f}</strong>
-              <span class="plan-meta">Até {formato_max}D no WhatsApp</span>
+              <span class="plan-meta">7 dias 15D + 12 meses 15D/20D</span>
               <span class="plan-meta">Até {DAILY_LIMIT} jogos/dia</span>
             </label>
             """.strip()
-        )
+    ]
     return "\n".join(cards)
 
 

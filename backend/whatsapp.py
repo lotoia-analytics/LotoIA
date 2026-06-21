@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 
-from lotoia.clients.constants import PLANS
+from lotoia.clients.plan_entitlements import is_valid_activation_plan, resolve_plan_for_activation
 from lotoia.clients.deploy_info import build_deploy_info
 from lotoia.clients.evolution_client import EvolutionApiClient
 from lotoia.clients.whatsapp_service import (
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class ActivateClientRequest(BaseModel):
     phone: str
-    plan: str = Field(description="basico|plus|avancado|pro|master|elite")
+    plan: str = Field(description="completo")
     valor_pago: float
     name: str = ""
 
@@ -68,12 +68,13 @@ def client_status(phone: str) -> dict[str, Any]:
 @router.post("/client/activate")
 def client_activate(body: ActivateClientRequest) -> dict[str, Any]:
     plan_key = str(body.plan or "").strip().lower()
-    if plan_key not in PLANS:
+    if not is_valid_activation_plan(plan_key):
         raise HTTPException(status_code=400, detail=f"Plano inválido: {body.plan}")
+    resolved_plan = resolve_plan_for_activation(plan_key)
     try:
         return activate_client(
             phone=body.phone,
-            plan=plan_key,
+            plan=resolved_plan,
             valor_pago=float(body.valor_pago),
             name=body.name,
             db_path=DEFAULT_DATABASE_PATH,

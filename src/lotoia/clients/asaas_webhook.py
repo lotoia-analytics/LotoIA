@@ -10,6 +10,7 @@ from typing import Any
 import requests
 
 from lotoia.clients.constants import PLANS
+from lotoia.clients.plan_entitlements import resolve_plan_for_activation
 from lotoia.clients.evolution_client import EvolutionApiClient
 from lotoia.clients.phone_utils import canonical_brazil_phone
 from lotoia.clients.whatsapp_service import activate_client
@@ -42,10 +43,19 @@ def is_valid_webhook_token(received: str, expected: str) -> bool:
 
 def build_activation_message(*, plan: str, name: str = "") -> str:
     greeting = f"Olá, {name}!" if str(name or "").strip() else "Olá!"
+    resolved_plan = resolve_plan_for_activation(plan)
     return (
         f"{greeting}\n\n"
-        f"✅ Pagamento confirmado. Seu plano {plan} está ativo por 30 dias.\n\n"
+        "✅ Pagamento confirmado. Seu plano LotoIA Completo está ativo.\n\n"
+        "• 7 primeiros dias: 30 jogos/dia em 15D\n"
+        "• Depois: 30 jogos/dia em 15D + 20D por 12 meses\n\n"
         "Mande olá agora para gerar seus jogos."
+        if resolved_plan == "completo"
+        else (
+            f"{greeting}\n\n"
+            f"✅ Pagamento confirmado. Seu plano {resolved_plan} está ativo.\n\n"
+            "Mande olá agora para gerar seus jogos."
+        )
     )
 
 
@@ -131,7 +141,8 @@ def process_asaas_webhook(
         }
 
     plan, phone = parsed
-    if plan not in PLANS:
+    resolved_plan = resolve_plan_for_activation(plan)
+    if resolved_plan not in PLANS:
         return {
             "status": "error",
             "error_code": "INVALID_PLAN",
@@ -146,7 +157,7 @@ def process_asaas_webhook(
     try:
         activation = activate_client(
             phone=phone,
-            plan=plan,
+            plan=resolved_plan,
             valor_pago=valor_pago,
             name=customer_name,
             db_path=db_path,
@@ -165,7 +176,7 @@ def process_asaas_webhook(
         _mark_payment_processed(payment_id)
 
     client = evolution_client or EvolutionApiClient()
-    welcome_message = build_activation_message(plan=plan, name=customer_name)
+    welcome_message = build_activation_message(plan=resolved_plan, name=customer_name)
     welcome_delivered = client.send_text(phone, welcome_message)
 
     return {
@@ -173,7 +184,7 @@ def process_asaas_webhook(
         "event": event,
         "payment_id": payment_id,
         "phone": phone,
-        "plan": plan,
+        "plan": resolved_plan,
         "activation": activation,
         "welcome_delivered": welcome_delivered,
     }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from lotoia.clients.constants import OFFICIAL_LANDING_HOST, PLANS, VALID_QUANTITIES
+from lotoia.clients.constants import DEFAULT_PLAN_ID, LEGACY_PLANS, OFFICIAL_LANDING_HOST, PLANS, VALID_QUANTITIES
 from lotoia.clients.message_parser import parse_whatsapp_message
 
 MENU_QUANTITIES = (5, 10, 20, 30)
@@ -36,12 +36,8 @@ _GREETINGS = {
 }
 
 _PLAN_LABELS = {
-    "basico": "Básico",
-    "plus": "Plus",
-    "avancado": "Avançado",
-    "pro": "Pro",
-    "master": "Master",
-    "elite": "Elite",
+    DEFAULT_PLAN_ID: "Completo",
+    **{plan_id: plan_id.capitalize() for plan_id in LEGACY_PLANS},
 }
 
 
@@ -54,8 +50,16 @@ def _available_quantities(*, saldo_hoje: int) -> list[int]:
 
 
 def _plan_label(plan: str) -> str:
-    key = str(plan or "basico").strip().lower()
+    key = str(plan or DEFAULT_PLAN_ID).strip().lower()
     return _PLAN_LABELS.get(key, key.capitalize())
+
+
+def _client_formato_maximo(client_status: dict[str, Any] | None) -> int:
+    if not client_status:
+        return 15
+    if client_status.get("formato_maximo_efetivo") is not None:
+        return int(client_status["formato_maximo_efetivo"])
+    return int(client_status.get("formato_maximo", 15) or 15)
 
 
 def _reply_buttons(options: list[tuple[str, str]]) -> list[dict[str, str]]:
@@ -77,14 +81,17 @@ def register_quick_options(phone: str, button_options: list[tuple[str, str]]) ->
 
 
 def plan_formats_label(plan_key: str) -> str:
-    plan_config = PLANS.get(str(plan_key or "basico").strip().lower(), {})
-    return str(plan_config.get("formats") or f"até {plan_config.get('formato_max', 15)}D")
+    key = str(plan_key or DEFAULT_PLAN_ID).strip().lower()
+    if key in PLANS:
+        return str(PLANS[key].get("formats") or "")
+    legacy = LEGACY_PLANS.get(key, {})
+    return str(legacy.get("formats") or f"até {legacy.get('formato_max', 15)}D")
 
 
 def allowed_formats_for_client(client_status: dict[str, Any] | None) -> list[int]:
     if not client_status:
         return [15]
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    formato_maximo = _client_formato_maximo(client_status)
     if formato_maximo <= 15:
         return [15]
     return [15, formato_maximo]
@@ -127,12 +134,18 @@ def plan_generation_targets(
 
 
 def build_welcome_text(*, client_status: dict[str, Any]) -> str:
-    plan_key = str(client_status.get("plan", "basico") or "basico").strip().lower()
+    plan_key = str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID).strip().lower()
     plan = _plan_label(plan_key)
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
-    formats = plan_formats_label(plan_key)
+    formato_maximo = _client_formato_maximo(client_status)
+    formats = str(client_status.get("formatos_disponiveis") or plan_formats_label(plan_key))
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    if formato_maximo == 15:
+    trial_days = int(client_status.get("dias_trial_restantes", 0) or 0)
+    if formato_maximo == 15 and trial_days > 0:
+        format_hint = (
+            f"Fase inicial: {trial_days} dia(s) restante(s) — jogos em 15D.\n"
+            "Depois libera 15D + 20D por 12 meses."
+        )
+    elif formato_maximo == 15:
         format_hint = "Jogos gerados em 15D."
     else:
         format_hint = (
@@ -195,8 +208,8 @@ def _menu_bundle(
 
 def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, Any]:
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    plan = _plan_label(str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID))
+    formato_maximo = _client_formato_maximo(client_status)
 
     if saldo_hoje <= 0:
         return {
@@ -230,8 +243,8 @@ def build_quantity_more_menu_bundle(*, client_status: dict[str, Any]) -> dict[st
 
 
 def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any]) -> dict[str, Any]:
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
-    plan = _plan_label(str(client_status.get("plan", "basico") or "basico"))
+    formato_maximo = _client_formato_maximo(client_status)
+    plan = _plan_label(str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID))
     description = (
         f"✅ *{quantidade} jogos* selecionados.\n"
         f"Plano {plan} — até {formato_maximo}D\n\n"
@@ -265,7 +278,7 @@ def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any])
 
 
 def build_format_more_menu_bundle(*, quantidade: int, client_status: dict[str, Any]) -> dict[str, Any]:
-    formato_maximo = int(client_status.get("formato_maximo", 15) or 15)
+    formato_maximo = _client_formato_maximo(client_status)
     formatos = [formato for formato in range(16, formato_maximo + 1) if formato not in {16, 17, 18}]
     if not formatos:
         formatos = list(range(17, formato_maximo + 1))

@@ -5,8 +5,9 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from lotoia.clients.constants import DAILY_LIMIT, OFFICIAL_LANDING_HOST, PLANS, VALID_QUANTITIES
+from lotoia.clients.constants import DAILY_LIMIT, OFFICIAL_LANDING_HOST, VALID_QUANTITIES
 from lotoia.clients.interactive_menu import is_format_allowed_for_client
+from lotoia.clients.plan_entitlements import effective_formato_maximo, effective_formats_label, normalize_plan_key
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 
@@ -85,16 +86,19 @@ def validate_request(
             )
 
     resolved_formato = int(formato or 15)
-    formato_maximo = int(client.get("formato_maximo", 15) or 15)
-    plan_name = str(client.get("plan", "basico") or "basico")
-    plan_formats = str(PLANS.get(plan_name, {}).get("formats") or f"{formato_maximo}D")
+    formato_maximo = effective_formato_maximo(client)
+    plan_name = normalize_plan_key(str(client.get("plan", "") or ""))
+    plan_formats = effective_formats_label(client)
     if not is_format_allowed_for_client(resolved_formato, formato_maximo=formato_maximo):
+        trial_hint = ""
+        if plan_name == "completo" and formato_maximo <= 15 and int(formato or 15) > 15:
+            trial_hint = "\nApós 7 dias você libera 15D + 20D."
         return ValidationResult(
             ok=False,
             error_code="FORMAT_NOT_ALLOWED",
             message=(
                 f"Seu plano {plan_name} permite: {plan_formats}.\n"
-                f"O formato {resolved_formato}D não está incluído."
+                f"O formato {resolved_formato}D não está incluído.{trial_hint}"
             ),
             client=client,
             formato=resolved_formato,

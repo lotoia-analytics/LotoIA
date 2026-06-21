@@ -18,7 +18,7 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [cpf, setCpf] = useState("");
-  const [plano, setPlano] = useState<PlanId>("pro");
+  const [plano, setPlano] = useState<PlanId>("completo");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -168,7 +168,8 @@ export function Form({ isOpen, selectedPlan, onClose }: FormProps) {
                 R$ {activePlan.price.toFixed(2).replace(".", ",")}
               </p>
               <p className="mt-1 text-muted">
-                {activePlan.formats} · 30 dias · até 30 jogos/dia
+                {activePlan.formats} · 7 dias (15D) + 12 meses (15D + 20D) · até{" "}
+                {activePlan.dailyGames} jogos/dia
               </p>
             </div>
           ) : null}

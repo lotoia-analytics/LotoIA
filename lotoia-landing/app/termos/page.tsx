@@ -29,11 +29,13 @@ export default function TermosPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-white">2. Planos e preços (BRL)</h2>
-        <p>Valores em Real brasileiro (R$), por assinatura de 30 dias:</p>
+        <p>Valor em Real brasileiro (R$), por assinatura:</p>
         <ul className="list-disc space-y-1 pl-5">
           {PLANS.map((plan) => (
             <li key={plan.id}>
-              {plan.name}: R$ {plan.price.toFixed(2).replace(".", ",")} — formatos {plan.formats}
+              {plan.name}: R$ {plan.price.toFixed(2).replace(".", ",")} — {plan.formats}. Inclui 7
+              dias iniciais em 15D (30 jogos/dia) e, em seguida, 12 meses com 15D + 20D (30
+              jogos/dia).
             </li>
           ))}
         </ul>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -9,7 +10,19 @@ import pytest
 from sqlalchemy import inspect, text
 
 from backend.main import app
-from lotoia.database.database import create_database, get_engine, get_session
+from lotoia.database.database import LotoiaClient, create_database, get_engine, get_session
+
+
+def _activate_post_trial(isolated_db: Path, *, phone: str = "5511999999999") -> None:
+    _request(
+        "POST",
+        "/client/activate",
+        {"phone": phone, "plan": "completo", "valor_pago": 99.90, "name": "Ana"},
+    )
+    with get_session(isolated_db) as session:
+        row = session.query(LotoiaClient).filter(LotoiaClient.phone == phone).one()
+        row.data_inicio = datetime.now(UTC) - timedelta(days=8)
+        session.commit()
 
 
 def _request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict[str, object]]:
@@ -168,25 +181,26 @@ def test_client_activate_and_status(isolated_db: Path) -> None:
     status_code, body = _request(
         "POST",
         "/client/activate",
-        {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99, "name": "Ana"},
+        {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90, "name": "Ana"},
     )
     assert status_code == 200
     assert body["status"] == "ok"
-    assert body["client"]["plan"] == "pro"
-    assert body["client"]["formato_maximo"] == 18
+    assert body["client"]["plan"] == "completo"
+    assert body["client"]["formato_maximo"] == 20
 
     status_code, status_body = _request("GET", "/client/5511999999999/status")
     assert status_code == 200
     assert status_body["name"] == "Ana"
     assert status_body["saldo_hoje"] == 30
     assert status_body["jogos_hoje"] == 0
+    assert status_body["formato_maximo_efetivo"] == 15
 
 
 def test_whatsapp_webhook_generates_games(isolated_db: Path) -> None:
     _request(
         "POST",
         "/client/activate",
-        {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99, "name": "Ana"},
+        {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90, "name": "Ana"},
     )
     payload = {
         "data": {
@@ -212,7 +226,7 @@ def test_whatsapp_webhook_resolves_lid_jid_to_registered_phone(isolated_db: Path
     _request(
         "POST",
         "/client/activate",
-        {"phone": "5566992358330", "plan": "pro", "valor_pago": 49.99, "name": "Kleyson"},
+        {"phone": "5566992358330", "plan": "completo", "valor_pago": 99.90, "name": "Kleyson"},
     )
     payload = {
         "data": {
@@ -234,7 +248,7 @@ def test_whatsapp_webhook_matches_client_without_country_code(isolated_db: Path)
     _request(
         "POST",
         "/client/activate",
-        {"phone": "5566992358330", "plan": "pro", "valor_pago": 49.99, "name": "Kleyson"},
+        {"phone": "5566992358330", "plan": "completo", "valor_pago": 99.90, "name": "Kleyson"},
     )
     payload = {
         "data": {
@@ -249,7 +263,7 @@ def test_whatsapp_webhook_matches_client_without_country_code(isolated_db: Path)
 
 
 def test_whatsapp_webhook_replies_to_ola_with_menu_text(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -268,7 +282,7 @@ def test_whatsapp_webhook_replies_to_ola_with_menu_text(isolated_db: Path) -> No
 
 
 def test_whatsapp_webhook_resultado_pede_numero_concurso(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -299,7 +313,7 @@ def test_whatsapp_webhook_resultado_responde_concurso(isolated_db: Path) -> None
             )
         )
         session.commit()
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     _request(
         "POST",
         "/whatsapp/webhook",
@@ -329,7 +343,7 @@ def test_whatsapp_webhook_resultado_responde_concurso(isolated_db: Path) -> None
 
 
 def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -349,7 +363,7 @@ def test_whatsapp_webhook_sends_quantity_menu_for_registered_client(isolated_db:
 
 
 def test_whatsapp_webhook_prompts_custom_quantity(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -372,7 +386,7 @@ def test_whatsapp_webhook_prompts_custom_quantity(isolated_db: Path) -> None:
 
 
 def test_whatsapp_webhook_generates_games_from_typed_quantity(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     _request(
         "POST",
         "/whatsapp/webhook",
@@ -405,7 +419,7 @@ def test_whatsapp_webhook_generates_games_from_typed_quantity(isolated_db: Path)
 
 
 def test_whatsapp_webhook_generates_pro_games_at_plan_format(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -430,7 +444,7 @@ def test_whatsapp_webhook_generates_pro_games_at_plan_format(isolated_db: Path) 
 
 
 def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "basico", "valor_pago": 15.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -457,7 +471,7 @@ def test_whatsapp_webhook_generates_games_after_quantity_button(isolated_db: Pat
 
 
 def test_whatsapp_webhook_ignores_poll_update(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",
@@ -474,7 +488,7 @@ def test_whatsapp_webhook_ignores_poll_update(isolated_db: Path) -> None:
 
 
 def test_whatsapp_webhook_generates_games_from_list_selection(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     payload = {
         "data": {
             "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "msg-list"},
@@ -494,10 +508,10 @@ def test_whatsapp_webhook_generates_games_from_list_selection(isolated_db: Path)
 
 
 def test_whatsapp_webhook_generates_games_from_shorthand_format(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "pro", "valor_pago": 49.99})
+    _activate_post_trial(isolated_db)
     for message, quantidade, formato in (
         ("2x15D", 2, 15),
-        ("01 18D", 1, 18),
+        ("01 20D", 1, 20),
     ):
         status_code, body = _request(
             "POST",
@@ -516,7 +530,7 @@ def test_whatsapp_webhook_generates_games_from_shorthand_format(isolated_db: Pat
 
 
 def test_whatsapp_webhook_idempotency(isolated_db: Path) -> None:
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     payload = {
         "data": {
             "key": {"remoteJid": "5511999999999@s.whatsapp.net", "id": "dup-001"},
@@ -533,7 +547,7 @@ def test_whatsapp_webhook_delivers_games_via_evolution(isolated_db: Path) -> Non
     _request(
         "POST",
         "/client/activate",
-        {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99, "name": "Ana"},
+        {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90, "name": "Ana"},
     )
     payload = {
         "data": {
@@ -561,7 +575,7 @@ def test_whatsapp_webhook_returns_200_when_evolution_fails(isolated_db: Path, mo
         "lotoia.clients.whatsapp_service.EvolutionApiClient",
         lambda *args, **kwargs: failing_client,
     )
-    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "elite", "valor_pago": 69.99})
+    _request("POST", "/client/activate", {"phone": "5511999999999", "plan": "completo", "valor_pago": 99.90})
     status_code, body = _request(
         "POST",
         "/whatsapp/webhook",

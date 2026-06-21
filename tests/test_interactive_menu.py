@@ -31,25 +31,37 @@ def test_build_quantity_menu_bundle_is_text_only() -> None:
 
 def test_build_welcome_text_is_clean() -> None:
     text = build_welcome_text(
-        client_status={"plan": "basico", "formato_maximo": 15, "saldo_hoje": 30}
+        client_status={
+            "plan": "completo",
+            "formato_maximo_efetivo": 15,
+            "formatos_disponiveis": "15D (fase inicial — 7 dias)",
+            "dias_trial_restantes": 7,
+            "saldo_hoje": 30,
+        }
     )
-    assert "Plano Básico" in text
-    assert "Formatos: 15D" in text
-    assert "Jogos gerados em 15D." in text
+    assert "Plano Completo" in text
+    assert "15D" in text
+    assert "Fase inicial" in text
 
 
-def test_build_welcome_text_for_pro_plan() -> None:
+def test_build_welcome_text_for_full_phase() -> None:
     text = build_welcome_text(
-        client_status={"plan": "pro", "formato_maximo": 18, "saldo_hoje": 30}
+        client_status={
+            "plan": "completo",
+            "formato_maximo_efetivo": 20,
+            "formatos_disponiveis": "15D (7 dias) → 15D + 20D",
+            "dias_trial_restantes": 0,
+            "saldo_hoje": 30,
+        }
     )
-    assert "Formatos: 15D + 18D" in text
-    assert "Jogos gerados em 15D e 18D (metade de cada)." in text
-    assert "2x18D" in text
-    assert "3 Jogo 18D" in text
+    assert "15D + 20D" in text
+    assert "Jogos gerados em 15D e 20D (metade de cada)." in text
+    assert "2x20D" in text
 
 
 def test_allowed_formats_for_client() -> None:
-    assert allowed_formats_for_client({"formato_maximo": 15}) == [15]
+    assert allowed_formats_for_client({"formato_maximo_efetivo": 15}) == [15]
+    assert allowed_formats_for_client({"formato_maximo_efetivo": 20}) == [15, 20]
     assert allowed_formats_for_client({"formato_maximo": 18}) == [15, 18]
     assert allowed_formats_for_client(None) == [15]
 
