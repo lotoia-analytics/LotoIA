@@ -3188,7 +3188,12 @@ def _load_imported_contests_summary() -> dict[str, Any]:
 def _load_official_history_rows(limit: int | None = None, *, descending: bool = False) -> list[dict[str, Any]]:
     with get_session(DB_PATH) as session:
         order_column = LotofacilOfficialHistory.contest_number.desc() if descending else LotofacilOfficialHistory.contest_number.asc()
-        query = session.query(LotofacilOfficialHistory).order_by(order_column)
+        # Lei 001: filtrar apenas concursos válidos para proteger contest_number_max
+        query = (
+            session.query(LotofacilOfficialHistory)
+            .filter(LotofacilOfficialHistory.is_valid == 1)
+            .order_by(order_column)
+        )
         if limit is not None and int(limit) > 0:
             query = query.limit(int(limit))
         rows = query.all()
