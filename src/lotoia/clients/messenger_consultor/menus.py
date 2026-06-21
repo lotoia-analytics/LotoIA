@@ -43,6 +43,6 @@ def menu_cliente_ativo(*, nome: str, plano: str, jogos_hoje: int, saldo_hoje: in
         "📈 FREQUENTES  → dezenas que mais saem\n"
         "🏆 SCORE       → desempenho do núcleo LotoIA\n"
         "🔍 CONFERIR    → confira qualquer jogo\n"
-        "🎯 GERAR       → ex: 5x15D, 3x18D\n\n"
-        f"Plano: {plano} | Jogos hoje: {jogos_hoje}/30 | Saldo: {saldo_hoje}"
+        "🎯 GERAR       → ex: 1015D, 5x15D, 520D\n\n"
+        f"Plano: LotoIA Completo | Jogos hoje: {jogos_hoje}/30 | Saldo: {saldo_hoje}"
     )

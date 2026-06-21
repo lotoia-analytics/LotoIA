@@ -25,7 +25,7 @@ def test_build_quantity_menu_bundle_is_text_only() -> None:
         }
     )
     assert bundle["text_only"] is True
-    assert "Digite: 5, 10, 20" in bundle["text_fallback"]
+    assert "Digite sua quantidade" in bundle["text_fallback"]
     assert "Toque" not in bundle["text_fallback"]
 
 
@@ -39,9 +39,10 @@ def test_build_welcome_text_is_clean() -> None:
             "saldo_hoje": 30,
         }
     )
-    assert "Plano Completo" in text
+    assert "LotoIA Completo" in text
     assert "15D" in text
     assert "Fase inicial" in text
+    assert "1015D" in text
 
 
 def test_build_welcome_text_for_full_phase() -> None:
@@ -55,8 +56,9 @@ def test_build_welcome_text_for_full_phase() -> None:
         }
     )
     assert "15D + 20D" in text
-    assert "Jogos gerados em 15D e 20D (metade de cada)." in text
-    assert "2x20D" in text
+    assert "520D" in text
+    assert "1015D" in text
+    assert "Pro" not in text
 
 
 def test_allowed_formats_for_client() -> None:
@@ -90,7 +92,7 @@ def test_plan_generation_targets_splits_by_plan() -> None:
 def test_build_confirm_menu_bundle_has_gerar_jogos() -> None:
     bundle = build_confirm_menu_bundle(
         quantidade=10,
-        client_status={"plan": "pro", "formato_maximo": 18, "saldo_hoje": 30},
+        client_status={"plan": "completo", "formato_maximo_efetivo": 20, "saldo_hoje": 30},
     )
     buttons = bundle["buttons_payload"]["buttons"]
     assert buttons[0]["displayText"] == "Gerar Jogos"

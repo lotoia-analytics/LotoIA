@@ -133,46 +133,69 @@ def plan_generation_targets(
     )
 
 
-def build_welcome_text(*, client_status: dict[str, Any]) -> str:
-    plan_key = str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID).strip().lower()
-    plan = _plan_label(plan_key)
-    formato_maximo = _client_formato_maximo(client_status)
-    formats = str(client_status.get("formatos_disponiveis") or plan_formats_label(plan_key))
-    saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    trial_days = int(client_status.get("dias_trial_restantes", 0) or 0)
-    if formato_maximo == 15 and trial_days > 0:
-        format_hint = (
-            f"Fase inicial: {trial_days} dia(s) restante(s) — jogos em 15D.\n"
+def _welcome_plan_title(client_status: dict[str, Any]) -> str:
+    return "LotoIA Completo"
+
+
+def _build_generation_examples(*, formato_maximo: int, trial_days: int) -> str:
+    lines = [
+        "Como pedir:",
+        "• 5, 10 ou 20",
+        "• 1015D ou 10x15D → 10 jogos 15D",
+    ]
+    if trial_days > 0 or formato_maximo <= 15:
+        lines.append("• 515D ou 5x15D → 5 jogos 15D")
+    else:
+        lines.extend(
+            [
+                f"• 520D ou 5x{formato_maximo}D → 5 jogos {formato_maximo}D",
+                f"• Só a quantidade → metade 15D + metade {formato_maximo}D",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _build_phase_summary(*, formato_maximo: int, formats: str, trial_days: int) -> str:
+    if trial_days > 0:
+        return (
+            f"📌 Fase inicial — {trial_days} dia(s) restante(s)\n"
+            "Formatos: 15D (30 jogos/dia)\n"
             "Depois libera 15D + 20D por 12 meses."
         )
-    elif formato_maximo == 15:
-        format_hint = "Jogos gerados em 15D."
-    else:
-        format_hint = (
-            f"Jogos gerados em 15D e {formato_maximo}D (metade de cada).\n"
-            "Digite como preferir, ex.:\n"
-            f"• 5 ou 03 (só quantidade)\n"
-            f"• 2x{formato_maximo}D ou 1 {formato_maximo}D\n"
-            f"• 3 Jogo {formato_maximo}D ou 5 jogos de 15D"
-        )
+    if formato_maximo > 15:
+        return f"Formatos: {formats}\nAté 30 jogos por dia."
+    return f"Formatos: {formats}\nAté 30 jogos por dia."
+
+
+def build_welcome_text(*, client_status: dict[str, Any]) -> str:
+    formato_maximo = _client_formato_maximo(client_status)
+    formats = str(client_status.get("formatos_disponiveis") or plan_formats_label(DEFAULT_PLAN_ID))
+    saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
+    trial_days = int(client_status.get("dias_trial_restantes", 0) or 0)
+    title = _welcome_plan_title(client_status)
+    phase_summary = _build_phase_summary(
+        formato_maximo=formato_maximo,
+        formats=formats,
+        trial_days=trial_days,
+    )
+    examples = _build_generation_examples(formato_maximo=formato_maximo, trial_days=trial_days)
     return (
-        f"👋 Olá! Plano {plan}\n"
-        f"Formatos: {formats}\n"
+        f"👋 Olá! *{title}*\n\n"
         f"Saldo hoje: {saldo_hoje} jogos\n\n"
-        "Quantos jogos quer gerar?\n"
-        "Digite: 5, 10, 20\n"
-        f"ou outro número (1 a {saldo_hoje}).\n\n"
-        f"{format_hint}"
+        f"{phase_summary}\n\n"
+        f"{examples}\n\n"
+        "Digite sua quantidade 👇"
     )
 
 
 def build_welcome_text_from_options(*, button_options: list[tuple[str, str]]) -> str:
     labels = " · ".join(label for label, _ in button_options[:3])
     return (
-        "👋 *Olá! Bem-vindo à LotoIA*\n\n"
+        "👋 *Olá! LotoIA Completo*\n\n"
+        "Até 30 jogos por dia no WhatsApp.\n\n"
         "*Quantos jogos quer gerar?*\n\n"
         f"Opções: {labels}\n\n"
-        "Toque nos botões abaixo ou digite a quantidade."
+        "Toque nos botões abaixo ou digite, ex.: 1015D"
     )
 
 
@@ -208,16 +231,13 @@ def _menu_bundle(
 
 def build_quantity_menu_bundle(*, client_status: dict[str, Any]) -> dict[str, Any]:
     saldo_hoje = int(client_status.get("saldo_hoje", 0) or 0)
-    plan = _plan_label(str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID))
-    formato_maximo = _client_formato_maximo(client_status)
-
     if saldo_hoje <= 0:
         return {
             "text_only": True,
             "text_fallback": (
-                f"👋 Olá! Plano {plan} — até {formato_maximo}D\n\n"
-                "Você já usou o limite diário de jogos.\n"
-                "Volte amanhã para gerar novos cartões."
+                "👋 Olá! *LotoIA Completo*\n\n"
+                "Você já usou os 30 jogos de hoje.\n"
+                "Volte amanhã às 00h para gerar novos cartões."
             ),
         }
 
@@ -244,25 +264,18 @@ def build_quantity_more_menu_bundle(*, client_status: dict[str, Any]) -> dict[st
 
 def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any]) -> dict[str, Any]:
     formato_maximo = _client_formato_maximo(client_status)
-    plan = _plan_label(str(client_status.get("plan", DEFAULT_PLAN_ID) or DEFAULT_PLAN_ID))
     description = (
         f"✅ *{quantidade} jogos* selecionados.\n"
-        f"Plano {plan} — até {formato_maximo}D\n\n"
+        f"LotoIA Completo — até {formato_maximo}D\n\n"
         "Toque em *Gerar Jogos* para criar seus cartões."
     )
     button_options: list[tuple[str, str]] = [("Gerar Jogos", f"gen:{quantidade}:15")]
-    if formato_maximo >= 17:
-        button_options.append((f"Gerar {quantidade} jogos 17D", f"gen:{quantidade}:17"))
-    if formato_maximo >= 18:
-        button_options.append((f"Gerar {quantidade} jogos 18D", f"gen:{quantidade}:18"))
-    if formato_maximo > 18 or (formato_maximo == 16 and len(button_options) < 3):
-        if formato_maximo == 16:
-            button_options = [
-                ("Gerar Jogos", f"gen:{quantidade}:15"),
-                (f"Gerar {quantidade} jogos 16D", f"gen:{quantidade}:16"),
-            ]
-        elif formato_maximo > 18:
-            button_options = button_options[:2] + [("Mais formatos", f"fmtmore:{quantidade}")]
+    if formato_maximo == 20:
+        button_options.append((f"Gerar {quantidade} jogos 20D", f"gen:{quantidade}:20"))
+    elif formato_maximo > 15:
+        button_options.append((f"Gerar {quantidade} jogos {formato_maximo}D", f"gen:{quantidade}:{formato_maximo}"))
+    if formato_maximo > 20:
+        button_options = button_options[:2] + [("Mais formatos", f"fmtmore:{quantidade}")]
     button_options = button_options[:3]
     rows = [
         {"title": label, "description": "Confirmar geração", "rowId": selection_id}
@@ -273,7 +286,7 @@ def build_confirm_menu_bundle(*, quantidade: int, client_status: dict[str, Any])
         button_options=button_options,
         list_rows=rows,
         list_button_text="Gerar Jogos",
-        footer=f"Plano {plan}",
+        footer="LotoIA Completo",
     )
 
 
