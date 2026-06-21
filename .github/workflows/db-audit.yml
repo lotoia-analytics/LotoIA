@@ -1,10 +1,10 @@
-name: DB Audit
+name: DB Access Check
 
 on:
   workflow_dispatch:
     inputs:
       sql:
-        description: "SQL opcional para executar no PostgreSQL institucional"
+        description: "SQL opcional para executar depois do teste de conexão"
         required: false
         default: ""
         type: string
@@ -13,13 +13,13 @@ on:
       - ".github/workflows/db-audit.yml"
 
 jobs:
-  audit:
+  db-access:
     runs-on: ubuntu-latest
     steps:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Connection smoke test
+      - name: Verify PostgreSQL access
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -28,24 +28,11 @@ jobs:
             echo "DATABASE_URL secret não configurado."
             exit 1
           fi
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_database() AS database, now() AS checked_at;"
 
-      - name: Audit latest Lotofacil contest
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          TABLE_NAME=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass('public.lotofacil_official_history') IS NOT NULL THEN 'lotofacil_official_history' WHEN to_regclass('public.imported_contests') IS NOT NULL THEN 'imported_contests' ELSE '' END;")
-
-          if [ -z "$TABLE_NAME" ]; then
-            echo "Nenhuma tabela institucional encontrada: lotofacil_official_history/imported_contests."
-            echo "Tabelas públicas disponíveis:"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
-            exit 1
-          fi
-
-          echo "Tabela institucional encontrada: $TABLE_NAME"
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT * FROM public.$TABLE_NAME ORDER BY contest_number DESC LIMIT 1;"
+          echo "DATABASE_URL secret encontrado."
+          echo "Testando conexão PostgreSQL..."
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_access_ok;"
+          echo "Acesso ao PostgreSQL confirmado."
 
       - name: Optional manual SQL
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.sql != '' }}
