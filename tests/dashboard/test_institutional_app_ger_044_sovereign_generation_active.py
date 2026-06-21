@@ -143,6 +143,7 @@ def test_persist_path_includes_sovereign_batch_label(
         return {"generation_event_id": 999, "games_count": 1}
 
     monkeypatch.setattr(institutional_app, "_persist_generation_snapshot", _fake_persist)
+    monkeypatch.setattr(institutional_app, "_attach_operational_generation_label", lambda snapshot: snapshot)
     monkeypatch.setattr(institutional_app, "_load_latest_contest_summary", lambda: {"contest_number": 3700})
     monkeypatch.setattr(institutional_app, "get_latest_official_contest", lambda: {"contest_number": 3700, "dezenas": list(range(1, 16))})
     monkeypatch.setattr(
@@ -179,6 +180,7 @@ def test_persist_path_includes_sovereign_batch_label(
 
     assert persisted["generation_event_id"] == 999
     assert captured["analysis_batch_label"] == BATCH_LABEL
+    assert captured["target_contest"] == 3701
     ctx = captured.get("generation_context") or {}
     assert ctx.get("analysis_batch_label") == BATCH_LABEL
     assert ctx.get("ml_enabled") is False

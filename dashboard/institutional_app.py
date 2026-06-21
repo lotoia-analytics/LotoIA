@@ -29,6 +29,7 @@ import streamlit as st
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
+from lotoia.clients.conference_utils import coerce_generation_target_contest
 from lotoia.database.adapter import InstitutionalDatabaseAdapter
 from lotoia.database.contest_repository import ContestRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, ImportedContest, InstitutionalOutputSignature, LotofacilOfficialHistory, ReconciliationGame, ReconciliationRun, ScientificCalibrationDecision, ScientificInstitutionalMemory, ensure_database_schema, get_engine, get_session
@@ -2050,6 +2051,17 @@ def get_latest_official_contest() -> dict[str, Any] | None:
     if latest_contest_number is None or latest_contest_number <= 0:
         return None
     return get_official_contest(latest_contest_number)
+
+
+def _resolve_persist_target_contest(result: Mapping[str, Any] | None = None) -> int | None:
+    """Concurso alvo soberano para persistência — próximo real, nunca placeholder/fantasma."""
+    latest_drawn = _safe_int((get_latest_official_contest() or {}).get("contest_number"), default=None)
+    candidate = _safe_int((result or {}).get("target_contest"), default=None) if isinstance(result, Mapping) else None
+    return coerce_generation_target_contest(
+        candidate,
+        db_path=DB_PATH,
+        latest_drawn_contest=latest_drawn,
+    )
 
 
 def _load_hai_latest_contest_summary() -> dict[str, Any] | None:
@@ -10021,6 +10033,11 @@ def _persist_generation_snapshot(
 ) -> dict[str, Any]:
     started_at = time.monotonic()
     batch_id = _ensure_unique_institutional_batch_id(batch_id)
+    target_contest = coerce_generation_target_contest(
+        _safe_int(target_contest, default=None),
+        db_path=DB_PATH,
+        latest_drawn_contest=_safe_int((get_latest_official_contest() or {}).get("contest_number"), default=None),
+    )
     context_payload = {
         "source": "institutional_app",
         "target_contest": target_contest,
@@ -12635,7 +12652,7 @@ def _persist_clean_law15_generation_history(
             _persist_generation_snapshot(
                 games=payload_games,
                 seed=int(result.get("seed", 0) or 0),
-                target_contest=_load_latest_contest_summary().get("contest_number") if _load_latest_contest_summary() else None,
+                target_contest=_resolve_persist_target_contest(result),
                 batch_id=str(result.get("batch_id", "") or f"clean-law15-{selected_card_format}"),
                 generation_context=generation_context,
                 analysis_batch_label=format_batch_label,
