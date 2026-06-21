@@ -40,6 +40,7 @@ from lotoia.clients.result_conference_service import ResultConferenceService, pa
 from lotoia.clients.whatsapp_state_repository import WhatsAppStateRepository
 from lotoia.clients.repository import ClientRepository
 from lotoia.database.database import DEFAULT_DATABASE_PATH
+from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL as LEI15_SOVEREIGN_BATCH_LABEL
 from lotoia.generator.engine import generate_ranked_games
 from lotoia.public.persistence import GenerationEventRepository, LeadRepository
 from lotoia.public.services import normalize_whatsapp
@@ -219,7 +220,12 @@ def generate_whatsapp_games(
     quantidade = sum(qty for _, qty in targets)
     seed = random.randint(1, 999999)
     started_at = time.time()
-    base_games = generate_ranked_games(total_games=int(quantidade), seed=seed, ml_enabled=False)
+    base_games = generate_ranked_games(
+        total_games=int(quantidade),
+        seed=seed,
+        ml_enabled=False,
+        batch_label=LEI15_SOVEREIGN_BATCH_LABEL,
+    )
     games: list[dict[str, Any]] = []
     offset = 0
     for formato, qty in targets:

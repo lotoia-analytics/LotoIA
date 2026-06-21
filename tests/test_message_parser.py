@@ -27,6 +27,8 @@ from lotoia.clients.message_parser import HELP_MESSAGE, parse_whatsapp_message
         ("3 jogos18d", {"quantidade": 3, "formato": 18}),
         ("5-18d", {"quantidade": 5, "formato": 18}),
         ("4/15D", {"quantidade": 4, "formato": 15}),
+        ("1015D", {"quantidade": 10, "formato": 15}),
+        ("1015d", {"quantidade": 10, "formato": 15}),
         ("5", {"quantidade": 5, "formato": None}),
     ],
 )
