@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from lotoia.database.database import DEFAULT_DATABASE_PATH, GeneratedGame, GenerationEvent, get_session
 from lotoia.governance.batch_operational_scope import (
@@ -41,6 +41,7 @@ EMPTY_OPERATIONAL_MESSAGE = (
 OPERATIONAL_GENERATION_ALL_LABEL = "Todos — gerações ativas CORE_002"
 OPERATIONAL_GENERATION_SELECTOR_KEY = "structural_coverage_operational_generation"
 OPERATIONAL_GENERATION_FILTER_MISSION_ID = "M-ML-071-FIX-01"
+AGGREGATE_ANALYTICS_MISSION_ID = "M-VIS-DADOS-052-FIX-AGGREGATE"
 
 
 def is_all_operational_generations_selection(label: str | None) -> bool:
@@ -377,20 +378,110 @@ def build_active_coverage_scope_summary(
     }
 
 
+def _load_contexts_for_operational_coverage(
+    db_path: Any,
+    *,
+    generation_event_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Carrega contextos CORE_002 para leitura individual ou agregada.
+
+    Modo individual: ``generation_event_id > 0``.
+    Modo Todos: ``generation_event_id`` nulo/zero; retorna todas as gerações ativas
+    com linhas em ``generated_games``. Isso evita o bug de passar GE=0 para blocos
+    analíticos que antes retornavam vazio.
+    """
+    selected = int(generation_event_id or 0)
+    rows: list[dict[str, Any]] = []
+    with get_session(db_path) as session:
+        query = session.query(GenerationEvent).order_by(GenerationEvent.created_at.asc(), GenerationEvent.id.asc())
+        if selected > 0:
+            query = query.filter(GenerationEvent.id == selected)
+        events = list(query.all())
+        for event in events:
+            batch_label = str(getattr(event, "analysis_batch_label", "") or "")
+            if not is_sovereign_core_label(batch_label):
+                continue
+            if selected <= 0 and not is_generation_event_active_reading(event):
+                continue
+            ge_id = int(event.id or 0)
+            if ge_id <= 0:
+                continue
+            game_count = (
+                session.query(GeneratedGame)
+                .filter(GeneratedGame.generation_event_id == ge_id)
+                .count()
+            )
+            if int(game_count or 0) <= 0:
+                continue
+            context = dict(getattr(event, "context_json", {}) or {})
+            rows.append(
+                {
+                    "generation_event_id": ge_id,
+                    "analysis_batch_label": batch_label,
+                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    "context": context,
+                    "games_count": int(game_count or 0),
+                }
+            )
+    return rows
+
+
+def _aggregate_layer_summary(
+    *,
+    layer_name: str,
+    context_rows: list[dict[str, Any]],
+    traces: list[dict[str, Any]],
+) -> dict[str, Any]:
+    available_traces = [trace for trace in traces if bool(trace)]
+    return {
+        "mission_id": AGGREGATE_ANALYTICS_MISSION_ID,
+        "available": bool(context_rows),
+        "aggregate_mode": True,
+        "layer": layer_name,
+        "generation_events_count": len(context_rows),
+        "generation_event_ids": [int(row.get("generation_event_id", 0) or 0) for row in context_rows],
+        "total_games": sum(int(row.get("games_count", 0) or 0) for row in context_rows),
+        "traces_available_count": len(available_traces),
+        "traces": available_traces,
+        "summary": {
+            "scope": OPERATIONAL_GENERATION_ALL_LABEL,
+            "layer": layer_name,
+            "total_generations_analyzed": len(context_rows),
+            "total_games_analyzed": sum(int(row.get("games_count", 0) or 0) for row in context_rows),
+        },
+    }
+
+
+def _load_single_or_aggregate_trace(
+    db_path: Any,
+    generation_event_id: int,
+    *,
+    layer_name: str,
+    context_key: str,
+    builder: Callable[[dict[str, Any]], dict[str, Any]],
+) -> dict[str, Any]:
+    ge_id = int(generation_event_id or 0)
+    context_rows = _load_contexts_for_operational_coverage(db_path, generation_event_id=ge_id)
+    if ge_id > 0:
+        if not context_rows:
+            return {}
+        return builder(dict(context_rows[0].get("context") or {}).get(context_key) or {})
+    traces = [builder(dict(row.get("context") or {}).get(context_key) or {}) for row in context_rows]
+    return _aggregate_layer_summary(layer_name=layer_name, context_rows=context_rows, traces=traces)
+
+
 def load_pre_final_pool_coverage_summary(
     db_path: Any,
     generation_event_id: int,
 ) -> dict[str, Any]:
     """Evidência M-ML-071 — pool pré-final calibrado pela ML (PostgreSQL context_json)."""
-    ge_id = int(generation_event_id or 0)
-    if ge_id <= 0:
-        return {}
-    with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
-        if event is None:
-            return {}
-        context = dict(getattr(event, "context_json", {}) or {})
-    return build_pre_final_pool_trace(dict(context.get("pre_final_pool_ml_calibration") or {}))
+    return _load_single_or_aggregate_trace(
+        db_path,
+        int(generation_event_id or 0),
+        layer_name="pre_final_pool_ml_calibration",
+        context_key="pre_final_pool_ml_calibration",
+        builder=build_pre_final_pool_trace,
+    )
 
 
 def load_structural_15d_pool_coverage_summary(
@@ -398,15 +489,13 @@ def load_structural_15d_pool_coverage_summary(
     generation_event_id: int,
 ) -> dict[str, Any]:
     """Evidência M-ML-072 — pool estrutural ML 15D (PostgreSQL context_json)."""
-    ge_id = int(generation_event_id or 0)
-    if ge_id <= 0:
-        return {}
-    with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
-        if event is None:
-            return {}
-        context = dict(getattr(event, "context_json", {}) or {})
-    return build_structural_15d_pool_trace(dict(context.get("ml_structural_15d_pool") or {}))
+    return _load_single_or_aggregate_trace(
+        db_path,
+        int(generation_event_id or 0),
+        layer_name="ml_structural_15d_pool",
+        context_key="ml_structural_15d_pool",
+        builder=build_structural_15d_pool_trace,
+    )
 
 
 def load_ml_operational_hierarchy_coverage_summary(
@@ -414,15 +503,13 @@ def load_ml_operational_hierarchy_coverage_summary(
     generation_event_id: int,
 ) -> dict[str, Any]:
     """Evidência M-ML-073 — hierarquia operacional ML (PostgreSQL context_json)."""
-    ge_id = int(generation_event_id or 0)
-    if ge_id <= 0:
-        return {}
-    with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
-        if event is None:
-            return {}
-        context = dict(getattr(event, "context_json", {}) or {})
-    return build_ml_operational_hierarchy_trace(dict(context.get("ml_operational_hierarchy") or {}))
+    return _load_single_or_aggregate_trace(
+        db_path,
+        int(generation_event_id or 0),
+        layer_name="ml_operational_hierarchy",
+        context_key="ml_operational_hierarchy",
+        builder=build_ml_operational_hierarchy_trace,
+    )
 
 
 def load_pre_gp_recovery_coverage_summary(
@@ -430,15 +517,13 @@ def load_pre_gp_recovery_coverage_summary(
     generation_event_id: int,
 ) -> dict[str, Any]:
     """Evidência M-ML-074 — recuperação determinística pré-GP (PostgreSQL context_json)."""
-    ge_id = int(generation_event_id or 0)
-    if ge_id <= 0:
-        return {}
-    with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
-        if event is None:
-            return {}
-        context = dict(getattr(event, "context_json", {}) or {})
-    return build_pre_gp_recovery_trace(dict(context.get("pre_gp_recovery") or {}))
+    return _load_single_or_aggregate_trace(
+        db_path,
+        int(generation_event_id or 0),
+        layer_name="pre_gp_recovery",
+        context_key="pre_gp_recovery",
+        builder=build_pre_gp_recovery_trace,
+    )
 
 
 def load_agent_routing_coverage_summary(
@@ -446,22 +531,25 @@ def load_agent_routing_coverage_summary(
     generation_event_id: int,
 ) -> dict[str, Any]:
     """Evidência M-GOV-AGENTS-002 — roteamento agentes institucionais (PostgreSQL context_json)."""
+
+    def _build_from_context(context: dict[str, Any]) -> dict[str, Any]:
+        return build_agent_routing_trace(
+            {
+                "agent_routing_matrix_version": context.get("agent_routing_matrix_version"),
+                "primary_responsible_agent": context.get("primary_responsible_agent"),
+                "responsible_agents": list(context.get("responsible_agents") or []),
+                "blocking_responsible_agent": context.get("blocking_responsible_agent"),
+                "agent_assignments": list(
+                    dict(context.get("calibration_plan") or {}).get("agent_assignments") or []
+                ),
+            }
+        )
+
     ge_id = int(generation_event_id or 0)
-    if ge_id <= 0:
-        return {}
-    with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == ge_id).one_or_none()
-        if event is None:
+    context_rows = _load_contexts_for_operational_coverage(db_path, generation_event_id=ge_id)
+    if ge_id > 0:
+        if not context_rows:
             return {}
-        context = dict(getattr(event, "context_json", {}) or {})
-    return build_agent_routing_trace(
-        {
-            "agent_routing_matrix_version": context.get("agent_routing_matrix_version"),
-            "primary_responsible_agent": context.get("primary_responsible_agent"),
-            "responsible_agents": list(context.get("responsible_agents") or []),
-            "blocking_responsible_agent": context.get("blocking_responsible_agent"),
-            "agent_assignments": list(
-                dict(context.get("calibration_plan") or {}).get("agent_assignments") or []
-            ),
-        }
-    )
+        return _build_from_context(dict(context_rows[0].get("context") or {}))
+    traces = [_build_from_context(dict(row.get("context") or {})) for row in context_rows]
+    return _aggregate_layer_summary(layer_name="agent_routing", context_rows=context_rows, traces=traces)
