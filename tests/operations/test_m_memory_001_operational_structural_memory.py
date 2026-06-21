@@ -149,7 +149,7 @@ def test_institutional_app_wires_structural_memory(tmp_path, monkeypatch: pytest
     import dashboard.institutional_app as institutional_app
 
     coverage_source = inspect.getsource(institutional_app._render_cobertura_estrutural_page)
-    assert "render_structural_memory_timeline_panel" in coverage_source
+    assert "render_modern_structural_coverage_dashboard" in coverage_source
     persist_source = inspect.getsource(institutional_app._persist_generation_snapshot)
     assert "persist_operational_structural_memory" in persist_source
     assert "operational_structural_memory_snapshot" in persist_source
@@ -158,4 +158,4 @@ def test_institutional_app_wires_structural_memory(tmp_path, monkeypatch: pytest
 def test_build_marker_v93() -> None:
     from dashboard.institutional_build import BUILD_MARKER
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v93"
+    assert BUILD_MARKER == "institutional-adm-runtime-v94"

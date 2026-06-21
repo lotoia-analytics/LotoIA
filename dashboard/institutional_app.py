@@ -114,7 +114,7 @@ from dashboard.institutional_governance import (
 )
 from dashboard.institutional_core_002 import render_core_002_read_only_page
 from dashboard.institutional_m_core_003_monitoring import render_m_core_003_bias_monitoring_panel
-from dashboard.institutional_structural_memory import render_structural_memory_timeline_panel
+from dashboard.institutional_structural_coverage_modern import render_modern_structural_coverage_dashboard
 from dashboard.institutional_structural_coverage import render_structural_coverage_governance_section
 from dashboard.institutional_structural_policy_coverage import (
     build_structural_policy_coverage_context,
@@ -9630,13 +9630,13 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     st.markdown(f"### {OPERATIONAL_COVERAGE_TITLE}")
     st.caption(OPERATIONAL_SOURCE_CAPTION)
     st.caption(
-        "Referência constitucional: **LEI15_CORE_002**. Geração operacional via "
-        "**Gerador ADM CORE_002** — leitura soberana em PostgreSQL / memória evolutiva (M-MEMORY-001)."
+        "Referência constitucional: **LEI15_CORE_002**. Dashboard visual M-UI-MODERN-001 com "
+        "memória evolutiva M-MEMORY-001 — leitura soberana em PostgreSQL."
     )
     _render_diagnostic_observational_caption()
     st.write(
-        "Visão observacional da estrutura do cartão a partir de gerações operacionais persistidas: "
-        "abertura, fechamento, faixas, gaps, sequências, ausências, redundância GP e travamento em 13/14."
+        "Health Score estrutural, radar de dezenas, linha do tempo de viés e heatmap de quadrantes "
+        "a partir de gerações operacionais persistidas."
     )
     st.info(
         "Painel analítico e observacional. Não gera jogos, não recalibra a Lei 15, "
@@ -9690,201 +9690,46 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
 
     _render_structural_coverage_queue_cleanup_panel(operational_generations)
 
-    dropdown_labels = build_operational_generation_dropdown_options(operational_generations)
-    label_to_generation = {
-        str(row.get("dropdown_label") or ""): row for row in operational_generations
-    }
-    default_index = max(0, len(dropdown_labels) - 1)
-    selected_label = st.selectbox(
-        "Geração operacional",
-        options=dropdown_labels,
-        index=default_index,
-        key="structural_coverage_operational_generation",
-    )
-    if is_all_operational_generations_selection(selected_label):
-        selected_generation = build_operational_generations_aggregate_summary(operational_generations)
-        selected_ge_id = 0
-        selected_card_format = None
-    else:
-        selected_generation = dict(label_to_generation.get(selected_label) or operational_generations[-1])
-        selected_ge_id = int(selected_generation.get("generation_event_id", 0) or 0)
-        selected_card_format = int(selected_generation.get("card_format", 15) or 15)
+    def _render_legacy_structural_diagnostics() -> None:
+        legacy_ge_id = int(st.session_state.get("structural_coverage_selected_ge_id", 0) or 0)
+        legacy_generation = next(
+            (
+                row
+                for row in operational_generations
+                if int(row.get("generation_event_id", 0) or 0) == legacy_ge_id
+            ),
+            operational_generations[-1] if operational_generations else {},
+        )
+        legacy_card_format = int(legacy_generation.get("card_format", 15) or 15)
+        payload = _cached_operational_card_structure_diagnostics_from_db(
+            str(DB_PATH),
+            legacy_ge_id if legacy_ge_id > 0 else None,
+            legacy_card_format,
+        )
+        if not payload.get("available"):
+            st.warning("Sem diagnóstico estrutural persistido para esta geração.")
+            return
+        policy_context = build_structural_policy_coverage_context(
+            DB_PATH,
+            payload,
+            legacy_ge_id if legacy_ge_id > 0 else None,
+            legacy_card_format,
+        )
+        if policy_context.get("available"):
+            render_structural_policy_15d_operational_block(
+                policy_context.get("memory"),
+                policy_context.get("application"),
+                policy_context.get("compliance"),
+            )
+        _render_structural_coverage_diagnostics_body(payload)
 
-    meta_cols = st.columns(4)
-    if is_all_operational_generations_selection(selected_label):
-        meta_cols[0].metric(
-            "Geração operacional",
-            f"Todos ({int(selected_generation.get('generation_events_count', 0) or 0)})",
-        )
-        meta_cols[1].metric(
-            "generation_event_id",
-            f"{int(selected_generation.get('generation_events_count', 0) or 0)} IDs",
-        )
-        meta_cols[2].metric(
-            "Formato cartão",
-            str(selected_generation.get("card_format_label") or "-"),
-        )
-        meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
-        detail_cols = st.columns(4)
-        detail_cols[0].write(
-            "batch_label: "
-            + (
-                f"`{selected_generation.get('analysis_batch_label', '-')}`"
-                if len(selected_generation.get("analysis_batch_labels") or []) <= 1
-                else f"`{len(selected_generation.get('analysis_batch_labels') or [])} labels`"
-            )
-        )
-        detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
-        detail_cols[2].write("origem: `aggregate`")
-        detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
-        st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
-    else:
-        meta_cols[0].metric("Geração operacional", str(selected_generation.get("operational_generation_label") or "-"))
-        meta_cols[1].metric("generation_event_id", str(selected_ge_id))
-        meta_cols[2].metric("Formato cartão", f"{selected_card_format}D")
-        meta_cols[3].metric("Jogos persistidos", int(selected_generation.get("games_count", 0) or 0))
-        detail_cols = st.columns(4)
-        detail_cols[0].write(f"batch_label: `{selected_generation.get('analysis_batch_label', '-')}`")
-        detail_cols[1].write(f"ml_enabled: `{bool(selected_generation.get('ml_enabled', False))}`")
-        detail_cols[2].write(f"origem: `{selected_generation.get('origin', '-')}`")
-        detail_cols[3].write(f"persistência: `{selected_generation.get('persistence_status', '-')}`")
-        st.caption(f"created_at: `{selected_generation.get('created_at', '-')}`")
-        pre_final_summary = load_pre_final_pool_coverage_summary(DB_PATH, selected_ge_id)
-        if pre_final_summary:
-            st.info(
-                "Calibração pré-final aplicada (M-ML-071): "
-                f"{'SIM' if pre_final_summary.get('pre_final_calibration_applied') else 'NÃO'} | "
-                f"pool pré-final={int(pre_final_summary.get('pre_final_pool_size', 0) or 0)} | "
-                f"reordenados={int(pre_final_summary.get('candidates_reordered', 0) or 0)} | "
-                f"substituídos={int(pre_final_summary.get('candidates_replaced', 0) or 0)} | "
-                f"política={pre_final_summary.get('pre_final_calibration_policy', '—')}"
-            )
-        from lotoia.ml.authorized_ml_calibration_plan import (
-            build_calibration_semantics_ui_labels,
-            load_generation_event_context,
-        )
-
-        _gen_ctx = load_generation_event_context(int(selected_ge_id), DB_PATH)
-        if _gen_ctx.get("authorized_plan_loaded_from_db") or _gen_ctx.get(
-            "calibration_plan_loaded_from_db"
-        ):
-            _sem_labels = build_calibration_semantics_ui_labels(_gen_ctx)
-            st.info(
-                f"{_sem_labels['authorized_plan_loaded_label']} | "
-                f"{_sem_labels['authorized_plan_applied_label']} | "
-                f"GE origem={int(_gen_ctx.get('authorized_plan_source_generation_event_id', 0) or _gen_ctx.get('calibration_plan_source_generation_event_id', 0) or 0)} | "
-                f"{_sem_labels['verdict_after_authorized_plan_label']} | "
-                f"{_sem_labels['gp_tier_after_authorized_plan_label']}"
-            )
-        structural_pool_summary = load_structural_15d_pool_coverage_summary(DB_PATH, selected_ge_id)
-        if structural_pool_summary.get("structural_pool_applied"):
-            confronto = dict(structural_pool_summary.get("confronto_recent_contests") or {})
-            st.info(
-                "Pool estrutural ML 15D: "
-                f"origem={structural_pool_summary.get('pool_origin', '—')} | "
-                f"tamanho={int(structural_pool_summary.get('structural_pool_size', 0) or 0)} | "
-                f"conformes={int(structural_pool_summary.get('structural_compliant_pool_size', 0) or 0)} | "
-                f"compliance={float(structural_pool_summary.get('compliance_rate', 0.0) or 0.0):.2%} | "
-                f"confronto={int(confronto.get('reference_contest_window', 10) or 10)} concursos"
-            )
-        hierarchy_summary = load_ml_operational_hierarchy_coverage_summary(DB_PATH, selected_ge_id)
-        if hierarchy_summary.get("hierarchy_applied"):
-            stage_results = dict(hierarchy_summary.get("stage_results") or {})
-            stage_lines = []
-            for stage_id in (
-                "conformidade_estrutural",
-                "diversidade",
-                "cobertura",
-                "fechamento_gp",
-                "validacao_final",
-            ):
-                row = dict(stage_results.get(stage_id) or {})
-                if row:
-                    stage_lines.append(
-                        f"{row.get('stage_label', stage_id)}: {row.get('status', '—')}"
-                    )
-            st.info(
-                "Hierarquia Operacional ML: "
-                f"versão={hierarchy_summary.get('ml_hierarchy_version', '—')} | "
-                f"etapa atual={hierarchy_summary.get('current_stage', '—')} | "
-                f"compliance={'SIM' if hierarchy_summary.get('hierarchy_compliance') else 'NÃO'}"
-            )
-            if stage_lines:
-                st.caption(" • ".join(stage_lines))
-            if hierarchy_summary.get("blocking_reason"):
-                st.warning(
-                    f"Bloqueio hierárquico: {hierarchy_summary.get('blocking_reason')} | "
-                    f"Ação: {', '.join(hierarchy_summary.get('corrective_action_applied') or []) or '—'}"
-                )
-        recovery_summary = load_pre_gp_recovery_coverage_summary(DB_PATH, selected_ge_id)
-        if recovery_summary.get("internal_recovery_attempted"):
-            success_label = "SIM" if recovery_summary.get("internal_recovery_success") else "NÃO"
-            st.info(
-                "Recuperação pré-GP (M-ML-074): "
-                f"tentativas={int(recovery_summary.get('internal_recovery_attempts', 0) or 0)} | "
-                f"sucesso={success_label} | "
-                f"GP entregue={'SIM' if recovery_summary.get('final_gp_delivered') else 'NÃO'} | "
-                f"aprovada na tentativa={recovery_summary.get('successful_attempt_index', '—')}"
-            )
-            best_metrics = dict(recovery_summary.get("best_attempt_metrics") or {})
-            if best_metrics:
-                st.caption(
-                    "Melhor tentativa — "
-                    f"diversidade={float(best_metrics.get('diversity_score', 0.0) or 0.0):.4f} | "
-                    f"overlap={best_metrics.get('max_overlap', '—')}"
-                )
-
-    monitoring_ids = (
-        [
-            int(row.get("generation_event_id", 0) or 0)
-            for row in operational_generations
-            if int(row.get("generation_event_id", 0) or 0) > 0
-        ]
-        if is_all_operational_generations_selection(selected_label)
-        else ([selected_ge_id] if selected_ge_id > 0 else [])
-    )
-    st.divider()
-    render_structural_memory_timeline_panel(
+    dashboard_result = render_modern_structural_coverage_dashboard(
         DB_PATH,
-        selected_generation_event_id=selected_ge_id if selected_ge_id > 0 else None,
+        operational_generations=operational_generations,
+        render_legacy_diagnostics=_render_legacy_structural_diagnostics,
     )
-    st.divider()
-    render_m_core_003_bias_monitoring_panel(
-        db_path=DB_PATH,
-        generation_event_ids=monitoring_ids,
-    )
-    st.divider()
-
-    if is_all_operational_generations_selection(selected_label):
+    if dashboard_result.get("available"):
         _mark_structural_coverage_aggregate_reviewed(operational_generations)
-
-    payload = _cached_operational_card_structure_diagnostics_from_db(
-        str(DB_PATH),
-        selected_ge_id if selected_ge_id > 0 else None,
-        selected_card_format,
-    )
-    st.caption(
-        f"Fonte: `{payload.get('source', 'postgresql')}` | Tabelas: `{payload.get('tables', '-')}` | "
-        f"coverage_layer=`{payload.get('coverage_layer', 'operational_core_002')}`"
-    )
-    if not payload.get("available"):
-        st.warning("Geração operacional selecionada sem jogos persistidos em generated_games.")
-        return
-
-    policy_context = build_structural_policy_coverage_context(
-        DB_PATH,
-        payload,
-        selected_ge_id if selected_ge_id > 0 else None,
-        selected_card_format,
-    )
-    if policy_context.get("available"):
-        render_structural_policy_15d_operational_block(
-            policy_context.get("memory"),
-            policy_context.get("application"),
-            policy_context.get("compliance"),
-        )
-
-    _render_structural_coverage_diagnostics_body(payload)
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
