@@ -35,6 +35,7 @@ jobs:
           {
             echo "db_access_check_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "commit_sha=${GITHUB_SHA}"
+            echo "check_generation=public-url-retest"
           } > "$STATUS_FILE"
 
           if [ -z "${DATABASE_URL:-}" ]; then
