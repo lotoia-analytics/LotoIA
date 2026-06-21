@@ -2135,6 +2135,42 @@ def get_previous_official_contest(target_contest: int | None) -> RFEPreviousCont
     )
 
 
+def _build_generation_previous_contest_context(target_contest: int | None) -> dict[str, Any]:
+    """Contexto RFE/15D do concurso imediatamente anterior — PostgreSQL soberano."""
+    previous_contest_reference = _load_previous_contest_numbers_for_rfe(target_contest)
+    previous_contest_numbers = list(previous_contest_reference.numbers or [])
+    rfe_reference_source = str(previous_contest_reference.source or "indisponivel")
+    return {
+        "previous_contest_numbers": previous_contest_numbers,
+        "rfe_previous_contest_found": bool(previous_contest_reference.found),
+        "rfe_previous_contest_id": previous_contest_reference.contest_id,
+        "rfe_previous_contest_numbers": " ".join(f"{number:02d}" for number in previous_contest_numbers) or "-",
+        "rfe_previous_contest_message": str(previous_contest_reference.message or ""),
+        "rfe_previous_contest_source": rfe_reference_source,
+        "rfe_status": "OK" if previous_contest_reference.found else "BLOQUEADO",
+        "rfe_enabled": True,
+    }
+
+
+def _resolve_generation_previous_contest_context(result: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Preferência: contexto já calculado na geração; fallback DB-first por target_contest."""
+    if isinstance(result, Mapping) and list(result.get("previous_contest_numbers") or []):
+        return {
+            "previous_contest_numbers": list(result.get("previous_contest_numbers") or []),
+            "rfe_previous_contest_found": bool(result.get("rfe_previous_contest_found")),
+            "rfe_previous_contest_id": result.get("rfe_previous_contest_id"),
+            "rfe_previous_contest_numbers": str(result.get("rfe_previous_contest_numbers") or "-"),
+            "rfe_previous_contest_message": str(result.get("rfe_previous_contest_message") or ""),
+            "rfe_previous_contest_source": str(result.get("rfe_previous_contest_source") or ""),
+            "rfe_status": str(result.get("rfe_status") or "OK"),
+            "rfe_enabled": bool(result.get("rfe_enabled", True)),
+        }
+    target_contest = _safe_int((result or {}).get("target_contest"), default=None)
+    if target_contest is None and isinstance(result, Mapping):
+        target_contest = _resolve_persist_target_contest(result)
+    return _build_generation_previous_contest_context(target_contest)
+
+
 def _load_imported_contest_numbers() -> list[int]:
     with get_session(DB_PATH) as session:
         rows = session.query(ImportedContest.contest_number).order_by(ImportedContest.contest_number.asc()).all()
@@ -5439,6 +5475,42 @@ def _load_previous_contest_numbers_for_rfe(target_contest: int | None) -> RFEPre
         source="indisponivel",
         message="Nenhum concurso oficial persistido disponível.",
     )
+
+
+def _build_generation_previous_contest_context(target_contest: int | None) -> dict[str, Any]:
+    """Contexto RFE/15D do concurso imediatamente anterior — PostgreSQL soberano."""
+    previous_contest_reference = _load_previous_contest_numbers_for_rfe(target_contest)
+    previous_contest_numbers = list(previous_contest_reference.numbers or [])
+    rfe_reference_source = str(previous_contest_reference.source or "indisponivel")
+    return {
+        "previous_contest_numbers": previous_contest_numbers,
+        "rfe_previous_contest_found": bool(previous_contest_reference.found),
+        "rfe_previous_contest_id": previous_contest_reference.contest_id,
+        "rfe_previous_contest_numbers": " ".join(f"{number:02d}" for number in previous_contest_numbers) or "-",
+        "rfe_previous_contest_message": str(previous_contest_reference.message or ""),
+        "rfe_previous_contest_source": rfe_reference_source,
+        "rfe_status": "OK" if previous_contest_reference.found else "BLOQUEADO",
+        "rfe_enabled": True,
+    }
+
+
+def _resolve_generation_previous_contest_context(result: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Preferência: contexto já calculado na geração; fallback DB-first por target_contest."""
+    if isinstance(result, Mapping) and list(result.get("previous_contest_numbers") or []):
+        return {
+            "previous_contest_numbers": list(result.get("previous_contest_numbers") or []),
+            "rfe_previous_contest_found": bool(result.get("rfe_previous_contest_found")),
+            "rfe_previous_contest_id": result.get("rfe_previous_contest_id"),
+            "rfe_previous_contest_numbers": str(result.get("rfe_previous_contest_numbers") or "-"),
+            "rfe_previous_contest_message": str(result.get("rfe_previous_contest_message") or ""),
+            "rfe_previous_contest_source": str(result.get("rfe_previous_contest_source") or ""),
+            "rfe_status": str(result.get("rfe_status") or "OK"),
+            "rfe_enabled": bool(result.get("rfe_enabled", True)),
+        }
+    target_contest = _safe_int((result or {}).get("target_contest"), default=None)
+    if target_contest is None and isinstance(result, Mapping):
+        target_contest = _resolve_persist_target_contest(result)
+    return _build_generation_previous_contest_context(target_contest)
 
 
 def _update_rfe_diagnostics(diagnostics: dict[str, Any], result: RFEValidationResult) -> None:
@@ -12641,10 +12713,13 @@ def _persist_clean_law15_generation_history(
         generation_context["operational_structural_memory_snapshot"] = memory_snapshot
         generation_context["structural_memory_mission_id"] = "M-MEMORY-001"
     generation_context = sync_persisted_event_operational_status(generation_context)
+    previous_contest_context = _resolve_generation_previous_contest_context(result)
+    generation_context.update(previous_contest_context)
     payload_games, partial_promotion_patch = apply_partial_promotion_to_payload_games(
         payload_games,
         generation_context=dict(generation_context),
         card_format=int(selected_card_format),
+        previous_contest_numbers=list(previous_contest_context.get("previous_contest_numbers") or []),
     )
     generation_context.update(partial_promotion_patch)
     try:
@@ -14041,6 +14116,7 @@ def _run_clean_law15_generation(
     target_contest = None
     if latest_contest_number is not None and latest_contest_number > 0:
         target_contest = int(latest_contest_number) + 1
+    previous_contest_context = _build_generation_previous_contest_context(target_contest)
 
     sovereign_payload = _invoke_sovereign_adm_generate_best_games(
         requested_count=total_games,
@@ -14165,12 +14241,7 @@ def _run_clean_law15_generation(
             f"{number:02d}" for number in (latest_contest or {}).get("dezenas", [])
         )
         or "-",
-        "rfe_previous_contest_found": False,
-        "rfe_previous_contest_id": None,
-        "rfe_previous_contest_numbers": "-",
-        "rfe_previous_contest_source": "not_applicable_sovereign_path",
-        "rfe_previous_contest_message": "",
-        "rfe_status": "NOT_APPLICABLE_SOVEREIGN_PATH",
+        **previous_contest_context,
         "batch_fill_strategy": "SOVEREIGN_GENERATE_BEST_GAMES",
         "generation_mode": "LEI15_CORE_002_SOVEREIGN",
         "policy_mode": "ADR_047_CONSTITUTIONAL",

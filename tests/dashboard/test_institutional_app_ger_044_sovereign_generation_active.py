@@ -12,6 +12,25 @@ from dashboard.institutional_build import BUILD_MARKER
 from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, ENV_GENERATION_ENABLED
 
 
+@pytest.fixture(autouse=True)
+def _mock_sovereign_previous_contest_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Evita consulta PostgreSQL ao resolver concurso anterior nos testes de geração."""
+    monkeypatch.setattr(
+        institutional_app,
+        "_build_generation_previous_contest_context",
+        lambda target: {
+            "previous_contest_numbers": list(range(1, 16)),
+            "rfe_previous_contest_found": True,
+            "rfe_previous_contest_id": int(target or 1) - 1 if target else 3700,
+            "rfe_previous_contest_numbers": " ".join(f"{n:02d}" for n in range(1, 16)),
+            "rfe_previous_contest_message": "",
+            "rfe_previous_contest_source": "official_lotofacil_history",
+            "rfe_status": "OK",
+            "rfe_enabled": True,
+        },
+    )
+
+
 def test_institutional_app_build_v18() -> None:
     assert institutional_app.APP_BUILD == BUILD_MARKER
 
@@ -148,6 +167,17 @@ def test_persist_path_includes_sovereign_batch_label(
     monkeypatch.setattr(institutional_app, "get_latest_official_contest", lambda: {"contest_number": 3700, "dezenas": list(range(1, 16))})
     monkeypatch.setattr(
         institutional_app,
+        "_load_previous_contest_numbers_for_rfe",
+        lambda _target: institutional_app.RFEPreviousContestReference(
+            found=True,
+            contest_id=3700,
+            numbers=list(range(1, 16)),
+            source="official_lotofacil_history",
+            message=None,
+        ),
+    )
+    monkeypatch.setattr(
+        institutional_app,
         "validate_lei15_lei15a_runtime_contract",
         lambda **kwargs: {"persistence_allowed": True},
     )
@@ -182,6 +212,7 @@ def test_persist_path_includes_sovereign_batch_label(
     assert captured["analysis_batch_label"] == BATCH_LABEL
     assert captured["target_contest"] == 3701
     ctx = captured.get("generation_context") or {}
+    assert list(ctx.get("previous_contest_numbers") or []) == list(range(1, 16))
     assert ctx.get("analysis_batch_label") == BATCH_LABEL
     assert ctx.get("ml_enabled") is False
     assert ctx.get("sovereign_generation_path") == "generate_best_games"
