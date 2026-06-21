@@ -1,0 +1,7 @@
+db_access_check_at=2026-06-21T06:33:27Z
+commit_sha=d247687332727d330685981229374d007ed0d3d1
+status=FAILED
+reason=PostgreSQL connection failed
+psql_error_sanitized<<EOF
+psql: error: could not translate host name "postgres.railway.internal" to address: Name or service not known
+EOF
