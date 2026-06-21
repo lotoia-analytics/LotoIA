@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from lotoia.clients.auto_conference_job import run_auto_conference
 from lotoia.clients.premio_notifier import notify_winners
+from lotoia.public.institutional_conference_job import run_institutional_conference
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_service import ResultSyncService
 
@@ -101,7 +102,13 @@ class ClientConferenceScheduler:
             if window.action == "sync":
                 summary = self.sync_service.sync_latest().to_dict()
             elif window.action == "conference":
-                summary = run_auto_conference(db_path=self.db_path)
+                client_summary = run_auto_conference(db_path=self.db_path)
+                inst_summary = run_institutional_conference(db_path=self.db_path)
+                summary = {
+                    "client_conference": client_summary,
+                    "institutional_conference": inst_summary,
+                    "contest_number": client_summary.get("contest_number") or inst_summary.get("contest_number")
+                }
                 contest_number = int(summary.get("contest_number") or 0)
             else:
                 if contest_number <= 0:
