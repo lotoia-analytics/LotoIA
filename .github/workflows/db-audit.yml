@@ -2,79 +2,27 @@ name: DB Access Check
 
 on:
   workflow_dispatch:
-    inputs:
-      sql:
-        description: "SQL opcional para executar depois do teste de conexão"
-        required: false
-        default: ""
-        type: string
   push:
     paths:
       - ".github/workflows/db-audit.yml"
-
-permissions:
-  contents: write
 
 jobs:
   db-access:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Verify PostgreSQL access and write status file
+      - name: Verify PostgreSQL access
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          set +e
-          mkdir -p runtime
-          STATUS_FILE="runtime/db-access-status.txt"
-          {
-            echo "db_access_check_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "commit_sha=${GITHUB_SHA}"
-            echo "check_generation=public-url-retest"
-          } > "$STATUS_FILE"
-
-          if [ -z "${DATABASE_URL:-}" ]; then
-            echo "status=FAILED" >> "$STATUS_FILE"
-            echo "reason=DATABASE_URL secret não configurado ou vazio" >> "$STATUS_FILE"
-            exit 0
-          fi
-
-          echo "DATABASE_URL secret encontrado. Testando conexão PostgreSQL..."
-          PSQL_OUTPUT=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_access_ok;" 2>&1)
-          PSQL_EXIT=$?
-
-          if [ "$PSQL_EXIT" -eq 0 ]; then
-            echo "status=OK" >> "$STATUS_FILE"
-            echo "reason=PostgreSQL access confirmed" >> "$STATUS_FILE"
-          else
-            echo "status=FAILED" >> "$STATUS_FILE"
-            echo "reason=PostgreSQL connection failed" >> "$STATUS_FILE"
-            echo "psql_error_sanitized<<EOF" >> "$STATUS_FILE"
-            echo "$PSQL_OUTPUT" | sed -E 's#postgresql://[^ @]+#postgresql://***#g' | sed -E 's#password=[^ ]+#password=***#g' >> "$STATUS_FILE"
-            echo "EOF" >> "$STATUS_FILE"
-          fi
-
-          cat "$STATUS_FILE"
-
-      - name: Commit status file
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/db-access-status.txt
-          git commit -m "chore: update database access status" || echo "No status changes to commit"
-          git push
-
-      - name: Optional manual SQL
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sql != '' }}
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SQL: ${{ inputs.sql }}
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$SQL"
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL secret vazio ou não configurado."
+            exit 1
+          fi
+
+          echo "Testando acesso ao PostgreSQL..."
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT 1 AS db_access_ok;"
+          echo "DB_ACCESS_OK"
