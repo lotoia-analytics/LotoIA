@@ -1,0 +1,28 @@
+name: DB Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql:
+        description: "SQL para executar no PostgreSQL institucional"
+        required: false
+        default: "SELECT current_database(), now();"
+        type: string
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run SQL against DATABASE_URL secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SQL: ${{ inputs.sql }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret não configurado."
+            exit 1
+          fi
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$SQL"
