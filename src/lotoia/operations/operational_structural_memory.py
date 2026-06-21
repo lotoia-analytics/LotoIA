@@ -80,6 +80,7 @@ def compute_operational_structural_memory_snapshot(
     *,
     db_path: Path | str | None = None,
     generation_event_id: int | None = None,
+    sanity_bundle: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Calcula snapshot de memória estrutural a partir do GP final (hook pós-compose)."""
     cards = _extract_cards_from_games(games)
@@ -89,6 +90,10 @@ def compute_operational_structural_memory_snapshot(
             "available": False,
             "reason": "no_valid_15d_cards",
         }
+
+    resolved_sanity = dict(sanity_bundle or {})
+    if not resolved_sanity and games:
+        resolved_sanity = dict((games[0] or {}).get("structural_sovereignty_sanity") or {})
 
     bias_report = build_m_core_003_bias_monitoring_report(
         cards,
@@ -158,6 +163,10 @@ def compute_operational_structural_memory_snapshot(
                 "entropy_suffix": bias_report.get("entropy_suffix"),
             },
             "comparacao_oficial": comparacao_oficial,
+            "structural_sovereignty_sanity": resolved_sanity,
+            "sanity_discard_counts_by_kind": dict(
+                resolved_sanity.get("discard_counts_by_kind") or {}
+            ),
         },
     }
 
