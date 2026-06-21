@@ -77,7 +77,7 @@ def test_overlap_composition_rows_arrow_compatible_types() -> None:
 
 def test_relaxed_overlap_limits_scale_with_batch_size() -> None:
     assert _relaxed_overlap_limits(10) == (11, 12)
-    assert _relaxed_overlap_limits(50) == (11, 12, 13, 14)
+    assert _relaxed_overlap_limits(50) == (11, 12, 13, 14, 15)
 
 
 def test_generate_best_games_50_with_ml_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
