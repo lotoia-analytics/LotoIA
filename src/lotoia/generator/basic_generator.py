@@ -538,6 +538,8 @@ def generate_best_games(
     seed: int | None = None,
     batch_label: str | None = None,
     calibration_plan: dict[str, object] | None = None,
+    *,
+    _auto_calib_attempt: int = 0,
 ) -> dict[str, object]:
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
@@ -1263,4 +1265,28 @@ def generate_best_games(
                 sanity_bundle=dict(_sanity_bundle),
             )
         )
+
+    if _apply_sovereign and best_games:
+        from lotoia.api.lotoia_calibration_api import process_sovereign_payload_with_lotoia_api
+        from lotoia.database.database import DEFAULT_DATABASE_PATH
+
+        api_result = process_sovereign_payload_with_lotoia_api(
+            payload,
+            games=best_games,
+            batch_label=batch_label,
+            db_path=DEFAULT_DATABASE_PATH,
+            auto_calib_attempt=int(_auto_calib_attempt),
+        )
+        payload.update(dict(api_result.get("payload_patch") or {}))
+        if api_result.get("should_regenerate") and api_result.get("calibration_plan"):
+            return generate_best_games(
+                count=count,
+                pool_size=pool_size,
+                ml_enabled=ml_enabled,
+                seed=seed,
+                batch_label=batch_label,
+                calibration_plan=dict(api_result.get("calibration_plan") or {}),
+                _auto_calib_attempt=int(_auto_calib_attempt) + 1,
+            )
+
     return payload

@@ -221,6 +221,56 @@ def build_actionable_insight_cards(
     return cards[:4]
 
 
+def export_structural_diagnosis_for_lotoia_api(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """Normaliza bundle estrutural para consumo da API LotoIA (M-AUTO-CALIB-001)."""
+    fidelity = dict(bundle.get("fidelity") or {})
+    bias_report = dict(bundle.get("bias_report") or {})
+    quadrant_generated = dict(bundle.get("quadrant_generated") or {})
+    quadrant_official = dict(bundle.get("quadrant_official") or {})
+    score = float(fidelity.get("structural_fidelity_score", 0.0) or 0.0)
+
+    quadrant_gaps: list[dict[str, Any]] = []
+    for label in (item[2] for item in QUADRANT_RANGES):
+        official_share = float(quadrant_official.get(label, 0.0) or 0.0)
+        generated_share = float(quadrant_generated.get(label, 0.0) or 0.0)
+        if official_share > 0.20 and generated_share < official_share * 0.65:
+            quadrant_gaps.append(
+                {
+                    "quadrant": label,
+                    "official_share": official_share,
+                    "generated_share": generated_share,
+                    "gap_ratio": round(generated_share / official_share, 4) if official_share else 0.0,
+                }
+            )
+
+    bias_patterns = [
+        {
+            "kind": str(row.get("kind") or ""),
+            "pattern": str(row.get("pattern") or ""),
+            "ratio": float(row.get("ratio") or 0.0),
+            "severity": str(row.get("severity") or ""),
+        }
+        for row in list(bias_report.get("ratio_rows") or [])
+    ]
+    max_bias_ratio = max((float(row.get("ratio") or 0.0) for row in bias_patterns), default=0.0)
+
+    return {
+        "mission_id": MISSION_ID,
+        "consumer_mission_id": "M-AUTO-CALIB-001",
+        "structural_fidelity_score": score,
+        "fidelity_status": resolve_fidelity_status(score),
+        "max_bias_ratio": round(max_bias_ratio, 4),
+        "quadrant_generated": quadrant_generated,
+        "quadrant_official": quadrant_official,
+        "quadrant_gaps": quadrant_gaps,
+        "bias_patterns": bias_patterns,
+        "bias_verdict": str(bias_report.get("verdict") or ""),
+        "bias_compliance": bool(bias_report.get("compliance")),
+        "official_contests_used": int(fidelity.get("official_contests_used", 0) or 0),
+        "correction_commands": [],
+    }
+
+
 def build_structural_intelligence_bundle(
     db_path: Any,
     *,

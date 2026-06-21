@@ -10,6 +10,7 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 
 | ID | Título | Status | Veredicto |
 |----|--------|--------|-----------|
+| [M-AUTO-CALIB-001](#m-auto-calib-001--api-lotoia--calibração-autônoma) | API LotoIA calibração autônoma | `CONCLUIDA` | `API GOVERNA / CENTRAL ML AUDITORIA` |
 | [M-SANITY-001](#m-sanity-001--saneamento-estrutural-e-tolerância-zero-ao-vazio-estatístico) | Filtro Soberania Oficial | `CONCLUIDA` | `HARD BLOCK ATIVO / ZERO VOID` |
 | [M-UI-MODERN-001](#m-ui-modern-001--modernização-da-cobertura-estrutural-uiux-20) | Dashboard visual Cobertura Estrutural | `CONCLUIDA` | `HEALTH SCORE + TIMELINE ATIVOS` |
 | [M-MEMORY-001](#m-memory-001--persistência-de-cobertura-e-memória-evolutiva) | Memória evolutiva cobertura estrutural | `CONCLUIDA` | `MEMÓRIA PERSISTIDA / TIMELINE ATIVA` |
@@ -51,6 +52,25 @@ Log cronológico de missões, evidências, bloqueios e veredictos.
 ---
 
 ## Entradas
+
+### M-AUTO-CALIB-001 — API LotoIA — Calibração Autônoma
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | `CONCLUIDA` |
+| **Build ADM** | `institutional-adm-runtime-v98` |
+| **Pré-requisito** | M-MEMORY-001, M-UI-MODERN-001, M-SANITY-001 |
+| **Desbloqueia** | Integrações Telegram/agentes externos |
+
+**Objetivo:** Centralizar calibração e oficialização na **API LotoIA**, com loop autônomo
+pós-geração baseado em Cobertura Estrutural (Fidelity < 90% ou Viés ≥ 2.0x).
+
+**Entregas:** `lotoia_calibration_api`, endpoints `/api/lotoia/v1/*`, hook em
+`generate_best_games`, Central ML em modo auditoria (sem comandos manuais).
+
+**Veredicto:** **M-AUTO-CALIB-001 CONCLUÍDA — API LOTOIA GOVERNA CALIBRAÇÃO AUTÔNOMA**
+
+---
 
 ### M-SANITY-001 — Saneamento Estrutural e Tolerância Zero ao Vazio Estatístico
 
