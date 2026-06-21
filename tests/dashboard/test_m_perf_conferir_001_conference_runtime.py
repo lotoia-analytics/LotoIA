@@ -23,19 +23,20 @@ from dashboard.institutional_conference_runtime import (
 
 
 def test_build_marker_v81_conference_perf() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v100"
 
 
 def test_conference_page_loads_summary_only_with_limit() -> None:
     source = inspect.getsource(institutional_app._load_official_conference_generation_groups)
-    assert "summary_only=True" in source
+    assert "summary_only=page_load" in source
     assert "CONFERENCE_EVENTS_LIMIT" in source
 
 
 def test_conference_page_single_lot_on_demand() -> None:
     source = inspect.getsource(institutional_app._render_conference_page)
-    assert "Conferir lote selecionado" in source
-    assert "SESSION_CONFERENCE_SELECTED_GE" in source
+    assert "Conferir bateria selecionada" in source
+    assert "SESSION_CONFERENCE_SELECTED_BATTERY" in source
+    assert "build_operational_battery_groups" in source
     assert "st.spinner" in source
     assert "conference_all_official=True" not in source
     assert "read_cached_conference_result" in source
@@ -44,7 +45,8 @@ def test_conference_page_single_lot_on_demand() -> None:
 def test_run_institutional_conference_does_not_load_unbounded_groups() -> None:
     source = inspect.getsource(institutional_app._run_institutional_conference)
     assert "limit=None" not in source
-    assert "generation_event_id=resolved_ge_id" in source or "generation_event_id=" in source
+    assert "merge_battery_conference_results" in source
+    assert "battery_id" in source
 
 
 def test_latest_contest_uses_limited_cached_query() -> None:
@@ -94,36 +96,35 @@ def test_conference_cache_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
         raising=False,
     )
     store_cached_conference_result(
-        generation_event_id=35,
+        battery_id="BAT-001",
         contest_number=3713,
-        check_result={"status": "checked", "generation_event_id": 35, "contest_number": 3713},
+        check_result={"status": "checked", "battery_id": "BAT-001", "contest_number": 3713},
     )
-    assert conference_cache_key(generation_event_id=35, contest_number=3713) in session[SESSION_CONFERENCE_CACHE]
-    cached = read_cached_conference_result(generation_event_id=35, contest_number=3713)
+    assert conference_cache_key(battery_id="BAT-001", contest_number=3713) in session[SESSION_CONFERENCE_CACHE]
+    cached = read_cached_conference_result(battery_id="BAT-001", contest_number=3713)
     assert cached is not None
-    assert cached["generation_event_id"] == 35
+    assert cached["battery_id"] == "BAT-001"
 
 
 def test_run_institutional_conference_single_lot_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[dict] = []
+    official_groups = [
+        {
+            "generation_event_id": 35,
+            "total_games": 20,
+            "official_release_allowed": True,
+            "is_official_conference_eligible": True,
+            "context_json": {"lot_operational_status": "officialized"},
+            "games": [{"numbers": list(range(1, 16)), "game_index": 1}],
+            "batch_id": "batch-35",
+        }
+    ]
 
-    def _fake_load(**kwargs):
-        calls.append(dict(kwargs))
-        if kwargs.get("summary_only"):
-            return [{"generation_event_id": 35, "total_games": 20, "official_release_allowed": True}]
-        return [
-            {
-                "generation_event_id": 35,
-                "total_games": 20,
-                "official_release_allowed": True,
-                "is_official_conference_eligible": True,
-                "context_json": {"lot_operational_status": "officialized"},
-                "games": [{"numbers": list(range(1, 16)), "game_index": 1}],
-                "batch_id": "batch-35",
-            }
-        ]
-
-    monkeypatch.setattr(institutional_app, "_load_persisted_generation_event_groups", _fake_load)
+    monkeypatch.setattr(
+        institutional_app,
+        "_load_official_conference_generation_groups",
+        lambda **_kwargs: official_groups,
+    )
+    monkeypatch.setattr(institutional_app, "_prepare_conference_group", lambda group: dict(group))
     monkeypatch.setattr(
         institutional_app,
         "_get_conference_contest_from_imported",
@@ -161,16 +162,15 @@ def test_run_institutional_conference_single_lot_only(monkeypatch: pytest.Monkey
 
     institutional_app._run_institutional_conference(
         contest_number=3713,
-        generation_event_id=35,
+        battery_id="BAT-001",
         conference_all_official=False,
     )
 
-    full_loads = [call for call in calls if not call.get("summary_only")]
-    assert full_loads
-    assert full_loads[-1].get("generation_event_id") == 35
     result = institutional_app.st.session_state.get("institutional_check_result")
     assert isinstance(result, dict)
-    assert int(result.get("generation_event_id", 0) or 0) == 35
+    assert result.get("scope") == "operational_battery"
+    assert result.get("battery_id") == "BAT-001"
+    assert int(result.get("total_games_checked", 0) or 0) == 20
 
 
 def test_mission_id_declared() -> None:

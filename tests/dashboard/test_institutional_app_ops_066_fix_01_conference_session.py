@@ -10,33 +10,34 @@ from dashboard import institutional_app as admin_app
 from dashboard.institutional_build import BUILD_MARKER
 from dashboard.institutional_conference_runtime import (
     OPS_FIX_MISSION_ID,
+    SESSION_CONFERENCE_SELECTED_BATTERY,
     SESSION_CONFERENCE_SELECTED_GE,
     ensure_conference_session_defaults,
-    is_valid_resolved_generation_event_id,
-    read_conference_selected_ge,
-    sync_conference_selectbox_selection,
+    is_valid_resolved_battery_id,
+    read_conference_selected_battery,
+    sync_conference_battery_selection,
 )
 
 
 def test_session_constant_defined() -> None:
-    assert SESSION_CONFERENCE_SELECTED_GE == "conference_selected_generation_event_id"
+    assert SESSION_CONFERENCE_SELECTED_BATTERY == "conference_selected_battery_id"
 
 
 def test_build_marker_bumped() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v100"
 
 
 def test_run_conference_does_not_write_widget_session_key() -> None:
     source = inspect.getsource(admin_app._run_institutional_conference)
-    assert "st.session_state[SESSION_CONFERENCE_SELECTED_GE]" not in source
-    assert "is_valid_resolved_generation_event_id" in source
+    assert "st.session_state[SESSION_CONFERENCE_SELECTED_BATTERY]" not in source
+    assert "is_valid_resolved_battery_id" in source
 
 
-def test_is_valid_resolved_generation_event_id() -> None:
-    assert is_valid_resolved_generation_event_id(42)
-    assert not is_valid_resolved_generation_event_id(None)
-    assert not is_valid_resolved_generation_event_id(0)
-    assert not is_valid_resolved_generation_event_id(-1)
+def test_is_valid_resolved_battery_id() -> None:
+    assert is_valid_resolved_battery_id("BAT-001")
+    assert not is_valid_resolved_battery_id(None)
+    assert not is_valid_resolved_battery_id("")
+    assert not is_valid_resolved_battery_id("GE-1")
 
 
 def test_ensure_conference_session_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,34 +47,37 @@ def test_ensure_conference_session_defaults(monkeypatch: pytest.MonkeyPatch) -> 
         session,
         raising=False,
     )
-    ensure_conference_session_defaults(default_ge_id=35)
-    assert session[SESSION_CONFERENCE_SELECTED_GE] == 35
+    ensure_conference_session_defaults(default_battery_id="BAT-001")
+    assert session[SESSION_CONFERENCE_SELECTED_BATTERY] == "BAT-001"
 
 
-def test_sync_conference_selectbox_selection_aligns_invalid_choice(
+def test_sync_conference_battery_selection_aligns_invalid_choice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_GE: 99}
+    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_BATTERY: "BAT-999"}
     monkeypatch.setattr(
         "dashboard.institutional_conference_runtime.st.session_state",
         session,
         raising=False,
     )
-    selected = sync_conference_selectbox_selection(selectable_ids=[35, 36], default_ge_id=35)
-    assert selected == 35
-    assert session[SESSION_CONFERENCE_SELECTED_GE] == 35
+    selected = sync_conference_battery_selection(
+        selectable_battery_ids=["BAT-001", "BAT-002"],
+        default_battery_id="BAT-001",
+    )
+    assert selected == "BAT-001"
+    assert session[SESSION_CONFERENCE_SELECTED_BATTERY] == "BAT-001"
 
 
-def test_read_conference_selected_ge(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_conference_selected_battery(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "dashboard.institutional_conference_runtime.st.session_state",
-        {SESSION_CONFERENCE_SELECTED_GE: 42},
+        {SESSION_CONFERENCE_SELECTED_BATTERY: "BAT-002"},
         raising=False,
     )
-    assert read_conference_selected_ge() == 42
+    assert read_conference_selected_battery() == "BAT-002"
 
 
-def test_run_conference_rejects_invalid_explicit_generation_event_id(
+def test_run_conference_rejects_invalid_explicit_battery_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session: dict[str, object] = {}
@@ -84,15 +88,11 @@ def test_run_conference_rejects_invalid_explicit_generation_event_id(
         "_get_conference_contest_from_imported",
         lambda _contest: {"concurso": 3713, "dezenas": list(range(1, 16))},
     )
-
-    def _must_not_load(*_args, **_kwargs):  # pragma: no cover - defensive
-        raise AssertionError("conferência não pode carregar lote com generation_event_id inválido")
-
-    monkeypatch.setattr(admin_app, "_load_persisted_generation_event_groups", _must_not_load)
+    monkeypatch.setattr(admin_app, "_load_official_conference_generation_groups", lambda **_kwargs: [])
 
     admin_app._run_institutional_conference(
         contest_number=3713,
-        generation_event_id=0,
+        battery_id="invalid",
         conference_all_official=False,
     )
 
@@ -104,7 +104,7 @@ def test_run_conference_rejects_invalid_explicit_generation_event_id(
 def test_run_conference_succeeds_without_touching_widget_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_GE: 35}
+    session: dict[str, object] = {SESSION_CONFERENCE_SELECTED_BATTERY: "BAT-001"}
     monkeypatch.setattr(admin_app.st, "session_state", session, raising=False)
     monkeypatch.setattr(admin_app, "_is_valid_conference_contest", lambda _contest: True)
     monkeypatch.setattr(
@@ -114,7 +114,7 @@ def test_run_conference_succeeds_without_touching_widget_key(
     )
     monkeypatch.setattr(
         admin_app,
-        "_load_persisted_generation_event_groups",
+        "_load_official_conference_generation_groups",
         lambda **_kwargs: [
             {
                 "generation_event_id": 35,
@@ -126,6 +126,7 @@ def test_run_conference_succeeds_without_touching_widget_key(
             }
         ],
     )
+    monkeypatch.setattr(admin_app, "_prepare_conference_group", lambda group: dict(group))
     monkeypatch.setattr(
         admin_app,
         "_compare_games_against_contest",
@@ -156,14 +157,14 @@ def test_run_conference_succeeds_without_touching_widget_key(
 
     admin_app._run_institutional_conference(
         contest_number=3713,
-        generation_event_id=35,
+        battery_id="BAT-001",
         conference_all_official=False,
     )
 
-    assert session[SESSION_CONFERENCE_SELECTED_GE] == 35
+    assert session[SESSION_CONFERENCE_SELECTED_BATTERY] == "BAT-001"
     result = session["institutional_check_result"]
     assert result["status"] == "checked"
-    assert int(result.get("generation_event_id", 0) or 0) == 35
+    assert result.get("battery_id") == "BAT-001"
 
 
 def test_mission_id_declared() -> None:
