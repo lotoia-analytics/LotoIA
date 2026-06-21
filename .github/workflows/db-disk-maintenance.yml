@@ -1,0 +1,60 @@
+name: DB Disk Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run ou apply"
+        required: true
+        default: "dry-run"
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+jobs:
+  db-disk-maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install sqlalchemy psycopg2-binary
+
+      - name: Audit database disk usage
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/maintenance/db_disk_usage_audit.py > db-disk-audit.json
+          cat db-disk-audit.json
+
+      - name: Compact scientific memory payloads dry-run
+        if: ${{ inputs.mode == 'dry-run' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/maintenance/compact_scientific_memory_payloads.py --dry-run > db-compact-result.json
+          cat db-compact-result.json
+
+      - name: Compact scientific memory payloads apply
+        if: ${{ inputs.mode == 'apply' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/maintenance/compact_scientific_memory_payloads.py --apply > db-compact-result.json
+          cat db-compact-result.json
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-disk-maintenance-report
+          path: |
+            db-disk-audit.json
+            db-compact-result.json
