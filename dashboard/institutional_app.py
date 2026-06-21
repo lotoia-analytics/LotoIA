@@ -67,6 +67,7 @@ from lotoia.governance.analysis_batch_labels import BATCH_LABEL_UI_OPTIONS
 from lotoia.governance.batch_operational_scope import (
     CONFERENCE_ELIGIBLE_OPERATIONAL_STATUSES,
     INACTIVE_READING_OPERATIONAL_STATUSES,
+    OPERATIONAL_STATUS_APPROVED,
     OPERATIONAL_STATUS_NOT_OFFICIALIZED,
     OPERATIONAL_STATUS_PENDING,
     is_active_reading_scope,
@@ -9229,7 +9230,9 @@ def _render_central_ml_diagnostics_page(snapshot: dict[str, Any]) -> None:
         ),
     ):
         return
-    render_ml_calibration_cockpit(DB_PATH)
+    from lotoia.api.lotoia_calibration_api import is_lotoia_auto_calib_api_enabled
+
+    render_ml_calibration_cockpit(DB_PATH, audit_only=is_lotoia_auto_calib_api_enabled())
     st.markdown("### Detalhes técnicos adicionais")
     with st.expander("Diagnóstico ML observacional (alertas vazamento lateral)", expanded=False):
         _render_central_ml_observational_alerts(snapshot)
@@ -12237,6 +12240,9 @@ def _persist_clean_law15_generation_history(
     calibration_authorized = bool(cockpit_bundle.get("calibration_authorized")) or bool(
         authorized_plan.get("authorized")
     )
+    lotoia_api = dict(result.get("lotoia_api_governance") or {})
+    if lotoia_api.get("auto_officialized") or lotoia_api.get("auto_recalibrated"):
+        calibration_authorized = True
     generation_origin = str(result.get("generation_origin") or GENERATION_ORIGIN_GENERATOR)
     simulation_mode = bool(result.get("simulation_mode")) or generation_origin == GENERATION_ORIGIN_SIMULATION
     ml_verdict_payload = evaluate_batch_ml_verdict_from_games(
@@ -12244,6 +12250,17 @@ def _persist_clean_law15_generation_history(
         calibration_applied=bool(ml_bundle.get("calibration_applied")),
         calibration_authorized=calibration_authorized,
     )
+    if lotoia_api.get("auto_officialized"):
+        ml_verdict_payload = {
+            **ml_verdict_payload,
+            "ml_verdict": str(lotoia_api.get("ml_verdict_override") or "APROVADO_API_LOTOIA"),
+            "official_release_allowed": True,
+            "officialization_status": str(
+                lotoia_api.get("officialization_status") or OPERATIONAL_STATUS_APPROVED
+            ),
+            "lotoia_api_governed": True,
+            "governance_mission_id": "M-AUTO-CALIB-001",
+        }
     lot_status_context = build_lot_status_context(
         ml_verdict_payload=ml_verdict_payload,
         generation_origin=generation_origin,
@@ -12386,6 +12403,8 @@ def _persist_clean_law15_generation_history(
         "simulation_mode": bool(result.get("simulation_mode")),
         "validation_flow": ["generated", "structural_coverage_evaluated", "ml_verdict_emitted"],
         "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
+        "lotoia_api_governance": dict(lotoia_api),
+        "lotoia_api_external_payload": dict(result.get("lotoia_api_external_payload") or {}),
         "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
         "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
         "motivo_principal": str(ml_verdict_payload.get("motivo_principal") or ""),

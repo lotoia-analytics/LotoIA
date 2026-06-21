@@ -1267,12 +1267,24 @@ def _render_technical_audit_section(
         )
 
 
-def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
+def render_ml_calibration_cockpit(db_path: Any, *, audit_only: bool = False) -> dict[str, Any]:
     """Cockpit operacional da Central ML — central de decisão (M-UI-ML-001)."""
     _init_cockpit_session()
     supervised_active = is_supervised_output_calibration_active()
     inject_central_ml_visual_styles()
-    render_central_ml_header(subtitle=COCKPIT_SUBTITLE, supervised_active=supervised_active)
+    subtitle = COCKPIT_SUBTITLE
+    if audit_only:
+        subtitle = (
+            f"{COCKPIT_SUBTITLE} · Modo auditoria — calibração governada pela API LotoIA (M-AUTO-CALIB-001)"
+        )
+    render_central_ml_header(subtitle=subtitle, supervised_active=supervised_active)
+
+    if audit_only:
+        st.info(
+            "A **API LotoIA** governa calibração e oficialização automáticas com base na "
+            "Cobertura Estrutural. Este painel exibe somente diagnóstico e trilha de auditoria — "
+            "sem aprovação manual do operador."
+        )
 
     operational_generations = load_operational_core_002_generations(
         db_path,
@@ -1391,15 +1403,26 @@ def render_ml_calibration_cockpit(db_path: Any) -> dict[str, Any]:
             lambda: _render_recommendation_card(snapshot),
         )
 
-    with section_shell():
-        render_cockpit_block_safe(
-            "comando",
-            lambda: _render_command_card(
-                snapshot,
-                supervised_active=supervised_active,
-                db_path=db_path,
-            ),
-        )
+    if not audit_only:
+        with section_shell():
+            render_cockpit_block_safe(
+                "comando",
+                lambda: _render_command_card(
+                    snapshot,
+                    supervised_active=supervised_active,
+                    db_path=db_path,
+                ),
+            )
+    else:
+        st.markdown("### Log de auditoria — API LotoIA")
+        api_audit = dict(snapshot.get("lotoia_api_governance") or {})
+        if api_audit:
+            st.json(api_audit)
+        else:
+            st.caption(
+                "Nenhum evento da API LotoIA nesta geração — será populado após lotes "
+                "governados por M-AUTO-CALIB-001."
+            )
 
     render_cockpit_block_safe(
         "auditoria_tecnica",
