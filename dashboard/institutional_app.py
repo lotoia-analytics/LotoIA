@@ -9573,12 +9573,13 @@ def _render_structural_coverage_queue_cleanup_panel(
             "Gerações já conferidas oficialmente permanecem no banco por governança."
         )
         if ineligible_count > 0:
-            with st.expander("Gerações bloqueadas para remoção", expanded=False):
-                st.dataframe(
-                    pd.DataFrame(list(summary.get("ineligible_details") or [])),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+            st.markdown("---")
+            st.markdown("**Gerações bloqueadas para remoção (conferidas ou protegidas):**")
+            st.dataframe(
+                pd.DataFrame(list(summary.get("ineligible_details") or [])),
+                hide_index=True,
+                use_container_width=True,
+            )
         cleanup_cols = st.columns([2, 1])
         with cleanup_cols[1]:
             if st.button(

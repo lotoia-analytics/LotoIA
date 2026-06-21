@@ -103,6 +103,6 @@ def test_central_ml_page_still_uses_cockpit() -> None:
 def test_build_marker_bumped_for_fix03() -> None:
     from dashboard.institutional_build import BUILD_MARKER, DEPRECATED_BUILD_MARKERS
 
-    assert BUILD_MARKER == "institutional-adm-runtime-v51"
+    assert BUILD_MARKER == "institutional-adm-runtime-v93"
     assert BUILD_MARKER not in DEPRECATED_BUILD_MARKERS
-    assert "institutional-adm-runtime-v49" in DEPRECATED_BUILD_MARKERS
+    assert "institutional-adm-runtime-v92" in DEPRECATED_BUILD_MARKERS
