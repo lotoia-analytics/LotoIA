@@ -8,6 +8,9 @@ on:
         required: false
         default: "SELECT current_database(), now();"
         type: string
+  push:
+    paths:
+      - ".github/workflows/db-audit.yml"
 
 jobs:
   audit:
@@ -16,13 +19,32 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Run SQL against DATABASE_URL secret
+      - name: Run connection smoke test
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SQL: ${{ inputs.sql }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "DATABASE_URL secret não configurado."
             exit 1
           fi
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$SQL"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_database(), now();"
+
+      - name: Audit latest Lotofacil contest
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
+          DO $$\
+          BEGIN\
+            IF to_regclass('public.lotofacil_official_history') IS NOT NULL THEN\
+              RAISE NOTICE 'table=lotofacil_official_history';\
+            ELSIF to_regclass('public.imported_contests') IS NOT NULL THEN\
+              RAISE NOTICE 'table=imported_contests';\
+            ELSE\
+              RAISE EXCEPTION 'Nenhuma tabela institucional encontrada';\
+            END IF;\
+          END $$;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
+          SELECT * FROM lotofacil_official_history ORDER BY contest_number DESC LIMIT 1;" \
+          || psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "\
+          SELECT * FROM imported_contests ORDER BY contest_number DESC LIMIT 1;"
