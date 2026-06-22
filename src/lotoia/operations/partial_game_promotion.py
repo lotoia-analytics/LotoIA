@@ -24,6 +24,7 @@ from lotoia.operations.lot_operational_status import (
 from lotoia.statistics.card_structure import resolve_cartao_final_from_game
 
 MISSION_ID = "M-OPS-078"
+FULL_BATTERY_CONFERENCE_FIX_MISSION_ID = "M-OPS-291"
 
 GAME_QUALITY_ACCEPTABLE = "acceptable"
 GAME_QUALITY_ATTENTION = "attention"
@@ -408,13 +409,20 @@ def filter_conference_games(
     generation: Mapping[str, Any],
     games: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Filtra jogos elegíveis para Conferir Resultados."""
+    """Filtra jogos elegíveis para Conferir Resultados.
+
+    M-OPS-291: se o lote inteiro já é oficialmente conferível, a conferência
+    operacional deve usar todos os jogos persistidos. Promoção parcial só limita
+    jogos quando o lote inteiro NÃO foi liberado para Conferir.
+    """
     parent_context = dict(generation.get("context_json") or generation)
     lot_eligible = is_official_conference_eligible(parent_context)
-    partial_enabled = bool(parent_context.get("partial_promotion_enabled"))
     game_list = [dict(game) for game in games]
+    if lot_eligible:
+        return list(game_list)
+    partial_enabled = bool(parent_context.get("partial_promotion_enabled"))
     if not partial_enabled:
-        return list(game_list) if lot_eligible else []
+        return []
     selected: list[dict[str, Any]] = []
     for game in game_list:
         ctx = dict(game.get("generation_context") or game.get("context_json") or {})
