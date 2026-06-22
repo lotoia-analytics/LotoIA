@@ -66,19 +66,9 @@ def _ensure_feedback_loop_table() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS feedback_loop (
                     id SERIAL PRIMARY KEY,
-                    contest_number INTEGER NOT NULL,
-                    official_numbers JSONB NOT NULL,
-                    generation_event_id INTEGER,
-                    games_analyzed INTEGER NOT NULL DEFAULT 0,
-                    hit_distribution JSONB NOT NULL DEFAULT '{}',
-                    average_hits REAL NOT NULL DEFAULT 0.0,
-                    prefix_analysis JSONB NOT NULL DEFAULT '{}',
-                    suffix_analysis JSONB NOT NULL DEFAULT '{}',
-                    dezena_frequency JSONB NOT NULL DEFAULT '{}',
-                    bias_alerts JSONB NOT NULL DEFAULT '[]',
-                    calibration_recommendations JSONB NOT NULL DEFAULT '[]',
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(contest_number, generation_event_id)
+                    contest_number INTEGER NOT NULL UNIQUE,
+                    feedback_data JSONB NOT NULL DEFAULT '{}',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
@@ -463,49 +453,34 @@ def persist_feedback_loop(
 
     _ensure_feedback_loop_table()
 
+    feedback_data = {
+        "official_numbers": official_numbers,
+        "generation_event_id": generation_event_id,
+        "hit_analysis": hit_analysis,
+        "prefix_analysis": prefix_analysis,
+        "dezena_analysis": dezena_analysis,
+        "bias_alerts": bias_alerts,
+        "calibration_recommendations": calibration_recommendations,
+    }
+
     with get_session(DB_PATH) as session:
         session.execute(
             text(
                 """
                 INSERT INTO feedback_loop (
-                    contest_number, official_numbers, generation_event_id,
-                    games_analyzed, hit_distribution, average_hits,
-                    prefix_analysis, suffix_analysis, dezena_frequency,
-                    bias_alerts, calibration_recommendations
+                    contest_number, feedback_data
                 ) VALUES (
-                    :contest_number, :official_numbers, :generation_event_id,
-                    :games_analyzed, :hit_distribution, :average_hits,
-                    :prefix_analysis, :suffix_analysis, :dezena_frequency,
-                    :bias_alerts, :calibration_recommendations
+                    :contest_number, :feedback_data
                 )
-                ON CONFLICT (contest_number, generation_event_id) DO UPDATE SET
-                    hit_distribution = EXCLUDED.hit_distribution,
-                    average_hits = EXCLUDED.average_hits,
-                    prefix_analysis = EXCLUDED.prefix_analysis,
-                    dezena_frequency = EXCLUDED.dezena_frequency,
-                    bias_alerts = EXCLUDED.bias_alerts,
-                    calibration_recommendations = EXCLUDED.calibration_recommendations
+                ON CONFLICT (contest_number) DO UPDATE SET
+                    feedback_data = EXCLUDED.feedback_data,
+                    created_at = CURRENT_TIMESTAMP
                 RETURNING id
                 """
             ),
             {
                 "contest_number": contest_number,
-                "official_numbers": json.dumps(official_numbers),
-                "generation_event_id": generation_event_id,
-                "games_analyzed": hit_analysis.get("games_analyzed", 0),
-                "hit_distribution": json.dumps(
-                    hit_analysis.get("hit_distribution", {})
-                ),
-                "average_hits": float(hit_analysis.get("average_hits", 0) or 0),
-                "prefix_analysis": json.dumps(prefix_analysis, default=str),
-                "suffix_analysis": json.dumps({}),
-                "dezena_frequency": json.dumps(
-                    dezena_analysis.get("dezena_frequency", {})
-                ),
-                "bias_alerts": json.dumps(bias_alerts, default=str),
-                "calibration_recommendations": json.dumps(
-                    calibration_recommendations, default=str
-                ),
+                "feedback_data": json.dumps(feedback_data, default=str),
             },
         )
         feedback_id = session.execute(text("SELECT LASTVAL()")).scalar()

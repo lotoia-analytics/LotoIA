@@ -253,10 +253,10 @@ def persist_generated_games(result: dict[str, Any]) -> dict[str, Any]:
                     """
                     INSERT INTO generated_games (
                         generation_event_id, lead_id, target_contest, origin, generation_mode,
-                        game_index, numbers, profile_type, final_score, quadra_score, context_json
+                        game_index, numbers, profile_type, final_score, quadra_score, context_json, created_at
                     ) VALUES (
                         :generation_event_id, NULL, :target_contest, 'm_ger_001_script', 'corrected_sovereign',
-                        :game_index, :numbers, :profile_type, :final_score, :quadra_score, :context_json
+                        :game_index, :numbers, :profile_type, :final_score, :quadra_score, :context_json, CURRENT_TIMESTAMP
                     )
                     """
                 ),
