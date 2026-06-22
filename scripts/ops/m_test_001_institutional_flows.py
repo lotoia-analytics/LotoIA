@@ -92,39 +92,37 @@ def test_conference_flow() -> dict[str, Any]:
     from dashboard.institutional_app import DB_PATH, get_session
 
     with get_session(DB_PATH) as session:
-        # Verifica check_events
-        result = session.execute(text("SELECT COUNT(*) FROM check_events")).scalar()
-        check_events_count = int(result or 0)
+        # Verifica reconciliation_runs
+        result = session.execute(
+            text("SELECT COUNT(*) FROM reconciliation_runs")
+        ).scalar()
+        reconciliation_runs_count = int(result or 0)
 
-        # Verifica último check_event
+        # Verifica último reconciliation_run
         result = (
             session.execute(
                 text(
-                    "SELECT id, contest_id, hits, created_at FROM check_events ORDER BY id DESC LIMIT 1"
+                    "SELECT id, generation_event_id, contest_id, status, prize_count, best_hits, created_at FROM reconciliation_runs ORDER BY id DESC LIMIT 1"
                 )
             )
             .mappings()
             .first()
         )
 
-        last_check = dict(result) if result else None
+        last_reconciliation = dict(result) if result else None
 
-        # Verifica jogos conferidos do último evento
-        if last_check:
-            result = session.execute(
-                text("SELECT COUNT(*) FROM check_games WHERE check_event_id = :id"),
-                {"id": last_check["id"]},
-            ).scalar()
-            last_check_games = int(result or 0)
-        else:
-            last_check_games = 0
+        # Verifica jogos conferidos
+        result = session.execute(
+            text("SELECT COUNT(*) FROM reconciliation_games")
+        ).scalar()
+        reconciliation_games_count = int(result or 0)
 
     return {
         "status": "success",
         "flow": "conference",
-        "check_events_count": check_events_count,
-        "last_check_event": last_check,
-        "last_check_games_count": last_check_games,
+        "reconciliation_runs_count": reconciliation_runs_count,
+        "last_reconciliation": last_reconciliation,
+        "reconciliation_games_count": reconciliation_games_count,
     }
 
 
