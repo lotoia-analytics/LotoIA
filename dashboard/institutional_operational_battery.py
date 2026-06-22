@@ -6,11 +6,12 @@ sem alterar schema nem dados.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
 MISSION_ID = "M-OPS-289"
 BATTERY_CONFERENCE_MISSION_ID = "M-OPS-289A"
+BATTERY_MEMORY_FIX_MISSION_ID = "M-OPS-290"
 OPERATIONAL_BATTERY_ALL_ID = "ALL"
 OPERATIONAL_BATTERY_ALL_LABEL = "Todos — baterias operacionais CORE_002"
 
@@ -142,6 +143,32 @@ def format_operational_battery_label(battery: Mapping[str, Any]) -> str:
     return f"Bateria {battery_id} — {len(ge_ids)} gerações — {total_games} jogos — {status} — {created}"
 
 
+def _hit_value(game: Mapping[str, Any]) -> int:
+    try:
+        return int(game.get("hits", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _hit_decomposition(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    hits = [_hit_value(row) for row in results if isinstance(row, Mapping)]
+    counter = Counter(hits)
+    return {
+        "count_10_exact": int(counter.get(10, 0)),
+        "count_11_exact": int(counter.get(11, 0)),
+        "count_12_exact": int(counter.get(12, 0)),
+        "count_13_exact": int(counter.get(13, 0)),
+        "count_14_exact": int(counter.get(14, 0)),
+        "count_15_exact": int(counter.get(15, 0)),
+        "count_11_plus": int(sum(1 for value in hits if value >= 11)),
+        "count_12_plus": int(sum(1 for value in hits if value >= 12)),
+        "count_13_plus": int(sum(1 for value in hits if value >= 13)),
+        "count_14_plus": int(sum(1 for value in hits if value >= 14)),
+        "count_15": int(sum(1 for value in hits if value >= 15)),
+        "hit_histogram": {str(key): int(counter.get(key, 0)) for key in sorted(counter)},
+    }
+
+
 def merge_battery_conference_results(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     rows = [dict(row) for row in results if isinstance(row, Mapping)]
     all_games: list[dict[str, Any]] = []
@@ -153,10 +180,12 @@ def merge_battery_conference_results(results: Sequence[Mapping[str, Any]]) -> di
             generation_event_ids.append(row.get("generation_event_id"))
     normalized_ids = normalize_generation_event_ids(generation_event_ids)
     total_games_checked = sum(int(row.get("total_games", 0) or 0) for row in rows)
+    hit_decomposition = _hit_decomposition(all_games)
     return {
         "status": "checked" if rows else "waiting_lot",
         "scope": "operational_battery",
         "mission_id": MISSION_ID,
+        "battery_memory_fix_mission_id": BATTERY_MEMORY_FIX_MISSION_ID,
         "battery_id": str(rows[0].get("battery_id") or "") if rows else "",
         "batch_id": str(rows[0].get("batch_id") or "") if rows else "",
         "generation_event_ids": normalized_ids,
@@ -164,10 +193,61 @@ def merge_battery_conference_results(results: Sequence[Mapping[str, Any]]) -> di
         "results": all_games,
         "total_games": len(all_games),
         "total_games_checked": int(total_games_checked or len(all_games)),
-        "best_hits": max((int(game.get("hits", 0) or 0) for game in all_games), default=0),
-        "total_hits": sum(int(game.get("hits", 0) or 0) for game in all_games),
-        "prize_count": sum(1 for game in all_games if int(game.get("hits", 0) or 0) >= 11),
+        "best_hits": max((_hit_value(game) for game in all_games), default=0),
+        "total_hits": sum(_hit_value(game) for game in all_games),
+        "prize_count": sum(1 for game in all_games if _hit_value(game) >= 11),
         "generations_conferred": len(rows),
         "contest_number": int(rows[0].get("contest_number", 0) or 0) if rows else 0,
         "contest_date": str(rows[0].get("contest_date") or "") if rows else "",
+        **hit_decomposition,
     }
+
+
+def build_battery_post_conference_memory(
+    merged_battery: Mapping[str, Any],
+    *,
+    previous_memory: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Monta memória visual pós-conferência a partir da bateria inteira.
+
+    Esta função evita a discrepância em que o painel exibe a última GE conferida
+    (ex.: 20 jogos) quando a bateria selecionada possui mais jogos (ex.: 50).
+    """
+    previous = dict(previous_memory or {})
+    payload = {
+        **previous,
+        "scope": "operational_battery",
+        "memory_scope": "operational_battery",
+        "mission_id": BATTERY_MEMORY_FIX_MISSION_ID,
+        "battery_id": str(merged_battery.get("battery_id") or previous.get("battery_id") or ""),
+        "batch_id": str(merged_battery.get("batch_id") or previous.get("batch_id") or ""),
+        "generation_event_id": int((merged_battery.get("generation_event_ids") or [previous.get("generation_event_id", 0)])[-1] or 0),
+        "generation_event_ids": normalize_generation_event_ids(merged_battery.get("generation_event_ids")),
+        "contest_number": int(merged_battery.get("contest_number", previous.get("contest_number", 0)) or 0),
+        "contest_date": str(merged_battery.get("contest_date") or previous.get("contest_date") or ""),
+        "total_games": int(merged_battery.get("total_games_checked", merged_battery.get("total_games", 0)) or 0),
+        "total_games_checked": int(merged_battery.get("total_games_checked", merged_battery.get("total_games", 0)) or 0),
+        "best_hit": int(merged_battery.get("best_hits", previous.get("best_hit", 0)) or 0),
+        "best_hits": int(merged_battery.get("best_hits", previous.get("best_hits", 0)) or 0),
+        "total_hits": int(merged_battery.get("total_hits", previous.get("total_hits", 0)) or 0),
+        "prize_count": int(merged_battery.get("prize_count", previous.get("prize_count", 0)) or 0),
+        "record_type": "post_conference_battery_summary",
+        "legacy_record_note": "Preservado para auditoria histórica; visual consolidado por bateria operacional.",
+    }
+    for key in (
+        "count_10_exact",
+        "count_11_exact",
+        "count_12_exact",
+        "count_13_exact",
+        "count_14_exact",
+        "count_15_exact",
+        "count_11_plus",
+        "count_12_plus",
+        "count_13_plus",
+        "count_14_plus",
+        "count_15",
+        "hit_histogram",
+    ):
+        if key in merged_battery:
+            payload[key] = merged_battery[key]
+    return payload
