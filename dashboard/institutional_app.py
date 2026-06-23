@@ -18871,7 +18871,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     st.markdown("### Conferência oficial")
     st.caption(
         "Conferir Resultados = **último concurso oficial** × **bateria operacional selecionada**. "
-        "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — uma bateria por vez."
+        "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — uma bateria por vez "
+        "ou todas as baterias de uma vez."
     )
     official_groups = _load_official_conference_generation_groups(page_load=True)
     battery_groups = build_operational_battery_groups(official_groups)
@@ -19040,7 +19041,7 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             "Use **Sincronizar último resultado oficial** para buscar e persistir o resultado da Caixa."
         )
 
-    action_cols = st.columns([0.5, 0.5])
+    action_cols = st.columns([0.34, 0.33, 0.33])
     run_conference = action_cols[0].button(
         "Conferir bateria selecionada",
         type="primary",
@@ -19051,7 +19052,21 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
         ),
         key="conference_run_selected_lot",
     )
-    if action_cols[1].button(
+    run_all_conference = action_cols[1].button(
+        "Conferir todas as baterias",
+        type="secondary",
+        disabled=not bool(
+            has_valid_official_contest
+            and official_generation_event_ids
+            and len(battery_groups) > 0
+        ),
+        key="conference_run_all_batteries",
+        help=(
+            f"Confere todos os jogos de todas as {len(battery_groups)} baterias "
+            f"de uma vez contra o último concurso oficial."
+        ),
+    )
+    if action_cols[2].button(
         "Sincronizar último resultado oficial", key="conference_sync_latest"
     ):
         sync_payload = _sync_latest_official_result_now()
@@ -19092,6 +19107,28 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
                 if latest_contest_number > 0
                 else None,
                 battery_id=selected_battery_for_result,
+                conference_all_official=False,
+                additional_contests=additional_contests_value,
+            )
+        check_result = st.session_state.get("institutional_check_result")
+        st.rerun()
+
+    if run_all_conference:
+        all_battery = build_operational_battery_aggregate(battery_groups)
+        total_games_all = int(all_battery.get("total_games", 0) or 0)
+        total_batteries = len(battery_groups)
+        additional_contests_value = int(
+            st.session_state.get("conference_additional_contests", 0) or 0
+        )
+        with st.spinner(
+            f"Conferindo TODAS as baterias ({total_batteries} baterias, "
+            f"{total_games_all} jogos) × concurso {latest_contest_number}…"
+        ):
+            _run_institutional_conference(
+                contest_number=latest_contest_number
+                if latest_contest_number > 0
+                else None,
+                battery_id=OPERATIONAL_BATTERY_ALL_ID,
                 conference_all_official=False,
                 additional_contests=additional_contests_value,
             )
