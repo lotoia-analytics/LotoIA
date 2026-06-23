@@ -277,9 +277,10 @@ def _merge_operational_status(
     merged["excluded_from_active_reading_at"] = trace["timestamp"]
     merged["excluded_from_active_reading_reason"] = trace["reason"]
     merged["is_active_structural_reading"] = False
-    merged["is_official_conference_eligible"] = False
-    merged["is_analytical_history_eligible"] = False
-    merged["official_release_allowed"] = False
+    # ML é apenas observacional — conferência sempre liberada (M-SENSOR-001)
+    merged["is_official_conference_eligible"] = True
+    merged["is_analytical_history_eligible"] = True
+    merged["official_release_allowed"] = True
     return merged
 
 
@@ -376,7 +377,10 @@ def merge_supersede_operational_fields(
     reason: str = "",
     calibration_source_only: bool = False,
 ) -> dict[str, Any]:
-    """Sincroniza lot_operational_status (M-OPS-062) com operational_status (M-DADOS-ML-061)."""
+    """Sincroniza lot_operational_status (M-OPS-062) com operational_status (M-DADOS-ML-061).
+
+    ML é apenas observacional — conferência sempre liberada (M-SENSOR-001).
+    """
     status = (
         OPERATIONAL_STATUS_CALIBRATION_SOURCE
         if calibration_source_only
@@ -396,10 +400,11 @@ def merge_supersede_operational_fields(
     )
     merged = _merge_operational_status(context_json, trace)
     merged["lot_operational_status"] = lot_status
-    merged["official_release_allowed"] = False
+    # ML é apenas observacional — conferência sempre liberada (M-SENSOR-001)
+    merged["official_release_allowed"] = True
     merged["is_active_structural_reading"] = False
-    merged["is_official_conference_eligible"] = False
-    merged["is_analytical_history_eligible"] = False
+    merged["is_official_conference_eligible"] = True
+    merged["is_analytical_history_eligible"] = True
     merged["superseded_by_generation_event_id"] = int(superseded_by_event_id)
     merged["superseded_reason"] = reason or "calibration_new_lot_generated"
     return merged

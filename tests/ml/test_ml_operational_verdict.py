@@ -25,7 +25,10 @@ def test_mission_id() -> None:
 
 
 def test_real_world_critical_batch_example() -> None:
-    """Cenário M-ML-060-FIX-01: similaridade 0.6182, overlap 17, quase repetidos 3214, 17D."""
+    """Cenário M-ML-060-FIX-01: similaridade 0.6182, overlap 17, quase repetidos 3214, 17D.
+
+    M-SENSOR-001: ML é apenas observacional — não bloqueia mais a conferência.
+    """
     format_analyses = [
         evaluate_format_overlap_verdict(
             17,
@@ -61,12 +64,18 @@ def test_real_world_critical_batch_example() -> None:
         calibration_applied=False,
         calibration_authorized=False,
     )
+    # ML ainda emite veredito, mas não bloqueia mais
     assert payload["ml_verdict"] in {VERDICT_BLOQUEADO, VERDICT_REPROVADO}
-    assert is_ml_verdict_blocking(payload["ml_verdict"])
-    assert not payload["official_release_allowed"]
-    assert payload["official_release_label"] == "NÃO LIBERADA"
-    assert "3214" in payload["ml_verdict_reason"] or "17" in payload["ml_verdict_reason"]
-    assert payload["next_action"] == "Autorizar calibração supervisionada."
+    # M-SENSOR-001: ML é apenas observacional — nunca bloqueia
+    assert not is_ml_verdict_blocking(payload["ml_verdict"])
+    # ML não bloqueia mais — sempre permite release
+    assert payload["official_release_allowed"]
+    assert payload["official_release_label"] == "LIBERADA"
+    assert (
+        "3214" in payload["ml_verdict_reason"] or "17" in payload["ml_verdict_reason"]
+    )
+    # ML é observacional — next_action agora é apenas monitoramento
+    assert payload["next_action"] == "Manter monitoramento estrutural."
     assert payload["trace"]["mission_id"] == MISSION_ID
 
 
@@ -82,7 +91,9 @@ def test_approved_batch_without_critical_risk() -> None:
             "total_jogos": 20,
         },
         format_analyses=[
-            evaluate_format_overlap_verdict(15, 10, {"similaridade_media": 0.42, "quase_repetidos": 2}),
+            evaluate_format_overlap_verdict(
+                15, 10, {"similaridade_media": 0.42, "quase_repetidos": 2}
+            ),
         ],
         calibration_applied=False,
     )
@@ -100,26 +111,41 @@ def test_similarity_attention_range_generates_alert() -> None:
             "total_jogos": 20,
         },
         format_analyses=[
-            evaluate_format_overlap_verdict(15, 11, {"similaridade_media": 0.61, "quase_repetidos": 5}),
+            evaluate_format_overlap_verdict(
+                15, 11, {"similaridade_media": 0.61, "quase_repetidos": 5}
+            ),
         ],
     )
-    assert payload["ml_verdict"] in {VERDICT_APROVADO_COM_ALERTA, VERDICT_PRECISA_CALIBRAR}
+    assert payload["ml_verdict"] in {
+        VERDICT_APROVADO_COM_ALERTA,
+        VERDICT_PRECISA_CALIBRAR,
+    }
     if payload["ml_verdict"] == VERDICT_APROVADO_COM_ALERTA:
         assert payload["official_release_allowed"] is True
 
 
 def test_similarity_above_070_reproved() -> None:
+    """M-SENSOR-001: ML é apenas observacional — sempre permite release."""
     payload = evaluate_ml_operational_verdict(
-        {"similaridade_media": 0.72, "sobreposicao_maxima": 12, "quase_repetidos": 3, "total_jogos": 20},
+        {
+            "similaridade_media": 0.72,
+            "sobreposicao_maxima": 12,
+            "quase_repetidos": 3,
+            "total_jogos": 20,
+        },
         format_analyses=[
-            evaluate_format_overlap_verdict(15, 12, {"similaridade_media": 0.72, "quase_repetidos": 3}),
+            evaluate_format_overlap_verdict(
+                15, 12, {"similaridade_media": 0.72, "quase_repetidos": 3}
+            ),
         ],
     )
     assert payload["ml_verdict"] == VERDICT_REPROVADO
-    assert not payload["official_release_allowed"]
+    # ML não bloqueia mais — sempre permite release
+    assert payload["official_release_allowed"]
 
 
 def test_high_near_dup_with_attention_similarity_needs_calibration() -> None:
+    """M-SENSOR-001: ML é apenas observacional — sempre permite release."""
     payload = evaluate_ml_operational_verdict(
         {
             "similaridade_media": 0.6182,
@@ -136,8 +162,13 @@ def test_high_near_dup_with_attention_similarity_needs_calibration() -> None:
         ],
         calibration_applied=False,
     )
-    assert payload["ml_verdict"] in {VERDICT_PRECISA_CALIBRAR, VERDICT_BLOQUEADO, VERDICT_REPROVADO}
-    assert not payload["official_release_allowed"]
+    assert payload["ml_verdict"] in {
+        VERDICT_PRECISA_CALIBRAR,
+        VERDICT_BLOQUEADO,
+        VERDICT_REPROVADO,
+    }
+    # ML não bloqueia mais — sempre permite release
+    assert payload["official_release_allowed"]
 
 
 def test_evaluate_batch_from_games_empty_returns_approved() -> None:

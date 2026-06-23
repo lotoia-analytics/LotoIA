@@ -136,7 +136,10 @@ def resolve_lot_operational_status(
     calibration_authorized: bool = False,
     simulation_mode: bool = False,
 ) -> str:
-    """Resolve status operacional final a partir do veredito ML e origem do lote."""
+    """Resolve status operacional final — ML é apenas observacional (M-SENSOR-001).
+
+    ML não bloqueia mais conferência. Todos os lotes gerados são conferíveis.
+    """
     verdict = str(ml_verdict or VERDICT_APROVADO).strip().upper()
     origin = str(generation_origin or GENERATION_ORIGIN_GENERATOR).strip().lower()
 
@@ -152,19 +155,24 @@ def resolve_lot_operational_status(
     if calibration_authorized and not official_release_allowed:
         return STATUS_CALIBRATION_AUTHORIZED
 
-    if verdict == VERDICT_BLOQUEADO:
-        return STATUS_BLOCKED_FOR_OFFICIALIZATION
-    if verdict == VERDICT_REPROVADO:
-        return STATUS_REJECTED
-    if verdict == VERDICT_PRECISA_CALIBRAR:
-        return STATUS_NEEDS_CALIBRATION
-    if verdict == VERDICT_APROVADO_COM_ALERTA and official_release_allowed:
+    # ML é apenas observacional — não bloqueia conferência
+    # Todos os lotes gerados são elegíveis para conferência
+    if verdict == VERDICT_APROVADO_COM_ALERTA:
         return STATUS_APPROVED_WITH_WARNING
-    if verdict == VERDICT_APROVADO and official_release_allowed:
+    if verdict == VERDICT_APROVADO:
         return STATUS_OFFICIALIZED
+    if verdict == VERDICT_REPROVADO:
+        # ML reprova, mas lote ainda é conferível (observacional)
+        return STATUS_APPROVED_WITH_WARNING
+    if verdict == VERDICT_PRECISA_CALIBRAR:
+        # ML sugere calibração, mas lote ainda é conferível
+        return STATUS_APPROVED_WITH_WARNING
+    if verdict == VERDICT_BLOQUEADO:
+        # ML bloqueia, mas lote ainda é conferível (observacional)
+        return STATUS_APPROVED_WITH_WARNING
     if official_release_allowed:
         return STATUS_APPROVED_FOR_OFFICIALIZATION
-    return STATUS_PENDING_STRUCTURAL_REVIEW
+    return STATUS_APPROVED_WITH_WARNING
 
 
 def is_active_structural_reading_status(status: str) -> bool:
@@ -172,13 +180,8 @@ def is_active_structural_reading_status(status: str) -> bool:
 
 
 def _legacy_ml_release_allowed(context: Mapping[str, Any] | None) -> bool:
-    payload = _merge_context_payload(context)
-    if not payload:
-        return True
-    if payload.get("official_release_allowed") is False:
-        return False
-    verdict = str(payload.get("ml_verdict") or VERDICT_APROVADO).strip().upper()
-    return verdict in {VERDICT_APROVADO, VERDICT_APROVADO_COM_ALERTA}
+    """ML é apenas observacional — sempre permite release (M-SENSOR-001)."""
+    return True
 
 
 def is_official_conference_eligible(context: Mapping[str, Any] | None) -> bool:
@@ -283,39 +286,12 @@ def _resolve_post_calibration_promoted_status(
     current_status: str,
     authorized_plan_applied_to_generation: bool = False,
 ) -> tuple[str, bool, str, str]:
+    """ML é apenas observacional — sempre promove para conferência (M-SENSOR-001)."""
     tier = _normalize_quality_tier(gp_quality_tier)
     verdict = str(ml_verdict or "").strip().upper()
 
-    if tier in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}:
-        return (
-            current_status,
-            False,
-            f"gp_quality_tier_{tier.lower()}_not_releasable",
-            "",
-        )
-    if verdict in {VERDICT_REPROVADO, VERDICT_BLOQUEADO}:
-        return (
-            current_status,
-            False,
-            f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable",
-            "",
-        )
-    if (
-        authorized_plan_applied_to_generation
-        and verdict == VERDICT_PRECISA_CALIBRAR
-        and tier not in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}
-    ):
-        return (
-            STATUS_APPROVED_WITH_WARNING,
-            True,
-            "",
-            PROMOTION_BYPASS_REASON_AUTHORIZED_PLAN_CONSUMED,
-        )
-    if verdict == VERDICT_PRECISA_CALIBRAR and tier not in {
-        QUALITY_TIER_APROVADO,
-        QUALITY_TIER_ATENCAO,
-    }:
-        return current_status, False, "ml_verdict_precisa_calibrar_not_releasable", ""
+    # ML é observacional — sempre promove para conferência
+    # Não bloqueia mais por veredito ML ou quality tier
     if current_status in OFFICIAL_CONFERENCE_STATUSES:
         return current_status, True, "", ""
     if tier == QUALITY_TIER_ATENCAO or verdict == VERDICT_APROVADO_COM_ALERTA:
@@ -329,13 +305,9 @@ def _resolve_post_calibration_promoted_status(
             return STATUS_APPROVED_WITH_WARNING, True, "", ""
         if verdict == VERDICT_APROVADO:
             return STATUS_OFFICIALIZED, True, "", ""
-        return STATUS_APPROVED_FOR_OFFICIALIZATION, True, "", ""
-    return (
-        current_status,
-        False,
-        "quality_tier_or_verdict_insufficient_for_promotion",
-        "",
-    )
+        return STATUS_APPROVED_WITH_WARNING, True, "", ""
+    # ML reprova ou precisa calibrar — ainda assim promove para conferência
+    return STATUS_APPROVED_WITH_WARNING, True, "", ""
 
 
 def _apply_post_calibration_eligibility_flags(
@@ -496,7 +468,10 @@ def defer_lot_status_for_structural_coverage(
     simulation_mode: bool,
     ml_verdict_payload: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Garante visibilidade na Cobertura antes da revisão Central ML (M-OPS-062)."""
+    """Garante visibilidade na Cobertura — ML é apenas observacional (M-SENSOR-001).
+
+    Conferência sempre liberada, independente do veredito ML.
+    """
     merged = dict(lot_status_context)
     if (
         simulation_mode
@@ -509,13 +484,37 @@ def defer_lot_status_for_structural_coverage(
     if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
         return merged
     verdict = str(ml_verdict_payload.get("ml_verdict") or "")
+    # ML é observacional — conferência sempre liberada
     merged.update(
         {
-            "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
+            "lot_operational_status": STATUS_APPROVED_WITH_WARNING,
             "is_active_structural_reading": True,
-            "is_official_conference_eligible": False,
-            "is_analytical_history_eligible": False,
-            "official_release_allowed": False,
+            "is_official_conference_eligible": True,  # Sempre elegível
+            "is_analytical_history_eligible": True,  # Sempre elegível
+            "official_release_allowed": True,  # Sempre liberado
+            "ml_persist_verdict": verdict,
+            "ml_persist_verdict_reason": str(
+                ml_verdict_payload.get("ml_verdict_reason") or ""
+            ),
+            "ml_persist_verdict_deferred_for_coverage": True,
+            "structural_coverage_defer_mission_id": DEFERRED_COVERAGE_MISSION_ID,
+        }
+    )
+    return merged
+    lot_status = extract_lot_operational_status(merged)
+    if is_active_structural_reading_status(lot_status):
+        return merged
+    if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
+        return merged
+    verdict = str(ml_verdict_payload.get("ml_verdict") or "")
+    # ML é observacional — conferência sempre liberada
+    merged.update(
+        {
+            "lot_operational_status": STATUS_APPROVED_WITH_WARNING,
+            "is_active_structural_reading": True,
+            "is_official_conference_eligible": True,  # Sempre elegível
+            "is_analytical_history_eligible": True,  # Sempre elegível
+            "official_release_allowed": True,  # Sempre liberado
             "ml_persist_verdict": verdict,
             "ml_persist_verdict_reason": str(
                 ml_verdict_payload.get("ml_verdict_reason") or ""
@@ -535,7 +534,10 @@ def build_lot_status_context(
     calibration_authorized: bool = False,
     simulation_mode: bool = False,
 ) -> dict[str, Any]:
-    """Monta campos de status operacional para context_json."""
+    """Monta campos de status operacional — ML é apenas observacional (M-SENSOR-001).
+
+    Todos os lotes gerados são elegíveis para conferência.
+    """
     verdict = str(ml_verdict_payload.get("ml_verdict") or "")
     official_release_allowed = bool(ml_verdict_payload.get("official_release_allowed"))
     lot_status = resolve_lot_operational_status(
@@ -557,16 +559,17 @@ def build_lot_status_context(
         "simulation_mode": bool(simulation_mode),
         "resolved_at": datetime.now(UTC).isoformat(),
     }
+    # ML é observacional — todos os lotes são conferíveis
+    is_conference_eligible = lot_status in OFFICIAL_CONFERENCE_STATUSES
     return {
         "lot_operational_status": lot_status,
         "lot_operational_status_mission_id": MISSION_ID,
         "generation_origin": generation_origin,
         "lot_status_trace": status_trace,
         "is_active_structural_reading": is_active_structural_reading_status(lot_status),
-        "is_official_conference_eligible": lot_status in OFFICIAL_CONFERENCE_STATUSES,
-        "is_analytical_history_eligible": lot_status in ANALYTICAL_HISTORY_STATUSES,
-        "official_release_allowed": official_release_allowed
-        and lot_status in OFFICIAL_CONFERENCE_STATUSES,
+        "is_official_conference_eligible": is_conference_eligible,
+        "is_analytical_history_eligible": is_conference_eligible,
+        "official_release_allowed": is_conference_eligible,
         **build_structural_verdict_hits_separation_trace(),
     }
 
@@ -583,13 +586,17 @@ def extract_lot_operational_status(context: Mapping[str, Any] | None) -> str:
 def supersede_status_update(
     *, superseded_by_event_id: int, reason: str = ""
 ) -> dict[str, Any]:
-    """Payload para marcar lote anterior como substituído por calibração."""
+    """Payload para marcar lote anterior como substituído por calibração.
+
+    ML é apenas observacional — conferência sempre liberada (M-SENSOR-001).
+    """
     return {
         "lot_operational_status": STATUS_SUPERSEDED_BY_CALIBRATION,
-        "official_release_allowed": False,
+        # ML é apenas observacional — conferência sempre liberada (M-SENSOR-001)
+        "official_release_allowed": True,
         "is_active_structural_reading": False,
-        "is_official_conference_eligible": False,
-        "is_analytical_history_eligible": False,
+        "is_official_conference_eligible": True,
+        "is_analytical_history_eligible": True,
         "is_evaluated_non_official": True,
         "superseded_by_generation_event_id": int(superseded_by_event_id),
         "superseded_reason": reason or "calibration_new_lot_generated",
