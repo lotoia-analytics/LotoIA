@@ -37,77 +37,81 @@ def _query_postgresql(query: str, params: dict = None) -> list[dict[str, Any]]:
 
 
 def _load_latest_generation_data() -> dict[str, Any]:
-    """Carrega dados da geração mais recente."""
-    # Buscar último event CORE_002
+    """Carrega dados de todas as gerações ativas (não apenas a última)."""
+    # Buscar TODOS os events CORE_002 ativos
     events = _query_postgresql("""
         SELECT id, created_at, analysis_batch_label
         FROM generation_events
         WHERE analysis_batch_label LIKE 'STRUCT_LEI15_CORE_CANDIDATE_002%'
         ORDER BY created_at DESC
-        LIMIT 1
     """)
 
     if not events:
-        return {"available": False}
+        return {"available": False, "events_count": 0, "games": []}
 
-    event = events[0]
-    event_id = event["id"]
+    all_games = []
 
-    # Buscar jogos desse event
-    games_rows = _query_postgresql(
-        """
-        SELECT numbers, final_score, quadra_score, context_json::text
-        FROM generated_games
-        WHERE generation_event_id = :event_id
-        LIMIT 100
-        """,
-        {"event_id": event_id},
-    )
+    for event in events:
+        event_id = event["id"]
 
-    games = []
-    for row in games_rows:
-        numbers = row["numbers"]
-        # Se numbers for string JSON, converte para lista
-        if isinstance(numbers, str):
-            numbers = json.loads(numbers)
+        # Buscar jogos desse event
+        games_rows = _query_postgresql(
+            """
+            SELECT numbers, final_score, quadra_score, context_json::text
+            FROM generated_games
+            WHERE generation_event_id = :event_id
+            """,
+            {"event_id": event_id},
+        )
 
-        # Extrai score_ml do context_json
-        context = {}
-        if row.get("context_json"):
-            try:
-                context = (
-                    json.loads(row["context_json"])
-                    if isinstance(row["context_json"], str)
-                    else row["context_json"]
+        for row in games_rows:
+            numbers = row["numbers"]
+            # Se numbers for string JSON, converte para lista
+            if isinstance(numbers, str):
+                numbers = json.loads(numbers)
+
+            # Extrai score_ml do context_json
+            context = {}
+            if row.get("context_json"):
+                try:
+                    context = (
+                        json.loads(row["context_json"])
+                        if isinstance(row["context_json"], str)
+                        else row["context_json"]
+                    )
+                except:
+                    context = {}
+
+            # score_ml pode estar em diferentes lugares
+            score_ml = context.get("score_ml")
+            if score_ml is None:
+                feature_attribution = context.get("feature_attribution", {})
+                score_ml = (
+                    feature_attribution.get("score_ml")
+                    if isinstance(feature_attribution, dict)
+                    else None
                 )
-            except:
-                context = {}
 
-        # score_ml pode estar em diferentes lugares
-        score_ml = context.get("score_ml")
-        if score_ml is None:
-            feature_attribution = context.get("feature_attribution", {})
-            score_ml = (
-                feature_attribution.get("score_ml")
-                if isinstance(feature_attribution, dict)
-                else None
+            all_games.append(
+                {
+                    "numbers": numbers,
+                    "final_score": row["final_score"],
+                    "quadra_score": row["quadra_score"],
+                    "score_ml": score_ml,
+                    "event_id": event_id,
+                }
             )
 
-        games.append(
-            {
-                "numbers": numbers,
-                "final_score": row["final_score"],
-                "quadra_score": row["quadra_score"],
-                "score_ml": score_ml,
-            }
-        )
+    # Usar o último event como referência
+    latest_event = events[0]
 
     return {
         "available": True,
-        "event_id": event_id,
-        "event_date": event["created_at"],
-        "batch_label": event["analysis_batch_label"],
-        "games": games,
+        "event_id": latest_event["id"],
+        "event_date": latest_event["created_at"],
+        "batch_label": latest_event["analysis_batch_label"],
+        "events_count": len(events),
+        "games": all_games,
     }
 
 
@@ -550,12 +554,13 @@ def render_modern_structural_coverage_v2() -> None:
     analysis = _analyze_games(games)
 
     # Header
+    events_count = generation_data.get("events_count", 0)
     st.info(f"""
-    **Event #{generation_data["event_id"]}** · {generation_data["event_date"].strftime("%d/%m/%Y %H:%M")}
+    **Último Event #{generation_data["event_id"]}** · {generation_data["event_date"].strftime("%d/%m/%Y %H:%M")}
     
     Batch: `{generation_data["batch_label"]}`
     
-    Analisando **{len(games)} jogos** contra **3.717 concursos oficiais**
+    Analisando **{len(games)} jogos** de **{events_count} gerações** contra **3.717 concursos oficiais**
     """)
 
     # KPIs
