@@ -9130,6 +9130,28 @@ def _is_valid_conference_contest(contest: dict[str, Any] | None) -> bool:
     return is_valid_lotofacil_contest_record(contest)
 
 
+def _run_post_conference_feedback_loop(contest_number: int) -> dict[str, Any]:
+    """Dispara feedback loop pós-conferência institucional (M-FEEDBACK-001/002)."""
+    resolved_contest = _safe_int(contest_number, default=None)
+    if resolved_contest is None or int(resolved_contest) <= 0:
+        return {"status": "skipped", "reason": "invalid_contest_number"}
+    try:
+        from scripts.ops.m_feedback_001_loop import run_feedback_loop_programmatic
+
+        return dict(
+            run_feedback_loop_programmatic(
+                contest_number=int(resolved_contest),
+                persist=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — não bloquear conferência institucional
+        return {
+            "status": "error",
+            "reason": str(exc),
+            "contest_number": int(resolved_contest),
+        }
+
+
 def _confer_persisted_generation_group(
     *,
     group: dict[str, Any],
@@ -9210,6 +9232,10 @@ def _confer_persisted_generation_group(
             batch_hit_decomposition=group_hit_decomposition,
         ),
     )
+    conference_contest_number = int(
+        comparison.get("contest_number", contest_to_use or 0) or 0
+    )
+    feedback_loop_result = _run_post_conference_feedback_loop(conference_contest_number)
     return {
         "generation_event_id": int(group.get("generation_event_id") or 0),
         "battery_id": battery_id,
@@ -9226,9 +9252,8 @@ def _confer_persisted_generation_group(
         ),
         "results": list(comparison.get("results", [])),
         "games": list(group.get("games") or []),
-        "contest_number": int(
-            comparison.get("contest_number", contest_to_use or 0) or 0
-        ),
+        "contest_number": conference_contest_number,
+        "feedback_loop": feedback_loop_result,
         "contest_date": str(
             comparison.get("contest_date", _safe_get(contest_payload, "data", "")) or ""
         ),
