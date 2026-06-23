@@ -151,6 +151,103 @@ def _load_calibration_stats() -> dict[str, Any]:
     return stats[0]
 
 
+def _load_feedback_loop_stats() -> dict[str, Any]:
+    """Estatísticas do feedback loop pós-conferência (tabela feedback_loop)."""
+    table_exists = _query_postgresql(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'feedback_loop'
+        ) AS exists
+        """
+    )
+    if not table_exists or not bool(table_exists[0].get("exists")):
+        return {
+            "available": False,
+            "total_feedback": 0,
+            "latest_contest": None,
+            "pending_contests": 0,
+        }
+
+    totals = _query_postgresql(
+        """
+        SELECT
+            COUNT(*) AS total_feedback,
+            MAX(contest_number) AS latest_contest
+        FROM feedback_loop
+        """
+    )
+    pending = _query_postgresql(
+        """
+        SELECT COUNT(DISTINCT rr.contest_id) AS pending_contests
+        FROM reconciliation_runs rr
+        WHERE rr.contest_id IS NOT NULL
+          AND rr.contest_id > 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM feedback_loop fl
+              WHERE fl.contest_number = rr.contest_id
+          )
+        """
+    )
+    row = totals[0] if totals else {}
+    pending_row = pending[0] if pending else {}
+    return {
+        "available": True,
+        "total_feedback": int(row.get("total_feedback", 0) or 0),
+        "latest_contest": _safe_int(row.get("latest_contest"), default=None),
+        "pending_contests": int(pending_row.get("pending_contests", 0) or 0),
+    }
+
+
+def _safe_int(value: object, *, default: int | None = None) -> int | None:
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def resolve_feedback_loop_status(
+    *,
+    feedback_stats: dict[str, Any],
+    conference_stats: dict[str, Any],
+) -> dict[str, str]:
+    """Resolve badge do passo 3 — Feedback Loop."""
+    total_runs = int(conference_stats.get("total_runs", 0) or 0)
+    total_feedback = int(feedback_stats.get("total_feedback", 0) or 0)
+    pending = int(feedback_stats.get("pending_contests", 0) or 0)
+
+    if total_runs <= 0:
+        return {
+            "status": "○ AGUARDANDO",
+            "status_color": "gray",
+            "detail": "Conferir lotes para habilitar feedback pós-concurso",
+        }
+    if total_feedback > 0 and pending == 0:
+        latest = feedback_stats.get("latest_contest")
+        suffix = f" · concurso {latest}" if latest else ""
+        return {
+            "status": f"✓ ATIVO{suffix}",
+            "status_color": "green",
+            "detail": f"{total_feedback} ciclo(s) persistido(s) · sem pendências",
+        }
+    if total_feedback > 0 and pending > 0:
+        return {
+            "status": f"⚠ PARCIAL ({pending} pendente(s))",
+            "status_color": "yellow",
+            "detail": "Há conferências sem feedback — executar m_feedback_002_auto_loop.py --auto --persist",
+        }
+    return {
+        "status": "⚠ SUBUTILIZADO",
+        "status_color": "yellow",
+        "detail": "Conferências existem, mas feedback_loop ainda vazio",
+    }
+
+
 def _check_ml_active() -> bool:
     """Verifica se ML está ativo nas últimas gerações."""
     try:
@@ -418,10 +515,20 @@ def _render_ml_sensor(analysis: dict[str, Any], ml_active: bool) -> None:
             st.metric("Score Máximo", f"{max_score:.1f}")
 
 
-def _render_learning_cycle(ml_active: bool, calib_stats: dict[str, Any]) -> None:
+def _render_learning_cycle(
+    ml_active: bool,
+    calib_stats: dict[str, Any],
+    feedback_stats: dict[str, Any],
+    conference_stats: dict[str, Any],
+) -> None:
     """Renderiza ciclo de aprendizado."""
     st.subheader("Ciclo de Aprendizado (Feedback Loop)")
     st.caption("Fluxo de evolução contínua")
+
+    feedback_badge = resolve_feedback_loop_status(
+        feedback_stats=feedback_stats,
+        conference_stats=conference_stats,
+    )
 
     cycle_steps = [
         {
@@ -435,15 +542,20 @@ def _render_learning_cycle(ml_active: bool, calib_stats: dict[str, Any]) -> None
             "number": 2,
             "title": "Conferência",
             "description": "Comparação com resultados oficiais",
-            "status": "✓ ATIVO",
-            "status_color": "green",
+            "status": "✓ ATIVO"
+            if int(conference_stats.get("total_runs", 0) or 0) > 0
+            else "○ AGUARDANDO",
+            "status_color": "green"
+            if int(conference_stats.get("total_runs", 0) or 0) > 0
+            else "gray",
         },
         {
             "number": 3,
             "title": "Feedback Loop",
-            "description": "Análise pós-concurso · Detecção de vieses",
-            "status": "⚠ SUBUTILIZADO",
-            "status_color": "yellow",
+            "description": feedback_badge.get("detail")
+            or "Análise pós-concurso · Detecção de vieses",
+            "status": feedback_badge["status"],
+            "status_color": feedback_badge["status_color"],
         },
         {
             "number": 4,
@@ -486,11 +598,20 @@ def _render_learning_cycle(ml_active: bool, calib_stats: dict[str, Any]) -> None
                 st.caption(step["status"])
 
 
-def _render_recommendations(ml_active: bool, calib_stats: dict[str, Any]) -> None:
+def _render_recommendations(
+    ml_active: bool,
+    calib_stats: dict[str, Any],
+    feedback_stats: dict[str, Any],
+    conference_stats: dict[str, Any],
+) -> None:
     """Renderiza recomendações para ativação do ciclo."""
     st.subheader("Recomendações para Ativação Completa")
 
     recommendations = []
+    feedback_badge = resolve_feedback_loop_status(
+        feedback_stats=feedback_stats,
+        conference_stats=conference_stats,
+    )
 
     if not ml_active:
         recommendations.append(
@@ -502,18 +623,25 @@ def _render_recommendations(ml_active: bool, calib_stats: dict[str, Any]) -> Non
             }
         )
 
+    if feedback_badge["status_color"] != "green":
+        recommendations.append(
+            {
+                "priority": len(recommendations) + 1,
+                "color": "red"
+                if int(conference_stats.get("total_runs", 0) or 0) > 0
+                else "yellow",
+                "title": "Ativar Feedback Loop Automático",
+                "description": (
+                    "Executar `python scripts/ops/m_feedback_002_auto_loop.py --auto --persist` "
+                    "após conferências institucionais."
+                ),
+            }
+        )
+
     if int(calib_stats.get("applied_count", 0) or 0) == 0:
         recommendations.append(
             {
-                "priority": 2,
-                "color": "red",
-                "title": "Ativar Feedback Loop Automático",
-                "description": "Executar `m_feedback_001_loop.py` após cada concurso oficial",
-            }
-        )
-        recommendations.append(
-            {
-                "priority": 3,
+                "priority": len(recommendations) + 1,
                 "color": "yellow",
                 "title": "Revisar Thresholds de Calibração",
                 "description": "Ajustar para aceitar calibrações com melhoria marginal",
@@ -552,6 +680,7 @@ def render_cobertura_nova() -> None:
         generation_data = _load_all_generations_data()
         conference_stats = _load_conference_stats()
         calib_stats = _load_calibration_stats()
+        feedback_stats = _load_feedback_loop_stats()
         ml_active = _check_ml_active()
 
     if not generation_data.get("available"):
@@ -594,12 +723,12 @@ def render_cobertura_nova() -> None:
     st.markdown("---")
 
     # Ciclo de aprendizado
-    _render_learning_cycle(ml_active, calib_stats)
+    _render_learning_cycle(ml_active, calib_stats, feedback_stats, conference_stats)
 
     st.markdown("---")
 
     # Recomendações
-    _render_recommendations(ml_active, calib_stats)
+    _render_recommendations(ml_active, calib_stats, feedback_stats, conference_stats)
 
     # Footer
     st.markdown("---")
