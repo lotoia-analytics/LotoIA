@@ -165,41 +165,6 @@ def apply_ab_calibration() -> dict[str, Any]:
         )
         decision_id = session.execute(text("SELECT LASTVAL()")).scalar()
 
-        # Registra em operational_structural_memory
-        session.execute(
-            text(
-                """
-            INSERT INTO operational_structural_memory (
-                mission_id, memory_status, bias_alerts, coverage_snapshot
-            ) VALUES (
-                :mission_id, 'AB_TEST_ACTIVE',
-                :bias_alerts, :coverage_snapshot
-            )
-            """
-            ),
-            {
-                "mission_id": MISSION_ID,
-                "bias_alerts": json.dumps(
-                    {
-                        "action": "ab_test_started",
-                        "original_weights": ORIGINAL_WEIGHTS,
-                        "adjusted_weights": ADJUSTED_WEIGHTS,
-                        "changes": {
-                            "sum_score": f"{ORIGINAL_WEIGHTS['sum_score']} -> {ADJUSTED_WEIGHTS['sum_score']}",
-                            "frequency_score": f"{ORIGINAL_WEIGHTS['frequency_score']} -> {ADJUSTED_WEIGHTS['frequency_score']}",
-                        },
-                    }
-                ),
-                "coverage_snapshot": json.dumps(
-                    {
-                        "started_at": datetime.now(UTC).isoformat(),
-                        "target_contest": None,  # Será definido na próxima geração
-                        "evaluation_after_contest": True,
-                    }
-                ),
-            },
-        )
-
         session.commit()
 
     return {
