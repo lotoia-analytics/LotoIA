@@ -2452,8 +2452,10 @@ def get_latest_official_contest() -> dict[str, Any] | None:
 
 def _resolve_persist_target_contest(
     result: Mapping[str, Any] | None = None,
+    *,
+    user_selected: bool = False,
 ) -> int | None:
-    """Concurso alvo soberano para persistência — próximo real, nunca placeholder/fantasma."""
+    """Concurso alvo soberano para persistência — aceita escolha do usuário quando user_selected=True."""
     latest_drawn = _safe_int(
         (get_latest_official_contest() or {}).get("contest_number"), default=None
     )
@@ -2466,6 +2468,7 @@ def _resolve_persist_target_contest(
         candidate,
         db_path=DB_PATH,
         latest_drawn_contest=latest_drawn,
+        user_selected=user_selected,
     )
 
 
@@ -2595,7 +2598,10 @@ def _resolve_generation_previous_contest_context(
         }
     target_contest = _safe_int((result or {}).get("target_contest"), default=None)
     if target_contest is None and isinstance(result, Mapping):
-        target_contest = _resolve_persist_target_contest(result)
+        target_contest = _resolve_persist_target_contest(
+            result,
+            user_selected=bool((result or {}).get("user_selected_target")),
+        )
     return _build_generation_previous_contest_context(target_contest)
 
 
@@ -7392,7 +7398,10 @@ def _resolve_generation_previous_contest_context(
         }
     target_contest = _safe_int((result or {}).get("target_contest"), default=None)
     if target_contest is None and isinstance(result, Mapping):
-        target_contest = _resolve_persist_target_contest(result)
+        target_contest = _resolve_persist_target_contest(
+            result,
+            user_selected=bool((result or {}).get("user_selected_target")),
+        )
     return _build_generation_previous_contest_context(target_contest)
 
 
@@ -14424,6 +14433,7 @@ def _persist_generation_snapshot(
             "seed": seed,
             "games_count": len(games),
             "target_contest": target_contest,
+            "user_selected_target": user_target_contest is not None,
             "batch_id": batch_id,
             "operational_structural_memory": memory_persist_result,
         }
@@ -17213,7 +17223,10 @@ def _persist_clean_law15_generation_history(
             _persist_generation_snapshot(
                 games=payload_games,
                 seed=int(result.get("seed", 0) or 0),
-                target_contest=_resolve_persist_target_contest(result),
+                target_contest=_resolve_persist_target_contest(
+                    result,
+                    user_selected=bool((result or {}).get("user_selected_target")),
+                ),
                 batch_id=str(
                     result.get("batch_id", "") or f"clean-law15-{selected_card_format}"
                 ),
@@ -19358,6 +19371,7 @@ def _run_clean_law15_generation(
     *,
     requested_count: int,
     selected_card_format: int = 15,
+    user_target_contest: int | None = None,
 ) -> dict[str, Any]:
     total_games = int(requested_count)
     resolved_card_format = max(int(selected_card_format or 15), 15)
@@ -19375,9 +19389,13 @@ def _run_clean_law15_generation(
     latest_contest_number = _safe_int(
         (latest_contest or {}).get("contest_number"), default=None
     )
-    target_contest = None
-    if latest_contest_number is not None and latest_contest_number > 0:
+    # Se o usuário escolheu um concurso alvo, usa a escolha; senão, automático (latest+1)
+    if user_target_contest is not None and int(user_target_contest) > 0:
+        target_contest = int(user_target_contest)
+    elif latest_contest_number is not None and latest_contest_number > 0:
         target_contest = int(latest_contest_number) + 1
+    else:
+        target_contest = None
     previous_contest_context = _build_generation_previous_contest_context(
         target_contest
     )
@@ -19612,14 +19630,23 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
         )
         return
 
-    requested_count, selected_card_format = render_generation_operation_block(
-        ml_active=ml_active
+    latest_official = get_latest_official_contest() or {}
+    latest_contest_number = _safe_int(
+        (latest_official or {}).get("contest_number"), default=None
+    )
+
+    requested_count, selected_card_format, user_target_contest = (
+        render_generation_operation_block(
+            ml_active=ml_active,
+            latest_contest_number=latest_contest_number,
+        )
     )
 
     if st.session_state.pop("_clean_law15_generate_clicked", False):
         result = _run_clean_law15_generation(
             requested_count=requested_count,
             selected_card_format=int(selected_card_format),
+            user_target_contest=user_target_contest,
         )
         result["selected_card_format"] = int(selected_card_format)
         result["card_format_label"] = multidezena_format_label(selected_card_format)
