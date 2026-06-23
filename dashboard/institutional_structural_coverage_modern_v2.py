@@ -19,15 +19,16 @@ from typing import Any
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy import text
 
 from lotoia.database.database import get_session
 
 
-def _query_postgresql(query: str, params: tuple = ()) -> list[dict[str, Any]]:
+def _query_postgresql(query: str, params: dict = None) -> list[dict[str, Any]]:
     """Executa query no PostgreSQL e retorna lista de dicts."""
     try:
         with get_session(None) as session:
-            result = session.execute(query, params)
+            result = session.execute(text(query), params or {})
             columns = result.keys()
             return [dict(zip(columns, row)) for row in result.fetchall()]
     except Exception as e:
@@ -57,26 +58,47 @@ def _load_latest_generation_data() -> dict[str, Any]:
         """
         SELECT numbers, final_score, quadra_score, context_json::text
         FROM generated_games
-        WHERE generation_event_id = %s
+        WHERE generation_event_id = :event_id
         LIMIT 100
     """,
-        (event_id,),
+        {"event_id": event_id},
     )
 
     games = []
     for row in games_rows:
-        numbers = (
-            json.loads(row["numbers"])
-            if isinstance(row["numbers"], str)
-            else row["numbers"]
-        )
-        context = json.loads(row["context_json"]) if row["context_json"] else {}
+        numbers = row["numbers"]
+        # Se numbers for string JSON, converte para lista
+        if isinstance(numbers, str):
+            numbers = json.loads(numbers)
+
+        # Extrai score_ml do context_json
+        context = {}
+        if row.get("context_json"):
+            try:
+                context = (
+                    json.loads(row["context_json"])
+                    if isinstance(row["context_json"], str)
+                    else row["context_json"]
+                )
+            except:
+                context = {}
+
+        # score_ml pode estar em diferentes lugares
+        score_ml = context.get("score_ml")
+        if score_ml is None:
+            feature_attribution = context.get("feature_attribution", {})
+            score_ml = (
+                feature_attribution.get("score_ml")
+                if isinstance(feature_attribution, dict)
+                else None
+            )
+
         games.append(
             {
                 "numbers": numbers,
                 "final_score": row["final_score"],
                 "quadra_score": row["quadra_score"],
-                "score_ml": context.get("score_ml"),
+                "score_ml": score_ml,
             }
         )
 
@@ -119,18 +141,34 @@ def _analyze_games(games: list[dict[str, Any]]) -> dict[str, Any]:
     # Frequência por dezena
     dezena_freq = Counter()
     for game in games:
-        dezena_freq.update(game["numbers"])
+        numbers = game["numbers"]
+        # Se numbers for string JSON, converte para lista
+        if isinstance(numbers, str):
+            import json
+
+            numbers = json.loads(numbers)
+        dezena_freq.update(numbers)
 
     # Paridade (ímpar/par)
     odd_even = Counter()
     for game in games:
-        odd = sum(1 for n in game["numbers"] if n % 2 == 1)
+        numbers = game["numbers"]
+        if isinstance(numbers, str):
+            import json
+
+            numbers = json.loads(numbers)
+        odd = sum(1 for n in numbers if n % 2 == 1)
         odd_even[f"{odd}I/{15 - odd}P"] += 1
 
     # Sequências consecutivas
     max_consecutive = 0
     for game in games:
-        sorted_nums = sorted(game["numbers"])
+        numbers = game["numbers"]
+        if isinstance(numbers, str):
+            import json
+
+            numbers = json.loads(numbers)
+        sorted_nums = sorted(numbers)
         current = 1
         for i in range(1, len(sorted_nums)):
             if sorted_nums[i] == sorted_nums[i - 1] + 1:
@@ -140,11 +178,18 @@ def _analyze_games(games: list[dict[str, Any]]) -> dict[str, Any]:
                 current = 1
 
     # Soma
-    sums = [sum(game["numbers"]) for game in games]
+    sums = []
+    for game in games:
+        numbers = game["numbers"]
+        if isinstance(numbers, str):
+            import json
+
+            numbers = json.loads(numbers)
+        sums.append(sum(numbers))
     avg_sum = sum(sums) / len(sums) if sums else 0
 
     # Score ML
-    score_ml_values = [g["score_ml"] for g in games if g["score_ml"] is not None]
+    score_ml_values = [g["score_ml"] for g in games if g.get("score_ml") is not None]
 
     return {
         "dezena_frequency": dict(dezena_freq),
