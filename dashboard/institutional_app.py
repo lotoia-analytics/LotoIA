@@ -13634,7 +13634,7 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
                 text("""
                 SELECT 
                     COUNT(*) as total_decisions,
-                    SUM(CASE WHEN applied THEN 1 ELSE 0 END) as applied_count
+                    SUM(CASE WHEN applied = 1 THEN 1 ELSE 0 END) as applied_count
                 FROM scientific_calibration_decisions
             """)
             ).fetchone()
