@@ -18876,6 +18876,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     )
     official_groups = _load_official_conference_generation_groups(page_load=True)
     battery_groups = build_operational_battery_groups(official_groups)
+    # Filtra apenas baterias com jogos conferíveis (M-OPS-291-FIX)
+    battery_groups = [
+        battery
+        for battery in battery_groups
+        if int(battery.get("total_games", 0) or 0) > 0
+    ]
     battery_groups = sorted(
         battery_groups,
         key=lambda battery: max(
@@ -18986,7 +18992,12 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.info("📊 Conferência normal: apenas o concurso atual")
 
     if not official_generation_event_ids:
-        st.info("Nenhuma bateria oficializada disponível para conferência.")
+        st.warning(
+            "**Nenhuma bateria conferível disponível.** "
+            "As baterias com status `pending_structural_review` precisam ser aprovadas ou oficializadas "
+            "antes de poderem ser conferidas. Use o painel de **Central ML** ou **Governança de Lotes** "
+            "para revisar e aprovar as baterias pendentes."
+        )
     else:
         page_labels = {
             str(battery.get("battery_id") or ""): format_operational_battery_label(
