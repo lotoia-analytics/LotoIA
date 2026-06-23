@@ -34,18 +34,15 @@ ALL_VERDICTS: tuple[str, ...] = (
     VERDICT_BLOQUEADO,
 )
 
-BLOCKING_VERDICTS: frozenset[str] = frozenset(
-    {
-        VERDICT_PRECISA_CALIBRAR,
-        VERDICT_REPROVADO,
-        VERDICT_BLOQUEADO,
-    }
-)
+BLOCKING_VERDICTS: frozenset[str] = frozenset()  # ML não bloqueia mais (M-SENSOR-001)
 
 OFFICIAL_RELEASE_VERDICTS: frozenset[str] = frozenset(
     {
         VERDICT_APROVADO,
         VERDICT_APROVADO_COM_ALERTA,
+        VERDICT_PRECISA_CALIBRAR,  # ML observacional — não bloqueia
+        VERDICT_REPROVADO,  # ML observacional — não bloqueia
+        VERDICT_BLOQUEADO,  # ML observacional — não bloqueia
     }
 )
 
@@ -154,7 +151,8 @@ def is_ml_official_release_allowed(verdict_payload: Mapping[str, Any] | None) ->
 
 
 def is_ml_verdict_blocking(verdict: str) -> bool:
-    return str(verdict or "").strip().upper() in BLOCKING_VERDICTS
+    """ML é apenas observacional — nunca bloqueia (M-SENSOR-001)."""
+    return False
 
 
 def evaluate_ml_operational_verdict(
@@ -316,12 +314,13 @@ def evaluate_ml_operational_verdict(
         primary_reason = f"{overlap_detail} + quase repetidos {quase_repetidos}."
 
     critical_problem = is_ml_verdict_blocking(verdict)
-    official_release_allowed = verdict in OFFICIAL_RELEASE_VERDICTS
+    # ML é apenas observacional — sempre permite release para conferência (M-SENSOR-001)
+    official_release_allowed = True
     if critical_problem and not calibration_applied:
-        official_release_allowed = False
+        official_release_allowed = True  # ML não bloqueia mais
         rule_triggers.append("calibracao_nao_aplicada")
     elif critical_problem and calibration_applied and calibration_authorized:
-        official_release_allowed = verdict in OFFICIAL_RELEASE_VERDICTS
+        official_release_allowed = True  # ML não bloqueia mais
 
     next_action = (
         NEXT_ACTION_CALIBRATION

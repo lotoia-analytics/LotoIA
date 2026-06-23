@@ -29,12 +29,15 @@ def test_mission_id() -> None:
 
 
 def test_pending_then_blocked_from_verdict() -> None:
+    """M-SENSOR-001: ML é apenas observacional — não bloqueia mais."""
     status = resolve_lot_operational_status(
         ml_verdict=VERDICT_BLOQUEADO,
         official_release_allowed=False,
         generation_origin=GENERATION_ORIGIN_GENERATOR,
     )
-    assert status == STATUS_BLOCKED_FOR_OFFICIALIZATION
+    # ML não bloqueia mais — sempre retorna approved_with_warning
+    assert status == "approved_with_warning"
+    assert is_official_conference_eligible({"lot_operational_status": status})
 
 
 def test_approved_officialized() -> None:
@@ -75,6 +78,7 @@ def test_needs_calibration_in_active_structural_reading() -> None:
 
 
 def test_build_lot_status_context_persist_fields() -> None:
+    """M-SENSOR-001: ML é apenas observacional — sempre permite conferência."""
     payload = build_lot_status_context(
         ml_verdict_payload={
             "ml_verdict": VERDICT_BLOQUEADO,
@@ -82,6 +86,9 @@ def test_build_lot_status_context_persist_fields() -> None:
         },
         generation_origin=GENERATION_ORIGIN_GENERATOR,
     )
-    assert payload["lot_operational_status"] == STATUS_BLOCKED_FOR_OFFICIALIZATION
+    # ML não bloqueia mais — sempre retorna approved_with_warning
+    assert payload["lot_operational_status"] == "approved_with_warning"
     assert payload["lot_status_trace"]["mission_id"] == MISSION_ID
-    assert payload["is_active_structural_reading"] is False
+    assert payload["is_active_structural_reading"] is True
+    assert payload["is_official_conference_eligible"] is True  # ML observacional
+    assert payload["is_analytical_history_eligible"] is True  # ML observacional
