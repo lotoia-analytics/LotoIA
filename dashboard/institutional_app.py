@@ -741,6 +741,7 @@ PAGE_TARGETS = {
     "Métricas HB": "structural_coverage",
     "Cobertura estrutural": "structural_coverage",
     "Cobertura Estrutural": "structural_coverage",
+    "Cobertura Moderna": "structural_coverage_modern",
     "Simulação Institucional / Backtesting": "simulation",
     "Central ML Assistiva": "central_ml_diagnostics",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
@@ -761,6 +762,11 @@ INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
+    {
+        "icon": "🧬",
+        "label": "Cobertura Moderna",
+        "page_id": "structural_coverage_modern",
+    },
     {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
     {"icon": "🤖", "label": "Análise ML", "page_id": "central_ml_diagnostics"},
 ]
@@ -21577,6 +21583,12 @@ def main() -> None:
         _render_central_ml_diagnostics_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
+    elif page == "structural_coverage_modern":
+        from dashboard.institutional_structural_coverage_modern_v2 import (
+            render_modern_structural_coverage_v2,
+        )
+
+        render_modern_structural_coverage_v2()
     elif page == "institutional_simulation_backtesting":
         st.subheader("Simulação Institucional / Backtesting")
         render_institutional_simulation_backtesting_page(
