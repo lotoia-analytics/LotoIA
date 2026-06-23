@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 try:
@@ -14021,6 +14021,7 @@ def _persist_generation_snapshot(
     analysis_batch_type: str | None = None,
     analysis_batch_created_by: str | None = None,
     analysis_batch_created_at: datetime | None = None,
+    user_target_contest: int | None = None,
 ) -> dict[str, Any]:
     started_at = time.monotonic()
     batch_id = _ensure_unique_institutional_batch_id(batch_id)
@@ -14434,6 +14435,7 @@ def _persist_generation_snapshot(
             "games_count": len(games),
             "target_contest": target_contest,
             "user_selected_target": user_target_contest is not None,
+            "user_target_contest": user_target_contest,
             "batch_id": batch_id,
             "operational_structural_memory": memory_persist_result,
         }
@@ -17233,6 +17235,11 @@ def _persist_clean_law15_generation_history(
                 generation_context=generation_context,
                 analysis_batch_label=format_batch_label,
                 analysis_batch_type="LEI15_CORE_002_SOVEREIGN",
+                user_target_contest=_safe_int(
+                    (result or {}).get("user_target_contest"), default=None
+                )
+                if bool((result or {}).get("user_selected_target"))
+                else None,
             )
         )
         new_event_id = int(persisted.get("generation_event_id", 0) or 0)
@@ -19565,6 +19572,11 @@ def _run_clean_law15_generation(
         "silent_recalibration_allowed": False,
         "law_evolution_requires_audit": True,
         "target_contest": target_contest,
+        "user_target_contest": int(user_target_contest)
+        if user_target_contest is not None and int(user_target_contest) > 0
+        else None,
+        "user_selected_target": user_target_contest is not None
+        and int(user_target_contest) > 0,
         "sovereign_generation_path": "generate_best_games",
         "ml_enabled": ml_enabled,
         "ml_operational_status": supervised_ml_status_label()
