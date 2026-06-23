@@ -741,6 +741,7 @@ PAGE_TARGETS = {
     "Métricas HB": "structural_coverage",
     "Cobertura estrutural": "structural_coverage",
     "Cobertura Estrutural": "structural_coverage",
+    "Cobertura Moderna": "structural_coverage_modern",
     "Simulação Institucional / Backtesting": "simulation",
     "Central ML Assistiva": "central_ml_diagnostics",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
@@ -13608,6 +13609,18 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
         _mark_structural_coverage_aggregate_reviewed(operational_generations)
 
 
+def _render_cobertura_moderna_page(snapshot: dict[str, Any]) -> None:
+    """Renderiza painel moderno de Cobertura Estrutural com ML como sensor."""
+    from dashboard.institutional_structural_coverage_modern_v2 import (
+        render_modern_structural_coverage_v2,
+    )
+
+    st.subheader("Cobertura Estrutural Moderna")
+    st.caption("Painel dinâmico com ML como sensor informativo")
+
+    render_modern_structural_coverage_v2()
+
+
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
     snapshot = _live_institutional_snapshot(snapshot)
     st.subheader("Replay institucional")
@@ -21577,6 +21590,8 @@ def main() -> None:
         _render_central_ml_diagnostics_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
+    elif page == "structural_coverage_modern":
+        _render_cobertura_moderna_page(snapshot)
     elif page == "institutional_simulation_backtesting":
         st.subheader("Simulação Institucional / Backtesting")
         render_institutional_simulation_backtesting_page(
