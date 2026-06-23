@@ -11,7 +11,10 @@ from dashboard.institutional_lei15a_governance import (
     LEI15A_FORMAL_STATUS,
     LEI15A_MANDATORY_QUOTE,
 )
-from lotoia.governance.lei15_core_002_sovereign import BATCH_LABEL, resolve_core_002_batch_label
+from lotoia.governance.lei15_core_002_sovereign import (
+    BATCH_LABEL,
+    resolve_core_002_batch_label,
+)
 
 MISSION_ID = "M-VIS-047"
 
@@ -26,9 +29,7 @@ PERSISTENCE_SUPPORTED_FORMATS: frozenset[int] = frozenset(range(15, 24))
 STRATEGY_ML_ACTIVE = "CORE_002 + ML supervisionado"
 STRATEGY_ML_INACTIVE = "CORE_002 soberano direto"
 
-MULTIDEZENA_PERSISTENCE_INFO = (
-    "Formato {format}D — persistência CORE_002 multidezena subordinada ao núcleo 15D (PostgreSQL)."
-)
+MULTIDEZENA_PERSISTENCE_INFO = "Formato {format}D — persistência CORE_002 multidezena subordinada ao núcleo 15D (PostgreSQL)."
 
 PROHIBITED_MAIN_PHRASES: tuple[str, ...] = (
     "Geração soberana controlada. Não constitui promessa de acerto.",
@@ -66,11 +67,16 @@ def multidezena_batch_label(card_format: int) -> str:
     return resolve_core_002_batch_label(int(card_format))
 
 
-def validate_requested_games_count(raw_value: int | float | str | None) -> tuple[int | None, str | None]:
+def validate_requested_games_count(
+    raw_value: int | float | str | None,
+) -> tuple[int | None, str | None]:
     try:
         value = int(raw_value)
     except (TypeError, ValueError):
-        return None, f"Informe um número inteiro entre {MIN_REQUESTED_GAMES} e {MAX_REQUESTED_GAMES}."
+        return (
+            None,
+            f"Informe um número inteiro entre {MIN_REQUESTED_GAMES} e {MAX_REQUESTED_GAMES}.",
+        )
     if value < MIN_REQUESTED_GAMES:
         return None, f"Quantidade mínima: {MIN_REQUESTED_GAMES}."
     if value > MAX_REQUESTED_GAMES:
@@ -98,9 +104,17 @@ def render_compact_status_chips(*, ml_active: bool, generation_active: bool) -> 
     )
 
 
-def render_generation_operation_block(*, ml_active: bool) -> tuple[int, int]:
-    """Bloco principal limpo — quantidade, dezenas, estratégia, botão."""
-    col_qty, col_fmt, col_strategy = st.columns([1.1, 1.1, 1.2])
+def render_generation_operation_block(
+    *,
+    ml_active: bool,
+    latest_contest_number: int | None = None,
+) -> tuple[int, int, int | None]:
+    """Bloco principal limpo — quantidade, dezenas, concurso alvo, estratégia, botão.
+
+    Returns (requested_count, selected_format, user_target_contest).
+    user_target_contest é None quando o usuário escolheu "Automático (próximo)".
+    """
+    col_qty, col_fmt, col_target = st.columns([1.1, 1.1, 1.2])
     with col_qty:
         raw_count = st.number_input(
             "Quantidade de jogos",
@@ -126,21 +140,58 @@ def render_generation_operation_block(*, ml_active: bool) -> tuple[int, int]:
         )
         if is_multidezena_persistence_supported(selected_format):
             st.caption(MULTIDEZENA_PERSISTENCE_INFO.format(format=selected_format))
-    with col_strategy:
-        st.metric("Estratégia ativa", STRATEGY_ML_ACTIVE if ml_active else STRATEGY_ML_INACTIVE)
+    with col_target:
+        default_target = (
+            int(latest_contest_number) + 1
+            if latest_contest_number and latest_contest_number > 0
+            else 1
+        )
+        target_min = max(1, int(latest_contest_number or 0) - 300)
+        target_max = max(default_target, int(latest_contest_number or 0) + 10)
+        target_options = ["Automático (próximo)"] + [
+            f"Concurso {i}" for i in range(target_min, target_max + 1)
+        ]
+        target_choice = st.selectbox(
+            "Concurso alvo",
+            options=target_options,
+            key="clean_law15_target_contest_select",
+            help=(
+                "Automático: gera para o próximo concurso (latest+1). "
+                "Ou escolha um concurso específico (passado ou futuro) para gerar e conferir imediatamente."
+            ),
+        )
+        if target_choice == "Automático (próximo)":
+            user_target_contest = None
+        else:
+            user_target_contest = int(target_choice.replace("Concurso ", ""))
+        st.metric(
+            "Estratégia ativa",
+            STRATEGY_ML_ACTIVE if ml_active else STRATEGY_ML_INACTIVE,
+        )
 
-    st.session_state["clean_law15_requested_count"] = int(requested_count or MIN_REQUESTED_GAMES)
+    st.session_state["clean_law15_requested_count"] = int(
+        requested_count or MIN_REQUESTED_GAMES
+    )
     st.session_state["clean_law15_card_format"] = selected_format
-    generate_clicked = st.button("Gerar lote", type="primary", key="clean_law15_generate_button")
+    st.session_state["clean_law15_user_target_contest"] = user_target_contest
+    generate_clicked = st.button(
+        "Gerar lote", type="primary", key="clean_law15_generate_button"
+    )
     st.session_state["_clean_law15_generate_clicked"] = generate_clicked
-    return int(requested_count or MIN_REQUESTED_GAMES), selected_format
+    return (
+        int(requested_count or MIN_REQUESTED_GAMES),
+        selected_format,
+        user_target_contest,
+    )
 
 
 def render_agent_operador_ml_summary(result: dict[str, Any]) -> None:
     """Resumo discreto do agent_operador_ml após geração GP (M-AGENT-002)."""
     from lotoia.ml.agent_operador_ml_executor import build_agent_operador_ml_ui_summary
 
-    summary = build_agent_operador_ml_ui_summary(dict(result.get("agent_operador_ml") or {}))
+    summary = build_agent_operador_ml_ui_summary(
+        dict(result.get("agent_operador_ml") or {})
+    )
     if not summary.get("visible"):
         return
 
@@ -173,7 +224,9 @@ def render_generation_result_summary(result: dict[str, Any]) -> None:
     persisted_id = result.get("generation_event_id")
     batch_label = str(result.get("analysis_batch_label") or BATCH_LABEL)
     requested = int(result.get("requested_count", 0) or 0)
-    persisted_count = int(result.get("games_count", len(games) if persisted_id else 0) or 0)
+    persisted_count = int(
+        result.get("games_count", len(games) if persisted_id else 0) or 0
+    )
     card_format = int(result.get("selected_card_format", 15) or 15)
     persistence_status = str(result.get("persistence_status_label") or "-")
     if result.get("persistence_blocked"):
@@ -186,7 +239,9 @@ def render_generation_result_summary(result: dict[str, Any]) -> None:
     operational_label = str(result.get("operational_generation_label") or "-")
     cols[0].metric("Geração operacional", operational_label)
     cols[1].metric("generation_event_id", str(persisted_id or "-"))
-    cols[2].metric("batch_label", batch_label[-22:] + "…" if len(batch_label) > 22 else batch_label)
+    cols[2].metric(
+        "batch_label", batch_label[-22:] + "…" if len(batch_label) > 22 else batch_label
+    )
     cols[3].metric("Solicitados", requested)
     cols[4].metric("Persistidos", persisted_count)
     cols[5].metric("Gerados", len(display_games))
@@ -213,8 +268,12 @@ def render_generation_games_table(
         return
     rows: list[dict[str, str]] = []
     for index, game in enumerate(games):
-        core_numbers = extract_numbers(game.get("core_numbers", game.get("numbers", [])))
-        final_card_numbers = extract_numbers(game.get("final_card_numbers", game.get("numbers", [])))
+        core_numbers = extract_numbers(
+            game.get("core_numbers", game.get("numbers", []))
+        )
+        final_card_numbers = extract_numbers(
+            game.get("final_card_numbers", game.get("numbers", []))
+        )
         rows.append(
             {
                 "jogo": str(index + 1),
@@ -229,14 +288,18 @@ def render_generation_games_table(
     )
 
 
-def render_governance_expander(*, render_constitutional_panel: Callable[..., None]) -> None:
+def render_governance_expander(
+    *, render_constitutional_panel: Callable[..., None]
+) -> None:
     with st.expander("Detalhes de governança", expanded=False):
         render_constitutional_panel(compact=True)
         st.caption(f"Lei 15A: inoperante · Status: {LEI15A_FORMAL_STATUS}")
         st.caption(LEI15A_MANDATORY_QUOTE)
 
 
-def render_technical_expander(result: dict[str, Any], *, diagnostics: dict[str, Any]) -> None:
+def render_technical_expander(
+    result: dict[str, Any], *, diagnostics: dict[str, Any]
+) -> None:
     with st.expander("Detalhes técnicos", expanded=False):
         st.code(
             "generate_best_games(\n"
@@ -247,7 +310,9 @@ def render_technical_expander(result: dict[str, Any], *, diagnostics: dict[str, 
             ")",
             language="python",
         )
-        st.caption("Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL.")
+        st.caption(
+            "Geração não constitui promessa de acerto. Lote rastreável via PostgreSQL."
+        )
         st.json(
             {
                 "generation_mode": result.get("generation_mode"),
@@ -264,4 +329,6 @@ def render_technical_expander(result: dict[str, Any], *, diagnostics: dict[str, 
 
 def render_six_bases_expander() -> None:
     with st.expander("Leitura Lei 15 / 6 Bases", expanded=False):
-        st.write("Consulte **Cobertura Estrutural** no menu institucional para drilldown completo.")
+        st.write(
+            "Consulte **Cobertura Estrutural** no menu institucional para drilldown completo."
+        )

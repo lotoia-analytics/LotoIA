@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lotoia.database.database import DEFAULT_DATABASE_PATH, LotofacilOfficialHistory, get_session
+from lotoia.database.database import (
+    DEFAULT_DATABASE_PATH,
+    LotofacilOfficialHistory,
+    get_session,
+)
 
 # Concursos placeholder/fantasma — nunca persistir como target_contest (PR #280 / Lei 001).
 PHANTOM_TARGET_CONTEST_NUMBERS: frozenset[int] = frozenset({5000})
@@ -24,13 +28,22 @@ def is_valid_generation_target_contest(
     contest: int | None,
     *,
     latest_drawn_contest: int | None = None,
+    user_selected: bool = False,
 ) -> bool:
-    """True quando o concurso alvo é prospectivo real (próximo após o último sorteado válido)."""
+    """True quando o concurso alvo é válido para geração.
+
+    Por padrão (user_selected=False), exige que seja o próximo concurso após o
+    último sorteado (comportamento automático). Quando user_selected=True, aceita
+    qualquer concurso positivo que não seja placeholder/fantasma — permitindo ao
+    usuário escolher gerar para qualquer concurso (passado ou futuro).
+    """
     if contest is None:
         return False
     value = int(contest)
     if value <= 0 or value in PHANTOM_TARGET_CONTEST_NUMBERS:
         return False
+    if user_selected:
+        return True
     if latest_drawn_contest is not None and int(latest_drawn_contest) > 0:
         return value == int(latest_drawn_contest) + 1
     return True
@@ -48,12 +61,19 @@ def coerce_generation_target_contest(
     *,
     db_path: Path = DEFAULT_DATABASE_PATH,
     latest_drawn_contest: int | None = None,
+    user_selected: bool = False,
 ) -> int | None:
-    """Normaliza target_contest para o próximo concurso real, rejeitando placeholder/fantasma."""
+    """Normaliza target_contest — aceita escolha do usuário quando user_selected=True.
+
+    user_selected=False (padrão): força latest+1 (comportamento automático).
+    user_selected=True: aceita qualquer concurso positivo não-fantasma.
+    """
     latest = latest_drawn_contest
     if latest is None:
         latest = _max_valid_official_contest_number(db_path)
-    if is_valid_generation_target_contest(candidate, latest_drawn_contest=latest):
+    if is_valid_generation_target_contest(
+        candidate, latest_drawn_contest=latest, user_selected=user_selected
+    ):
         return int(candidate)
     if latest is not None and int(latest) > 0:
         return int(latest) + 1
