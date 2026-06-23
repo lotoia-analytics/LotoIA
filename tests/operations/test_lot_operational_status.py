@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dashboard.institutional_build import BUILD_MARKER
-from lotoia.ml.ml_operational_verdict import VERDICT_APROVADO, VERDICT_BLOQUEADO, VERDICT_PRECISA_CALIBRAR
+from lotoia.ml.ml_operational_verdict import (
+    VERDICT_APROVADO,
+    VERDICT_BLOQUEADO,
+    VERDICT_PRECISA_CALIBRAR,
+)
 from lotoia.operations.lot_operational_status import (
     GENERATION_ORIGIN_GENERATOR,
     GENERATION_ORIGIN_SIMULATION,
@@ -17,7 +21,7 @@ from lotoia.operations.lot_operational_status import (
 
 
 def test_build_marker_v44() -> None:
-    assert BUILD_MARKER == "institutional-adm-runtime-v83"
+    assert BUILD_MARKER == "institutional-adm-runtime-v100"
 
 
 def test_mission_id() -> None:
@@ -44,7 +48,10 @@ def test_approved_officialized() -> None:
     assert is_analytical_history_eligible({"lot_operational_status": status})
 
 
-def test_simulation_pending_structural_review_not_conference_eligible() -> None:
+def test_simulation_pending_structural_review_conference_eligible_observational() -> (
+    None
+):
+    """M-SENSOR-001: pending_structural_review é conferível como observacional."""
     status = resolve_lot_operational_status(
         ml_verdict=VERDICT_APROVADO,
         official_release_allowed=True,
@@ -53,7 +60,9 @@ def test_simulation_pending_structural_review_not_conference_eligible() -> None:
     )
     assert status == "pending_structural_review"
     assert is_active_structural_reading_status(status)
-    assert not is_official_conference_eligible({"lot_operational_status": status})
+    assert is_official_conference_eligible(
+        {"lot_operational_status": status}
+    )  # M-SENSOR-001
     assert not is_analytical_history_eligible({"lot_operational_status": status})
 
 

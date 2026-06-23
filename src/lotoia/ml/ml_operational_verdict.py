@@ -63,6 +63,40 @@ SIMILARITY_CALIBRATION_MIN = 0.65
 SIMILARITY_REPROVED_MIN = 0.70
 SIMILARITY_HIGH_THRESHOLD = 0.55
 
+# M-SENSOR-001: thresholds calibráveis via feedback de conferência
+# Quando calibração disponível, estes valores são sobrescritos por
+# calibrate_ml_thresholds() em threshold_calibration_from_conference.py
+_CALIBRATED_THRESHOLDS: dict[str, float] | None = None
+
+
+def set_calibrated_thresholds(thresholds: dict[str, float]) -> None:
+    """M-SENSOR-001: Atualiza thresholds com valores calibrados empiricamente.
+
+    Deve ser chamado após calibrate_ml_thresholds() rodar com dados suficientes
+    de conferência. Os thresholds calibrados substituem os defaults para o
+    restante da sessão.
+    """
+    global _CALIBRATED_THRESHOLDS
+    _CALIBRATED_THRESHOLDS = thresholds
+
+
+def get_similarity_thresholds() -> dict[str, float]:
+    """M-SENSOR-001: Retorna thresholds ativos (calibrados ou default)."""
+    if _CALIBRATED_THRESHOLDS:
+        return {
+            "attention_min": _CALIBRATED_THRESHOLDS.get("ideal_max", 0.58) + 0.01,
+            "attention_max": _CALIBRATED_THRESHOLDS.get("atencao_max", 0.64),
+            "calibration_min": _CALIBRATED_THRESHOLDS.get("atencao_max", 0.64) + 0.01,
+            "reproved_min": _CALIBRATED_THRESHOLDS.get("critico_above", 0.70),
+        }
+    return {
+        "attention_min": SIMILARITY_ATTENTION_MIN,
+        "attention_max": SIMILARITY_ATTENTION_MAX,
+        "calibration_min": SIMILARITY_CALIBRATION_MIN,
+        "reproved_min": SIMILARITY_REPROVED_MIN,
+    }
+
+
 NEXT_ACTION_CALIBRATION = "Autorizar calibração supervisionada."
 
 
@@ -132,22 +166,33 @@ def evaluate_ml_operational_verdict(
 ) -> dict[str, Any]:
     """Emite veredito operacional ML a partir de métricas da Cobertura Estrutural."""
     m = dict(metrics)
-    per_format = [dict(row) for row in list(format_analyses or m.get("format_analyses") or [])]
+    per_format = [
+        dict(row) for row in list(format_analyses or m.get("format_analyses") or [])
+    ]
     similaridade = _safe_float(m.get("similaridade_media"))
-    quase_repetidos = _safe_int(m.get("quase_repetidos_criticos", m.get("quase_repetidos")))
+    quase_repetidos = _safe_int(
+        m.get("quase_repetidos_criticos", m.get("quase_repetidos"))
+    )
     pares_atencao = _safe_int(m.get("pares_em_atencao"))
     primary_size = _safe_int(
-        m.get("primary_format_size") or (m.get("formatos_analisados") or [15])[0] if m.get("formatos_analisados") else 15,
+        m.get("primary_format_size") or (m.get("formatos_analisados") or [15])[0]
+        if m.get("formatos_analisados")
+        else 15,
         15,
     )
     similarity_reading = classify_similarity_for_format(similaridade, primary_size)
+    thresholds = get_similarity_thresholds()
     hits_13 = _safe_int(m.get("desempenho_13_hits"))
     hits_14 = _safe_int(m.get("desempenho_14_hits"))
     hits_15 = _safe_int(m.get("desempenho_15_hits"))
     total_jogos = _safe_int(m.get("total_jogos"))
 
-    has_critical_overlap = any(str(row.get("level") or "") == LEVEL_CRITICO for row in per_format)
-    has_ruim_overlap = any(str(row.get("level") or "") == LEVEL_RUIM for row in per_format)
+    has_critical_overlap = any(
+        str(row.get("level") or "") == LEVEL_CRITICO for row in per_format
+    )
+    has_ruim_overlap = any(
+        str(row.get("level") or "") == LEVEL_RUIM for row in per_format
+    )
     high_near_dup = quase_repetidos >= NEAR_DUP_HIGH_THRESHOLD
     high_redundancy = high_near_dup or similaridade >= SIMILARITY_HIGH_THRESHOLD
 
@@ -183,15 +228,15 @@ def evaluate_ml_operational_verdict(
             f"similaridade média em atenção para {primary_size}D ({similaridade:.4f})"
         )
         rule_triggers.append("similaridade_atencao_formato")
-    elif similaridade > SIMILARITY_REPROVED_MIN:
+    elif similaridade > thresholds["reproved_min"]:
         verdict = _merge_verdict(verdict, VERDICT_REPROVADO)
         reason_parts.append(f"similaridade média crítica ({similaridade:.4f})")
         rule_triggers.append("similaridade_reprovada")
-    elif similaridade > SIMILARITY_CALIBRATION_MIN:
+    elif similaridade > thresholds["calibration_min"]:
         verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
         reason_parts.append(f"similaridade média elevada ({similaridade:.4f})")
         rule_triggers.append("similaridade_calibracao")
-    elif SIMILARITY_ATTENTION_MIN <= similaridade <= SIMILARITY_ATTENTION_MAX:
+    elif thresholds["attention_min"] <= similaridade <= thresholds["attention_max"]:
         verdict = _merge_verdict(verdict, VERDICT_APROVADO_COM_ALERTA)
         reason_parts.append(f"similaridade média em atenção ({similaridade:.4f})")
         rule_triggers.append("similaridade_alerta")
@@ -204,7 +249,7 @@ def evaluate_ml_operational_verdict(
         rule_triggers.append("quase_repetidos_alto")
 
     if (
-        SIMILARITY_ATTENTION_MIN <= similaridade <= SIMILARITY_ATTENTION_MAX
+        thresholds["attention_min"] <= similaridade <= thresholds["attention_max"]
         and high_near_dup
     ):
         verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
@@ -212,7 +257,10 @@ def evaluate_ml_operational_verdict(
 
     primary_analysis = per_format[0] if len(per_format) == 1 else None
     if primary_analysis and str(primary_analysis.get("level")) == LEVEL_ATENCAO:
-        if similarity_reading["band"] in {"atencao", "alta_redundancia", "critico"} and pares_atencao >= 10:
+        if (
+            similarity_reading["band"] in {"atencao", "alta_redundancia", "critico"}
+            and pares_atencao >= 10
+        ):
             verdict = _merge_verdict(verdict, VERDICT_PRECISA_CALIBRAR)
             reason_parts.append(
                 f"overlap máximo em atenção ({primary_analysis.get('sobreposicao_maxima')}) "
@@ -260,7 +308,10 @@ def evaluate_ml_operational_verdict(
     elif not reason_parts and verdict != VERDICT_APROVADO:
         reason_parts.append("indicadores estruturais exigem revisão ML")
 
-    primary_reason = ". ".join(dict.fromkeys(part for part in reason_parts if part)) or "Sem bloqueios estruturais."
+    primary_reason = (
+        ". ".join(dict.fromkeys(part for part in reason_parts if part))
+        or "Sem bloqueios estruturais."
+    )
     if high_near_dup and overlap_detail:
         primary_reason = f"{overlap_detail} + quase repetidos {quase_repetidos}."
 
@@ -298,6 +349,8 @@ def evaluate_ml_operational_verdict(
         "policy_compliance_status": policy_status,
         "policy_compliance_label": policy_label,
         "policy_violations": policy_violations,
+        "thresholds_source": "calibrated" if _CALIBRATED_THRESHOLDS else "default",
+        "active_thresholds": thresholds,
     }
 
     return {

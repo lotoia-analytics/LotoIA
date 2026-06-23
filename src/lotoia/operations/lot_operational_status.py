@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
 
-from lotoia.ml.ml_operational_verdict import build_structural_verdict_hits_separation_trace
+from lotoia.ml.ml_operational_verdict import (
+    build_structural_verdict_hits_separation_trace,
+)
 
 MISSION_ID = "M-OPS-062"
 DEFERRED_COVERAGE_MISSION_ID = "M-OPS-062-FIX-06"
@@ -37,44 +39,55 @@ STATUS_BLOCKED_FOR_OFFICIALIZATION = "blocked_for_officialization"
 STATUS_SUPERSEDED_BY_CALIBRATION = "superseded_by_calibration"
 STATUS_NOT_OFFICIALIZED = "not_officialized"
 
-PERSIST_TIME_INACTIVE_COVERAGE_STATUSES: frozenset[str] = frozenset({
-    STATUS_REJECTED,
-    STATUS_BLOCKED_FOR_OFFICIALIZATION,
-    STATUS_CALIBRATION_APPLIED,
-})
+PERSIST_TIME_INACTIVE_COVERAGE_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_REJECTED,
+        STATUS_BLOCKED_FOR_OFFICIALIZATION,
+        STATUS_CALIBRATION_APPLIED,
+    }
+)
 
 GENERATION_ORIGIN_GENERATOR = "generator"
 GENERATION_ORIGIN_SIMULATION = "simulation"
 
-ACTIVE_STRUCTURAL_READING_STATUSES: frozenset[str] = frozenset({
-    STATUS_PENDING_STRUCTURAL_REVIEW,
-    STATUS_NEEDS_CALIBRATION,
-    STATUS_CALIBRATION_AUTHORIZED,
-    STATUS_APPROVED_FOR_OFFICIALIZATION,
-    STATUS_OFFICIALIZED,
-    STATUS_APPROVED_WITH_WARNING,
-})
+ACTIVE_STRUCTURAL_READING_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_PENDING_STRUCTURAL_REVIEW,
+        STATUS_NEEDS_CALIBRATION,
+        STATUS_CALIBRATION_AUTHORIZED,
+        STATUS_APPROVED_FOR_OFFICIALIZATION,
+        STATUS_OFFICIALIZED,
+        STATUS_APPROVED_WITH_WARNING,
+    }
+)
 
-OFFICIAL_CONFERENCE_STATUSES: frozenset[str] = frozenset({
-    STATUS_APPROVED_FOR_OFFICIALIZATION,
-    STATUS_OFFICIALIZED,
-    STATUS_APPROVED_WITH_WARNING,
-})
+OFFICIAL_CONFERENCE_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_PENDING_STRUCTURAL_REVIEW,  # M-SENSOR-001: conferência observacional sempre liberada
+        STATUS_APPROVED_FOR_OFFICIALIZATION,
+        STATUS_OFFICIALIZED,
+        STATUS_APPROVED_WITH_WARNING,
+    }
+)
 
-ANALYTICAL_HISTORY_STATUSES: frozenset[str] = frozenset({
-    STATUS_APPROVED_FOR_OFFICIALIZATION,
-    STATUS_OFFICIALIZED,
-    STATUS_APPROVED_WITH_WARNING,
-})
+ANALYTICAL_HISTORY_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_APPROVED_FOR_OFFICIALIZATION,
+        STATUS_OFFICIALIZED,
+        STATUS_APPROVED_WITH_WARNING,
+    }
+)
 
-INACTIVE_AUDIT_ONLY_STATUSES: frozenset[str] = frozenset({
-    STATUS_REJECTED,
-    STATUS_BLOCKED_FOR_OFFICIALIZATION,
-    STATUS_CALIBRATION_SOURCE_ONLY,
-    STATUS_SUPERSEDED_BY_CALIBRATION,
-    STATUS_NOT_OFFICIALIZED,
-    STATUS_CALIBRATION_APPLIED,
-})
+INACTIVE_AUDIT_ONLY_STATUSES: frozenset[str] = frozenset(
+    {
+        STATUS_REJECTED,
+        STATUS_BLOCKED_FOR_OFFICIALIZATION,
+        STATUS_CALIBRATION_SOURCE_ONLY,
+        STATUS_SUPERSEDED_BY_CALIBRATION,
+        STATUS_NOT_OFFICIALIZED,
+        STATUS_CALIBRATION_APPLIED,
+    }
+)
 
 _STATUS_RESOLUTION_KEYS: tuple[str, ...] = (
     "lot_operational_status",
@@ -177,6 +190,19 @@ def is_official_conference_eligible(context: Mapping[str, Any] | None) -> bool:
     return _legacy_ml_release_allowed(context)
 
 
+def is_observational_conference(context: Mapping[str, Any] | None) -> bool:
+    """M-SENSOR-001: True se a conferência é observacional (não oficial).
+
+    Conferência observacional = lote ainda não aprovado pelo ML, mas conferível
+    para gerar dados reais de performance. Não altera governança — apenas permite
+    medição antes da aprovação formal.
+    """
+    if not isinstance(context, Mapping):
+        return False
+    status = _resolve_status_from_context(context)
+    return status == STATUS_PENDING_STRUCTURAL_REVIEW
+
+
 def is_analytical_history_eligible(context: Mapping[str, Any] | None) -> bool:
     if not isinstance(context, Mapping):
         return True
@@ -186,18 +212,27 @@ def is_analytical_history_eligible(context: Mapping[str, Any] | None) -> bool:
     return _legacy_ml_release_allowed(context)
 
 
-def should_defer_generator_persist_verdict_for_coverage(context: Mapping[str, Any] | None) -> bool:
+def should_defer_generator_persist_verdict_for_coverage(
+    context: Mapping[str, Any] | None,
+) -> bool:
     """Lotes do Gerador com veredito ML na persistência ainda não revisados na Cobertura."""
     if not isinstance(context, Mapping):
         return False
-    origin = str(context.get("generation_origin") or GENERATION_ORIGIN_GENERATOR).strip().lower()
+    origin = (
+        str(context.get("generation_origin") or GENERATION_ORIGIN_GENERATOR)
+        .strip()
+        .lower()
+    )
     if origin != GENERATION_ORIGIN_GENERATOR:
         return False
     if context.get("simulation_mode"):
         return False
     if context.get("structural_coverage_review_completed"):
         return False
-    if context.get("active_reading_scope") is False and str(context.get("excluded_from_active_reading_reason") or "").strip():
+    if (
+        context.get("active_reading_scope") is False
+        and str(context.get("excluded_from_active_reading_reason") or "").strip()
+    ):
         return False
     lot_status = extract_lot_operational_status(context)
     if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
@@ -214,7 +249,9 @@ def _normalize_quality_tier(value: Any) -> str:
     return tier
 
 
-def _post_calibration_promotion_prerequisites_met(plan: Mapping[str, Any], promo: Mapping[str, Any]) -> tuple[bool, str]:
+def _post_calibration_promotion_prerequisites_met(
+    plan: Mapping[str, Any], promo: Mapping[str, Any]
+) -> tuple[bool, str]:
     if not bool(plan.get("calibration_plan_loaded_from_db")):
         return False, "calibration_plan_not_loaded_from_db"
     if not bool(plan.get("calibration_plan_applied_to_generation")):
@@ -250,30 +287,65 @@ def _resolve_post_calibration_promoted_status(
     verdict = str(ml_verdict or "").strip().upper()
 
     if tier in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}:
-        return current_status, False, f"gp_quality_tier_{tier.lower()}_not_releasable", ""
+        return (
+            current_status,
+            False,
+            f"gp_quality_tier_{tier.lower()}_not_releasable",
+            "",
+        )
     if verdict in {VERDICT_REPROVADO, VERDICT_BLOQUEADO}:
-        return current_status, False, f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable", ""
-    if authorized_plan_applied_to_generation and verdict == VERDICT_PRECISA_CALIBRAR and tier not in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}:
-        return STATUS_APPROVED_WITH_WARNING, True, "", PROMOTION_BYPASS_REASON_AUTHORIZED_PLAN_CONSUMED
-    if verdict == VERDICT_PRECISA_CALIBRAR and tier not in {QUALITY_TIER_APROVADO, QUALITY_TIER_ATENCAO}:
+        return (
+            current_status,
+            False,
+            f"ml_verdict_{verdict.lower().replace(' ', '_')}_not_releasable",
+            "",
+        )
+    if (
+        authorized_plan_applied_to_generation
+        and verdict == VERDICT_PRECISA_CALIBRAR
+        and tier not in {QUALITY_TIER_REPROVADO, QUALITY_TIER_CRITICO}
+    ):
+        return (
+            STATUS_APPROVED_WITH_WARNING,
+            True,
+            "",
+            PROMOTION_BYPASS_REASON_AUTHORIZED_PLAN_CONSUMED,
+        )
+    if verdict == VERDICT_PRECISA_CALIBRAR and tier not in {
+        QUALITY_TIER_APROVADO,
+        QUALITY_TIER_ATENCAO,
+    }:
         return current_status, False, "ml_verdict_precisa_calibrar_not_releasable", ""
     if current_status in OFFICIAL_CONFERENCE_STATUSES:
         return current_status, True, "", ""
     if tier == QUALITY_TIER_ATENCAO or verdict == VERDICT_APROVADO_COM_ALERTA:
         return STATUS_APPROVED_WITH_WARNING, True, "", ""
-    if tier == QUALITY_TIER_APROVADO or verdict == VERDICT_APROVADO or official_release_allowed:
+    if (
+        tier == QUALITY_TIER_APROVADO
+        or verdict == VERDICT_APROVADO
+        or official_release_allowed
+    ):
         if verdict == VERDICT_APROVADO_COM_ALERTA:
             return STATUS_APPROVED_WITH_WARNING, True, "", ""
         if verdict == VERDICT_APROVADO:
             return STATUS_OFFICIALIZED, True, "", ""
         return STATUS_APPROVED_FOR_OFFICIALIZATION, True, "", ""
-    return current_status, False, "quality_tier_or_verdict_insufficient_for_promotion", ""
+    return (
+        current_status,
+        False,
+        "quality_tier_or_verdict_insufficient_for_promotion",
+        "",
+    )
 
 
-def _apply_post_calibration_eligibility_flags(merged: dict[str, Any], *, lot_status: str) -> None:
+def _apply_post_calibration_eligibility_flags(
+    merged: dict[str, Any], *, lot_status: str
+) -> None:
     conferivel = lot_status in OFFICIAL_CONFERENCE_STATUSES
     merged["lot_operational_status"] = lot_status
-    merged["is_active_structural_reading"] = is_active_structural_reading_status(lot_status)
+    merged["is_active_structural_reading"] = is_active_structural_reading_status(
+        lot_status
+    )
     merged["active_reading_scope"] = merged["is_active_structural_reading"]
     merged["is_official_conference_eligible"] = conferivel
     merged["is_analytical_history_eligible"] = lot_status in ANALYTICAL_HISTORY_STATUSES
@@ -294,21 +366,41 @@ def promote_post_calibration_consumer_lot_visibility(
     if not bool(plan.get("calibration_plan_loaded_from_db")):
         return merged
 
-    verdict = str(promo.get("ml_verdict") or merged.get("ml_persist_verdict") or merged.get("ml_verdict") or (merged.get("lot_status_trace") or {}).get("ml_verdict") or "").strip()
-    current_status = extract_lot_operational_status(merged) or str(merged.get("lot_operational_status") or STATUS_PENDING_STRUCTURAL_REVIEW)
-    gp_quality_tier = str(promo.get("gp_quality_tier") or merged.get("gp_quality_tier") or "")
-    official_release_allowed = bool(promo.get("official_release_allowed", merged.get("official_release_allowed")))
+    verdict = str(
+        promo.get("ml_verdict")
+        or merged.get("ml_persist_verdict")
+        or merged.get("ml_verdict")
+        or (merged.get("lot_status_trace") or {}).get("ml_verdict")
+        or ""
+    ).strip()
+    current_status = extract_lot_operational_status(merged) or str(
+        merged.get("lot_operational_status") or STATUS_PENDING_STRUCTURAL_REVIEW
+    )
+    gp_quality_tier = str(
+        promo.get("gp_quality_tier") or merged.get("gp_quality_tier") or ""
+    )
+    official_release_allowed = bool(
+        promo.get("official_release_allowed", merged.get("official_release_allowed"))
+    )
 
     consumer_base: dict[str, Any] = {
         "post_calibration_consumer_lot": True,
         "calibration_plan_consumer_generation": True,
         "calibration_plan_loaded_from_db": True,
-        "calibration_plan_applied_to_generation": bool(plan.get("calibration_plan_applied_to_generation")),
-        "calibration_plan_source_generation_event_id": int(plan.get("calibration_plan_source_generation_event_id", 0) or 0),
+        "calibration_plan_applied_to_generation": bool(
+            plan.get("calibration_plan_applied_to_generation")
+        ),
+        "calibration_plan_source_generation_event_id": int(
+            plan.get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
         "calibration_trace_id": str(plan.get("calibration_trace_id") or ""),
         "authorized_plan_loaded_from_db": True,
-        "authorized_plan_applied_to_generation": bool(plan.get("calibration_plan_applied_to_generation")),
-        "authorized_plan_source_generation_event_id": int(plan.get("calibration_plan_source_generation_event_id", 0) or 0),
+        "authorized_plan_applied_to_generation": bool(
+            plan.get("calibration_plan_applied_to_generation")
+        ),
+        "authorized_plan_source_generation_event_id": int(
+            plan.get("calibration_plan_source_generation_event_id", 0) or 0
+        ),
         "authorized_plan_trace_id": str(plan.get("calibration_trace_id") or ""),
         "authorized_plan_mission_id": "M-ML-075-FIX-01",
         "calibration_plan_visibility_mission_id": "M-ML-075-FIX-01",
@@ -316,31 +408,45 @@ def promote_post_calibration_consumer_lot_visibility(
         "post_calibration_promotion_evaluated": True,
         "excluded_from_active_reading_reason": "",
         "gp_quality_tier": gp_quality_tier or merged.get("gp_quality_tier"),
-        "gp_quality_tier_after_authorized_plan": gp_quality_tier or merged.get("gp_quality_tier"),
+        "gp_quality_tier_after_authorized_plan": gp_quality_tier
+        or merged.get("gp_quality_tier"),
     }
     if verdict:
         consumer_base["ml_verdict"] = verdict
         consumer_base["ml_verdict_after_authorized_plan"] = verdict
 
-    prereq_ok, prereq_reason = _post_calibration_promotion_prerequisites_met(plan, promo)
+    prereq_ok, prereq_reason = _post_calibration_promotion_prerequisites_met(
+        plan, promo
+    )
     if not prereq_ok:
         merged.update(consumer_base)
-        merged.update({
-            "post_calibration_promotion_status": "prerequisites_not_met",
-            "promoted_to_analytical_history": False,
-            "promoted_to_official_conference": False,
-            "promotion_block_reason": prereq_reason,
-        })
-        merged.setdefault("is_active_structural_reading", is_active_structural_reading_status(current_status))
-        merged.setdefault("active_reading_scope", bool(merged.get("is_active_structural_reading")))
+        merged.update(
+            {
+                "post_calibration_promotion_status": "prerequisites_not_met",
+                "promoted_to_analytical_history": False,
+                "promoted_to_official_conference": False,
+                "promotion_block_reason": prereq_reason,
+            }
+        )
+        merged.setdefault(
+            "is_active_structural_reading",
+            is_active_structural_reading_status(current_status),
+        )
+        merged.setdefault(
+            "active_reading_scope", bool(merged.get("is_active_structural_reading"))
+        )
         return merged
 
-    promoted_status, promoted, block_reason, bypass_reason = _resolve_post_calibration_promoted_status(
-        gp_quality_tier=gp_quality_tier,
-        ml_verdict=verdict,
-        official_release_allowed=official_release_allowed,
-        current_status=current_status,
-        authorized_plan_applied_to_generation=bool(plan.get("calibration_plan_applied_to_generation")),
+    promoted_status, promoted, block_reason, bypass_reason = (
+        _resolve_post_calibration_promoted_status(
+            gp_quality_tier=gp_quality_tier,
+            ml_verdict=verdict,
+            official_release_allowed=official_release_allowed,
+            current_status=current_status,
+            authorized_plan_applied_to_generation=bool(
+                plan.get("calibration_plan_applied_to_generation")
+            ),
+        )
     )
 
     merged.update(consumer_base)
@@ -352,28 +458,34 @@ def promote_post_calibration_consumer_lot_visibility(
             "promotion_block_reason": "",
         }
         if bypass_reason:
-            promotion_payload.update({
-                "promotion_bypass_reason": bypass_reason,
-                "authorized_plan_promotion_bypass_mission_id": AUTHORIZED_PLAN_PROMOTION_BYPASS_MISSION_ID,
-            })
+            promotion_payload.update(
+                {
+                    "promotion_bypass_reason": bypass_reason,
+                    "authorized_plan_promotion_bypass_mission_id": AUTHORIZED_PLAN_PROMOTION_BYPASS_MISSION_ID,
+                }
+            )
         _apply_post_calibration_eligibility_flags(merged, lot_status=promoted_status)
         merged.update(promotion_payload)
     else:
         if current_status:
             _apply_post_calibration_eligibility_flags(merged, lot_status=current_status)
-        merged.update({
-            "post_calibration_promotion_status": current_status or "not_promoted",
-            "promoted_to_analytical_history": False,
-            "promoted_to_official_conference": False,
-            "promotion_block_reason": block_reason,
-            "post_calibration_consumer_not_released": True,
-        })
+        merged.update(
+            {
+                "post_calibration_promotion_status": current_status or "not_promoted",
+                "promoted_to_analytical_history": False,
+                "promoted_to_official_conference": False,
+                "promotion_block_reason": block_reason,
+                "post_calibration_consumer_not_released": True,
+            }
+        )
         merged["is_active_structural_reading"] = True
         merged["active_reading_scope"] = True
         if verdict and current_status in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
             merged["ml_persist_verdict_deferred_for_coverage"] = True
             merged["ml_persist_verdict"] = verdict
-            merged["structural_coverage_defer_mission_id"] = DEFERRED_COVERAGE_MISSION_ID
+            merged["structural_coverage_defer_mission_id"] = (
+                DEFERRED_COVERAGE_MISSION_ID
+            )
     return merged
 
 
@@ -386,7 +498,10 @@ def defer_lot_status_for_structural_coverage(
 ) -> dict[str, Any]:
     """Garante visibilidade na Cobertura antes da revisão Central ML (M-OPS-062)."""
     merged = dict(lot_status_context)
-    if simulation_mode or str(generation_origin or "").strip().lower() == GENERATION_ORIGIN_SIMULATION:
+    if (
+        simulation_mode
+        or str(generation_origin or "").strip().lower() == GENERATION_ORIGIN_SIMULATION
+    ):
         return merged
     lot_status = extract_lot_operational_status(merged)
     if is_active_structural_reading_status(lot_status):
@@ -394,17 +509,21 @@ def defer_lot_status_for_structural_coverage(
     if lot_status not in PERSIST_TIME_INACTIVE_COVERAGE_STATUSES:
         return merged
     verdict = str(ml_verdict_payload.get("ml_verdict") or "")
-    merged.update({
-        "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
-        "is_active_structural_reading": True,
-        "is_official_conference_eligible": False,
-        "is_analytical_history_eligible": False,
-        "official_release_allowed": False,
-        "ml_persist_verdict": verdict,
-        "ml_persist_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
-        "ml_persist_verdict_deferred_for_coverage": True,
-        "structural_coverage_defer_mission_id": DEFERRED_COVERAGE_MISSION_ID,
-    })
+    merged.update(
+        {
+            "lot_operational_status": STATUS_PENDING_STRUCTURAL_REVIEW,
+            "is_active_structural_reading": True,
+            "is_official_conference_eligible": False,
+            "is_analytical_history_eligible": False,
+            "official_release_allowed": False,
+            "ml_persist_verdict": verdict,
+            "ml_persist_verdict_reason": str(
+                ml_verdict_payload.get("ml_verdict_reason") or ""
+            ),
+            "ml_persist_verdict_deferred_for_coverage": True,
+            "structural_coverage_defer_mission_id": DEFERRED_COVERAGE_MISSION_ID,
+        }
+    )
     return merged
 
 
@@ -446,7 +565,8 @@ def build_lot_status_context(
         "is_active_structural_reading": is_active_structural_reading_status(lot_status),
         "is_official_conference_eligible": lot_status in OFFICIAL_CONFERENCE_STATUSES,
         "is_analytical_history_eligible": lot_status in ANALYTICAL_HISTORY_STATUSES,
-        "official_release_allowed": official_release_allowed and lot_status in OFFICIAL_CONFERENCE_STATUSES,
+        "official_release_allowed": official_release_allowed
+        and lot_status in OFFICIAL_CONFERENCE_STATUSES,
         **build_structural_verdict_hits_separation_trace(),
     }
 
@@ -454,10 +574,15 @@ def build_lot_status_context(
 def extract_lot_operational_status(context: Mapping[str, Any] | None) -> str:
     if not isinstance(context, Mapping):
         return ""
-    return _resolve_status_from_context(context) or str(context.get("lot_operational_status") or "").strip().lower()
+    return (
+        _resolve_status_from_context(context)
+        or str(context.get("lot_operational_status") or "").strip().lower()
+    )
 
 
-def supersede_status_update(*, superseded_by_event_id: int, reason: str = "") -> dict[str, Any]:
+def supersede_status_update(
+    *, superseded_by_event_id: int, reason: str = ""
+) -> dict[str, Any]:
     """Payload para marcar lote anterior como substituído por calibração."""
     return {
         "lot_operational_status": STATUS_SUPERSEDED_BY_CALIBRATION,
@@ -472,7 +597,9 @@ def supersede_status_update(*, superseded_by_event_id: int, reason: str = "") ->
     }
 
 
-def filter_event_ids_for_active_structural_reading(event_contexts: Sequence[tuple[int, Mapping[str, Any]]]) -> list[int]:
+def filter_event_ids_for_active_structural_reading(
+    event_contexts: Sequence[tuple[int, Mapping[str, Any]]],
+) -> list[int]:
     """Filtra generation_event_ids elegíveis para leitura ativa da Cobertura Estrutural."""
     active_ids: list[int] = []
     for event_id, context in event_contexts:

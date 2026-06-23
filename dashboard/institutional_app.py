@@ -18872,7 +18872,8 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
     st.caption(
         "Conferir Resultados = **último concurso oficial** × **bateria operacional selecionada**. "
         "Exibe apenas jogos com 11 pontos ou mais. Conferência sob demanda — uma bateria por vez "
-        "ou todas as baterias de uma vez."
+        "ou todas as baterias de uma vez. M-SENSOR-001: conferência observacional liberada para "
+        "todos os lotes, incluindo `pending_structural_review`."
     )
     official_groups = _load_official_conference_generation_groups(page_load=True)
     battery_groups = build_operational_battery_groups(official_groups)
@@ -18992,11 +18993,9 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
             st.info("📊 Conferência normal: apenas o concurso atual")
 
     if not official_generation_event_ids:
-        st.warning(
-            "**Nenhuma bateria conferível disponível.** "
-            "As baterias com status `pending_structural_review` precisam ser aprovadas ou oficializadas "
-            "antes de poderem ser conferidas. Use o painel de **Central ML** ou **Governança de Lotes** "
-            "para revisar e aprovar as baterias pendentes."
+        st.info(
+            "**Nenhuma bateria disponível para conferência.** "
+            "Gere jogos com o CORE_002 para conferi-los contra o último concurso oficial."
         )
     else:
         page_labels = {
