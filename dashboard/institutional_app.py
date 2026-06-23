@@ -1566,15 +1566,65 @@ def _database_snapshot() -> dict[str, Any]:
 def _light_database_snapshot() -> dict[str, Any]:
     adapter = InstitutionalDatabaseAdapter(DB_PATH)
     engine = _get_engine_cached()
+    # Light mode still runs cheap COUNT(*) queries so the home page metrics
+    # (Jogos Gerados, Conferências Realizadas, etc.) are never zeroed out.
+    light_count_tables = [
+        "generation_events",
+        "generated_games",
+        "reconciliation_runs",
+        "reconciliation_games",
+        "reconciliation_events",
+        "imported_contests",
+        "lotofacil_official_history",
+        "institutional_output_signatures",
+        "scientific_calibration_decisions",
+        "scientific_institutional_memory",
+        "expansion_events",
+    ]
+    counts: dict[str, int] = {}
+    latest: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    latest_fields = {
+        "generation_events": "created_at",
+        "generated_games": "created_at",
+        "reconciliation_runs": "created_at",
+        "reconciliation_games": "created_at",
+        "reconciliation_events": "created_at",
+        "imported_contests": "contest_number",
+        "lotofacil_official_history": "contest_number",
+        "institutional_output_signatures": "created_at",
+        "scientific_calibration_decisions": "created_at",
+        "scientific_institutional_memory": "created_at",
+        "expansion_events": "created_at",
+    }
+    for table in light_count_tables:
+        try:
+            with engine.connect() as connection:
+                value = connection.execute(
+                    text(f'SELECT COUNT(*) FROM "{table}"')
+                ).scalar()
+            counts[table] = int(value or 0)
+        except Exception as exc:
+            counts[table] = 0
+            errors[table] = str(exc)
+        latest_field = latest_fields.get(table, "created_at")
+        try:
+            with engine.connect() as connection:
+                value = connection.execute(
+                    text(f'SELECT MAX("{latest_field}") FROM "{table}"')
+                ).scalar()
+            latest[table] = value if value is not None else "-"
+        except Exception:
+            latest[table] = "-"
     return {
         "backend": adapter.backend,
         "engine_url": str(engine.url),
         "database_url": adapter.database_url,
         "database_source": adapter.database_source,
-        "counts": {},
-        "latest": {},
-        "tables": [],
-        "errors": {},
+        "counts": counts,
+        "latest": latest,
+        "tables": light_count_tables,
+        "errors": errors,
         "query_logs": [],
         "table_diagnostics": {},
         "light_mode": True,
