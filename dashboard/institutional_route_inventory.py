@@ -7,9 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-ROUTE_INVENTORY_ALERT = (
-    "Inventário de rotas read-only — nenhuma rota é alterada, removida ou executada nesta seção."
-)
+ROUTE_INVENTORY_ALERT = "Inventário de rotas read-only — nenhuma rota é alterada, removida ou executada nesta seção."
 
 ROUTE_INVENTORY_MISSION = "M-PLAT-040"
 MENU_CLEANUP_MISSION = "M-VIS-057"
@@ -72,6 +70,7 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
         "history_analytical",
         "history_institutional",
         "structural_coverage",
+        "structural_coverage_modern",
         "central_ml_diagnostics",
         "restricted_controlled_cleanup",
     }
@@ -85,14 +84,13 @@ OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Conferir Resultados", "conference"),
             ("Histórico Analítico", "history_analytical"),
             ("Cobertura Estrutural", "structural_coverage"),
+            ("Cobertura Moderna", "structural_coverage_modern"),
             ("Simular Resultados", "simulation"),
         ),
     ),
     (
         "Análise",
-        (
-            ("Análise ML", "central_ml_diagnostics"),
-        ),
+        (("Análise ML", "central_ml_diagnostics"),),
     ),
     (
         "Referência",
@@ -201,13 +199,41 @@ ALIAS_ROUTE_ROWS: tuple[dict[str, str], ...] = (
 )
 
 REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
-    {"page_id": "strategies_analysis", "label": "Análises Estratégicas", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "strategies_test", "label": "Testar Estratégias", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "strategies_simulation", "label": "Simular Estratégias", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "institutional_replay", "label": "Replay institucional", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "operational_statistics", "label": "Estatísticas operacionais", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "hb_geometry", "label": "HB Geometry", "estado": "REMOVIDA DO MENU — fallback"},
-    {"page_id": "audit_monitoring", "label": "Auditoria e Monitoramento", "estado": "REMOVIDA DO MENU — sub-rotas redirecionadas"},
+    {
+        "page_id": "strategies_analysis",
+        "label": "Análises Estratégicas",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "strategies_test",
+        "label": "Testar Estratégias",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "strategies_simulation",
+        "label": "Simular Estratégias",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "institutional_replay",
+        "label": "Replay institucional",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "operational_statistics",
+        "label": "Estatísticas operacionais",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "hb_geometry",
+        "label": "HB Geometry",
+        "estado": "REMOVIDA DO MENU — fallback",
+    },
+    {
+        "page_id": "audit_monitoring",
+        "label": "Auditoria e Monitoramento",
+        "estado": "REMOVIDA DO MENU — sub-rotas redirecionadas",
+    },
     {
         "page_id": "audit_monitoring_group_performance",
         "label": "Desempenho por grupo",
@@ -218,11 +244,31 @@ REMOVED_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "label": "Hipóteses para teste offline",
         "estado": "REMOVIDA DO MENU — fallback",
     },
-    {"page_id": "audit", "label": "Auditoria Runtime", "estado": "M-VIS-057 — removida do menu → fallback"},
-    {"page_id": "core_002_read_only", "label": "Núcleo Lei 15 — CORE_002", "estado": "M-VIS-057 — removida → Governança Institucional"},
-    {"page_id": "comparative_history", "label": "Comparativos histórico", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
-    {"page_id": "summary_benchmark", "label": "Benchmark resumido", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
-    {"page_id": "hb_metrics", "label": "Métricas HB", "estado": "M-VIS-057 — removida → Cobertura Estrutural"},
+    {
+        "page_id": "audit",
+        "label": "Auditoria Runtime",
+        "estado": "M-VIS-057 — removida do menu → fallback",
+    },
+    {
+        "page_id": "core_002_read_only",
+        "label": "Núcleo Lei 15 — CORE_002",
+        "estado": "M-VIS-057 — removida → Governança Institucional",
+    },
+    {
+        "page_id": "comparative_history",
+        "label": "Comparativos histórico",
+        "estado": "M-VIS-057 — removida → Cobertura Estrutural",
+    },
+    {
+        "page_id": "summary_benchmark",
+        "label": "Benchmark resumido",
+        "estado": "M-VIS-057 — removida → Cobertura Estrutural",
+    },
+    {
+        "page_id": "hb_metrics",
+        "label": "Métricas HB",
+        "estado": "M-VIS-057 — removida → Cobertura Estrutural",
+    },
     {
         "page_id": "institutional_simulation_backtesting",
         "label": "Simulação Institucional / Backtesting",
@@ -305,7 +351,11 @@ ROUTE_GUARDS: tuple[str, ...] = (
 
 
 def official_sidebar_page_ids() -> frozenset[str]:
-    return frozenset(page_id for _group, entries in OFFICIAL_SIDEBAR_MENU for _label, page_id in entries)
+    return frozenset(
+        page_id
+        for _group, entries in OFFICIAL_SIDEBAR_MENU
+        for _label, page_id in entries
+    )
 
 
 def resolve_institutional_page_id(page_id: str) -> str:
@@ -356,26 +406,52 @@ def render_route_inventory_section(*, app_build: str) -> None:
     st.caption(f"Build: `{app_build}` — documento: `{payload['inventory_doc']}`")
 
     tab_ativas, tab_bloqueadas, tab_aliases, tab_removidas, tab_guardas = st.tabs(
-        ["Rotas ativas", "Rotas bloqueadas", "Aliases seguros", "Removidas do menu", "Guardas"]
+        [
+            "Rotas ativas",
+            "Rotas bloqueadas",
+            "Aliases seguros",
+            "Removidas do menu",
+            "Guardas",
+        ]
     )
 
     with tab_ativas:
-        st.dataframe(pd.DataFrame(payload["active_routes"]), hide_index=True, use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(payload["active_routes"]),
+            hide_index=True,
+            use_container_width=True,
+        )
         st.markdown("##### Labels constitucionais padronizados")
         for label in CONSTITUTIONAL_LABELS:
             st.markdown(f"- {label}")
 
     with tab_bloqueadas:
-        st.dataframe(pd.DataFrame(payload["blocked_routes"]), hide_index=True, use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(payload["blocked_routes"]),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     with tab_aliases:
-        st.dataframe(pd.DataFrame(payload["alias_routes"]), hide_index=True, use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(payload["alias_routes"]),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     with tab_removidas:
-        st.dataframe(pd.DataFrame(payload["removed_routes"]), hide_index=True, use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(payload["removed_routes"]),
+            hide_index=True,
+            use_container_width=True,
+        )
         if payload["pending_routes"]:
             st.markdown("##### Pendências institucionais")
-            st.dataframe(pd.DataFrame(payload["pending_routes"]), hide_index=True, use_container_width=True)
+            st.dataframe(
+                pd.DataFrame(payload["pending_routes"]),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     with tab_guardas:
         for guard in ROUTE_GUARDS:

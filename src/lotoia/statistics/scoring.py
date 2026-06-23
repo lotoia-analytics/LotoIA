@@ -26,16 +26,18 @@ SCORE_COMPONENTS = (
     "sequence_score",
 )
 
-FINAL_SCORE_WEIGHTS = MappingProxyType({
-    "duo_score": 15,
-    "terno_score": 20,
-    "quadra_score": 25,
-    "quina_score": 20,
-    "delay_score": 10,
-    "frequency_score": 5,
-    "sum_score": 3,
-    "sequence_score": 2,
-})
+FINAL_SCORE_WEIGHTS = MappingProxyType(
+    {
+        "duo_score": 15,
+        "terno_score": 20,
+        "quadra_score": 25,
+        "quina_score": 20,
+        "delay_score": 10,
+        "frequency_score": 5,
+        "sum_score": 8,  # Aumentado de 3 para 8 — análise mostra que soma é forte discriminador 11+ vs 9-10
+        "sequence_score": 2,
+    }
+)
 
 EMPTY_FINAL_SCORE = {
     "final_score": 0,
@@ -98,7 +100,9 @@ def validate_score_weights(weights: Mapping[str, float]) -> dict[str, float]:
     normalized_weights = {name: float(weights[name]) for name in SCORE_COMPONENTS}
     negative_weights = [name for name, value in normalized_weights.items() if value < 0]
     if negative_weights:
-        raise ValueError(f"Pesos de score invalidos. Valores negativos: {', '.join(negative_weights)}")
+        raise ValueError(
+            f"Pesos de score invalidos. Valores negativos: {', '.join(negative_weights)}"
+        )
     if sum(normalized_weights.values()) <= 0:
         raise ValueError("A soma dos pesos de score deve ser maior que zero.")
 
@@ -119,7 +123,9 @@ def weighted_final_score(
 ) -> float:
     score_weights = resolve_score_config(weights).weights
     total_weight = sum(score_weights.values())
-    weighted_score = sum(components[name] * weight for name, weight in score_weights.items())
+    weighted_score = sum(
+        components[name] * weight for name, weight in score_weights.items()
+    )
     return round(weighted_score / total_weight, 2)
 
 
@@ -139,9 +145,15 @@ def score_candidate_from_history(
     }
     components = {
         "duo_score": rank_component_score(combo_scores["duo"]["average_rank"], 300),
-        "terno_score": rank_component_score(combo_scores["terno"]["average_rank"], 2300),
-        "quadra_score": rank_component_score(combo_scores["quadra"]["average_rank"], 12650),
-        "quina_score": rank_component_score(combo_scores["quina"]["average_rank"], 53130),
+        "terno_score": rank_component_score(
+            combo_scores["terno"]["average_rank"], 2300
+        ),
+        "quadra_score": rank_component_score(
+            combo_scores["quadra"]["average_rank"], 12650
+        ),
+        "quina_score": rank_component_score(
+            combo_scores["quina"]["average_rank"], 53130
+        ),
         "delay_score": delay_component(numbers, history),
         "frequency_score": frequency_component(numbers, history),
         "sum_score": sum_component(numbers),
@@ -149,9 +161,7 @@ def score_candidate_from_history(
     }
     final_score = sum(
         components[name] * weight for name, weight in score_weights.items()
-    ) / sum(
-        score_weights.values()
-    )
+    ) / sum(score_weights.values())
     quadra_score = combo_scores["quadra"]
     profile_type = classify_profile(numbers, history)
     historical_intelligence = profile_score(numbers, history, profile_type)
