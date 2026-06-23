@@ -129,8 +129,15 @@ def load_latest_official_contest() -> dict[str, Any] | None:
         }
 
 
-def load_all_unconfered_generation_events() -> list[dict[str, Any]]:
-    """Carrega TODOS os generation_events não conferidos."""
+def load_all_unconfered_generation_events(
+    contest_number: int | None = None,
+) -> list[dict[str, Any]]:
+    """Carrega generation_events não conferidos.
+
+    Args:
+        contest_number: Se fornecido, filtra apenas eventos com target_contest igual a contest_number.
+                       Se None, carrega todos os eventos não conferidos.
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -138,22 +145,44 @@ def load_all_unconfered_generation_events() -> list[dict[str, Any]]:
     from dashboard.institutional_app import DB_PATH, get_session
 
     with get_session(DB_PATH) as session:
-        rows = (
-            session.execute(
-                text(
+        if contest_number is not None:
+            # Filtra por target_contest específico
+            rows = (
+                session.execute(
+                    text(
+                        """
+                    SELECT ge.id, ge.lead_id, ge.generated_games, ge.seed, ge.strategy,
+                           ge.ml_enabled, ge.context_json, ge.created_at
+                    FROM generation_events ge
+                    LEFT JOIN reconciliation_runs rr ON ge.id = rr.generation_event_id
+                    WHERE rr.id IS NULL
+                      AND ge.context_json->>'target_contest' = :contest_number
+                    ORDER BY ge.id DESC
                     """
-                SELECT ge.id, ge.lead_id, ge.generated_games, ge.seed, ge.strategy,
-                       ge.ml_enabled, ge.context_json, ge.created_at
-                FROM generation_events ge
-                LEFT JOIN reconciliation_runs rr ON ge.id = rr.generation_event_id
-                WHERE rr.id IS NULL
-                ORDER BY ge.id DESC
-                """
+                    ),
+                    {"contest_number": str(contest_number)},
                 )
+                .mappings()
+                .all()
             )
-            .mappings()
-            .all()
-        )
+        else:
+            # Carrega todos os eventos não conferidos (comportamento antigo)
+            rows = (
+                session.execute(
+                    text(
+                        """
+                    SELECT ge.id, ge.lead_id, ge.generated_games, ge.seed, ge.strategy,
+                           ge.ml_enabled, ge.context_json, ge.created_at
+                    FROM generation_events ge
+                    LEFT JOIN reconciliation_runs rr ON ge.id = rr.generation_event_id
+                    WHERE rr.id IS NULL
+                    ORDER BY ge.id DESC
+                    """
+                    )
+                )
+                .mappings()
+                .all()
+            )
 
         events = []
         for row in rows:
@@ -460,14 +489,15 @@ def run_batch_conference(
             "contest_number": contest_number,
         }
 
-    # Carrega TODOS os events não conferidos
-    events = load_all_unconfered_generation_events()
+    # Carrega events não conferidos APENAS para este contest_number
+    # IMPORTANTE: Filtra por target_contest para evitar conferir jogos do concurso errado
+    events = load_all_unconfered_generation_events(contest_number=contest_number)
     if not events:
         return {
             "status": "warning",
             "reason": "no_unconfered_events",
             "contest_number": contest_number,
-            "message": "Nenhum generation_event não conferido encontrado",
+            "message": f"Nenhum generation_event não conferido encontrado para target_contest={contest_number}",
         }
 
     # Agrupa em baterias
