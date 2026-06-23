@@ -60,7 +60,7 @@ def _load_latest_generation_data() -> dict[str, Any]:
         FROM generated_games
         WHERE generation_event_id = :event_id
         LIMIT 100
-    """,
+        """,
         {"event_id": event_id},
     )
 
