@@ -14025,16 +14025,24 @@ def _persist_generation_snapshot(
 ) -> dict[str, Any]:
     started_at = time.monotonic()
     batch_id = _ensure_unique_institutional_batch_id(batch_id)
+    user_selected_target = (
+        user_target_contest is not None and int(user_target_contest) > 0
+    )
     target_contest = coerce_generation_target_contest(
         _safe_int(target_contest, default=None),
         db_path=DB_PATH,
         latest_drawn_contest=_safe_int(
             (get_latest_official_contest() or {}).get("contest_number"), default=None
         ),
+        user_selected=user_selected_target,
     )
     context_payload = {
         "source": "institutional_app",
         "target_contest": target_contest,
+        "user_target_contest": int(user_target_contest)
+        if user_selected_target
+        else None,
+        "user_selected_target": user_selected_target,
         "build_marker": BUILD_MARKER,
         "batch_id": batch_id,
     }
@@ -14434,8 +14442,10 @@ def _persist_generation_snapshot(
             "seed": seed,
             "games_count": len(games),
             "target_contest": target_contest,
-            "user_selected_target": user_target_contest is not None,
-            "user_target_contest": user_target_contest,
+            "user_selected_target": user_selected_target,
+            "user_target_contest": int(user_target_contest)
+            if user_selected_target
+            else None,
             "batch_id": batch_id,
             "operational_structural_memory": memory_persist_result,
         }
@@ -16755,6 +16765,14 @@ def _persist_clean_law15_generation_history(
         "selected_card_format": int(selected_card_format),
         "format_cartao": int(selected_card_format),
         "selected_quantity": int(result.get("requested_count", 0) or 0),
+        "total_games": len(formatted_games),
+        "target_contest": _safe_int((result or {}).get("target_contest"), default=None),
+        "user_target_contest": _safe_int(
+            (result or {}).get("user_target_contest"), default=None
+        )
+        if bool((result or {}).get("user_selected_target"))
+        else None,
+        "user_selected_target": bool((result or {}).get("user_selected_target")),
         "quantidade_nucleo": 15,
         "nucleo_lei_15_size": 15,
         "reservas_auditadas_count": _clean_law15_reserve_count(selected_card_format),
