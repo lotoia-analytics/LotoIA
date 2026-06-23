@@ -140,19 +140,20 @@ def apply_ab_calibration() -> dict[str, Any]:
             text(
                 """
             INSERT INTO scientific_calibration_decisions (
-                strategy, game_size, source_batch_id,
+                strategy, game_size, source_batch_id, source_generation_range,
                 structural_status, scientific_status, classification,
                 main_reason, recommended_action,
                 policy_before, policy_after,
-                mode, applied, approved_by, notes
+                mode, applied, approved_by, notes, created_at
             ) VALUES (
-                '15_dezenas', 15, 'm_cal_001_ab_test',
+                '15_dezenas', 15, 'm_cal_001_ab_test', '{}'::json,
                 'APROVADO_AB', 'APROVADO_AB', 'APROVADA_AB',
                 'calibracao_ab_test_sum_and_frequency_boost',
                 'increase_sum_score_and_frequency_weights',
                 :policy_before, :policy_after,
                 'A/B TEST', 1, 'system@m_cal_001',
-                'Teste A/B: 50% jogos com pesos ajustados (sum=8, freq=7) vs 50% com pesos originais'
+                'Teste A/B: 50% jogos com pesos ajustados (sum=8, freq=7) vs 50% com pesos originais',
+                CURRENT_TIMESTAMP
             )
             RETURNING id
             """

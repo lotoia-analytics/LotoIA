@@ -151,32 +151,34 @@ def add_unique_constraint() -> dict[str, Any]:
     from dashboard.institutional_app import DB_PATH, get_session
 
     with get_session(DB_PATH) as session:
-        # Verifica se constraint já existe
+        # Verifica se índice já existe
         exists = session.execute(
             text(
                 """
-                SELECT 1 FROM pg_constraint 
-                WHERE conname = 'uq_generated_games_numbers'
+                SELECT 1 FROM pg_indexes 
+                WHERE indexname = 'uq_generated_games_numbers_hash'
                 """
             )
         ).scalar()
 
         if exists:
-            return {"status": "skipped", "reason": "constraint_already_exists"}
+            return {"status": "skipped", "reason": "index_already_exists"}
 
-        # Adiciona constraint
+        # Adiciona unique index via hash (json não suporta UNIQUE direto com btree)
         session.execute(
             text(
                 """
-            ALTER TABLE generated_games
-            ADD CONSTRAINT uq_generated_games_numbers
-            UNIQUE (numbers)
-            """
+                CREATE UNIQUE INDEX uq_generated_games_numbers_hash
+                ON generated_games (md5(numbers::text))
+                """
             )
         )
         session.commit()
 
-    return {"status": "success", "constraint_added": "uq_generated_games_numbers"}
+    return {
+        "status": "success",
+        "constraint_added": "uq_generated_games_numbers_hash (md5 expression index)",
+    }
 
 
 def run_dedup_analysis() -> dict[str, Any]:
