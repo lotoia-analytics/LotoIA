@@ -70,6 +70,7 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
         "history_analytical",
         "history_institutional",
         "structural_coverage",
+        "structural_coverage_nova",
         "central_ml_diagnostics",
         "restricted_controlled_cleanup",
     }
@@ -83,6 +84,7 @@ OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Conferir Resultados", "conference"),
             ("Histórico Analítico", "history_analytical"),
             ("Cobertura Estrutural", "structural_coverage"),
+            ("Cobertura Nova", "structural_coverage_nova"),
             ("Simular Resultados", "simulation"),
         ),
     ),

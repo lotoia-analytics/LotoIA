@@ -741,6 +741,7 @@ PAGE_TARGETS = {
     "Métricas HB": "structural_coverage",
     "Cobertura estrutural": "structural_coverage",
     "Cobertura Estrutural": "structural_coverage",
+    "Cobertura Nova": "structural_coverage_nova",
     "Simulação Institucional / Backtesting": "simulation",
     "Central ML Assistiva": "central_ml_diagnostics",
     "Central de Diagnósticos ML": "central_ml_diagnostics",
@@ -761,6 +762,7 @@ INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
+    {"icon": "🆕", "label": "Cobertura Nova", "page_id": "structural_coverage_nova"},
     {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
     {"icon": "🤖", "label": "Análise ML", "page_id": "central_ml_diagnostics"},
 ]
@@ -13607,122 +13609,19 @@ def _render_cobertura_estrutural_page(snapshot: dict[str, Any]) -> None:
     if dashboard_result.get("available"):
         _mark_structural_coverage_aggregate_reviewed(operational_generations)
 
-    # === NOVAS SEÇÕES: ML COMO SENSOR E CICLO DE APRENDIZADO ===
-    st.divider()
-    st.markdown("### Score ML como Sensor Informativo")
-    st.caption("ML como sensor — métrica auxiliar, não bloqueante")
 
-    # Carregar estatísticas de conferência
-    from lotoia.database.database import get_session
-    from sqlalchemy import text
+def _render_cobertura_nova_page(snapshot: dict[str, Any]) -> None:
+    """Renderiza painel Cobertura Nova com ML como sensor."""
+    from dashboard.institutional_structural_coverage_modern_v2 import (
+        render_cobertura_nova,
+    )
 
-    try:
-        with get_session(None) as session:
-            # Estatísticas de conferência
-            conf_stats = session.execute(
-                text("""
-                SELECT 
-                    COUNT(*) as total_runs,
-                    COALESCE(SUM(prize_count), 0) as total_prizes,
-                    MAX(best_hits) as best_hits
-                FROM reconciliation_runs
-            """)
-            ).fetchone()
+    st.subheader("Cobertura Nova")
+    st.caption(
+        "Painel dinâmico com ML como sensor informativo — análise agregada de todas as gerações"
+    )
 
-            # Estatísticas de calibração ML
-            calib_stats = session.execute(
-                text("""
-                SELECT 
-                    COUNT(*) as total_decisions,
-                    SUM(CASE WHEN applied = 1 THEN 1 ELSE 0 END) as applied_count
-                FROM scientific_calibration_decisions
-            """)
-            ).fetchone()
-
-            # Verificar se ML está ativo nas últimas gerações
-            ml_active = (
-                session.execute(
-                    text("""
-                SELECT COUNT(*) FROM generation_events 
-                WHERE context_json::text LIKE '%"ml_enabled":true%'
-                AND created_at > NOW() - INTERVAL '7 days'
-            """)
-                ).scalar()
-                > 0
-            )
-
-        # Mostrar KPIs de conferência
-        conf_cols = st.columns(4)
-        conf_cols[0].metric("Conferências", int(conf_stats[0] or 0))
-        conf_cols[1].metric("Prêmios Conquistados", int(conf_stats[1] or 0))
-        conf_cols[2].metric(
-            "Best Hits", int(conf_stats[2] or 0) if conf_stats[2] else 0
-        )
-
-        # Status do ML
-        if ml_active:
-            conf_cols[3].metric("Score ML", "ATIVO", delta="Sensor funcionando")
-        else:
-            conf_cols[3].metric("Score ML", "INATIVO", delta="ml_enabled=false")
-
-        # Ciclo de Aprendizado
-        st.markdown("#### Ciclo de Aprendizado")
-        cycle_cols = st.columns(5)
-
-        with cycle_cols[0]:
-            st.success("✓ Geração CORE_002")
-            st.caption("5 camadas · Ativo")
-
-        with cycle_cols[1]:
-            st.success("✓ Conferência")
-            st.caption(f"{int(conf_stats[0] or 0)} runs")
-
-        with cycle_cols[2]:
-            st.warning("⚠ Feedback Loop")
-            st.caption("Subutilizado")
-
-        with cycle_cols[3]:
-            if int(calib_stats[1] or 0) > 0:
-                st.success("✓ Calibração ML")
-                st.caption(f"{int(calib_stats[1])} aplicadas")
-            else:
-                st.error("✗ Calibração ML")
-                st.caption("Bloqueado")
-
-        with cycle_cols[4]:
-            if ml_active:
-                st.success("✓ Sensor ML")
-                st.caption("Ativo")
-            else:
-                st.info("○ Sensor ML")
-                st.caption("Aguardando")
-
-        # Recomendações
-        if not ml_active or int(calib_stats[1] or 0) == 0:
-            st.markdown("#### Recomendações para Ativação Completa")
-            recommendations = []
-            if not ml_active:
-                recommendations.append(
-                    "Ativar `ml_enabled=True` nas gerações para alimentar Score ML como sensor"
-                )
-            if int(calib_stats[1] or 0) == 0:
-                recommendations.append(
-                    "Ativar feedback loop automático após cada concurso oficial"
-                )
-                recommendations.append(
-                    "Revisar thresholds de calibração (atualmente muito restritivos)"
-                )
-
-            if recommendations:
-                for rec in recommendations:
-                    st.info(f"→ {rec}")
-
-            st.success(
-                "→ Manter CORE_002 como motor principal (5 camadas já funcionam)"
-            )
-
-    except Exception as e:
-        st.warning(f"Erro ao carregar estatísticas ML: {e}")
+    render_cobertura_nova()
 
 
 def _render_replay_institutional_page(snapshot: dict[str, Any]) -> None:
@@ -21694,6 +21593,8 @@ def main() -> None:
         _render_central_ml_diagnostics_page(snapshot)
     elif page == "structural_coverage":
         _render_cobertura_estrutural_page(snapshot)
+    elif page == "structural_coverage_nova":
+        _render_cobertura_nova_page(snapshot)
     elif page == "institutional_simulation_backtesting":
         st.subheader("Simulação Institucional / Backtesting")
         render_institutional_simulation_backtesting_page(
