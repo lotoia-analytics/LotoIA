@@ -762,6 +762,11 @@ INSTITUTIONAL_QUICK_ACCESS: list[dict[str, str]] = [
     {"icon": "✅", "label": "Conferir Resultados", "page_id": "conference"},
     {"icon": "📊", "label": "Histórico Analítico", "page_id": "history_analytical"},
     {"icon": "🧱", "label": "Cobertura Estrutural", "page_id": "structural_coverage"},
+    {
+        "icon": "🧬",
+        "label": "Cobertura Moderna",
+        "page_id": "structural_coverage_modern",
+    },
     {"icon": "🧪", "label": "Simular Resultados", "page_id": "simulation"},
     {"icon": "🤖", "label": "Análise ML", "page_id": "central_ml_diagnostics"},
 ]
