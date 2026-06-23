@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -13,6 +14,11 @@ from lotoia.clients.premio_notifier import notify_winners
 from lotoia.public.institutional_conference_job import run_institutional_conference
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_service import ResultSyncService
+
+# Add scripts directory to path for m_feedback_001_loop import
+_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
@@ -40,6 +46,7 @@ class ClientConferenceSchedule:
     windows: tuple[ConferenceWindow, ...] = (
         ConferenceWindow.parse("22:30", "sync"),
         ConferenceWindow.parse("22:45", "conference"),
+        ConferenceWindow.parse("22:50", "feedback"),
         ConferenceWindow.parse("23:00", "notify"),
     )
 
@@ -49,7 +56,8 @@ class ClientConferenceSchedule:
         return [
             window
             for window in self.windows
-            if datetime.combine(current.date(), window.as_time()).astimezone(SAO_PAULO) <= current
+            if datetime.combine(current.date(), window.as_time()).astimezone(SAO_PAULO)
+            <= current
         ]
 
 
@@ -83,7 +91,9 @@ class ClientConferenceScheduler:
 
     def due_window_labels(self, now: datetime | None = None) -> list[str]:
         current = self._normalize_now(now)
-        attempted_windows = self.state.attempted_windows_by_date.get(current.date(), set())
+        attempted_windows = self.state.attempted_windows_by_date.get(
+            current.date(), set()
+        )
         return [
             window.label()
             for window in self.schedule.due_windows(current)
@@ -94,7 +104,9 @@ class ClientConferenceScheduler:
         current = self._normalize_now(now)
         summaries: list[dict[str, Any]] = []
         contest_number = 0
-        attempted_windows = self.state.attempted_windows_by_date.get(current.date(), set())
+        attempted_windows = self.state.attempted_windows_by_date.get(
+            current.date(), set()
+        )
         for window in self.schedule.due_windows(current):
             label = window.label()
             if label in attempted_windows:
@@ -107,14 +119,40 @@ class ClientConferenceScheduler:
                 summary = {
                     "client_conference": client_summary,
                     "institutional_conference": inst_summary,
-                    "contest_number": client_summary.get("contest_number") or inst_summary.get("contest_number")
+                    "contest_number": client_summary.get("contest_number")
+                    or inst_summary.get("contest_number"),
                 }
                 contest_number = int(summary.get("contest_number") or 0)
+            elif window.action == "feedback":
+                if contest_number <= 0:
+                    from lotoia.database.contest_repository import ContestRepository
+
+                    contest_number = int(
+                        ContestRepository(
+                            self.db_path
+                        ).get_official_history_max_contest()
+                        or 0
+                    )
+                if contest_number > 0:
+                    from scripts.ops.m_feedback_001_loop import (
+                        run_feedback_loop_programmatic,
+                    )
+
+                    summary = run_feedback_loop_programmatic(
+                        contest_number=contest_number, persist=True
+                    )
+                else:
+                    summary = {"status": "skipped", "reason": "no_contest_number"}
             else:
                 if contest_number <= 0:
                     from lotoia.database.contest_repository import ContestRepository
 
-                    contest_number = int(ContestRepository(self.db_path).get_official_history_max_contest() or 0)
+                    contest_number = int(
+                        ContestRepository(
+                            self.db_path
+                        ).get_official_history_max_contest()
+                        or 0
+                    )
                 summary = (
                     notify_winners(contest_number, db_path=self.db_path)
                     if contest_number > 0
@@ -122,7 +160,9 @@ class ClientConferenceScheduler:
                 )
             summary = {"window": label, **dict(summary)}
             summaries.append(summary)
-            self.state.attempted_windows_by_date.setdefault(current.date(), set()).add(label)
+            self.state.attempted_windows_by_date.setdefault(current.date(), set()).add(
+                label
+            )
             self.state.last_summary = summary
             self._save_state()
         if not summaries:
@@ -158,7 +198,9 @@ class ClientConferenceScheduler:
                 except Exception:
                     continue
                 if isinstance(value, list):
-                    parsed_attempts[parsed_date] = {str(item) for item in value if str(item)}
+                    parsed_attempts[parsed_date] = {
+                        str(item) for item in value if str(item)
+                    }
             self.state.attempted_windows_by_date = parsed_attempts
         last_summary = payload.get("last_summary", {})
         if isinstance(last_summary, dict):
@@ -175,4 +217,6 @@ class ClientConferenceScheduler:
             },
             "last_summary": self.state.last_summary,
         }
-        self.state_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.state_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )

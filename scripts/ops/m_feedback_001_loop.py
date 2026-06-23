@@ -571,6 +571,40 @@ def run_feedback_loop(
     return result
 
 
+def run_feedback_loop_programmatic(
+    *, contest_number: int | None = None, persist: bool = True
+) -> dict[str, Any]:
+    """Execute feedback loop programmatically (for scheduler integration).
+
+    Args:
+        contest_number: Specific contest to analyze. If None, uses latest.
+        persist: Whether to persist results to feedback_loop table.
+
+    Returns:
+        Dictionary with feedback analysis results.
+    """
+    if contest_number is None:
+        latest = load_latest_official_contest()
+        if not latest:
+            return {
+                "status": "error",
+                "reason": "no_official_contest",
+                "mission_id": MISSION_ID,
+            }
+        contest_number = latest["contest_number"]
+
+    try:
+        return run_feedback_loop(contest_number=contest_number, persist=persist)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "reason": "execution_failed",
+            "error": str(exc),
+            "contest_number": contest_number,
+            "mission_id": MISSION_ID,
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=f"{MISSION_ID} — Feedback loop pós-concurso oficial"
