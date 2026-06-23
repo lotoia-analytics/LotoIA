@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -14,11 +13,7 @@ from lotoia.clients.premio_notifier import notify_winners
 from lotoia.public.institutional_conference_job import run_institutional_conference
 from lotoia.database.database import DEFAULT_DATABASE_PATH
 from lotoia.ingestion.result_sync_service import ResultSyncService
-
-# Add scripts directory to path for m_feedback_001_loop import
-_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
+from scripts.ops.m_feedback_002_auto_loop import run_auto_feedback
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
@@ -68,7 +63,7 @@ class ClientConferenceScheduleState:
 
 
 class ClientConferenceScheduler:
-    """Runs official sync, auto conference, and winner notifications (Mon-Sat BRT)."""
+    """Runs official sync, auto conference, feedback, and winner notifications."""
 
     DEFAULT_STATE_PATH = Path("data/client_conference_scheduler_state.json")
 
@@ -124,25 +119,7 @@ class ClientConferenceScheduler:
                 }
                 contest_number = int(summary.get("contest_number") or 0)
             elif window.action == "feedback":
-                if contest_number <= 0:
-                    from lotoia.database.contest_repository import ContestRepository
-
-                    contest_number = int(
-                        ContestRepository(
-                            self.db_path
-                        ).get_official_history_max_contest()
-                        or 0
-                    )
-                if contest_number > 0:
-                    from scripts.ops.m_feedback_001_loop import (
-                        run_feedback_loop_programmatic,
-                    )
-
-                    summary = run_feedback_loop_programmatic(
-                        contest_number=contest_number, persist=True
-                    )
-                else:
-                    summary = {"status": "skipped", "reason": "no_contest_number"}
+                summary = run_auto_feedback(persist=True)
             else:
                 if contest_number <= 0:
                     from lotoia.database.contest_repository import ContestRepository
