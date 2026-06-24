@@ -224,8 +224,11 @@ def render_generation_result_summary(result: dict[str, Any]) -> None:
     persisted_id = result.get("generation_event_id")
     batch_label = str(result.get("analysis_batch_label") or BATCH_LABEL)
     requested = int(result.get("requested_count", 0) or 0)
+    # M-VIS-047-FIX: Se temos um ID de persistência, a contagem de persistidos deve ser o total de jogos gerados
     persisted_count = int(
-        result.get("games_count", len(games) if persisted_id else 0) or 0
+        result.get("games_count") 
+        or (len(games) if persisted_id else 0) 
+        or 0
     )
     card_format = int(result.get("selected_card_format", 15) or 15)
     persistence_status = str(result.get("persistence_status_label") or "-")
