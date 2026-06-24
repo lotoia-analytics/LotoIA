@@ -31,19 +31,29 @@ def sync_latest_official_results(db_path: Path = DEFAULT_DATABASE_PATH) -> list[
     """Sincroniza concursos pendentes com a API Caixa e persiste no PostgreSQL."""
     service = ResultSyncService(db_path=db_path)
     summary = service.sync_latest()
-    if summary.commit_state != "ok":
-        logger.warning(
-            "OFFICIAL_SYNC_LATEST_FAILED synced=%s error=%s",
+    if summary.commit_state == "ok":
+        logger.info(
+            "OFFICIAL_SYNC_LATEST_OK latest=%s synced=%s",
+            summary.latest_contest,
             summary.synced_contests,
-            summary.error_message,
         )
-        return []
-    logger.info(
-        "OFFICIAL_SYNC_LATEST_OK latest=%s synced=%s",
-        summary.latest_contest,
+        return list(summary.synced_contests or [])
+
+    repository = ContestRepository(db_path)
+    csv_imported = repository.import_new_contests_from_csv()
+    if csv_imported:
+        logger.info(
+            "OFFICIAL_SYNC_LATEST_CSV_FALLBACK synced=%s",
+            csv_imported,
+        )
+        return list(csv_imported)
+
+    logger.warning(
+        "OFFICIAL_SYNC_LATEST_FAILED synced=%s error=%s",
         summary.synced_contests,
+        summary.error_message,
     )
-    return list(summary.synced_contests or [])
+    return []
 
 
 def ensure_official_contest_available(
@@ -58,6 +68,7 @@ def ensure_official_contest_available(
         return True
 
     service = ResultSyncService(db_path=db_path)
+    repository = ContestRepository(db_path)
 
     if sync_latest_first:
         latest_summary = service.sync_latest()
@@ -69,4 +80,14 @@ def ensure_official_contest_available(
     contest_summary = service.sync_contests([target])
     if target in (contest_summary.synced_contests or []) and contest_summary.commit_state == "ok":
         return True
+    if _contest_exists(db_path, target):
+        return True
+
+    csv_imported = repository.import_new_contests_from_csv()
+    if csv_imported:
+        logger.info(
+            "OFFICIAL_SYNC_CONTEST_CSV_FALLBACK target=%s imported=%s",
+            target,
+            csv_imported,
+        )
     return _contest_exists(db_path, target)
