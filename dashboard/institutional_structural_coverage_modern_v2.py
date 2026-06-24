@@ -181,15 +181,18 @@ def _load_feedback_loop_stats() -> dict[str, Any]:
     )
     pending = _query_postgresql(
         """
-        SELECT COUNT(DISTINCT rr.contest_id) AS pending_contests
-        FROM reconciliation_runs rr
-        WHERE rr.contest_id IS NOT NULL
-          AND rr.contest_id > 0
-          AND NOT EXISTS (
-              SELECT 1
-              FROM feedback_loop fl
-              WHERE fl.contest_number = rr.contest_id
-          )
+        SELECT COUNT(*) AS pending_contests FROM (
+            SELECT DISTINCT gg.target_contest AS contest_number
+            FROM generated_games gg
+            INNER JOIN lotofacil_official_history oh ON oh.contest_number = gg.target_contest
+            WHERE gg.target_contest IS NOT NULL
+              AND gg.target_contest > 0
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM feedback_loop fl
+                  WHERE fl.contest_number = gg.target_contest
+              )
+        ) missing
         """
     )
     row = totals[0] if totals else {}
