@@ -181,8 +181,8 @@ def _validation_bounds(level: str, profile_type: str | None) -> dict[str, int]:
 
     return {
         "hard": {
-            "odd_min": 6,
-            "odd_max": 10,
+            "odd_min": 5,
+            "odd_max": 11,
             "sum_min": 150,
             "sum_max": 220,
             "frame_min": 8,
@@ -239,8 +239,8 @@ def _soft_filter_penalty(game: dict[str, object]) -> float:
     sequence_stats = calculate_sequence_stats(game["numbers"])
     scale = _pressure_scale()
     penalty = 0.0
-    penalty += max(0, 6 - int(game["odd"])) * 4 * scale
-    penalty += max(0, int(game["odd"]) - 9) * 4 * scale
+    penalty += max(0, 5 - int(game["odd"])) * 4 * scale
+    penalty += max(0, int(game["odd"]) - 11) * 4 * scale
     penalty += max(0, 155 - int(game["sum"])) * 0.35 * scale
     penalty += max(0, int(game["sum"]) - 255) * 0.35 * scale
     penalty += max(0, 7 - int(game["frame"])) * 3 * scale

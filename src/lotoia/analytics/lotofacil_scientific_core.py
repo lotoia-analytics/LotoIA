@@ -2366,7 +2366,8 @@ class LotofacilScientificCore:
             preferred_pairs = [(resolved_game_size // 2, resolved_game_size - (resolved_game_size // 2))]
         allowed_pairs = []
         for odd_count, even_count in preferred_pairs:
-            for delta in (0, -1, 1):
+            # Expandir delta para +/- 2 para permitir variância natural (ex: 6 e 9 ímpares quando a média é 7 ou 8)
+            for delta in (0, -1, 1, -2, 2):
                 candidate_odd = max(0, min(resolved_game_size, odd_count + delta))
                 candidate_even = resolved_game_size - candidate_odd
                 pair = (candidate_odd, candidate_even)
