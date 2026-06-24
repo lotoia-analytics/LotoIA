@@ -22,7 +22,7 @@ PANEL_CAPTION = (
     "Leitura visual observacional — Health Score, assinatura de dezenas, memória evolutiva "
     "e gaps de quadrantes. Não altera geração nem calibração."
 )
-TIMELINE_LIMIT = 50
+TIMELINE_LIMIT = 100
 
 
 def build_time_travel_options(
