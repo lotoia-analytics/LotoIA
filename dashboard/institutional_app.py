@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 try:
@@ -2621,17 +2621,19 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
     target_contest = None
     with get_session(DB_PATH) as session:
         # Correção: Buscar o evento mais recente que REALMENTE tenha jogos associados na tabela generated_games.
-        # Isso evita que eventos de 'lead capture' ou 'messenger onboarding' (que não geram números) 
+        # Isso evita que eventos de 'lead capture' ou 'messenger onboarding' (que não geram números)
         # apareçam como gerações vazias no dashboard.
         from lotoia.database.database import GeneratedGame
-        
+
         generation_event = (
             session.query(GenerationEvent)
-            .join(GeneratedGame, GeneratedGame.generation_event_id == GenerationEvent.id)
+            .join(
+                GeneratedGame, GeneratedGame.generation_event_id == GenerationEvent.id
+            )
             .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
             .first()
         )
-        
+
         if generation_event is None:
             # Fallback: se não houver jogos vinculados, tenta o último evento puro (comportamento legado)
             generation_event = (
@@ -2639,7 +2641,7 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
                 .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
                 .first()
             )
-            
+
         if generation_event is None:
             return None
 
@@ -13358,6 +13360,20 @@ def _render_structural_coverage_diagnostics_body(payload: dict[str, Any]) -> Non
             use_container_width=True,
         )
 
+    # Contador de cobertura estrutural
+    games_count = int(payload.get("games_count") or 0)
+    if games_count < 1000:
+        st.warning(
+            f"⚠️ **Diagnóstico parcial**: {games_count}/1.000 jogos persistidos. "
+            f"A cobertura estrutural completa requer ~1.000 jogos para validade estatística. "
+            f"Os alertas abaixo podem conter falsos positivos devido à amostra pequena."
+        )
+    else:
+        st.success(
+            f"✓ **Cobertura estrutural completa**: {games_count:,} jogos persistidos. "
+            f"Diagnóstico estatisticamente válido."
+        )
+
     comparacao = dict(payload.get("comparacao_oficial") or {})
     if comparacao.get("available"):
         st.markdown("### Comparação LotoIA vs concursos oficiais")
@@ -19574,7 +19590,7 @@ def _run_clean_law15_generation(
         "batch_id": f"clean-law15-{seed}",
         "requested_count": total_games,
         "games": games,
-        "generation_event_id": None, # Explicitamente None até a persistência
+        "generation_event_id": None,  # Explicitamente None até a persistência
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
         "analysis_batch_label": analysis_batch_label,
@@ -19738,13 +19754,21 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     result=result,
                     selected_card_format=selected_card_format,
                 )
-                if persisted_snapshot and not persisted_snapshot.get("persistence_blocked"):
+                if persisted_snapshot and not persisted_snapshot.get(
+                    "persistence_blocked"
+                ):
                     # M-VIS-047-FIX: Garante que os IDs persistidos entrem no dicionário de exibição principal
                     result.update(persisted_snapshot)
                     result = _attach_operational_generation_label(result)
-                    st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
-                    st.session_state["last_persisted_generation_event_id"] = int(persisted_snapshot.get("generation_event_id", 0) or 0)
-                elif persisted_snapshot and persisted_snapshot.get("persistence_blocked"):
+                    st.session_state["clean_law15_generation_history_snapshot"] = (
+                        persisted_snapshot
+                    )
+                    st.session_state["last_persisted_generation_event_id"] = int(
+                        persisted_snapshot.get("generation_event_id", 0) or 0
+                    )
+                elif persisted_snapshot and persisted_snapshot.get(
+                    "persistence_blocked"
+                ):
                     result["persistence_blocked"] = True
                     result["persistence_block_reason"] = str(
                         persisted_snapshot.get("persistence_guard_status")
