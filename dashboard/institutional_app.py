@@ -2620,11 +2620,26 @@ def _load_latest_generated_games() -> dict[str, Any] | None:
     created_at = ""
     target_contest = None
     with get_session(DB_PATH) as session:
+        # Correção: Buscar o evento mais recente que REALMENTE tenha jogos associados na tabela generated_games.
+        # Isso evita que eventos de 'lead capture' ou 'messenger onboarding' (que não geram números) 
+        # apareçam como gerações vazias no dashboard.
+        from lotoia.database.database import GeneratedGame
+        
         generation_event = (
             session.query(GenerationEvent)
+            .join(GeneratedGame, GeneratedGame.generation_event_id == GenerationEvent.id)
             .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
             .first()
         )
+        
+        if generation_event is None:
+            # Fallback: se não houver jogos vinculados, tenta o último evento puro (comportamento legado)
+            generation_event = (
+                session.query(GenerationEvent)
+                .order_by(GenerationEvent.created_at.desc(), GenerationEvent.id.desc())
+                .first()
+            )
+            
         if generation_event is None:
             return None
 
