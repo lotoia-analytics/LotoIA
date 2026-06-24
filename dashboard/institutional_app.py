@@ -19574,6 +19574,7 @@ def _run_clean_law15_generation(
         "batch_id": f"clean-law15-{seed}",
         "requested_count": total_games,
         "games": games,
+        "generation_event_id": None, # Explicitamente None até a persistência
         "commander_report": commander_report,
         "fill_diagnostics": fill_diagnostics,
         "analysis_batch_label": analysis_batch_label,
@@ -19737,25 +19738,21 @@ def _render_clean_law15_generation_page(snapshot: dict[str, Any]) -> None:
                     result=result,
                     selected_card_format=selected_card_format,
                 )
+                if persisted_snapshot and not persisted_snapshot.get("persistence_blocked"):
+                    # M-VIS-047-FIX: Garante que os IDs persistidos entrem no dicionário de exibição principal
+                    result.update(persisted_snapshot)
+                    result = _attach_operational_generation_label(result)
+                    st.session_state["clean_law15_generation_history_snapshot"] = persisted_snapshot
+                    st.session_state["last_persisted_generation_event_id"] = int(persisted_snapshot.get("generation_event_id", 0) or 0)
+                elif persisted_snapshot and persisted_snapshot.get("persistence_blocked"):
+                    result["persistence_blocked"] = True
+                    result["persistence_block_reason"] = str(
+                        persisted_snapshot.get("persistence_guard_status")
+                        or "Persistência bloqueada — validação CORE_002 falhou."
+                    )
             except RuntimeError as exc:
-                persisted_snapshot = {
-                    "persistence_blocked": True,
-                    "persistence_guard_status": str(exc),
-                }
-            if persisted_snapshot:
-                result.update(persisted_snapshot)
-                result = _attach_operational_generation_label(result)
-                st.session_state["clean_law15_generation_history_snapshot"] = (
-                    persisted_snapshot
-                )
-            elif persisted_snapshot is not None and persisted_snapshot.get(
-                "persistence_blocked"
-            ):
                 result["persistence_blocked"] = True
-                result["persistence_block_reason"] = str(
-                    persisted_snapshot.get("persistence_guard_status")
-                    or "Persistência bloqueada — validação CORE_002 falhou."
-                )
+                result["persistence_block_reason"] = str(exc)
         else:
             result["persistence_blocked"] = True
             result["persistence_block_reason"] = (
