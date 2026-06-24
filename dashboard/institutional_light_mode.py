@@ -24,9 +24,9 @@ SESSION_LOAD_CENTRAL_ML = "panel_light_load_central_ml"
 SESSION_LOAD_GENERATION = "panel_light_load_generation"
 
 # M-PERF-001 — limites operacionais padrão
-OPERATIONAL_EVENTS_LIMIT = 20
-ANALYTICAL_PAGE_SIZE = 20
-CONFERENCE_EVENTS_LIMIT = 20
+OPERATIONAL_EVENTS_LIMIT = 100
+ANALYTICAL_PAGE_SIZE = 100
+CONFERENCE_EVENTS_LIMIT = 100
 
 
 def light_mode_default_from_env() -> bool:
