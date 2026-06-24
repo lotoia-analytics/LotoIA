@@ -12,11 +12,18 @@ from lotoia.database.database import (
     OperationalStructuralMemory,
     get_session,
 )
-from lotoia.generation.m_core_003_prefix_suffix_policy import compute_pattern_distribution
+from lotoia.generation.m_core_003_prefix_suffix_policy import (
+    compute_pattern_distribution,
+)
 from lotoia.governance.lei15_core_002_sovereign import is_sovereign_core_label
 from lotoia.observability.card_structure_diagnostics import _load_official_cards
-from lotoia.observability.m_core_003_bias_monitoring import build_m_core_003_bias_monitoring_report
-from lotoia.statistics.card_structure import compare_structure_profiles, resolve_cartao_final_from_game
+from lotoia.observability.m_core_003_bias_monitoring import (
+    build_m_core_003_bias_monitoring_report,
+)
+from lotoia.statistics.card_structure import (
+    compare_structure_profiles,
+    resolve_cartao_final_from_game,
+)
 
 MISSION_ID = "M-MEMORY-001"
 MEMORY_STATUS_PERSISTED = "PERSISTED"
@@ -68,7 +75,9 @@ def build_bias_alerts(bias_report: Mapping[str, Any]) -> list[dict[str, Any]]:
             {
                 "kind": "verdict",
                 "pattern": "",
-                "severity": "severo" if int(bias_report.get("severe_bias_count", 0) or 0) > 0 else "moderado",
+                "severity": "severo"
+                if int(bias_report.get("severe_bias_count", 0) or 0) > 0
+                else "moderado",
                 "message": verdict,
             },
         )
@@ -93,12 +102,16 @@ def compute_operational_structural_memory_snapshot(
 
     resolved_sanity = dict(sanity_bundle or {})
     if not resolved_sanity and games:
-        resolved_sanity = dict((games[0] or {}).get("structural_sovereignty_sanity") or {})
+        resolved_sanity = dict(
+            (games[0] or {}).get("structural_sovereignty_sanity") or {}
+        )
 
     bias_report = build_m_core_003_bias_monitoring_report(
         cards,
         games_count=len(cards),
-        generation_event_ids=[int(generation_event_id)] if generation_event_id else None,
+        generation_event_ids=[int(generation_event_id)]
+        if generation_event_id
+        else None,
     )
     prefix_distribution = compute_pattern_distribution(cards, kind="prefix")
     suffix_distribution = compute_pattern_distribution(cards, kind="suffix")
@@ -108,12 +121,21 @@ def compute_operational_structural_memory_snapshot(
     comparacao_oficial: dict[str, Any] = {"available": False}
     if db_path is not None:
         try:
+            from lotoia.observability.card_structure_diagnostics import (
+                DEFAULT_OFFICIAL_WINDOW,
+            )
+
             with get_session(db_path) as session:
-                official_cards, official_contests = _load_official_cards(session, limit=50)
+                official_cards, official_contests = _load_official_cards(
+                    session, limit=DEFAULT_OFFICIAL_WINDOW
+                )
             comparacao_oficial = compare_structure_profiles(cards, official_cards)
             comparacao_oficial["official_contests_window"] = list(official_contests)
         except Exception:  # noqa: BLE001 — snapshot não deve bloquear geração
-            comparacao_oficial = {"available": False, "reason": "official_compare_failed"}
+            comparacao_oficial = {
+                "available": False,
+                "reason": "official_compare_failed",
+            }
 
     memory_status = MEMORY_STATUS_PERSISTED
     if official_divergence_score >= CRITICAL_DIVERGENCE_THRESHOLD_PCT:
@@ -182,7 +204,10 @@ def persist_operational_structural_memory(
     if ge_id <= 0:
         return {"persisted": False, "reason": "invalid_generation_event_id"}
     if not bool(snapshot.get("available")):
-        return {"persisted": False, "reason": str(snapshot.get("reason") or "snapshot_unavailable")}
+        return {
+            "persisted": False,
+            "reason": str(snapshot.get("reason") or "snapshot_unavailable"),
+        }
 
     payload = dict(snapshot)
     with get_session(db_path) as session:
@@ -199,7 +224,9 @@ def persist_operational_structural_memory(
         row.recorded_at = datetime.now(UTC)
         row.prefix_distribution = dict(payload.get("prefix_distribution") or {})
         row.suffix_distribution = dict(payload.get("suffix_distribution") or {})
-        row.official_divergence_score = float(payload.get("official_divergence_score") or 0.0)
+        row.official_divergence_score = float(
+            payload.get("official_divergence_score") or 0.0
+        )
         row.bias_alerts = list(payload.get("bias_alerts") or [])
         row.mission_id = str(payload.get("mission_id") or MISSION_ID)
         row.memory_status = str(payload.get("memory_status") or MEMORY_STATUS_PERSISTED)
@@ -246,8 +273,14 @@ def load_operational_structural_memory_timeline(
     with get_session(db_path) as session:
         query = (
             session.query(OperationalStructuralMemory, GenerationEvent)
-            .join(GenerationEvent, GenerationEvent.id == OperationalStructuralMemory.generation_event_id)
-            .order_by(OperationalStructuralMemory.recorded_at.desc(), OperationalStructuralMemory.id.desc())
+            .join(
+                GenerationEvent,
+                GenerationEvent.id == OperationalStructuralMemory.generation_event_id,
+            )
+            .order_by(
+                OperationalStructuralMemory.recorded_at.desc(),
+                OperationalStructuralMemory.id.desc(),
+            )
             .limit(max_rows)
         )
         rows = query.all()
@@ -259,8 +292,12 @@ def load_operational_structural_memory_timeline(
         ):
             continue
         payload = _serialize_memory_row(memory_row)
-        payload["analysis_batch_label"] = str(getattr(event, "analysis_batch_label", "") or "")
-        payload["games_count_event"] = len(list(getattr(event, "generated_games", []) or []))
+        payload["analysis_batch_label"] = str(
+            getattr(event, "analysis_batch_label", "") or ""
+        )
+        payload["games_count_event"] = len(
+            list(getattr(event, "generated_games", []) or [])
+        )
         timeline.append(payload)
     return timeline
 
@@ -287,7 +324,9 @@ def build_bias_timeline_trend(timeline: Sequence[Mapping[str, Any]]) -> dict[str
         else:
             trend = "estável"
     critical_count = sum(
-        1 for row in ordered if str(row.get("memory_status") or "") == STATUS_CRITICAL_BIAS
+        1
+        for row in ordered
+        if str(row.get("memory_status") or "") == STATUS_CRITICAL_BIAS
     )
     return {
         "available": True,
