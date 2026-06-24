@@ -93,23 +93,23 @@ def _build_game(numbers: list[int]) -> dict[str, object]:
 def _validation_bounds(level: str, profile_type: str | None) -> dict[str, int]:
     if profile_type is None:
         return {
-            "odd_min": 6,
-            "odd_max": 10,
+            "odd_min": 5,
+            "odd_max": 11,
             "sum_min": 150,
             "sum_max": 220,
             "frame_min": 8,
             "frame_max": 13,
             "center_min": 3,
             "center_max": 8,
-            "sequence_max": 3,
+            "sequence_max": 5,
         }
 
     profile_key = profile_type
     if profile_key == PROFILE_RECURRENT:
         return {
             "hard": {
-                "odd_min": 6,
-                "odd_max": 10,
+                "odd_min": 5,
+                "odd_max": 11,
                 "sum_min": 145,
                 "sum_max": 225,
                 "frame_min": 7,

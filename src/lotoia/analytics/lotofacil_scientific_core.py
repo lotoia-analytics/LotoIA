@@ -2344,7 +2344,9 @@ class LotofacilScientificCore:
         entropy_mean = float(profile.get("average_entropy", 0.35) or 0.35)
         average_odd = float(profile.get("average_parity_odd", (resolved_game_size + 1) / 2) or ((resolved_game_size + 1) / 2))
         average_even = float(profile.get("average_parity_even", resolved_game_size / 2) or (resolved_game_size / 2))
-        repeat_floor = max(0, int(round(repeat_mean)) - 1)
+        # Expandir variância: permitir delta de -2/+2 em relação à média (ex: se média=9, aceitar 7 a 11)
+        # Isso garante que a faixa de 8 repetições (muito comum) seja incluída no pool principal.
+        repeat_floor = max(0, int(round(repeat_mean)) - 2)
         repeat_ceiling = min(resolved_game_size, int(round(repeat_mean)) + 2)
         sequence_cap = max(4, int(round(sequence_mean + 1.0)))
         coverage_floor = max(0.30, min(0.75, round(coverage_mean, 2)))
@@ -3120,7 +3122,9 @@ class LotofacilScientificCore:
             if candidate.get("policy_variant") == "history_profile_seed" and history_count >= 60:
                 acceptance_errors.append("seed_policy_requires_validation")
             if resolved_game_size == 15 and history_count >= 60:
-                if repeat_min < 7 or repeat_max > 10:
+                # Expandir limites de aceitação para 15D: permitir repetição mínima de 6 (antes era 7)
+                # Isso permite que políticas que focam em 8 repetições (centro da faixa 6-10) sejam aceitas.
+                if repeat_min < 6 or repeat_max > 11:
                     acceptance_errors.append("repeat_policy_out_of_bounds_for_15")
                 if max_frequency_ratio > 0.70:
                     acceptance_errors.append("frequency_cap_above_threshold")
