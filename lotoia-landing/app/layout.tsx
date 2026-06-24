@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   title: "LotoIA — Inteligência Estatística Lotofácil",
   description:
     "Análise de 3.700+ concursos oficiais. Assine e receba jogos estruturados no WhatsApp.",
+  other: {
+    "facebook-domain-verification": "fub5vywq8iouvfqkl1n4qe4bk5ayom",
+  },
   icons: {
     icon: [
       { url: "/favicon.png", type: "image/png", sizes: "48x48" },

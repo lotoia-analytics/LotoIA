@@ -58,6 +58,7 @@ def test_lotoia_chat_landing_returns_html() -> None:
     status_code, body = _html_request("/")
     assert status_code == 200
     assert "LotoIA" in body
+    assert 'meta name="facebook-domain-verification" content="fub5vywq8iouvfqkl1n4qe4bk5ayom"' in body
     assert "Continuar com PIX" in body
     assert "Começar assinatura" in body
 
