@@ -1344,6 +1344,51 @@ def generate_best_games(
         )
     # -------------------------------------------------------------------------
 
+    # -------------------------------------------------------------------------
+    # STRUCTURAL METRICS VALIDATION (CORE_002)
+    # Detecta bugs automaticamente (ex: triplet cap=0, overlap fora do esperado)
+    # -------------------------------------------------------------------------
+    _structural_metrics_bundle = None
+    _structural_validation_bundle = None
+    if best_games and _apply_sovereign:
+        from lotoia.statistics.structural_metrics_validator import (
+            compute_structural_metrics,
+            validate_structural_metrics,
+        )
+
+        _structural_metrics = compute_structural_metrics(best_games)
+        _structural_validation = validate_structural_metrics(_structural_metrics)
+        _structural_metrics_bundle = _structural_metrics
+        _structural_validation_bundle = _structural_validation
+
+        # Attach to each game for traceability
+        for _g in best_games:
+            meta = _g.get("realignment_metadata") or {}
+            meta["structural_metrics"] = _structural_metrics_bundle
+            meta["structural_validation"] = _structural_validation_bundle
+            _g["realignment_metadata"] = meta
+            _g["structural_metrics_applied"] = True
+            _g["structural_validation_is_valid"] = _structural_validation["valid"]
+
+        if not _structural_validation["valid"]:
+            logger.error(
+                "[StructuralValidation] VIOLATIONS DETECTED: %s",
+                _structural_validation["violations"],
+            )
+        elif _structural_validation["warnings"]:
+            logger.warning(
+                "[StructuralValidation] warnings: %s",
+                _structural_validation["warnings"],
+            )
+        else:
+            logger.info(
+                "[StructuralValidation] triplet=%.1f%% overlap=%.1f games=%d — OK",
+                _structural_metrics.get("triplet_010203_pct", 0) * 100,
+                _structural_metrics.get("avg_overlap", 0),
+                _structural_metrics.get("games_count", 0),
+            )
+    # -------------------------------------------------------------------------
+
     final_profile_distribution = {
         profile: sum(1 for game in best_games if game.get("profile_type") == profile)
         for profile in GENERATION_PROFILE_RATIOS
@@ -1377,6 +1422,10 @@ def generate_best_games(
     }
     if _frequency_validation_bundle:
         payload["frequency_validation"] = _frequency_validation_bundle
+    if _structural_metrics_bundle:
+        payload["structural_metrics"] = _structural_metrics_bundle
+    if _structural_validation_bundle:
+        payload["structural_validation"] = _structural_validation_bundle
     if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
         payload["ml_hierarchy_version"] = _hierarchy_bundle.get("ml_hierarchy_version")
         payload["ml_hierarchy_status"] = _hierarchy_bundle.get("ml_hierarchy_status")
