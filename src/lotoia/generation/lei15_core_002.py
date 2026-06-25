@@ -75,6 +75,11 @@ def _architecture_key(game: dict) -> tuple[str, str]:
 
 def apply_critical_digit_layer(pool: list[dict]) -> list[dict]:
     """L5 — reforço suave de dezenas críticas; penalização contextual, sem veto."""
+    total_boost = 0.0
+    total_penalty = 0.0
+    games_with_boost = 0
+    games_with_penalty = 0
+
     for game in pool:
         nums = set(int(n) for n in (game.get("numbers") or []))
         boost = sum(2.5 for d in _REINFORCE_DIGITS if d in nums)
@@ -90,6 +95,33 @@ def apply_critical_digit_layer(pool: list[dict]) -> list[dict]:
         meta["critical_digit_boost"] = round(boost, 2)
         meta["critical_digit_penalty"] = round(penalty, 2)
         game["lei15_core_002_metadata"] = meta
+
+        # Contabilizar para logging
+        if boost > 0:
+            total_boost += boost
+            games_with_boost += 1
+        if penalty > 0:
+            total_penalty += penalty
+            games_with_penalty += 1
+
+    # === LOG ESTRUTURADO L5 — CRITICAL DIGIT LAYER ===
+    if pool:
+        avg_boost = total_boost / len(pool)
+        avg_penalty = total_penalty / len(pool)
+        logger.info(
+            "[CORE_002:L5] Critical digit layer | "
+            "pool=%d games_with_boost=%d games_with_penalty=%d | "
+            "avg_boost=%.2f avg_penalty=%.2f | "
+            "reinforce=%s discourage=%s",
+            len(pool),
+            games_with_boost,
+            games_with_penalty,
+            avg_boost,
+            avg_penalty,
+            sorted(_REINFORCE_DIGITS),
+            sorted(_CONTEXTUAL_DISCOURAGE),
+        )
+
     return pool
 
 
@@ -112,11 +144,39 @@ def build_sovereign_pool(
         game["lei15_core_002_applied"] = True
         game["sovereign_core_status"] = config.sovereign_core_status
         game["candidate_origin_label"] = config.candidate_origin_label
-    logger.info(
-        "[LEI15_CORE_002] sovereign pool=%d cand_d_variant=D epoch=%s",
-        len(pool),
-        config.evidence_epoch,
-    )
+
+    # === LOG ESTRUTURADO L1 — POOL INICIAL ===
+    if pool:
+        triplet_count = sum(
+            1
+            for game in pool
+            if 1 in game.get("numbers", [])
+            and 2 in game.get("numbers", [])
+            and 3 in game.get("numbers", [])
+        )
+        suffix_count = sum(
+            1
+            for game in pool
+            if 23 in game.get("numbers", [])
+            and 24 in game.get("numbers", [])
+            and 25 in game.get("numbers", [])
+        )
+        triplet_pct = (triplet_count / len(pool) * 100) if pool else 0
+        suffix_pct = (suffix_count / len(pool) * 100) if pool else 0
+
+        logger.info(
+            "[CORE_002:L1] Pool construído | "
+            "size=%d variant=D epoch=%s | "
+            "triplet_010203=%d (%.1f%%) | "
+            "suffix_232425=%d (%.1f%%)",
+            len(pool),
+            config.evidence_epoch,
+            triplet_count,
+            triplet_pct,
+            suffix_count,
+            suffix_pct,
+        )
+
     return pool
 
 
@@ -261,12 +321,19 @@ def apply_anti_clone_gp(
 
     for game in selected:
         game["anti_clone_gp_applied"] = True
+
+    # === LOG ESTRUTURADO L4 — ANTI-CLONE ===
+    rejected = len(games) - len(selected)
     logger.info(
-        "[LEI15_CORE_002] anti_clone_gp selected=%d target=%d game_size=%d",
+        "[CORE_002:L4] Anti-clone aplicado | "
+        "input=%d selected=%d target=%d rejected=%d game_size=%d",
+        len(games),
         len(selected),
         count,
+        rejected,
         game_size,
     )
+
     return selected[:count]
 
 
@@ -326,6 +393,96 @@ def compose_sovereign_gp(
     if sanity_bundle:
         for game in gp:
             game.setdefault("structural_sovereignty_sanity", dict(sanity_bundle))
+
+    # === LOGS ESTRUTURADOS CORE_002 ===
+    if gp:
+        # Calcular métricas para logging
+        triplet_count = sum(
+            1
+            for game in gp
+            if 1 in game.get("numbers", [])
+            and 2 in game.get("numbers", [])
+            and 3 in game.get("numbers", [])
+        )
+        suffix_count = sum(
+            1
+            for game in gp
+            if 23 in game.get("numbers", [])
+            and 24 in game.get("numbers", [])
+            and 25 in game.get("numbers", [])
+        )
+
+        # Calcular overlap médio
+        overlaps = []
+        for i, g1 in enumerate(gp):
+            for g2 in gp[i + 1 :]:
+                overlap = len(set(g1.get("numbers", [])) & set(g2.get("numbers", [])))
+                overlaps.append(overlap)
+        avg_overlap = sum(overlaps) / len(overlaps) if overlaps else 0.0
+
+        # Calcular diversity score (1 - similaridade média)
+        diversity_score = 1.0 - (avg_overlap / game_size) if game_size > 0 else 0.0
+
+        # Contar rejeições por anti-clone (estimativa baseada no pool original)
+        anti_clone_rejected = len(pool) - len(gp)
+
+        # Log estruturado principal
+        triplet_pct = (triplet_count / len(gp) * 100) if gp else 0
+        suffix_pct = (suffix_count / len(gp) * 100) if gp else 0
+
+        logger.info(
+            "[CORE_002] GP gerado | "
+            "pool=%d gp=%d | "
+            "triplet_010203=%d/%d (%.1f%%) | "
+            "suffix_232425=%d/%d (%.1f%%) | "
+            "avg_overlap=%.1f | "
+            "anti_clone_rejected=%d | "
+            "diversity=%.2f",
+            len(pool),
+            len(gp),
+            triplet_count,
+            len(gp),
+            triplet_pct,
+            suffix_count,
+            len(gp),
+            suffix_pct,
+            avg_overlap,
+            anti_clone_rejected,
+            diversity_score,
+        )
+
+        # Warnings para métricas fora do esperado
+        if triplet_pct < 10:
+            logger.warning(
+                "[CORE_002] Triplet 01-02-03 abaixo do esperado: %.1f%% (target: 21%%)",
+                triplet_pct,
+            )
+        if triplet_pct > 35:
+            logger.warning(
+                "[CORE_002] Triplet 01-02-03 acima do esperado: %.1f%% (target: 21%%)",
+                triplet_pct,
+            )
+        if suffix_pct < 10:
+            logger.warning(
+                "[CORE_002] Suffix 23-24-25 abaixo do esperado: %.1f%% (target: 21.67%%)",
+                suffix_pct,
+            )
+        if suffix_pct > 35:
+            logger.warning(
+                "[CORE_002] Suffix 23-24-25 acima do esperado: %.1f%% (target: 21.67%%)",
+                suffix_pct,
+            )
+        if avg_overlap < 7.0 or avg_overlap > 13.0:
+            logger.warning(
+                "[CORE_002] Overlap médio fora do esperado: %.1f (range: 7.0-13.0)",
+                avg_overlap,
+            )
+        if diversity_score < 0.70:
+            logger.warning(
+                "[CORE_002] Diversity score baixo: %.2f (mínimo: 0.70)",
+                diversity_score,
+            )
+
     return gp
 
 
