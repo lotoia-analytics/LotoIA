@@ -9,6 +9,7 @@ import os
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
+from lotoia.config.structural_policy_config import DEFAULT_PREFIX_SHARE_LIMIT
 from lotoia.ml.structural_auto_calibration import (
     MISSION_ID as STRUCTURAL_AUTO_MISSION_ID,
     build_auto_calibration_plan_from_pool,
@@ -44,9 +45,7 @@ STATUS_ACTIVE = "ML OPERACIONAL SUPERVISIONADO — CALIBRAÇÃO DE SAÍDA ATIVA"
 # Dezenas críticas CORE_002 (observacional — reforço supervisionado, sem mutar Núcleo)
 CRITICAL_DEZENAS: frozenset[int] = frozenset({7, 15, 23})
 DEFAULT_UNDERCOVER_RATIO = 0.18
-DEFAULT_PREFIX_SHARE_LIMIT = (
-    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
-)
+# DEFAULT_PREFIX_SHARE_LIMIT importado de lotoia.config.structural_policy_config
 DEFAULT_NEAR_DUP_PAIR_RATIO = 0.28
 MISSION_ID_080 = "M-ML-080"
 

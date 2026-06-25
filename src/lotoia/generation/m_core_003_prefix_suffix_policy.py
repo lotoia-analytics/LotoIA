@@ -6,6 +6,7 @@ import math
 from collections import Counter
 from typing import Final, Literal, Sequence
 
+from lotoia.config.structural_policy_config import HISTORICAL_WINDOW
 from lotoia.generation.lei15_core_structural_payload import (
     compute_structural_signatures,
 )
@@ -14,7 +15,8 @@ MISSION_ID: Final = "M-CORE-003"
 EVIDENCE_EPOCH: Final = "EPOCH_002_M_CORE_003"
 
 # Frequências históricas — janela operacional: últimos 300 concursos oficiais.
-# Atualizado em 2026-06-25 — baseline: 300 concursos (concursos 3419–3718).
+# Atualizado em 2026-06-25 — baseline: HISTORICAL_WINDOW concursos (concursos 3419–3718).
+assert HISTORICAL_WINDOW == 300, "Baseline histórica deve ser 300 concursos"
 HISTORICAL_PREFIX_FREQ_PCT: Final[dict[str, float]] = {
     "01-02-03": 21.00,
     "01-02-04": 11.67,

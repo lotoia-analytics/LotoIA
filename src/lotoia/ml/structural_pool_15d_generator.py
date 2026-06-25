@@ -7,6 +7,7 @@ from collections import Counter
 from random import Random
 from typing import Any, Mapping, Sequence
 
+from lotoia.config.structural_policy_config import MAX_PREFIX_SUFFIX_SHARE
 from lotoia.ml.structural_policy_15d import (
     CORE_NUMBERS,
     DISCOURAGED_NUMBERS,
@@ -41,9 +42,7 @@ def resolve_structural_pool_target(
 
 
 REFERENCE_CONTEST_WINDOW = 10
-MAX_PREFIX_SUFFIX_SHARE = (
-    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
-)
+# MAX_PREFIX_SUFFIX_SHARE importado de lotoia.config.structural_policy_config
 MIN_DEZENA_COVERAGE_RATIO = 0.18
 NEAR_CLONE_OVERLAP_15D = 14
 

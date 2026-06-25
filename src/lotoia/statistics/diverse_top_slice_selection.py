@@ -12,12 +12,15 @@ import os
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
+from lotoia.config.structural_policy_config import (
+    DEFAULT_PREFIX_SHARE_LIMIT,
+    MAX_PREFIX_SUFFIX_SHARE,
+)
 from lotoia.governance.institutional_agent_routing_matrix import AGENT_GERACAO
 from lotoia.ml.overlap_format_thresholds import DIVERSITY_LOW_THRESHOLD
 from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
 from lotoia.ml.supervised_output_calibration import (
     DOMINANCE_CALIBRATION_THRESHOLD,
-    DEFAULT_PREFIX_SHARE_LIMIT,
     analyze_pool_structural_issues,
 )
 from lotoia.statistics.card_structure import (
@@ -39,9 +42,7 @@ ENV_MSTAT_002_SUFFIX_CAP = "LOTOIA_MSTAT_002_SUFFIX_CAP"
 ENV_MSTAT_002_PREFIX_CAP = "LOTOIA_MSTAT_002_PREFIX_CAP"
 ENV_MSTAT_002_MAX_OVERLAP = "LOTOIA_MSTAT_002_MAX_OVERLAP"
 MIN_MATERIAL_DIVERSITY_GAIN = 0.20
-MAX_PREFIX_SUFFIX_SHARE = (
-    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
-)
+# MAX_PREFIX_SUFFIX_SHARE importado de lotoia.config.structural_policy_config
 MAX_FAMILY_SHARE = 0.10
 MAX_SWAP_ITERATIONS = 200
 DEFAULT_MAX_OVERLAP_15D = 12
