@@ -113,32 +113,46 @@ class Core003Pipeline:
         batch_label = f"STRUCT_LEI15_CORE_CANDIDATE_003_{self.format}_001"
         config = get_core_002_config(batch_label)
 
-        # Gerar pool
-        pool = build_sovereign_pool(pool_size, seed=42, history=[], config=config)
+        # Gerar pool base (sempre 15D no CORE_002)
+        pool_15d = build_sovereign_pool(pool_size, seed=42, history=[], config=config)
 
-        # Ajustar tamanho dos jogos se necessário (para formatos > 15D)
-        if dezenas != 15:
-            for game in pool:
-                if len(game.get("numbers", [])) != dezenas:
-                    # Ajustar jogo para o tamanho correto
-                    numbers = game.get("numbers", [])
-                    if len(numbers) > dezenas:
-                        game["numbers"] = numbers[:dezenas]
-                    elif len(numbers) < dezenas:
-                        # Adicionar dezenas aleatórias
-                        import random
+        # Se o formato é 15D, retornar direto
+        if dezenas == 15:
+            logger.debug("[CORE_003:L1] Pool 15D gerado | size=%d", len(pool_15d))
+            return pool_15d
 
-                        available = [n for n in range(1, 26) if n not in numbers]
-                        needed = dezenas - len(numbers)
-                        game["numbers"] = numbers + random.sample(
-                            available, min(needed, len(available))
-                        )
+        # Para formatos > 15D, expandir jogos de forma inteligente
+        pool = []
+        for game_15d in pool_15d:
+            base_numbers = set(game_15d.get("numbers", []))
+
+            # Adicionar dezenas até atingir o tamanho desejado
+            available = [n for n in range(1, 26) if n not in base_numbers]
+            needed = dezenas - len(base_numbers)
+
+            if needed > 0 and len(available) >= needed:
+                import random
+
+                # Usar seed determinística baseada no jogo original para reprodutibilidade
+                random.seed(hash(tuple(sorted(base_numbers))))
+                extra_numbers = random.sample(available, needed)
+                new_numbers = sorted(list(base_numbers) + extra_numbers)
+            else:
+                new_numbers = sorted(list(base_numbers))
+
+            # Criar novo jogo com o tamanho correto
+            new_game = game_15d.copy()
+            new_game["numbers"] = new_numbers
+            new_game["original_size"] = 15
+            new_game["expanded_to"] = dezenas
+
+            pool.append(new_game)
 
         logger.debug(
-            "[CORE_003:L1] Pool gerado | size=%d format=%s dezenas=%d",
-            len(pool),
+            "[CORE_003:L1] Pool expandido | format=%s base_size=%d expanded_size=%d",
             self.format,
-            dezenas,
+            len(pool_15d),
+            len(pool),
         )
         return pool
 
@@ -220,14 +234,69 @@ class Core003Pipeline:
     def _compute_final_metrics(self, gp: list[dict[str, Any]]) -> None:
         """Computa métricas estruturais finais."""
         metrics = compute_structural_metrics(gp)
-        validation = validate_structural_metrics(metrics)
 
-        # Calcular diversity_score (1 - similaridade média)
-        # Similaridade média é avg_overlap / game_size
+        # Obter limites específicos para o formato
         format_config = self.config["formats"][self.format]
         game_size = format_config["dezenas"]
+
+        # Validar com limites específicos do formato
+        validation_limits = self.config["validation_limits"]
+
+        # Triplet 01-02-03 (específico por formato)
+        triplet_limits = validation_limits["triplet_by_format"].get(
+            self.format, validation_limits["triplet_by_format"]["15D"]
+        )
+        triplet_pct = metrics.get("triplet_010203_pct", 0)
+        triplet_valid = triplet_limits["min"] <= triplet_pct <= triplet_limits["max"]
+
+        # Overlap específico por formato
+        overlap_limits = validation_limits["avg_overlap_by_format"].get(
+            self.format, validation_limits["avg_overlap_by_format"]["15D"]
+        )
         avg_overlap = metrics.get("avg_overlap", 0)
+        overlap_valid = overlap_limits["min"] <= avg_overlap <= overlap_limits["max"]
+
+        # Diversity score
         diversity_score = 1.0 - (avg_overlap / game_size) if game_size > 0 else 0.0
+        diversity_limits = validation_limits["diversity_score"]
+        diversity_valid = diversity_score >= diversity_limits["min"]
+
+        # Construir resultado de validação
+        violations = []
+        warnings = []
+
+        if not triplet_valid:
+            if triplet_pct < triplet_limits["min"]:
+                violations.append(
+                    f"Triplet 01-02-03 muito baixo: {triplet_pct:.1%} (mínimo: {triplet_limits['min']:.1%})"
+                )
+            else:
+                violations.append(
+                    f"Triplet 01-02-03 muito alto: {triplet_pct:.1%} (máximo: {triplet_limits['max']:.1%})"
+                )
+
+        if not overlap_valid:
+            if avg_overlap < overlap_limits["min"]:
+                violations.append(
+                    f"Overlap médio muito baixo: {avg_overlap:.1f} (mínimo: {overlap_limits['min']:.1f})"
+                )
+            else:
+                violations.append(
+                    f"Overlap médio muito alto: {avg_overlap:.1f} (máximo: {overlap_limits['max']:.1f})"
+                )
+
+        if not diversity_valid:
+            warnings.append(
+                f"Diversity score baixo: {diversity_score:.2f} (mínimo: {diversity_limits['min']:.2f})"
+            )
+
+        validation = {
+            "valid": len(violations) == 0,
+            "violations": violations,
+            "warnings": warnings,
+            "format": self.format,
+            "game_size": game_size,
+        }
 
         self._metrics.update(metrics)
         self._metrics["diversity_score"] = round(diversity_score, 4)
@@ -235,10 +304,78 @@ class Core003Pipeline:
 
         # Log de métricas
         logger.info(
-            "[CORE_003] Métricas finais | "
+            "[CORE_003] Métricas finais | format=%s game_size=%d | "
             "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s",
-            metrics.get("triplet_010203_pct", 0) * 100,
-            metrics.get("avg_overlap", 0),
+            self.format,
+            game_size,
+            triplet_pct * 100,
+            avg_overlap,
+            diversity_score,
+            validation.get("valid", False),
+        )
+
+        if not validation.get("valid"):
+            logger.warning(
+                "[CORE_003] Validação falhou | violations=%s",
+                validation.get("violations", []),
+            )
+        avg_overlap = metrics.get("avg_overlap", 0)
+        overlap_valid = overlap_limits["min"] <= avg_overlap <= overlap_limits["max"]
+
+        # Diversity score
+        diversity_score = 1.0 - (avg_overlap / game_size) if game_size > 0 else 0.0
+        diversity_limits = validation_limits["diversity_score"]
+        diversity_valid = diversity_score >= diversity_limits["min"]
+
+        # Construir resultado de validação
+        violations = []
+        warnings = []
+
+        if not triplet_valid:
+            if triplet_pct < triplet_limits["min"]:
+                violations.append(
+                    f"Triplet 01-02-03 muito baixo: {triplet_pct:.1%} (mínimo: {triplet_limits['min']:.1%})"
+                )
+            else:
+                violations.append(
+                    f"Triplet 01-02-03 muito alto: {triplet_pct:.1%} (máximo: {triplet_limits['max']:.1%})"
+                )
+
+        if not overlap_valid:
+            if avg_overlap < overlap_limits["min"]:
+                violations.append(
+                    f"Overlap médio muito baixo: {avg_overlap:.1f} (mínimo: {overlap_limits['min']:.1f})"
+                )
+            else:
+                violations.append(
+                    f"Overlap médio muito alto: {avg_overlap:.1f} (máximo: {overlap_limits['max']:.1f})"
+                )
+
+        if not diversity_valid:
+            warnings.append(
+                f"Diversity score baixo: {diversity_score:.2f} (mínimo: {diversity_limits['min']:.2f})"
+            )
+
+        validation = {
+            "valid": len(violations) == 0,
+            "violations": violations,
+            "warnings": warnings,
+            "format": self.format,
+            "game_size": game_size,
+        }
+
+        self._metrics.update(metrics)
+        self._metrics["diversity_score"] = round(diversity_score, 4)
+        self._metrics["validation"] = validation
+
+        # Log de métricas
+        logger.info(
+            "[CORE_003] Métricas finais | format=%s game_size=%d | "
+            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s",
+            self.format,
+            game_size,
+            triplet_pct * 100,
+            avg_overlap,
             diversity_score,
             validation.get("valid", False),
         )

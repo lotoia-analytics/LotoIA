@@ -98,6 +98,7 @@ CORE_003_CONFIG: dict[str, Any] = {
         },
     },
     # Limites de validação (usados por structural_metrics_validator)
+    # Ajustados por formato, pois overlap esperado varia com tamanho do cartão
     "validation_limits": {
         "triplet_010203_pct": {
             "min": 0.10,
@@ -105,10 +106,31 @@ CORE_003_CONFIG: dict[str, Any] = {
             "target": 0.21,
             "tolerance": 0.06,
         },
-        "avg_overlap": {
-            "min": 7.0,
-            "max": 13.0,
-            "target": 10.0,
+        # Overlap esperado varia com tamanho do cartão
+        # Fórmula: overlap_alvo = game_size * (10/15) ≈ 0.67 * game_size
+        "avg_overlap_by_format": {
+            "15D": {"min": 7.0, "max": 13.0, "target": 10.0},
+            "16D": {"min": 7.5, "max": 14.0, "target": 10.7},
+            "17D": {"min": 8.0, "max": 15.0, "target": 11.3},
+            "18D": {"min": 8.5, "max": 16.0, "target": 12.0},
+            "19D": {"min": 9.0, "max": 17.0, "target": 12.7},
+            "20D": {"min": 9.5, "max": 18.0, "target": 13.3},
+            "21D": {"min": 10.0, "max": 19.0, "target": 14.0},
+            "22D": {"min": 10.5, "max": 20.0, "target": 14.7},
+            "23D": {"min": 11.0, "max": 22.0, "target": 15.3},
+        },
+        # Triplet 01-02-03: limites ajustados por formato
+        # Formatos maiores tendem a ter triplet mais alto devido à expansão
+        "triplet_by_format": {
+            "15D": {"min": 0.10, "max": 0.35, "target": 0.21},
+            "16D": {"min": 0.10, "max": 0.50, "target": 0.25},
+            "17D": {"min": 0.10, "max": 0.60, "target": 0.30},
+            "18D": {"min": 0.10, "max": 0.60, "target": 0.35},
+            "19D": {"min": 0.10, "max": 0.65, "target": 0.40},
+            "20D": {"min": 0.10, "max": 0.70, "target": 0.45},
+            "21D": {"min": 0.10, "max": 0.75, "target": 0.50},
+            "22D": {"min": 0.10, "max": 0.90, "target": 0.55},
+            "23D": {"min": 0.10, "max": 0.95, "target": 0.60},
         },
         "diversity_score": {
             "min": 0.70,
