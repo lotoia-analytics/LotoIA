@@ -17,12 +17,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lotoia.config.core_003_config import CORE_003_CONFIG, CalibrationPreset
+from lotoia.config.core_003_config import (
+    CORE_003_CONFIG,
+    CalibrationPreset,
+    get_confidence_interval,
+)
 from lotoia.generation.post_contest_feedback import (
     PostContestFeedback,
     get_performance_trend,
 )
 from lotoia.generation.model_versioning import ModelVersioning
+from lotoia.statistics.change_detector import ChangeDetector
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +40,7 @@ class SmartOrchestrator:
         self.auto_calibrate = auto_calibrate
         self.feedback = PostContestFeedback()
         self.versioning = ModelVersioning()
+        self.change_detector = ChangeDetector(confidence_level=0.95)
         self._adjustments_applied: list[str] = []
 
     def calibrate_preset(
@@ -91,7 +97,10 @@ class SmartOrchestrator:
         suggestions: list[dict[str, Any]],
         trend: dict[str, Any],
     ) -> tuple[CalibrationPreset, dict[str, Any]]:
-        """Aplica sugestões de ajuste ao preset.
+        """Aplica sugestões de ajuste ao preset com detecção estatística.
+
+        Usa ChangeDetector para verificar se mudanças são estatisticamente
+        significativas antes de aplicar ajustes, evitando overfitting.
 
         Returns:
             Tuple com (preset_ajustado, dicionario_de_ajustes)
@@ -111,25 +120,99 @@ class SmartOrchestrator:
                 preset = "agressivo"
                 adjustments["preset_changed"] = "equilibrado → agressivo"
 
-        # Aplicar ajustes específicos
+        # Aplicar ajustes específicos com detecção estatística
         for suggestion in suggestions:
             adj_type = suggestion.get("adjustment")
+            current_rate = suggestion.get("current_rate")
+            sample_size = suggestion.get("sample_size", 50)
 
             if adj_type == "increase_diversity":
-                adjustments["diversity_floor"] = "+0.03"
-                adjustments["overlap_penalty"] = "-0.05"
+                # Para diversidade, verificar se hit_rate está significativamente baixo
+                if current_rate is not None:
+                    should_adjust, result = (
+                        self.change_detector.should_adjust_parameter(
+                            metric_name="hit_rate_11_13",
+                            current_rate=current_rate,
+                            historical_config={"value": 0.15, "sample_size": 300},
+                            sample_size_recent=sample_size,
+                        )
+                    )
+                    if should_adjust:
+                        adjustments["diversity_floor"] = "+0.03"
+                        adjustments["overlap_penalty"] = "-0.05"
+                        logger.info(
+                            "[Orchestrator] Ajuste de diversidade aplicado (mudança significativa)"
+                        )
+                    else:
+                        logger.debug(
+                            "[Orchestrator] Ajuste de diversidade ignorado (mudança não significativa)"
+                        )
+                else:
+                    # Fallback: aplicar sem detecção se não há dados
+                    adjustments["diversity_floor"] = "+0.03"
+                    adjustments["overlap_penalty"] = "-0.05"
 
             elif adj_type == "increase_triplet_cap":
-                current_freq = CORE_003_CONFIG["structural_policy"]["triplet_010203"][
-                    "freq"
-                ]
-                adjustments["triplet_freq"] = f"{current_freq + 0.02:.2f}"
+                # Verificar se triplet_rate está significativamente baixo
+                if current_rate is not None:
+                    triplet_config = get_confidence_interval("triplet_010203")
+                    should_adjust, result = (
+                        self.change_detector.should_adjust_parameter(
+                            metric_name="triplet_010203",
+                            current_rate=current_rate,
+                            historical_config=triplet_config,
+                            sample_size_recent=sample_size,
+                        )
+                    )
+                    if should_adjust:
+                        current_freq = CORE_003_CONFIG["structural_policy"][
+                            "triplet_010203"
+                        ]["freq"]
+                        adjustments["triplet_freq"] = f"{current_freq + 0.02:.2f}"
+                        logger.info(
+                            "[Orchestrator] Ajuste de triplet aplicado (mudança significativa)"
+                        )
+                    else:
+                        logger.debug(
+                            "[Orchestrator] Ajuste de triplet ignorado (mudança não significativa)"
+                        )
+                else:
+                    # Fallback: aplicar sem detecção se não há dados
+                    current_freq = CORE_003_CONFIG["structural_policy"][
+                        "triplet_010203"
+                    ]["freq"]
+                    adjustments["triplet_freq"] = f"{current_freq + 0.02:.2f}"
 
             elif adj_type == "increase_suffix_cap":
-                current_freq = CORE_003_CONFIG["structural_policy"]["suffix_232425"][
-                    "freq"
-                ]
-                adjustments["suffix_freq"] = f"{current_freq + 0.02:.2f}"
+                # Verificar se suffix_rate está significativamente baixo
+                if current_rate is not None:
+                    suffix_config = get_confidence_interval("suffix_232425")
+                    should_adjust, result = (
+                        self.change_detector.should_adjust_parameter(
+                            metric_name="suffix_232425",
+                            current_rate=current_rate,
+                            historical_config=suffix_config,
+                            sample_size_recent=sample_size,
+                        )
+                    )
+                    if should_adjust:
+                        current_freq = CORE_003_CONFIG["structural_policy"][
+                            "suffix_232425"
+                        ]["freq"]
+                        adjustments["suffix_freq"] = f"{current_freq + 0.02:.2f}"
+                        logger.info(
+                            "[Orchestrator] Ajuste de suffix aplicado (mudança significativa)"
+                        )
+                    else:
+                        logger.debug(
+                            "[Orchestrator] Ajuste de suffix ignorado (mudança não significativa)"
+                        )
+                else:
+                    # Fallback: aplicar sem detecção se não há dados
+                    current_freq = CORE_003_CONFIG["structural_policy"][
+                        "suffix_232425"
+                    ]["freq"]
+                    adjustments["suffix_freq"] = f"{current_freq + 0.02:.2f}"
 
         # Se tendência é declining, ser mais conservador
         if trend.get("trend") == "declining":
