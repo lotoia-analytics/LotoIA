@@ -22,7 +22,10 @@ from lotoia.governance.lei15_core_002_sovereign import (
     is_generation_enabled,
     is_sovereign_core_label,
 )
-from lotoia.governance.batch_operational_scope import is_generation_event_active_reading, summarize_active_reading_exclusions
+from lotoia.governance.batch_operational_scope import (
+    is_generation_event_active_reading,
+    summarize_active_reading_exclusions,
+)
 from lotoia.governance.lei15_core_six_bases_evaluation import BASE_LABELS_PT, BASE_NAMES
 from lotoia.ml.pre_final_pool_ml_calibration import (
     MISSION_ID as PRE_FINAL_POOL_MISSION_ID,
@@ -73,9 +76,7 @@ STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID = STRUCTURAL_15D_POOL_MISSION_ID
 ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID = ML_OPERATIONAL_HIERARCHY_MISSION_ID
 AGENT_ROUTING_DASHBOARD_MISSION_ID = AGENT_ROUTING_MISSION_ID
 ML_VERDICT_MISSION_ID = "M-ML-060-FIX-01"
-SOVEREIGN_COVERAGE_SCOPE_LABEL = (
-    "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
-)
+SOVEREIGN_COVERAGE_SCOPE_LABEL = "Escopo soberano: Cobertura Estrutural — todas as gerações operacionais CORE_002 (PostgreSQL)"
 AGGREGATE_SCOPE_LABEL = "Escopo analisado: visão geral das gerações oficiais recentes"
 AGGREGATE_DIAGNOSIS_HEADLINE = "Diagnóstico geral da saída CORE_002 + ML"
 DEFAULT_AGGREGATE_EVENTS_LIMIT = 10
@@ -195,7 +196,9 @@ def _final_score_value(game: dict[str, Any]) -> float:
     return float(final_score or 0.0)
 
 
-def build_game_decision_trace(game: dict[str, Any], *, ml_enabled: bool) -> dict[str, Any]:
+def build_game_decision_trace(
+    game: dict[str, Any], *, ml_enabled: bool
+) -> dict[str, Any]:
     score_ml = float(game.get("score_ml", 0.0) or 0.0)
     calibration_applied = bool(game.get("calibration_applied"))
     reranked_by: list[str] = []
@@ -230,9 +233,15 @@ def build_game_decision_trace(game: dict[str, Any], *, ml_enabled: bool) -> dict
                 "calibration_mission": CALIBRATION_MISSION_ID,
                 "ml_calibration_status": str(game.get("ml_calibration_status") or ""),
                 "ml_calibration_net": float(game.get("ml_calibration_net", 0.0) or 0.0),
-                "ml_calibration_penalty": float(game.get("ml_calibration_penalty", 0.0) or 0.0),
-                "ml_calibration_boost": float(game.get("ml_calibration_boost", 0.0) or 0.0),
-                "ml_calibration_actions": list(game.get("ml_calibration_actions") or []),
+                "ml_calibration_penalty": float(
+                    game.get("ml_calibration_penalty", 0.0) or 0.0
+                ),
+                "ml_calibration_boost": float(
+                    game.get("ml_calibration_boost", 0.0) or 0.0
+                ),
+                "ml_calibration_actions": list(
+                    game.get("ml_calibration_actions") or []
+                ),
             }
         )
     return trace
@@ -262,7 +271,9 @@ def build_game_feature_attribution(game: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_game_generation_lineage(game: dict[str, Any], *, batch_label: str) -> dict[str, Any]:
+def build_game_generation_lineage(
+    game: dict[str, Any], *, batch_label: str
+) -> dict[str, Any]:
     origin_pipeline = [
         "build_sovereign_pool",
         "rerank_games" if game.get("ml_enabled") else "hybrid_ranking",
@@ -290,7 +301,9 @@ def build_supervised_ml_trace_for_games(
 ) -> dict[str, Any]:
     traces = [build_game_decision_trace(game, ml_enabled=ml_enabled) for game in games]
     attributions = [build_game_feature_attribution(game) for game in games]
-    lineages = [build_game_generation_lineage(game, batch_label=batch_label) for game in games]
+    lineages = [
+        build_game_generation_lineage(game, batch_label=batch_label) for game in games
+    ]
     scored = sum(1 for game in games if game.get("score_ml") is not None)
     return {
         "decision_trace": traces,
@@ -340,7 +353,9 @@ def build_supervised_ml_activation_snapshot() -> dict[str, object]:
     }
 
 
-def resolve_ml_operational_status_label(*, calibration_applied: bool, ml_enabled: bool) -> str:
+def resolve_ml_operational_status_label(
+    *, calibration_applied: bool, ml_enabled: bool
+) -> str:
     if calibration_applied and ml_enabled:
         return CALIBRATION_STATUS_ACTIVE
     if ml_enabled:
@@ -348,7 +363,9 @@ def resolve_ml_operational_status_label(*, calibration_applied: bool, ml_enabled
     return SUPERVISED_ML_STATUS_BLOCKED
 
 
-def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+def build_calibration_event_summary(
+    calibration_bundle: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     bundle = dict(calibration_bundle or {})
     if not bundle.get("calibration_applied"):
         return {"calibration_applied": False, "calibration_engine_role": "DISABLED"}
@@ -356,7 +373,9 @@ def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None
     issues = list(diagnostics.get("issues") or [])
     return {
         "calibration_applied": True,
-        "calibration_version": str(bundle.get("calibration_version") or CALIBRATION_VERSION),
+        "calibration_version": str(
+            bundle.get("calibration_version") or CALIBRATION_VERSION
+        ),
         "calibration_engine_role": str(
             bundle.get("calibration_engine_role") or CALIBRATION_ENGINE_ROLE
         ),
@@ -385,16 +404,26 @@ def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None
             "why": "Calibração supervisionada automática — problemas estruturais detectados no pool",
             "issues_count": len(issues),
             "actions_count": len(bundle.get("actions_applied") or []),
-            "lei15_core_002_preserved": bool(bundle.get("lei15_core_002_preserved", True)),
+            "lei15_core_002_preserved": bool(
+                bundle.get("lei15_core_002_preserved", True)
+            ),
             "lei15a_applied": bool(bundle.get("lei15a_applied", False)),
         },
         "calibration_feature_attribution": {
-            "calibration_version": str(bundle.get("calibration_version") or CALIBRATION_VERSION),
-            "redundancy_penalty_total": float(bundle.get("redundancy_penalty", 0.0) or 0.0),
+            "calibration_version": str(
+                bundle.get("calibration_version") or CALIBRATION_VERSION
+            ),
+            "redundancy_penalty_total": float(
+                bundle.get("redundancy_penalty", 0.0) or 0.0
+            ),
             "prefix_penalty_count": int(bundle.get("prefix_penalty", 0) or 0),
             "suffix_penalty_count": int(bundle.get("suffix_penalty", 0) or 0),
-            "missing_numbers_boost_count": int(bundle.get("missing_numbers_boost", 0) or 0),
-            "critical_coverage_boost_count": int(bundle.get("critical_coverage_boost", 0) or 0),
+            "missing_numbers_boost_count": int(
+                bundle.get("missing_numbers_boost", 0) or 0
+            ),
+            "critical_coverage_boost_count": int(
+                bundle.get("critical_coverage_boost", 0) or 0
+            ),
         },
         "six_bases_summary": build_calibration_six_bases_summary(diagnostics),
         "pre_final_pool_ml_calibration": build_pre_final_pool_trace(bundle),
@@ -404,18 +433,20 @@ def build_calibration_event_summary(calibration_bundle: Mapping[str, Any] | None
         "ml_operational_hierarchy": build_ml_operational_hierarchy_trace(
             dict(bundle.get("ml_operational_hierarchy") or {})
         ),
-        "pre_final_calibration_applied": bool(bundle.get("pre_final_calibration_applied")),
+        "pre_final_calibration_applied": bool(
+            bundle.get("pre_final_calibration_applied")
+        ),
         "pre_final_pool_ml_enabled": bool(bundle.get("pre_final_pool_ml_enabled")),
         "final_gp_changed_by_ml": bool(bundle.get("final_gp_changed_by_ml")),
     }
 
 
-def build_calibration_six_bases_summary(diagnostics: Mapping[str, Any]) -> list[dict[str, str]]:
+def build_calibration_six_bases_summary(
+    diagnostics: Mapping[str, Any],
+) -> list[dict[str, str]]:
     issues = list(diagnostics.get("issues") or [])
     issue_types = {
-        str(row.get("tipo") or "")
-        for row in issues
-        if isinstance(row, dict)
+        str(row.get("tipo") or "") for row in issues if isinstance(row, dict)
     }
     redundancy = dict(diagnostics.get("redundancy") or {})
     before_after = {
@@ -492,11 +523,19 @@ def build_supervised_ml_persistence_bundle(
 
 
 def _resolve_event_card_format(event: GenerationEvent, context: dict[str, Any]) -> int:
-    for key in ("selected_card_format", "card_format", "format_cartao", "formato_cartao", "quantidade_final"):
+    for key in (
+        "selected_card_format",
+        "card_format",
+        "format_cartao",
+        "formato_cartao",
+        "quantidade_final",
+    ):
         raw = context.get(key)
         if raw is not None and str(raw).strip().isdigit():
             return int(raw)
-    label_size = core_002_batch_label_game_size(str(getattr(event, "analysis_batch_label", "") or ""))
+    label_size = core_002_batch_label_game_size(
+        str(getattr(event, "analysis_batch_label", "") or "")
+    )
     if label_size is not None:
         return int(label_size)
     return 15
@@ -514,7 +553,9 @@ def _extract_attribution_status(context: dict[str, Any]) -> str:
     if not attributions:
         return "ausente"
     for row in attributions:
-        if isinstance(row, dict) and (row.get("attribution") or row.get("score_ml") is not None):
+        if isinstance(row, dict) and (
+            row.get("attribution") or row.get("score_ml") is not None
+        ):
             return "persistido"
     return "ausente"
 
@@ -528,7 +569,9 @@ def _summarize_decision_trace(traces: list[dict[str, Any]]) -> dict[str, Any]:
     if not traces:
         return {"status": "ausente", "total_jogos": 0, "sample": None}
     sample = dict(traces[0]) if isinstance(traces[0], dict) else {}
-    ml_enabled_count = sum(1 for row in traces if isinstance(row, dict) and row.get("ml_enabled"))
+    ml_enabled_count = sum(
+        1 for row in traces if isinstance(row, dict) and row.get("ml_enabled")
+    )
     return {
         "status": "persistido",
         "total_jogos": len(traces),
@@ -544,9 +587,16 @@ def _summarize_decision_trace(traces: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _summarize_feature_attribution(attributions: list[dict[str, Any]]) -> dict[str, Any]:
+def _summarize_feature_attribution(
+    attributions: list[dict[str, Any]],
+) -> dict[str, Any]:
     if not attributions:
-        return {"status": "ausente", "total_jogos": 0, "top_factors": [], "sample": None}
+        return {
+            "status": "ausente",
+            "total_jogos": 0,
+            "top_factors": [],
+            "sample": None,
+        }
     top_factors: list[dict[str, Any]] = []
     sample = None
     for row in attributions:
@@ -611,7 +661,9 @@ def load_supervised_ml_operational_events_from_db(
                     "generation_event_id": ge_id,
                     "batch_label": batch_label,
                     "ml_enabled": True,
-                    "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+                    "created_at": event.created_at.isoformat()
+                    if getattr(event, "created_at", None)
+                    else "",
                     "requested_count": int(context.get("selected_quantity", 0) or 0),
                     "persisted_games": games_count,
                     "ml_scored_games": ml_scored_games,
@@ -619,9 +671,13 @@ def load_supervised_ml_operational_events_from_db(
                     "decision_trace_status": _extract_trace_status(context),
                     "feature_attribution_status": _extract_attribution_status(context),
                     "ml_six_bases_status": _extract_six_bases_status(context),
-                    "supervised_ml_mission": str(context.get("supervised_ml_mission") or MISSION_ID),
+                    "supervised_ml_mission": str(
+                        context.get("supervised_ml_mission") or MISSION_ID
+                    ),
                     "calibration_applied": bool(context.get("calibration_applied")),
-                    "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+                    "pre_final_calibration_applied": bool(
+                        context.get("pre_final_calibration_applied")
+                    ),
                     "authorized_plan_loaded_from_db": bool(
                         context.get("authorized_plan_loaded_from_db")
                         or context.get("calibration_plan_loaded_from_db")
@@ -646,7 +702,11 @@ def build_supervised_ml_operational_event_detail(
     if selected_id <= 0:
         return None
     with get_session(db_path) as session:
-        event = session.query(GenerationEvent).filter(GenerationEvent.id == selected_id).one_or_none()
+        event = (
+            session.query(GenerationEvent)
+            .filter(GenerationEvent.id == selected_id)
+            .one_or_none()
+        )
         if event is None or int(event.ml_enabled or 0) != 1:
             return None
         batch_label = str(getattr(event, "analysis_batch_label", "") or "").strip()
@@ -683,10 +743,16 @@ def build_supervised_ml_operational_event_detail(
     calibration_summary = {
         "calibration_applied": bool(context.get("calibration_applied")),
         "calibration_version": str(context.get("calibration_version") or ""),
-        "calibration_engine_role": str(context.get("calibration_engine_role") or "DISABLED"),
+        "calibration_engine_role": str(
+            context.get("calibration_engine_role") or "DISABLED"
+        ),
         "calibration_diagnostics": dict(context.get("calibration_diagnostics") or {}),
-        "calibration_actions_applied": list(context.get("calibration_actions_applied") or []),
-        "calibration_decision_trace": dict(context.get("calibration_decision_trace") or {}),
+        "calibration_actions_applied": list(
+            context.get("calibration_actions_applied") or []
+        ),
+        "calibration_decision_trace": dict(
+            context.get("calibration_decision_trace") or {}
+        ),
         "calibration_feature_attribution": dict(
             context.get("calibration_feature_attribution") or {}
         ),
@@ -708,7 +774,9 @@ def build_supervised_ml_operational_event_detail(
         "ml_operational_hierarchy": build_ml_operational_hierarchy_trace(
             dict(context.get("ml_operational_hierarchy") or {})
         ),
-        "pre_final_calibration_applied": bool(context.get("pre_final_calibration_applied")),
+        "pre_final_calibration_applied": bool(
+            context.get("pre_final_calibration_applied")
+        ),
         "pre_final_calibration_mission_id": str(
             context.get("pre_final_calibration_mission_id") or PRE_FINAL_POOL_MISSION_ID
         ),
@@ -729,30 +797,39 @@ def build_supervised_ml_operational_event_detail(
             context.get("authorized_plan_target_generation_event_id", 0) or 0
         ),
         "authorized_plan_trace_id": str(
-            context.get("authorized_plan_trace_id") or context.get("calibration_trace_id") or ""
+            context.get("authorized_plan_trace_id")
+            or context.get("calibration_trace_id")
+            or ""
         ),
         "authorized_plan_mission_id": str(
             context.get("authorized_plan_mission_id") or "M-ML-075-FIX-01"
         ),
         "ml_verdict_after_authorized_plan": str(
-            context.get("ml_verdict_after_authorized_plan") or context.get("ml_verdict") or ""
+            context.get("ml_verdict_after_authorized_plan")
+            or context.get("ml_verdict")
+            or ""
         ),
         "gp_quality_tier_after_authorized_plan": str(
             context.get("gp_quality_tier_after_authorized_plan")
             or context.get("gp_quality_tier")
             or ""
         ),
-        "calibration_applied_legacy_note": str(context.get("calibration_applied_legacy_note") or ""),
+        "calibration_applied_legacy_note": str(
+            context.get("calibration_applied_legacy_note") or ""
+        ),
         "final_gp_changed_by_ml": bool(context.get("final_gp_changed_by_ml")),
     }
     return {
         "generation_event_id": selected_id,
         "batch_label": batch_label,
         "ml_enabled": True,
-        "created_at": event.created_at.isoformat() if getattr(event, "created_at", None) else "",
+        "created_at": event.created_at.isoformat()
+        if getattr(event, "created_at", None)
+        else "",
         "requested_count": int(context.get("selected_quantity", 0) or 0),
         "persisted_games": len(game_rows),
-        "ml_scored_games": int(context.get("ml_scored_games", 0) or 0) or len(game_rows),
+        "ml_scored_games": int(context.get("ml_scored_games", 0) or 0)
+        or len(game_rows),
         "card_format": _resolve_event_card_format(event, context),
         "ml_operational_status": str(
             context.get("ml_operational_status")
@@ -764,7 +841,11 @@ def build_supervised_ml_operational_event_detail(
         ),
         "supervised_ml_mission": str(
             context.get("supervised_ml_mission")
-            or (CALIBRATION_MISSION_ID if calibration_summary["calibration_applied"] else MISSION_ID)
+            or (
+                CALIBRATION_MISSION_ID
+                if calibration_summary["calibration_applied"]
+                else MISSION_ID
+            )
         ),
         "decision_trace": _summarize_decision_trace(traces),
         "feature_attribution": _summarize_feature_attribution(attributions),
@@ -868,7 +949,9 @@ def build_ml_calibration_recommendations(
     coverage_evidence: Mapping[str, Any] | None = None,
 ) -> list[str]:
     if isinstance(coverage_evidence, Mapping) and coverage_evidence.get("available"):
-        policy_plan = dict(coverage_evidence.get("structural_policy_15d_calibration_plan") or {})
+        policy_plan = dict(
+            coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
+        )
         policy_items = list(policy_plan.get("plan_items") or [])
         policy_violations = list(coverage_evidence.get("policy_violations") or [])
         if policy_items and policy_violations:
@@ -897,11 +980,14 @@ def build_ml_calibration_recommendations(
     metrics = dict(source.get("metrics") or {})
     raw_diversity = metrics.get("diversity_score", source.get("diversity_score"))
     diversity_score = float(raw_diversity) if raw_diversity is not None else None
-    diversidade = str(metrics.get("diversidade") or metrics.get("diversidade_global") or "")
+    diversidade = str(
+        metrics.get("diversidade") or metrics.get("diversidade_global") or ""
+    )
     has_negative = (
         diversidade == "baixa"
         or (diversity_score is not None and diversity_score < 0.55)
-        or str(metrics.get("redundancia") or metrics.get("redundancia_geral") or "") == "alta"
+        or str(metrics.get("redundancia") or metrics.get("redundancia_geral") or "")
+        == "alta"
         or int(metrics.get("quase_repetidos", 0) or 0) >= 20
         or int(metrics.get("dezenas_subcobertas", 0) or 0) > 0
         or str(metrics.get("prefixos_sufixos") or "") == "viciados"
@@ -926,7 +1012,9 @@ def build_ml_calibration_recommendations(
             "Calibração pendente — revisar evidências da Cobertura Estrutural e autorizar ajuste supervisionado."
         ]
 
-    issue_types = set(source.get("issue_types") or []) or _issue_types_from_event(source)
+    issue_types = set(source.get("issue_types") or []) or _issue_types_from_event(
+        source
+    )
     if not issue_types and source.get("aggregate_available"):
         issue_types = set(source.get("aggregate_issue_types") or [])
     recommendations: list[str] = []
@@ -944,13 +1032,17 @@ def build_ml_calibration_recommendations(
         if issue_type in issue_types:
             recommendations.append(text)
     if not recommendations and source.get("calibration_applied"):
-        recommendations.append("Lote calibrado — validar diversidade e cobertura na próxima geração.")
+        recommendations.append(
+            "Lote calibrado — validar diversidade e cobertura na próxima geração."
+        )
     elif not recommendations and source.get("aggregate_calibrated_events", 0):
         recommendations.append(
             "Calibração aplicada em gerações recentes — validar diversidade global na próxima geração."
         )
     elif not recommendations and not has_negative:
-        recommendations.append("Estrutura estável — manter calibração supervisionada ativa na geração.")
+        recommendations.append(
+            "Estrutura estável — manter calibração supervisionada ativa na geração."
+        )
     return recommendations[:6]
 
 
@@ -1033,14 +1125,20 @@ def build_ml_calibration_aggregate_context(
                 "jogos": persisted,
                 "calibracao": bool(event.get("calibration_applied")),
                 "problemas": len(list(event.get("issues_detected") or [])),
-                "diversidade": round(float(event.get("diversity_score", 0.0) or 0.0), 3),
+                "diversidade": round(
+                    float(event.get("diversity_score", 0.0) or 0.0), 3
+                ),
                 "created_at": str(event.get("created_at") or ""),
             }
         )
 
     avg_overlap = sum(overlap_values) / len(overlap_values) if overlap_values else 0.0
-    avg_diversity = sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0
-    prefix_suffix_vicio = bool({"prefixo_excessivo", "sufixo_excessivo"} & all_issue_types)
+    avg_diversity = (
+        sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0
+    )
+    prefix_suffix_vicio = bool(
+        {"prefixo_excessivo", "sufixo_excessivo"} & all_issue_types
+    )
     return {
         "available": True,
         "scope_label": AGGREGATE_SCOPE_LABEL,
@@ -1052,7 +1150,9 @@ def build_ml_calibration_aggregate_context(
         "aggregate_issue_types": sorted(all_issue_types),
         "aggregate_available": True,
         "metrics": {
-            "redundancia": "alta" if near_dup_total >= 20 or avg_overlap >= 10 else "normal",
+            "redundancia": "alta"
+            if near_dup_total >= 20 or avg_overlap >= 10
+            else "normal",
             "quase_repetidos": near_dup_total,
             "similaridade_media": round(avg_overlap, 2),
             "prefixos_sufixos": "viciados" if prefix_suffix_vicio else "ok",
@@ -1083,7 +1183,9 @@ def build_sovereign_coverage_diagnosis_card(
     if not coverage_evidence.get("available"):
         return {
             "available": False,
-            "headline": str(coverage_evidence.get("headline") or "Sem evidências estruturais"),
+            "headline": str(
+                coverage_evidence.get("headline") or "Sem evidências estruturais"
+            ),
             "scope_label": SOVEREIGN_COVERAGE_SCOPE_LABEL,
             "metrics": {},
             "issues_preview": [],
@@ -1095,7 +1197,9 @@ def build_sovereign_coverage_diagnosis_card(
     issues_preview = list(coverage_evidence.get("problemas_detectados") or [])
     return {
         "available": True,
-        "scope_label": str(coverage_evidence.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL),
+        "scope_label": str(
+            coverage_evidence.get("scope_label") or SOVEREIGN_COVERAGE_SCOPE_LABEL
+        ),
         "headline": "Diagnóstico soberano — leitura idêntica à Cobertura Estrutural",
         "coverage_source": "cobertura_estrutural",
         "sovereign_mission_id": VIS_COVERAGE_SOVEREIGN_MISSION_ID,
@@ -1103,17 +1207,25 @@ def build_sovereign_coverage_diagnosis_card(
         "issues_preview": issues_preview[:8],
         "total_events": int(metrics.get("total_geracoes", 0) or 0),
         "total_games": int(metrics.get("total_jogos", 0) or 0),
-        "calibrated_events": int(metrics.get("calibrated_events", agg.get("calibrated_events", 0)) or 0),
-        "format_breakdown": list(metrics.get("format_breakdown") or reading.get("format_breakdown") or []),
+        "calibrated_events": int(
+            metrics.get("calibrated_events", agg.get("calibrated_events", 0)) or 0
+        ),
+        "format_breakdown": list(
+            metrics.get("format_breakdown") or reading.get("format_breakdown") or []
+        ),
         "reading": reading,
         "coverage_snapshot_checksum": str(
             coverage_evidence.get("coverage_snapshot_checksum")
             or reading.get("coverage_snapshot_checksum")
             or ""
         ),
-        "read_at": str(coverage_evidence.get("read_at") or reading.get("read_at") or ""),
+        "read_at": str(
+            coverage_evidence.get("read_at") or reading.get("read_at") or ""
+        ),
         "generation_event_ids": list(metrics.get("generation_event_ids") or []),
-        "filters": dict(coverage_evidence.get("filters") or reading.get("filters") or {}),
+        "filters": dict(
+            coverage_evidence.get("filters") or reading.get("filters") or {}
+        ),
         "scope_comparison": comparison,
         "scope_mismatch": False,
         "scope_mismatch_reason": "",
@@ -1121,61 +1233,104 @@ def build_sovereign_coverage_diagnosis_card(
         "ml_events_window": int(agg.get("total_events", 0) or 0),
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
         "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
-        "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "overlap_format_memory": dict(
+            coverage_evidence.get("overlap_format_memory") or {}
+        ),
         "ml_format_aware_memory": dict(
             coverage_evidence.get("ml_format_aware_memory")
             or coverage_evidence.get("overlap_format_memory")
             or {}
         ),
-        "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
-        "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
-        "structural_auto_calibration_mission_id": coverage_evidence.get(
-            "structural_auto_calibration_mission_id", STRUCTURAL_AUTO_CALIBRATION_MISSION_ID
+        "structural_concentration_mission_id": coverage_evidence.get(
+            "structural_concentration_mission_id"
         ),
-        "structural_auto_calibration_plan": dict(coverage_evidence.get("structural_auto_calibration_plan") or {}),
-        "structural_calibration_memory": dict(coverage_evidence.get("structural_calibration_memory") or {}),
+        "structural_concentration_audit": dict(
+            coverage_evidence.get("structural_concentration_audit") or {}
+        ),
+        "structural_auto_calibration_mission_id": coverage_evidence.get(
+            "structural_auto_calibration_mission_id",
+            STRUCTURAL_AUTO_CALIBRATION_MISSION_ID,
+        ),
+        "structural_auto_calibration_plan": dict(
+            coverage_evidence.get("structural_auto_calibration_plan") or {}
+        ),
+        "structural_calibration_memory": dict(
+            coverage_evidence.get("structural_calibration_memory") or {}
+        ),
         "structural_policy_15d_mission_id": coverage_evidence.get(
             "structural_policy_15d_mission_id", STRUCTURAL_POLICY_15D_MISSION_ID
         ),
-        "structural_policy_15d_memory": dict(coverage_evidence.get("structural_policy_15d_memory") or {}),
+        "structural_policy_15d_memory": dict(
+            coverage_evidence.get("structural_policy_15d_memory") or {}
+        ),
         "structural_policy_15d_application": dict(
             coverage_evidence.get("structural_policy_15d_application") or {}
         ),
-        "structural_policy_memory_loaded": bool(coverage_evidence.get("structural_policy_memory_loaded")),
-        "structural_policy_version": str(coverage_evidence.get("structural_policy_version") or ""),
-        "structural_policy_applied": bool(coverage_evidence.get("structural_policy_applied")),
-        "policy_compliance_status": str(coverage_evidence.get("policy_compliance_status") or ""),
+        "structural_policy_memory_loaded": bool(
+            coverage_evidence.get("structural_policy_memory_loaded")
+        ),
+        "structural_policy_version": str(
+            coverage_evidence.get("structural_policy_version") or ""
+        ),
+        "structural_policy_applied": bool(
+            coverage_evidence.get("structural_policy_applied")
+        ),
+        "policy_compliance_status": str(
+            coverage_evidence.get("policy_compliance_status") or ""
+        ),
         "policy_violations": list(coverage_evidence.get("policy_violations") or []),
-        "structural_policy_15d_analysis": dict(coverage_evidence.get("structural_policy_15d_analysis") or {}),
+        "structural_policy_15d_analysis": dict(
+            coverage_evidence.get("structural_policy_15d_analysis") or {}
+        ),
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
         "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
-        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "pre_final_pool_ml_calibration": dict(
+            coverage_evidence.get("pre_final_pool_ml_calibration") or {}
+        ),
         "structural_15d_pool_mission_id": STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID,
-        "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
+        "ml_structural_15d_pool": dict(
+            coverage_evidence.get("ml_structural_15d_pool") or {}
+        ),
         "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
-        "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
-        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "ml_operational_hierarchy": dict(
+            coverage_evidence.get("ml_operational_hierarchy") or {}
+        ),
+        "pre_gp_recovery_mission_id": coverage_evidence.get(
+            "pre_gp_recovery_mission_id", "M-ML-074"
+        ),
         "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
-        "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
+        "ml_hierarchy_version": str(
+            coverage_evidence.get("ml_hierarchy_version") or ""
+        ),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
         "agent_routing_mission_id": coverage_evidence.get(
             "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
         ),
-        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
-        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "agent_routing_matrix_version": str(
+            coverage_evidence.get("agent_routing_matrix_version") or ""
+        ),
+        "primary_responsible_agent": str(
+            coverage_evidence.get("primary_responsible_agent") or ""
+        ),
         "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
         "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
         "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
-        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "pre_final_calibration_applied": bool(
+            coverage_evidence.get("pre_final_calibration_applied")
+        ),
         "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
-        "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
+        "primary_format_analysis": dict(
+            coverage_evidence.get("primary_format_analysis") or {}
+        ),
     }
 
 
-def build_ml_calibration_aggregate_diagnosis_card(aggregate: Mapping[str, Any]) -> dict[str, Any]:
+def build_ml_calibration_aggregate_diagnosis_card(
+    aggregate: Mapping[str, Any],
+) -> dict[str, Any]:
     if not aggregate.get("available"):
         return {
             "available": False,
@@ -1231,7 +1386,9 @@ def build_ml_calibration_aggregate_result_card(
     }
 
 
-def build_ml_calibration_diagnosis_card(event: Mapping[str, Any] | None) -> dict[str, Any]:
+def build_ml_calibration_diagnosis_card(
+    event: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     if not isinstance(event, Mapping):
         return {
             "available": False,
@@ -1247,7 +1404,11 @@ def build_ml_calibration_diagnosis_card(event: Mapping[str, Any] | None) -> dict
     diversity_score = float(event.get("diversity_score", 0.0) or 0.0)
     issue_types = _issue_types_from_event(event)
     prefix_suffix_vicio = bool({"prefixo_excessivo", "sufixo_excessivo"} & issue_types)
-    subcovered = sum(1 for row in list(diagnostics.get("issues") or []) if row.get("tipo") == "dezena_subcoberta")
+    subcovered = sum(
+        1
+        for row in list(diagnostics.get("issues") or [])
+        if row.get("tipo") == "dezena_subcoberta"
+    )
     return {
         "available": True,
         "headline": f"Lote {int(event.get('generation_event_id', 0) or 0)} — {event.get('batch_label', '-')}",
@@ -1275,10 +1436,24 @@ def build_ml_calibration_result_card(
     decision_at: str,
     apply_next_generation: bool,
 ) -> dict[str, Any]:
-    pre_final_applied = bool(event.get("pre_final_calibration_applied")) if isinstance(event, Mapping) else False
-    authorized_loaded = bool(event.get("authorized_plan_loaded_from_db")) if isinstance(event, Mapping) else False
-    authorized_applied = bool(event.get("authorized_plan_applied_to_generation")) if isinstance(event, Mapping) else False
-    calibration_applied = bool(event.get("calibration_applied")) if isinstance(event, Mapping) else False
+    pre_final_applied = (
+        bool(event.get("pre_final_calibration_applied"))
+        if isinstance(event, Mapping)
+        else False
+    )
+    authorized_loaded = (
+        bool(event.get("authorized_plan_loaded_from_db"))
+        if isinstance(event, Mapping)
+        else False
+    )
+    authorized_applied = (
+        bool(event.get("authorized_plan_applied_to_generation"))
+        if isinstance(event, Mapping)
+        else False
+    )
+    calibration_applied = (
+        bool(event.get("calibration_applied")) if isinstance(event, Mapping) else False
+    )
     trace_persisted = bool(
         isinstance(event, Mapping)
         and (event.get("calibration_decision_trace") or event.get("decision_trace"))
@@ -1289,7 +1464,11 @@ def build_ml_calibration_result_card(
         operational_status = "aplicada"
     elif workflow_status == COCKPIT_WORKFLOW_AUTHORIZED:
         operational_status = "autorizada"
-    elif workflow_status == COCKPIT_WORKFLOW_PENDING and isinstance(event, Mapping) and event.get("issues_detected"):
+    elif (
+        workflow_status == COCKPIT_WORKFLOW_PENDING
+        and isinstance(event, Mapping)
+        and event.get("issues_detected")
+    ):
         operational_status = "pendente"
     else:
         operational_status = workflow_status or "pendente"
@@ -1302,23 +1481,39 @@ def build_ml_calibration_result_card(
         "authorized_plan_applied_to_generation": authorized_applied,
         "authorized_plan_source_generation_event_id": int(
             event.get("authorized_plan_source_generation_event_id", 0) or 0
-        ) if isinstance(event, Mapping) else 0,
+        )
+        if isinstance(event, Mapping)
+        else 0,
         "authorized_plan_target_generation_event_id": int(
             event.get("authorized_plan_target_generation_event_id", 0) or 0
-        ) if isinstance(event, Mapping) else 0,
+        )
+        if isinstance(event, Mapping)
+        else 0,
         "ml_verdict_after_authorized_plan": str(
             event.get("ml_verdict_after_authorized_plan") or ""
-        ) if isinstance(event, Mapping) else "",
+        )
+        if isinstance(event, Mapping)
+        else "",
         "gp_quality_tier_after_authorized_plan": str(
             event.get("gp_quality_tier_after_authorized_plan") or ""
-        ) if isinstance(event, Mapping) else "",
+        )
+        if isinstance(event, Mapping)
+        else "",
         "trace_persistido": trace_persisted,
         "proxima_geracao_afetada": bool(apply_next_generation),
         "decision_at": decision_at,
-        "diversity_score": float(event.get("diversity_score", 0.0) or 0.0) if isinstance(event, Mapping) else 0.0,
-        "issues_count": len(list(event.get("issues_detected") or [])) if isinstance(event, Mapping) else 0,
-        "actions_count": len(list(event.get("calibration_actions_applied") or [])) if isinstance(event, Mapping) else 0,
-        "before_after_available": pre_final_applied or authorized_applied or calibration_applied,
+        "diversity_score": float(event.get("diversity_score", 0.0) or 0.0)
+        if isinstance(event, Mapping)
+        else 0.0,
+        "issues_count": len(list(event.get("issues_detected") or []))
+        if isinstance(event, Mapping)
+        else 0,
+        "actions_count": len(list(event.get("calibration_actions_applied") or []))
+        if isinstance(event, Mapping)
+        else 0,
+        "before_after_available": pre_final_applied
+        or authorized_applied
+        or calibration_applied,
     }
 
 
@@ -1358,15 +1553,19 @@ def build_ml_calibration_cockpit_snapshot(
         if int(value) > 0
     ]
     selected_card_format = selection.get("card_format")
-    game_size = int(selected_card_format) if selected_card_format is not None and int(selected_card_format) > 0 else None
+    game_size = (
+        int(selected_card_format)
+        if selected_card_format is not None and int(selected_card_format) > 0
+        else None
+    )
     scope_caption = build_operational_generation_scope_caption(selection)
     format_scope_label = (
-        scope_caption
-        if not is_aggregate
-        else SCOPE_LABEL_ALL_OPERATIONAL
+        scope_caption if not is_aggregate else SCOPE_LABEL_ALL_OPERATIONAL
     )
 
-    panel = build_supervised_ml_operational_panel_snapshot(db_path, events_limit=events_limit)
+    panel = build_supervised_ml_operational_panel_snapshot(
+        db_path, events_limit=events_limit
+    )
     event_details = load_ml_calibration_event_details(db_path, limit=events_limit)
     if is_aggregate and scoped_generation_event_ids:
         allowed_ids = set(scoped_generation_event_ids)
@@ -1402,8 +1601,12 @@ def build_ml_calibration_cockpit_snapshot(
         scope=SCOPE_ALL_OPERATIONAL_CORE_002,
         scope_label=format_scope_label,
         events_limit=events_limit,
-        generation_event_id=selected_ge_id if selected_ge_id > 0 and not is_aggregate else None,
-        generation_event_ids=scoped_generation_event_ids if is_aggregate and scoped_generation_event_ids else None,
+        generation_event_id=selected_ge_id
+        if selected_ge_id > 0 and not is_aggregate
+        else None,
+        generation_event_ids=scoped_generation_event_ids
+        if is_aggregate and scoped_generation_event_ids
+        else None,
         game_size=game_size if not is_aggregate else None,
         ml_aggregate=aggregate if aggregate.get("available") else None,
     )
@@ -1423,7 +1626,9 @@ def build_ml_calibration_cockpit_snapshot(
     )
     recommendations = build_ml_calibration_recommendations(
         aggregate if aggregate.get("available") else None,
-        coverage_evidence=coverage_evidence if coverage_evidence.get("available") else None,
+        coverage_evidence=coverage_evidence
+        if coverage_evidence.get("available")
+        else None,
     )
     result = build_ml_calibration_aggregate_result_card(
         aggregate,
@@ -1451,65 +1656,112 @@ def build_ml_calibration_cockpit_snapshot(
         "ml_verdict": str(coverage_evidence.get("ml_verdict") or ""),
         "ml_verdict_reason": str(coverage_evidence.get("ml_verdict_reason") or ""),
         "motivo_principal": str(coverage_evidence.get("motivo_principal") or ""),
-        "official_release_allowed": bool(coverage_evidence.get("official_release_allowed", True)),
-        "official_release_label": str(coverage_evidence.get("official_release_label") or ""),
-        "officialization_status": str(coverage_evidence.get("officialization_status") or ""),
+        "official_release_allowed": bool(
+            coverage_evidence.get("official_release_allowed", True)
+        ),
+        "official_release_label": str(
+            coverage_evidence.get("official_release_label") or ""
+        ),
+        "officialization_status": str(
+            coverage_evidence.get("officialization_status") or ""
+        ),
         "next_action": str(coverage_evidence.get("next_action") or ""),
         "proxima_acao": str(coverage_evidence.get("proxima_acao") or ""),
         "ml_verdict_trace": dict(coverage_evidence.get("ml_verdict_trace") or {}),
         "ml_verdict_payload": dict(coverage_evidence.get("ml_verdict_payload") or {}),
         "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
-        "overlap_format_memory": dict(coverage_evidence.get("overlap_format_memory") or {}),
+        "overlap_format_memory": dict(
+            coverage_evidence.get("overlap_format_memory") or {}
+        ),
         "ml_format_aware_memory": dict(
             coverage_evidence.get("ml_format_aware_memory")
             or coverage_evidence.get("overlap_format_memory")
             or {}
         ),
-        "structural_concentration_mission_id": coverage_evidence.get("structural_concentration_mission_id"),
-        "structural_concentration_audit": dict(coverage_evidence.get("structural_concentration_audit") or {}),
-        "structural_auto_calibration_mission_id": coverage_evidence.get(
-            "structural_auto_calibration_mission_id", STRUCTURAL_AUTO_CALIBRATION_MISSION_ID
+        "structural_concentration_mission_id": coverage_evidence.get(
+            "structural_concentration_mission_id"
         ),
-        "structural_auto_calibration_plan": dict(coverage_evidence.get("structural_auto_calibration_plan") or {}),
-        "structural_calibration_memory": dict(coverage_evidence.get("structural_calibration_memory") or {}),
+        "structural_concentration_audit": dict(
+            coverage_evidence.get("structural_concentration_audit") or {}
+        ),
+        "structural_auto_calibration_mission_id": coverage_evidence.get(
+            "structural_auto_calibration_mission_id",
+            STRUCTURAL_AUTO_CALIBRATION_MISSION_ID,
+        ),
+        "structural_auto_calibration_plan": dict(
+            coverage_evidence.get("structural_auto_calibration_plan") or {}
+        ),
+        "structural_calibration_memory": dict(
+            coverage_evidence.get("structural_calibration_memory") or {}
+        ),
         "structural_policy_15d_mission_id": coverage_evidence.get(
             "structural_policy_15d_mission_id", STRUCTURAL_POLICY_15D_MISSION_ID
         ),
-        "structural_policy_15d_memory": dict(coverage_evidence.get("structural_policy_15d_memory") or {}),
+        "structural_policy_15d_memory": dict(
+            coverage_evidence.get("structural_policy_15d_memory") or {}
+        ),
         "structural_policy_15d_application": dict(
             coverage_evidence.get("structural_policy_15d_application") or {}
         ),
-        "structural_policy_memory_loaded": bool(coverage_evidence.get("structural_policy_memory_loaded")),
-        "structural_policy_version": str(coverage_evidence.get("structural_policy_version") or ""),
-        "structural_policy_applied": bool(coverage_evidence.get("structural_policy_applied")),
-        "policy_compliance_status": str(coverage_evidence.get("policy_compliance_status") or ""),
+        "structural_policy_memory_loaded": bool(
+            coverage_evidence.get("structural_policy_memory_loaded")
+        ),
+        "structural_policy_version": str(
+            coverage_evidence.get("structural_policy_version") or ""
+        ),
+        "structural_policy_applied": bool(
+            coverage_evidence.get("structural_policy_applied")
+        ),
+        "policy_compliance_status": str(
+            coverage_evidence.get("policy_compliance_status") or ""
+        ),
         "policy_violations": list(coverage_evidence.get("policy_violations") or []),
-        "structural_policy_15d_analysis": dict(coverage_evidence.get("structural_policy_15d_analysis") or {}),
+        "structural_policy_15d_analysis": dict(
+            coverage_evidence.get("structural_policy_15d_analysis") or {}
+        ),
         "structural_policy_15d_calibration_plan": dict(
             coverage_evidence.get("structural_policy_15d_calibration_plan") or {}
         ),
         "pre_final_pool_ml_mission_id": PRE_FINAL_POOL_ML_DASHBOARD_MISSION_ID,
-        "pre_final_pool_ml_calibration": dict(coverage_evidence.get("pre_final_pool_ml_calibration") or {}),
+        "pre_final_pool_ml_calibration": dict(
+            coverage_evidence.get("pre_final_pool_ml_calibration") or {}
+        ),
         "structural_15d_pool_mission_id": STRUCTURAL_15D_POOL_DASHBOARD_MISSION_ID,
-        "ml_structural_15d_pool": dict(coverage_evidence.get("ml_structural_15d_pool") or {}),
+        "ml_structural_15d_pool": dict(
+            coverage_evidence.get("ml_structural_15d_pool") or {}
+        ),
         "ml_operational_hierarchy_mission_id": ML_OPERATIONAL_HIERARCHY_DASHBOARD_MISSION_ID,
-        "ml_operational_hierarchy": dict(coverage_evidence.get("ml_operational_hierarchy") or {}),
-        "pre_gp_recovery_mission_id": coverage_evidence.get("pre_gp_recovery_mission_id", "M-ML-074"),
+        "ml_operational_hierarchy": dict(
+            coverage_evidence.get("ml_operational_hierarchy") or {}
+        ),
+        "pre_gp_recovery_mission_id": coverage_evidence.get(
+            "pre_gp_recovery_mission_id", "M-ML-074"
+        ),
         "pre_gp_recovery": dict(coverage_evidence.get("pre_gp_recovery") or {}),
-        "ml_hierarchy_version": str(coverage_evidence.get("ml_hierarchy_version") or ""),
+        "ml_hierarchy_version": str(
+            coverage_evidence.get("ml_hierarchy_version") or ""
+        ),
         "hierarchy_compliance": bool(coverage_evidence.get("hierarchy_compliance")),
         "agent_routing_mission_id": coverage_evidence.get(
             "agent_routing_mission_id", AGENT_ROUTING_DASHBOARD_MISSION_ID
         ),
-        "agent_routing_matrix_version": str(coverage_evidence.get("agent_routing_matrix_version") or ""),
-        "primary_responsible_agent": str(coverage_evidence.get("primary_responsible_agent") or ""),
+        "agent_routing_matrix_version": str(
+            coverage_evidence.get("agent_routing_matrix_version") or ""
+        ),
+        "primary_responsible_agent": str(
+            coverage_evidence.get("primary_responsible_agent") or ""
+        ),
         "responsible_agents": list(coverage_evidence.get("responsible_agents") or []),
         "agent_routing": dict(coverage_evidence.get("agent_routing") or {}),
         "pool_origin": str(coverage_evidence.get("pool_origin") or ""),
-        "pre_final_calibration_applied": bool(coverage_evidence.get("pre_final_calibration_applied")),
+        "pre_final_calibration_applied": bool(
+            coverage_evidence.get("pre_final_calibration_applied")
+        ),
         "final_gp_changed_by_ml": bool(coverage_evidence.get("final_gp_changed_by_ml")),
         "format_analyses": list(coverage_evidence.get("format_analyses") or []),
-        "primary_format_analysis": dict(coverage_evidence.get("primary_format_analysis") or {}),
+        "primary_format_analysis": dict(
+            coverage_evidence.get("primary_format_analysis") or {}
+        ),
         "calibration_engine_mission": CALIBRATION_MISSION_ID,
         "supervised_calibration_active": recalibration["supervised_calibration_active"],
         "recalibration_display": recalibration,
@@ -1562,9 +1814,13 @@ def build_ml_calibration_cockpit_snapshot(
         "latest_event": latest_event,
         "events": list(panel.get("events") or []),
         "generation_event_ids": sovereign_ids,
-        "excluded_batches_count": int(exclusions_summary.get("excluded_batches_count", 0) or 0),
+        "excluded_batches_count": int(
+            exclusions_summary.get("excluded_batches_count", 0) or 0
+        ),
         "excluded_batches_message": str(exclusions_summary.get("message") or ""),
-        "excluded_batches_audit": list(exclusions_summary.get("excluded_batches") or []),
+        "excluded_batches_audit": list(
+            exclusions_summary.get("excluded_batches") or []
+        ),
         "pre_gp_hierarchy_block": _load_pre_gp_hierarchy_block_snapshot(),
     }
 
@@ -1573,7 +1829,9 @@ def _load_pre_gp_hierarchy_block_snapshot() -> dict[str, Any]:
     try:
         import streamlit as st
 
-        from dashboard.institutional_ml_hierarchy_block import SESSION_HIERARCHY_BLOCK_KEY
+        from dashboard.institutional_ml_hierarchy_block import (
+            SESSION_HIERARCHY_BLOCK_KEY,
+        )
 
         return dict(st.session_state.get(SESSION_HIERARCHY_BLOCK_KEY) or {})
     except Exception:  # noqa: BLE001 — snapshot fora de contexto Streamlit
@@ -1637,34 +1895,55 @@ def build_cockpit_persist_bundle(
         "coverage_fix_mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "overlap_format_mission_id": OVERLAP_FORMAT_MISSION_ID,
         "ml_verdict_mission_id": ML_VERDICT_MISSION_ID,
-        "ml_verdict": str(evidence.get("ml_verdict") or ml_verdict_payload.get("ml_verdict") or ""),
+        "ml_verdict": str(
+            evidence.get("ml_verdict") or ml_verdict_payload.get("ml_verdict") or ""
+        ),
         "ml_verdict_reason": str(
-            evidence.get("ml_verdict_reason") or ml_verdict_payload.get("ml_verdict_reason") or ""
+            evidence.get("ml_verdict_reason")
+            or ml_verdict_payload.get("ml_verdict_reason")
+            or ""
         ),
         "motivo_principal": str(
-            evidence.get("motivo_principal") or ml_verdict_payload.get("motivo_principal") or ""
+            evidence.get("motivo_principal")
+            or ml_verdict_payload.get("motivo_principal")
+            or ""
         ),
-        "official_release_allowed": bool(
-            evidence.get("official_release_allowed", ml_verdict_payload.get("official_release_allowed", True))
-        ),
+        # ML é apenas observacional - não afeta official_release_allowed
+        "official_release_allowed": True,
         "official_release_label": str(
-            evidence.get("official_release_label") or ml_verdict_payload.get("official_release_label") or ""
+            evidence.get("official_release_label")
+            or ml_verdict_payload.get("official_release_label")
+            or ""
         ),
         "officialization_status": str(
-            evidence.get("officialization_status") or ml_verdict_payload.get("officialization_status") or ""
+            evidence.get("officialization_status")
+            or ml_verdict_payload.get("officialization_status")
+            or ""
         ),
-        "next_action": str(evidence.get("next_action") or ml_verdict_payload.get("next_action") or ""),
-        "proxima_acao": str(evidence.get("proxima_acao") or ml_verdict_payload.get("proxima_acao") or ""),
-        "ml_verdict_trace": dict(evidence.get("ml_verdict_trace") or ml_verdict_payload.get("trace") or {}),
+        "next_action": str(
+            evidence.get("next_action") or ml_verdict_payload.get("next_action") or ""
+        ),
+        "proxima_acao": str(
+            evidence.get("proxima_acao") or ml_verdict_payload.get("proxima_acao") or ""
+        ),
+        "ml_verdict_trace": dict(
+            evidence.get("ml_verdict_trace") or ml_verdict_payload.get("trace") or {}
+        ),
         "ml_verdict_payload": ml_verdict_payload,
         "overlap_format_mission_id_067": OVERLAP_FORMAT_MISSION_ID_067,
         "overlap_format_memory": dict(evidence.get("overlap_format_memory") or {}),
         "ml_format_aware_memory": dict(
-            evidence.get("ml_format_aware_memory") or evidence.get("overlap_format_memory") or {}
+            evidence.get("ml_format_aware_memory")
+            or evidence.get("overlap_format_memory")
+            or {}
         ),
-        "format_analyses": list(evidence.get("format_analyses") or plan.get("format_analyses") or []),
+        "format_analyses": list(
+            evidence.get("format_analyses") or plan.get("format_analyses") or []
+        ),
         "primary_format_analysis": dict(
-            evidence.get("primary_format_analysis") or plan.get("primary_format_analysis") or {}
+            evidence.get("primary_format_analysis")
+            or plan.get("primary_format_analysis")
+            or {}
         ),
         "cockpit_scope": scope,
         "cockpit_workflow_status": workflow_status,
@@ -1677,11 +1956,15 @@ def build_cockpit_persist_bundle(
         "parametros_sugeridos": suggested_params,
         "operador": operador,
         "supervised_calibration_active": is_supervised_output_calibration_active(),
-        "coverage_evidence_snapshot": dict(evidence.get("coverage_evidence_snapshot") or {}),
+        "coverage_evidence_snapshot": dict(
+            evidence.get("coverage_evidence_snapshot") or {}
+        ),
         "problemas_detectados": list(evidence.get("problemas_detectados") or []),
         "evidencias": list(evidence.get("evidencias") or []),
         "acoes_recomendadas": list(plan_items or recommendations),
-        "impacto_esperado": "; ".join(impact_items) if impact_items else str(
+        "impacto_esperado": "; ".join(impact_items)
+        if impact_items
+        else str(
             decision.get("impacto_esperado") or evidence.get("impacto_esperado") or ""
         ),
         "decisao_operador": operator_decision or workflow_status,
@@ -1721,9 +2004,13 @@ def resolve_authorized_calibration_plan(
     return {
         "mission_id": VIS_COVERAGE_FIX01_MISSION_ID,
         "plan_items": plan_items,
-        "impact_items": list(cockpit_bundle.get("impacto_detalhado") or plan.get("impact_items") or []),
+        "impact_items": list(
+            cockpit_bundle.get("impacto_detalhado") or plan.get("impact_items") or []
+        ),
         "parametros_sugeridos": dict(
-            cockpit_bundle.get("parametros_sugeridos") or plan.get("parametros_sugeridos") or {}
+            cockpit_bundle.get("parametros_sugeridos")
+            or plan.get("parametros_sugeridos")
+            or {}
         ),
         "evidencias": list(cockpit_bundle.get("evidencias") or []),
         "problemas_detectados": list(cockpit_bundle.get("problemas_detectados") or []),
@@ -1733,7 +2020,11 @@ def resolve_authorized_calibration_plan(
             "session_fallback": True,
         },
         "operador": str(cockpit_bundle.get("operador") or "operador_adm"),
-        "timestamp": str(cockpit_bundle.get("timestamp") or cockpit_bundle.get("cockpit_decision_at") or ""),
+        "timestamp": str(
+            cockpit_bundle.get("timestamp")
+            or cockpit_bundle.get("cockpit_decision_at")
+            or ""
+        ),
         "authorized": True,
         "calibration_plan_loaded_from_db": False,
     }
