@@ -1569,4 +1569,14 @@ def generate_best_games(
                 sanity_bundle=dict(_sanity_bundle),
             )
         )
+
+    # -------------------------------------------------------------------------
+    # CONTEXT JSON ORGANIZER — reorganiza campos em sub-objetos (legibilidade)
+    # Mantém campos planos para compatibilidade, adiciona "organized_context"
+    # -------------------------------------------------------------------------
+    if _apply_sovereign and best_games:
+        from lotoia.statistics.context_json_organizer import organize_context_json
+
+        payload["organized_context"] = organize_context_json(payload)
+
     return payload
