@@ -20901,9 +20901,69 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             limit=ANALYTICAL_PAGE_SIZE
         )
     if not generation_history or not historical_rows:
-        st.info(
-            "Nenhum lote válido pendente de conferência no histórico analítico ativo."
-        )
+        # Buscar estatísticas do banco para explicar o motivo
+        from lotoia.db import get_session
+        from lotoia.models import GenerationEvent, GeneratedGame, ReconciliationRun
+
+        try:
+            with get_session(DB_PATH) as session:
+                total_events = session.query(GenerationEvent).count()
+                total_games = session.query(GeneratedGame).count()
+
+                # Contar eventos sem reconciliação
+                unreconciled_events = (
+                    session.query(GenerationEvent)
+                    .outerjoin(
+                        ReconciliationRun,
+                        ReconciliationRun.generation_event_id == GenerationEvent.id,
+                    )
+                    .filter(ReconciliationRun.id.is_(None))
+                    .count()
+                )
+
+                # Contar jogos pendentes
+                pending_games = (
+                    session.query(GeneratedGame)
+                    .join(
+                        GenerationEvent,
+                        GenerationEvent.id == GeneratedGame.generation_event_id,
+                    )
+                    .outerjoin(
+                        ReconciliationRun,
+                        ReconciliationRun.generation_event_id == GenerationEvent.id,
+                    )
+                    .filter(ReconciliationRun.id.is_(None))
+                    .count()
+                )
+
+                # Contar gerações bloqueadas por ML
+                ml_blocked = (
+                    session.query(GenerationEvent)
+                    .filter(
+                        GenerationEvent.context_json["ml_verdict"]
+                        .as_string()
+                        .in_(["REPROVADO", "PRECISA CALIBRAR"])
+                    )
+                    .count()
+                )
+
+            st.warning(
+                "⚠️ Nenhum lote válido pendente de conferência no histórico analítico ativo.\n\n"
+                "**Possíveis motivos:**\n"
+                "- Todas as gerações estão bloqueadas por veredito ML (REPROVADO ou PRECISA CALIBRAR)\n"
+                "- Não há gerações com is_active_reading=True\n"
+                "- Todas as gerações já foram conferidas\n\n"
+                f"**Estatísticas do banco:**\n"
+                f"- Total de gerações: {total_events}\n"
+                f"- Total de jogos: {total_games}\n"
+                f"- Gerações bloqueadas por ML: {ml_blocked}\n"
+                f"- Jogos pendentes de conferência: {pending_games} em {unreconciled_events} eventos\n\n"
+                "**Sugestão:** Use o Histórico Institucional para conferir eventos pendentes."
+            )
+        except Exception as e:
+            st.info(
+                "Nenhum lote válido pendente de conferência no histórico analítico ativo."
+            )
         return
 
     games_df = pd.DataFrame(historical_rows)
@@ -21213,6 +21273,43 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         max(generation_options) if generation_options else "-",
     )
 
+    # Métricas de destaque - distribuição de vereditos ML
+    if generation_history:
+        ml_verdict_counts = {}
+        for gen in generation_history:
+            verdict = str(gen.get("ml_verdict") or "Nenhum")
+            ml_verdict_counts[verdict] = ml_verdict_counts.get(verdict, 0) + 1
+
+        # Contar jogos pendentes e eventos pendentes
+        pending_games_count = len(games_df)
+        pending_events_count = len(generation_options) if generation_options else 0
+
+        # Contar gerações bloqueadas por ML
+        ml_blocked_count = sum(
+            v
+            for k, v in ml_verdict_counts.items()
+            if k not in ["Nenhum", "APROVADO", "APROVADO COM ALERTA"]
+        )
+
+        highlight_cols = st.columns(4)
+        highlight_cols[0].metric("Gerações bloqueadas (ML)", ml_blocked_count)
+        highlight_cols[1].metric("Jogos pendentes", pending_games_count)
+        highlight_cols[2].metric("Eventos pendentes", pending_events_count)
+        highlight_cols[3].metric(
+            "Veredito ML mais comum",
+            max(ml_verdict_counts.items(), key=lambda x: x[1])[0]
+            if ml_verdict_counts
+            else "-",
+        )
+
+        # Alerta se houver muitas gerações bloqueadas
+        if ml_blocked_count > len(generation_history) * 0.5:
+            st.warning(
+                f"⚠️ {ml_blocked_count} de {len(generation_history)} gerações "
+                f"({ml_blocked_count / len(generation_history) * 100:.0f}%) estão bloqueadas por veredito ML. "
+                f"Isso impede que os jogos apareçam no Histórico Analítico."
+            )
+
     with st.expander(
         "Jogos completos históricos conferíveis — detalhes avançados", expanded=False
     ):
@@ -21382,6 +21479,39 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             else:
                 st.info("Nenhum jogo rejeitado com os filtros atuais.")
 
+    # Expander: Gerações bloqueadas por veredito ML
+    with st.expander("Gerações bloqueadas por veredito ML", expanded=False):
+        blocked_generations = [
+            gen
+            for gen in generation_history
+            if str(gen.get("ml_verdict") or "")
+            not in ["", "APROVADO", "APROVADO COM ALERTA"]
+        ]
+        if blocked_generations:
+            blocked_df = pd.DataFrame(
+                [
+                    {
+                        "generation_event_id": int(
+                            gen.get("generation_event_id", 0) or 0
+                        ),
+                        "ml_verdict": str(gen.get("ml_verdict") or "-"),
+                        "total_jogos": int(gen.get("total_games", 0) or 0),
+                        "estratégia": str(gen.get("strategy") or "-"),
+                        "data/hora": str(gen.get("created_at") or "-")[:19],
+                        "visibility_reason": str(gen.get("visibility_reason") or "-"),
+                    }
+                    for gen in blocked_generations
+                ]
+            )
+            st.caption(
+                f"Total: {len(blocked_generations)} gerações bloqueadas por veredito ML"
+            )
+            st.dataframe(
+                blocked_df, hide_index=True, use_container_width=True, height=320
+            )
+        else:
+            st.info("Nenhuma geração bloqueada por ML")
+
     with st.expander("Linha do tempo secundária", expanded=False):
         timeline = _load_analytical_timeline(limit=25)
         if timeline:
@@ -21392,6 +21522,21 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
             st.info(
                 "Ainda não há eventos suficientes para montar a timeline analítica."
             )
+
+    # Botão para conferir eventos pendentes (similar ao Histórico Institucional)
+    if generation_options and len(generation_history) > 0:
+        with st.expander("Conferir eventos pendentes", expanded=False):
+            st.info(
+                f"Serão conferidos {len(generation_options)} eventos contra os últimos concursos oficiais. "
+                f"Isso reconciliará os jogos pendentes e atualizará o status de conferência."
+            )
+            if st.button(
+                "🔄 Conferir eventos pendentes agora",
+                type="primary",
+                key="analytical_bulk_reconcile",
+            ):
+                st.session_state["trigger_bulk_reconciliation"] = True
+                st.rerun()
 
 
 def _render_hb_geometry_page(state: dict[str, Any]) -> None:
