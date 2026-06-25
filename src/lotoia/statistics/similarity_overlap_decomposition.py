@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from itertools import combinations
 from typing import Any, Mapping, Sequence
@@ -122,7 +123,9 @@ def _component_summary(
         if key not in totals:
             continue
         mean_shared = round(totals[key] / pair_count, 4) if pair_count else 0.0
-        share_of_overlap_pct = round((mean_shared / avg_overlap) * 100, 2) if avg_overlap else 0.0
+        share_of_overlap_pct = (
+            round((mean_shared / avg_overlap) * 100, 2) if avg_overlap else 0.0
+        )
         components[key] = {
             "mean_shared_dezenas": mean_shared,
             "share_of_avg_overlap_pct": share_of_overlap_pct,
@@ -155,26 +158,45 @@ def _analyze_dominant_structural_triple(
 
     triple_count = int(prefix_top.get(DOMINANT_STRUCTURAL_TRIPLE_LABEL, 0))
     triple_share_pct = round((triple_count / pool_size) * 100, 2) if pool_size else 0.0
-    effective_cap = int(dominance_cap) if dominance_cap is not None else max(3, pool_size // 10)
+    # Cap proporcional à frequência histórica do triplet (21% — últimos 300 concursos)
+    effective_cap = (
+        int(dominance_cap)
+        if dominance_cap is not None
+        else max(1, math.ceil(pool_size * 0.21))
+    )
     exceeds_dominance_cap = triple_count > effective_cap
 
     both_triple_rate = (
-        round(structural_pattern.get("both_structural_triple_01_02_03", 0) / pair_count, 4)
+        round(
+            structural_pattern.get("both_structural_triple_01_02_03", 0) / pair_count, 4
+        )
         if pair_count
         else 0.0
     )
-    mean_shared_triple = round(
-        exclusive_totals.get("shared_prefix_dezenas", 0) / pair_count,
-        4,
-    ) if pair_count else 0.0
-    triple_share_of_overlap = round((mean_shared_triple / avg_overlap) * 100, 2) if avg_overlap else 0.0
+    mean_shared_triple = (
+        round(
+            exclusive_totals.get("shared_prefix_dezenas", 0) / pair_count,
+            4,
+        )
+        if pair_count
+        else 0.0
+    )
+    triple_share_of_overlap = (
+        round((mean_shared_triple / avg_overlap) * 100, 2) if avg_overlap else 0.0
+    )
 
     per_dezena_similarity: dict[str, Any] = {}
     for dezena in PREFIX_TRIPLE_DEZENAS:
-        mean_shared = round(per_dezena_shared_totals.get(dezena, 0) / pair_count, 4) if pair_count else 0.0
+        mean_shared = (
+            round(per_dezena_shared_totals.get(dezena, 0) / pair_count, 4)
+            if pair_count
+            else 0.0
+        )
         per_dezena_similarity[f"{dezena:02d}"] = {
             "mean_shared_dezenas": mean_shared,
-            "share_of_avg_overlap_pct": round((mean_shared / avg_overlap) * 100, 2) if avg_overlap else 0.0,
+            "share_of_avg_overlap_pct": round((mean_shared / avg_overlap) * 100, 2)
+            if avg_overlap
+            else 0.0,
         }
 
     avg_overlap_both_triple = (
@@ -207,7 +229,9 @@ def _analyze_dominant_structural_triple(
         "similarity_impact": {
             "avg_overlap": round(avg_overlap, 4),
             "similarity_score": round(avg_overlap / 15.0, 4) if avg_overlap else 0.0,
-            "diversity_score": round(1.0 - (avg_overlap / 15.0), 4) if avg_overlap else 1.0,
+            "diversity_score": round(1.0 - (avg_overlap / 15.0), 4)
+            if avg_overlap
+            else 1.0,
             "mean_shared_triple_dezenas_123": mean_shared_triple,
             "mean_shared_prefix_dezenas_123": mean_shared_triple,
             "triple_123_share_of_avg_overlap_pct": triple_share_of_overlap,
@@ -226,8 +250,12 @@ def _analyze_dominant_structural_triple(
             "overlap_lift_from_prefix_clustering": clustering_lift,
             "guaranteed_overlap_floor_from_triple": guaranteed_floor,
             "guaranteed_overlap_floor_from_prefix_triple": guaranteed_floor,
-            "non_triple_residual_overlap": round(max(avg_overlap - mean_shared_triple, 0.0), 4),
-            "non_prefix_residual_overlap": round(max(avg_overlap - mean_shared_triple, 0.0), 4),
+            "non_triple_residual_overlap": round(
+                max(avg_overlap - mean_shared_triple, 0.0), 4
+            ),
+            "non_prefix_residual_overlap": round(
+                max(avg_overlap - mean_shared_triple, 0.0), 4
+            ),
         },
         "interpretation": {
             "primary_blocker": "high_mean_pairwise_similarity",
@@ -258,7 +286,7 @@ def decompose_pool_similarity(
     Retorna duas visões:
     - ``components``: médias por bloco com atribuição exclusiva (soma ≈ avg_overlap).
     - ``overlapping_components``: médias sobrepostas (útil para ver concentração bruta).
-  """
+    """
     cards = _cards_from_pool(pool)
     if len(cards) < 2:
         return {
@@ -293,7 +321,10 @@ def decompose_pool_similarity(
         if overlap <= 0:
             left_prefix = _prefix_label(left)
             right_prefix = _prefix_label(right)
-            if left_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL and right_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL:
+            if (
+                left_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL
+                and right_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL
+            ):
                 pair_overlap_by_both_triple.append(0.0)
             else:
                 pair_overlap_other.append(0.0)
@@ -324,7 +355,9 @@ def decompose_pool_similarity(
         if previous:
             overlapping_totals["shared_previous_draw_dezenas"] += len(shared & previous)
         if _suffix_label(left) and _suffix_label(left) == _suffix_label(right):
-            overlapping_totals["shared_suffix_dezenas"] += len(shared & _suffix_dezenas(right))
+            overlapping_totals["shared_suffix_dezenas"] += len(
+                shared & _suffix_dezenas(right)
+            )
 
         if _suffix_label(left) and _suffix_label(left) == _suffix_label(right):
             structural_pattern["same_suffix_family"] += 1
@@ -332,7 +365,10 @@ def decompose_pool_similarity(
         right_prefix = _prefix_label(right)
         if left_prefix and left_prefix == right_prefix:
             structural_pattern["same_prefix_family"] += 1
-        if left_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL and right_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL:
+        if (
+            left_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL
+            and right_prefix == DOMINANT_STRUCTURAL_TRIPLE_LABEL
+        ):
             structural_pattern["both_structural_triple_01_02_03"] += 1
             structural_pattern["both_prefix_01_02_03"] += 1
             pair_overlap_by_both_triple.append(float(overlap))
@@ -342,10 +378,15 @@ def decompose_pool_similarity(
     avg_overlap = overlap_total / pair_count if pair_count else 0.0
     similarity_score = round(avg_overlap / max(int(game_size), 1), 4)
     diversity_score = round(1.0 - similarity_score, 4)
-    exclusive_sum = round(
-        sum(exclusive_totals[key] for key in EXCLUSIVE_COMPONENT_ORDER) / pair_count,
-        4,
-    ) if pair_count else 0.0
+    exclusive_sum = (
+        round(
+            sum(exclusive_totals[key] for key in EXCLUSIVE_COMPONENT_ORDER)
+            / pair_count,
+            4,
+        )
+        if pair_count
+        else 0.0
+    )
 
     prefix_top = Counter(_prefix_label(card) for card in cards if _prefix_label(card))
     suffix_top = Counter(_suffix_label(card) for card in cards if _suffix_label(card))
@@ -396,7 +437,9 @@ def decompose_pool_similarity(
     }
 
 
-def build_similarity_decomposition_trace(bundle: Mapping[str, Any] | None) -> dict[str, Any]:
+def build_similarity_decomposition_trace(
+    bundle: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     source = dict(bundle or {})
     components = dict(source.get("components") or {})
     pattern_rates = dict(source.get("structural_pattern_rates") or {})
@@ -412,8 +455,12 @@ def build_similarity_decomposition_trace(bundle: Mapping[str, Any] | None) -> di
         "both_prefix_01_02_03_pair_rate": float(
             pattern_rates.get("both_prefix_01_02_03", 0.0) or 0.0
         ),
-        "same_suffix_family_pair_rate": float(pattern_rates.get("same_suffix_family", 0.0) or 0.0),
-        "same_prefix_family_pair_rate": float(pattern_rates.get("same_prefix_family", 0.0) or 0.0),
+        "same_suffix_family_pair_rate": float(
+            pattern_rates.get("same_suffix_family", 0.0) or 0.0
+        ),
+        "same_prefix_family_pair_rate": float(
+            pattern_rates.get("same_prefix_family", 0.0) or 0.0
+        ),
         "exclusive_sum_check": float(source.get("exclusive_sum_check", 0.0) or 0.0),
     }
     for key in EXCLUSIVE_COMPONENT_ORDER:
@@ -438,22 +485,43 @@ def build_similarity_decomposition_trace(bundle: Mapping[str, Any] | None) -> di
     )
     impact = dict(triple_analysis.get("similarity_impact") or {})
     interpretation = dict(triple_analysis.get("interpretation") or {})
-    trace["dezena_01_presence_pct"] = float(dict(individual.get("01") or {}).get("share_pct", 0.0) or 0.0)
-    trace["dezena_02_presence_pct"] = float(dict(individual.get("02") or {}).get("share_pct", 0.0) or 0.0)
-    trace["dezena_03_presence_pct"] = float(dict(individual.get("03") or {}).get("share_pct", 0.0) or 0.0)
+    trace["dezena_01_presence_pct"] = float(
+        dict(individual.get("01") or {}).get("share_pct", 0.0) or 0.0
+    )
+    trace["dezena_02_presence_pct"] = float(
+        dict(individual.get("02") or {}).get("share_pct", 0.0) or 0.0
+    )
+    trace["dezena_03_presence_pct"] = float(
+        dict(individual.get("03") or {}).get("share_pct", 0.0) or 0.0
+    )
     trace["structural_triplet_010203_count"] = int(structural.get("count", 0) or 0)
-    trace["structural_triplet_010203_cap"] = int(structural.get("dominance_cap", 0) or 0)
-    trace["structural_triplet_010203_excess"] = int(structural.get("dominance_excess", 0) or 0)
+    trace["structural_triplet_010203_cap"] = int(
+        structural.get("dominance_cap", 0) or 0
+    )
+    trace["structural_triplet_010203_excess"] = int(
+        structural.get("dominance_excess", 0) or 0
+    )
     trace["structural_triplet_policy"] = str(
-        interpretation.get("structural_triplet_policy") or "allowed_until_cap_penalize_excess_only"
+        interpretation.get("structural_triplet_policy")
+        or "allowed_until_cap_penalize_excess_only"
     )
     trace["structural_triple_01_02_03_count"] = trace["structural_triplet_010203_count"]
-    trace["structural_triple_01_02_03_share_pct"] = float(structural.get("share_pct", 0.0) or 0.0)
-    trace["structural_triple_01_02_03_dominance_cap"] = int(structural.get("dominance_cap", 0) or 0)
-    trace["structural_triple_01_02_03_exceeds_cap"] = bool(structural.get("exceeds_dominance_cap"))
-    trace["structural_triple_01_02_03_dominance_excess"] = int(structural.get("dominance_excess", 0) or 0)
+    trace["structural_triple_01_02_03_share_pct"] = float(
+        structural.get("share_pct", 0.0) or 0.0
+    )
+    trace["structural_triple_01_02_03_dominance_cap"] = int(
+        structural.get("dominance_cap", 0) or 0
+    )
+    trace["structural_triple_01_02_03_exceeds_cap"] = bool(
+        structural.get("exceeds_dominance_cap")
+    )
+    trace["structural_triple_01_02_03_dominance_excess"] = int(
+        structural.get("dominance_excess", 0) or 0
+    )
     trace["structural_prefix_01_02_03_count"] = int(structural.get("count", 0) or 0)
-    trace["structural_prefix_01_02_03_share_pct"] = float(structural.get("share_pct", 0.0) or 0.0)
+    trace["structural_prefix_01_02_03_share_pct"] = float(
+        structural.get("share_pct", 0.0) or 0.0
+    )
     trace["triple_123_mean_shared_overlap"] = float(
         impact.get("mean_shared_triple_dezenas_123", 0.0)
         or impact.get("mean_shared_prefix_dezenas_123", 0.0)
@@ -465,19 +533,25 @@ def build_similarity_decomposition_trace(bundle: Mapping[str, Any] | None) -> di
         or impact.get("prefix_123_share_of_avg_overlap_pct", 0.0)
         or 0.0
     )
-    trace["prefix_123_share_of_avg_overlap_pct"] = trace["triple_123_share_of_avg_overlap_pct"]
+    trace["prefix_123_share_of_avg_overlap_pct"] = trace[
+        "triple_123_share_of_avg_overlap_pct"
+    ]
     trace["avg_overlap_when_both_triple_01_02_03"] = float(
         impact.get("avg_overlap_when_both_triple_01_02_03", 0.0)
         or impact.get("avg_overlap_when_both_prefix_01_02_03", 0.0)
         or 0.0
     )
-    trace["avg_overlap_when_both_prefix_01_02_03"] = trace["avg_overlap_when_both_triple_01_02_03"]
+    trace["avg_overlap_when_both_prefix_01_02_03"] = trace[
+        "avg_overlap_when_both_triple_01_02_03"
+    ]
     trace["avg_overlap_when_not_both_triple_01_02_03"] = float(
         impact.get("avg_overlap_when_not_both_triple_01_02_03", 0.0)
         or impact.get("avg_overlap_when_not_both_prefix_01_02_03", 0.0)
         or 0.0
     )
-    trace["avg_overlap_when_not_both_prefix_01_02_03"] = trace["avg_overlap_when_not_both_triple_01_02_03"]
+    trace["avg_overlap_when_not_both_prefix_01_02_03"] = trace[
+        "avg_overlap_when_not_both_triple_01_02_03"
+    ]
     trace["non_triple_residual_overlap"] = float(
         impact.get("non_triple_residual_overlap", 0.0)
         or impact.get("non_prefix_residual_overlap", 0.0)
@@ -506,10 +580,14 @@ def format_similarity_decomposition_report(bundle: Mapping[str, Any] | None) -> 
         or source.get("prefix_triple_analysis")
         or {}
     )
-    for dezena_label, row in dict(triple_analysis.get("individual_dezena_presence") or {}).items():
+    for dezena_label, row in dict(
+        triple_analysis.get("individual_dezena_presence") or {}
+    ).items():
         count = int(dict(row).get("count", 0) or 0)
         share = float(dict(row).get("share_pct", 0.0) or 0.0)
-        lines.append(f"  - dezena {dezena_label}: {count}/{source.get('pool_size', 0)} cartões ({share:.1f}%)")
+        lines.append(
+            f"  - dezena {dezena_label}: {count}/{source.get('pool_size', 0)} cartões ({share:.1f}%)"
+        )
 
     structural = dict(
         triple_analysis.get("dominant_structural_triple")
@@ -573,7 +651,9 @@ def format_similarity_decomposition_report(bundle: Mapping[str, Any] | None) -> 
     for dezena_label, row in per_dezena.items():
         mean = float(dict(row).get("mean_shared_dezenas", 0.0) or 0.0)
         share = float(dict(row).get("share_of_avg_overlap_pct", 0.0) or 0.0)
-        lines.append(f"    · dezena {dezena_label} isolada no overlap par-a-par: {mean:.4f} ({share:.1f}%)")
+        lines.append(
+            f"    · dezena {dezena_label} isolada no overlap par-a-par: {mean:.4f} ({share:.1f}%)"
+        )
     lines.extend(
         [
             (
@@ -606,7 +686,9 @@ def format_similarity_decomposition_report(bundle: Mapping[str, Any] | None) -> 
         row = dict(components.get(key) or {})
         mean = float(row.get("mean_shared_dezenas", 0.0) or 0.0)
         share = float(row.get("share_of_avg_overlap_pct", 0.0) or 0.0)
-        lines.append(f"  - {labels.get(key, key)}: {mean:.4f} dezenas ({share:.1f}% do overlap)")
+        lines.append(
+            f"  - {labels.get(key, key)}: {mean:.4f} dezenas ({share:.1f}% do overlap)"
+        )
     pattern_rates = dict(source.get("structural_pattern_rates") or {})
     lines.append(
         "Padrões estruturais (taxa par-a-par): "
@@ -616,7 +698,11 @@ def format_similarity_decomposition_report(bundle: Mapping[str, Any] | None) -> 
     dominant_prefix = source.get("dominant_prefix") or ("", 0)
     dominant_suffix = source.get("dominant_suffix") or ("", 0)
     if isinstance(dominant_prefix, (list, tuple)) and len(dominant_prefix) >= 2:
-        lines.append(f"Dominante prefixo: {dominant_prefix[0]} ({dominant_prefix[1]}/{source.get('pool_size', 0)})")
+        lines.append(
+            f"Dominante prefixo: {dominant_prefix[0]} ({dominant_prefix[1]}/{source.get('pool_size', 0)})"
+        )
     if isinstance(dominant_suffix, (list, tuple)) and len(dominant_suffix) >= 2:
-        lines.append(f"Dominante sufixo: {dominant_suffix[0]} ({dominant_suffix[1]}/{source.get('pool_size', 0)})")
+        lines.append(
+            f"Dominante sufixo: {dominant_suffix[0]} ({dominant_suffix[1]}/{source.get('pool_size', 0)})"
+        )
     return "\n".join(lines)

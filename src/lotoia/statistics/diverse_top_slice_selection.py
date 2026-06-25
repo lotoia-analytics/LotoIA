@@ -7,6 +7,7 @@ sufixo e anti-clone por overlap).
 
 from __future__ import annotations
 
+import math
 import os
 from collections import Counter
 from typing import Any, Mapping, Sequence
@@ -32,13 +33,15 @@ from lotoia.statistics.similarity_overlap_decomposition import (
 )
 
 MISSION_ID = "M-STAT-002"
-SELECTION_VERSION = "M-STAT-002-v4"
+SELECTION_VERSION = "M-STAT-002-v5"
 ENV_DIVERSE_TOP_SLICE_ENABLED = "LOTOIA_DIVERSE_TOP_SLICE_ENABLED"
 ENV_MSTAT_002_SUFFIX_CAP = "LOTOIA_MSTAT_002_SUFFIX_CAP"
 ENV_MSTAT_002_PREFIX_CAP = "LOTOIA_MSTAT_002_PREFIX_CAP"
 ENV_MSTAT_002_MAX_OVERLAP = "LOTOIA_MSTAT_002_MAX_OVERLAP"
 MIN_MATERIAL_DIVERSITY_GAIN = 0.20
-MAX_PREFIX_SUFFIX_SHARE = 0.14
+MAX_PREFIX_SUFFIX_SHARE = (
+    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
+)
 MAX_FAMILY_SHARE = 0.10
 MAX_SWAP_ITERATIONS = 200
 DEFAULT_MAX_OVERLAP_15D = 12
@@ -50,14 +53,33 @@ def is_diverse_top_slice_enabled() -> bool:
 
 
 def _structural_cap_for_pool(pool_size: int, *, env_var: str) -> int:
-    default = str(DOMINANCE_CALIBRATION_THRESHOLD)
-    raw = os.getenv(env_var, default).strip()
-    try:
-        configured = int(raw)
-    except ValueError:
-        configured = DOMINANCE_CALIBRATION_THRESHOLD
+    """Teto de dominância proporcional à frequência histórica (21% para triplet 01-02-03).
+
+    Baseline: últimos 300 concursos oficiais.
+    Frequência histórica do triplet 01-02-03: 21,0% (63 de 300).
+    """
+    # Se o env var está setado, usa o valor configurado (para override manual)
+    raw = os.getenv(env_var, "").strip()
+    if raw:
+        try:
+            configured = int(raw)
+        except ValueError:
+            configured = None
+    else:
+        configured = None
+
+    # Cap proporcional à frequência histórica (21%), mínimo 1
+    historical_cap = max(1, math.ceil(pool_size * MAX_PREFIX_SUFFIX_SHARE))
+
+    # Limite de segurança baseado no tamanho do pool
     issue_limit = _structural_issue_limit(pool_size)
-    return max(3, min(configured, issue_limit - 1))
+
+    if configured is not None:
+        # Override manual: respeita o valor configurado
+        return max(1, min(configured, issue_limit - 1, historical_cap))
+    else:
+        # Padrão: proporcional à frequência histórica
+        return max(1, min(issue_limit - 1, historical_cap))
 
 
 def _suffix_cap_for_pool(pool_size: int) -> int:
@@ -122,7 +144,9 @@ def _count_non_triplet_cards(games: Sequence[Mapping[str, Any]]) -> int:
     )
 
 
-def _non_triplet_reserve_requirements(*, target: int, triple_cap: int) -> dict[str, int]:
+def _non_triplet_reserve_requirements(
+    *, target: int, triple_cap: int
+) -> dict[str, int]:
     """Quantidade mínima de candidatos não-trinca no pool para cumprir o teto."""
     required = max(0, int(target) - int(triple_cap))
     ideal = max(required * 2, required + 1)
@@ -140,7 +164,9 @@ def _evaluate_non_triplet_reserve(
     reserve_rows: Sequence[Mapping[str, Any]],
     final_triple_count: int,
 ) -> dict[str, Any]:
-    requirements = _non_triplet_reserve_requirements(target=target, triple_cap=triple_cap)
+    requirements = _non_triplet_reserve_requirements(
+        target=target, triple_cap=triple_cap
+    )
     non_triplet_pool = _count_non_triplet_cards(pool_rows)
     non_triplet_reserve = _count_non_triplet_cards(reserve_rows)
     final_excess = max(int(final_triple_count) - int(triple_cap), 0)
@@ -194,10 +220,14 @@ def _measure_slice_diversity(
     )
     prefix_top = list(redundancy.get("prefix_top") or [])
     suffix_top = list(redundancy.get("suffix_top") or [])
-    families: Counter[str] = Counter(_family_key(game) for game in candidate_pool if _family_key(game))
+    families: Counter[str] = Counter(
+        _family_key(game) for game in candidate_pool if _family_key(game)
+    )
     return {
         "diversity_score": diversity_score,
-        "similarity_score": float(redundancy.get("similaridade_media_entre_jogos", 0.0) or 0.0),
+        "similarity_score": float(
+            redundancy.get("similaridade_media_entre_jogos", 0.0) or 0.0
+        ),
         "max_overlap": int(redundancy.get("sobreposicao_maxima", 0) or 0),
         "candidate_pool_size": len(candidate_pool),
         "top_prefix": prefix_top[0] if prefix_top else ("", 0),
@@ -344,17 +374,25 @@ def run_mstat_002_swap_engine(
         }
 
     effective_structural_triple_cap = int(
-        prefix_cap if prefix_cap is not None else _structural_triple_cap_for_pool(target)
+        prefix_cap
+        if prefix_cap is not None
+        else _structural_triple_cap_for_pool(target)
     )
-    effective_suffix_cap = int(suffix_cap if suffix_cap is not None else _suffix_cap_for_pool(target))
+    effective_suffix_cap = int(
+        suffix_cap if suffix_cap is not None else _suffix_cap_for_pool(target)
+    )
     effective_family_cap = int(
         family_cap if family_cap is not None else max(2, int(target * MAX_FAMILY_SHARE))
     )
     effective_max_overlap = int(
-        max_overlap if max_overlap is not None else _max_overlap_for_game_size(int(game_size))
+        max_overlap
+        if max_overlap is not None
+        else _max_overlap_for_game_size(int(game_size))
     )
 
-    distinct_suffixes_in_pool = len({_suffix_key(game) for game in rows if _suffix_key(game)})
+    distinct_suffixes_in_pool = len(
+        {_suffix_key(game) for game in rows if _suffix_key(game)}
+    )
     _ = distinct_suffixes_in_pool
 
     ranked = sorted(rows, key=_profile_score, reverse=True)
@@ -391,7 +429,11 @@ def run_mstat_002_swap_engine(
                 continue
             if any(_suffix_key(game) != suffix for game in reserve):
                 violating_suffixes.add(suffix)
-        violating_families = {family for family, count in family_counts.items() if count > effective_family_cap}
+        violating_families = {
+            family
+            for family, count in family_counts.items()
+            if count > effective_family_cap
+        }
 
         if violating_structural_triples or violating_suffixes or violating_families:
             structural_progress = False
@@ -411,7 +453,9 @@ def run_mstat_002_swap_engine(
                 ranked_reserve = sorted(
                     enumerate(reserve),
                     key=lambda item: (
-                        1 if _prefix_key(item[1]) == DOMINANT_STRUCTURAL_TRIPLE_LABEL else 0,
+                        1
+                        if _prefix_key(item[1]) == DOMINANT_STRUCTURAL_TRIPLE_LABEL
+                        else 0,
                         prefix_counts.get(_prefix_key(item[1]), 0),
                         suffix_counts.get(_suffix_key(item[1]), 0),
                         family_counts.get(_family_key(item[1]), 0),
@@ -468,7 +512,10 @@ def run_mstat_002_swap_engine(
                 right_card = list(_game_signature(batch[right]))
                 if not right_card:
                     continue
-                if _overlap_between_cards(left_card, right_card) <= effective_max_overlap:
+                if (
+                    _overlap_between_cards(left_card, right_card)
+                    <= effective_max_overlap
+                ):
                     continue
                 if _profile_score(batch[right]) < _profile_score(batch[left]):
                     violator_candidates.append(right)
@@ -476,7 +523,9 @@ def run_mstat_002_swap_engine(
                     violator_candidates.append(left)
 
         swapped_overlap = False
-        for violator_index in sorted(set(violator_candidates), key=lambda idx: _profile_score(batch[idx])):
+        for violator_index in sorted(
+            set(violator_candidates), key=lambda idx: _profile_score(batch[idx])
+        ):
             prefix_counts = _prefix_count_map(batch)
             suffix_counts = _suffix_count_map(batch)
             family_counts = _family_count_map(batch)
@@ -489,7 +538,10 @@ def run_mstat_002_swap_engine(
                 key=lambda item: (
                     max(
                         (
-                            _overlap_between_cards(list(_game_signature(item[1])), list(_game_signature(game)))
+                            _overlap_between_cards(
+                                list(_game_signature(item[1])),
+                                list(_game_signature(game)),
+                            )
                             for game in batch
                             if _game_signature(item[1]) and _game_signature(game)
                         ),
@@ -545,7 +597,9 @@ def run_mstat_002_swap_engine(
         row.setdefault("diverse_top_slice_selected", True)
         row["m_stat_002_selection_rank"] = index + 1
 
-    final_triple_count = int(_prefix_count_map(batch).get(DOMINANT_STRUCTURAL_TRIPLE_LABEL, 0))
+    final_triple_count = int(
+        _prefix_count_map(batch).get(DOMINANT_STRUCTURAL_TRIPLE_LABEL, 0)
+    )
     reserve_diag = _evaluate_non_triplet_reserve(
         target=target,
         triple_cap=effective_structural_triple_cap,
@@ -567,12 +621,16 @@ def run_mstat_002_swap_engine(
         "structural_triplet_010203_cap": effective_structural_triple_cap,
         "prefix_cap": effective_structural_triple_cap,
         "structural_triplet_010203_count": final_triple_count,
-        "structural_triplet_010203_excess": reserve_diag["structural_triplet_010203_excess"],
+        "structural_triplet_010203_excess": reserve_diag[
+            "structural_triplet_010203_excess"
+        ],
         "non_triplet_pool_count": reserve_diag["non_triplet_pool_count"],
         "non_triplet_reserve_count": reserve_diag["non_triplet_reserve_count"],
         "non_triplet_required_count": reserve_diag["non_triplet_required_count"],
         "non_triplet_ideal_count": reserve_diag["non_triplet_ideal_count"],
-        "pool_insufficient_non_triplet_reserve": reserve_diag["pool_insufficient_non_triplet_reserve"],
+        "pool_insufficient_non_triplet_reserve": reserve_diag[
+            "pool_insufficient_non_triplet_reserve"
+        ],
         "responsible_agent": reserve_diag["responsible_agent"],
         "next_mission_hint": reserve_diag["next_mission_hint"],
         "suffix_cap": effective_suffix_cap,
@@ -671,7 +729,9 @@ def apply_diverse_top_slice_pre_gp(
         "selection_version": SELECTION_VERSION,
         "diverse_top_slice_applied": False,
     }
-    if not is_diverse_top_slice_enabled() or not is_structural_policy_15d_format(int(game_size)):
+    if not is_diverse_top_slice_enabled() or not is_structural_policy_15d_format(
+        int(game_size)
+    ):
         return [dict(game) for game in pool], empty_bundle
 
     limit = slice_limit(requested_count=int(requested_count))
@@ -730,11 +790,23 @@ def apply_diverse_top_slice_pre_gp(
     else:
         dominant_label, dominant_count = "", 0
     suffix_top = after_metrics.get("top_suffix") or ("", 0)
-    suffix_label = str(suffix_top[0] or "") if isinstance(suffix_top, (list, tuple)) else ""
-    suffix_share = int(suffix_top[1] or 0) if isinstance(suffix_top, (list, tuple)) and len(suffix_top) >= 2 else 0
+    suffix_label = (
+        str(suffix_top[0] or "") if isinstance(suffix_top, (list, tuple)) else ""
+    )
+    suffix_share = (
+        int(suffix_top[1] or 0)
+        if isinstance(suffix_top, (list, tuple)) and len(suffix_top) >= 2
+        else 0
+    )
     prefix_top = after_metrics.get("top_prefix") or ("", 0)
-    prefix_label = str(prefix_top[0] or "") if isinstance(prefix_top, (list, tuple)) else ""
-    prefix_share = int(prefix_top[1] or 0) if isinstance(prefix_top, (list, tuple)) and len(prefix_top) >= 2 else 0
+    prefix_label = (
+        str(prefix_top[0] or "") if isinstance(prefix_top, (list, tuple)) else ""
+    )
+    prefix_share = (
+        int(prefix_top[1] or 0)
+        if isinstance(prefix_top, (list, tuple)) and len(prefix_top) >= 2
+        else 0
+    )
     triple_share = 0
     if prefix_label == DOMINANT_STRUCTURAL_TRIPLE_LABEL:
         triple_share = prefix_share
@@ -783,22 +855,30 @@ def apply_diverse_top_slice_pre_gp(
         "dominant_structural_triple_within_cap": triple_share <= caps["prefix_cap"],
         "similarity_decomposition_before": similarity_before,
         "similarity_decomposition_after": similarity_after,
-        "similarity_decomposition_report_before": build_similarity_decomposition_trace(similarity_before),
-        "similarity_decomposition_report_after": build_similarity_decomposition_trace(similarity_after),
+        "similarity_decomposition_report_before": build_similarity_decomposition_trace(
+            similarity_before
+        ),
+        "similarity_decomposition_report_after": build_similarity_decomposition_trace(
+            similarity_after
+        ),
         "pool_insufficient_non_triplet_reserve": bool(
             swap_stats.get("pool_insufficient_non_triplet_reserve")
         ),
         "responsible_agent": str(swap_stats.get("responsible_agent") or ""),
         "next_mission_hint": str(swap_stats.get("next_mission_hint") or ""),
         "non_triplet_pool_count": int(swap_stats.get("non_triplet_pool_count", 0) or 0),
-        "non_triplet_reserve_count": int(swap_stats.get("non_triplet_reserve_count", 0) or 0),
+        "non_triplet_reserve_count": int(
+            swap_stats.get("non_triplet_reserve_count", 0) or 0
+        ),
         "non_triplet_required_count_top_slice": int(top_slice_requirements["required"]),
         "non_triplet_ideal_count_top_slice": int(top_slice_requirements["ideal"]),
         "non_triplet_required_count_gp": int(gp_requirements["required"]),
         "non_triplet_ideal_count_gp": int(gp_requirements["ideal"]),
     }
     if module_params or calibration_plan:
-        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
+        from lotoia.ml.authorized_ml_calibration_plan import (
+            extract_module_operational_params,
+        )
 
         ops = extract_module_operational_params(calibration_plan)
         bundle["calibration_plan_applied"] = bool(ops.get("applied"))
@@ -848,7 +928,9 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "diversity_score_after": float(
             dict(source.get("metrics_after") or {}).get("diversity_score", 0.0) or 0.0
         ),
-        "diversity_gain_absolute": float(criteria.get("diversity_gain_absolute", 0.0) or 0.0),
+        "diversity_gain_absolute": float(
+            criteria.get("diversity_gain_absolute", 0.0) or 0.0
+        ),
         "diversity_target_met": bool(criteria.get("diversity_target_met")),
         "material_gain_met": bool(criteria.get("material_gain_met")),
         "criteria_met": bool(criteria.get("criteria_met")),
@@ -859,7 +941,8 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "structural_triplet_010203_excess": triple_excess,
         "structural_triplet_010203_swaps": triple_swaps,
         "structural_triplet_policy": str(
-            swap_stats.get("structural_triplet_policy") or "allowed_until_cap_penalize_excess_only"
+            swap_stats.get("structural_triplet_policy")
+            or "allowed_until_cap_penalize_excess_only"
         ),
         "structural_swaps": int(swap_stats.get("structural_swaps", 0) or 0),
         "prefix_swaps": int(swap_stats.get("prefix_swaps", 0) or 0),
@@ -871,16 +954,23 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "suffix_cap": int(swap_stats.get("suffix_cap", 0) or 0),
         "max_overlap_permitted": int(swap_stats.get("max_overlap_permitted", 0) or 0),
         "dominant_family_after": str(source.get("dominant_family_after") or ""),
-        "dominant_family_share_after": int(source.get("dominant_family_share_after", 0) or 0),
+        "dominant_family_share_after": int(
+            source.get("dominant_family_share_after", 0) or 0
+        ),
         "dominant_family_within_cap": bool(source.get("dominant_family_within_cap")),
         "dominant_suffix_after": str(source.get("dominant_suffix_after") or ""),
-        "dominant_suffix_share_after": int(source.get("dominant_suffix_share_after", 0) or 0),
+        "dominant_suffix_share_after": int(
+            source.get("dominant_suffix_share_after", 0) or 0
+        ),
         "dominant_suffix_within_cap": bool(source.get("dominant_suffix_within_cap")),
         "dominant_prefix_after": str(source.get("dominant_prefix_after") or ""),
-        "dominant_prefix_share_after": int(source.get("dominant_prefix_share_after", 0) or 0),
+        "dominant_prefix_share_after": int(
+            source.get("dominant_prefix_share_after", 0) or 0
+        ),
         "dominant_prefix_within_cap": bool(source.get("dominant_prefix_within_cap")),
         "dominant_structural_triple_label": str(
-            source.get("dominant_structural_triple_label") or DOMINANT_STRUCTURAL_TRIPLE_LABEL
+            source.get("dominant_structural_triple_label")
+            or DOMINANT_STRUCTURAL_TRIPLE_LABEL
         ),
         "dominant_structural_triple_share_after": int(
             source.get("dominant_structural_triple_share_after", 0) or 0
@@ -888,8 +978,12 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "dominant_structural_triple_within_cap": bool(
             source.get("dominant_structural_triple_within_cap")
         ),
-        "similarity_decomposition_before": dict(source.get("similarity_decomposition_report_before") or {}),
-        "similarity_decomposition_after": dict(source.get("similarity_decomposition_report_after") or {}),
+        "similarity_decomposition_before": dict(
+            source.get("similarity_decomposition_report_before") or {}
+        ),
+        "similarity_decomposition_after": dict(
+            source.get("similarity_decomposition_report_after") or {}
+        ),
         "pool_insufficient_non_triplet_reserve": bool(
             swap_stats.get("pool_insufficient_non_triplet_reserve")
             or source.get("pool_insufficient_non_triplet_reserve")
@@ -901,10 +995,14 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
             swap_stats.get("next_mission_hint") or source.get("next_mission_hint") or ""
         ),
         "non_triplet_pool_count": int(
-            swap_stats.get("non_triplet_pool_count") or source.get("non_triplet_pool_count", 0) or 0
+            swap_stats.get("non_triplet_pool_count")
+            or source.get("non_triplet_pool_count", 0)
+            or 0
         ),
         "non_triplet_reserve_count": int(
-            swap_stats.get("non_triplet_reserve_count") or source.get("non_triplet_reserve_count", 0) or 0
+            swap_stats.get("non_triplet_reserve_count")
+            or source.get("non_triplet_reserve_count", 0)
+            or 0
         ),
         "non_triplet_required_count_top_slice": int(
             source.get("non_triplet_required_count_top_slice", 0) or 0
@@ -912,6 +1010,10 @@ def build_diverse_top_slice_trace(bundle: Mapping[str, Any] | None) -> dict[str,
         "non_triplet_ideal_count_top_slice": int(
             source.get("non_triplet_ideal_count_top_slice", 0) or 0
         ),
-        "non_triplet_required_count_gp": int(source.get("non_triplet_required_count_gp", 0) or 0),
-        "non_triplet_ideal_count_gp": int(source.get("non_triplet_ideal_count_gp", 0) or 0),
+        "non_triplet_required_count_gp": int(
+            source.get("non_triplet_required_count_gp", 0) or 0
+        ),
+        "non_triplet_ideal_count_gp": int(
+            source.get("non_triplet_ideal_count_gp", 0) or 0
+        ),
     }

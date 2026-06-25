@@ -6,56 +6,59 @@ import math
 from collections import Counter
 from typing import Final, Literal, Sequence
 
-from lotoia.generation.lei15_core_structural_payload import compute_structural_signatures
+from lotoia.generation.lei15_core_structural_payload import (
+    compute_structural_signatures,
+)
 
 MISSION_ID: Final = "M-CORE-003"
 EVIDENCE_EPOCH: Final = "EPOCH_002_M_CORE_003"
 
-# Frequências históricas (3.714 concursos oficiais — freq >= 1% no allowlist).
+# Frequências históricas — janela operacional: últimos 300 concursos oficiais.
+# Atualizado em 2026-06-25 — baseline: 300 concursos (concursos 3419–3718).
 HISTORICAL_PREFIX_FREQ_PCT: Final[dict[str, float]] = {
-    "01-02-03": 20.09,
-    "01-02-04": 9.34,
-    "01-03-04": 9.13,
-    "02-03-04": 8.99,
-    "01-02-05": 3.90,
-    "01-03-05": 4.17,
-    "02-03-05": 3.50,
-    "01-04-05": 3.74,
-    "02-04-05": 3.93,
-    "03-04-05": 4.09,
-    "01-02-06": 1.48,
-    "01-03-06": 1.43,
-    "02-03-06": 1.40,
-    "01-04-06": 1.40,
-    "02-04-06": 1.45,
-    "03-04-06": 1.70,
-    "02-05-06": 1.53,
-    "03-05-06": 1.51,
-    "01-05-06": 1.37,
-    "01-05-07": 0.48,
+    "01-02-03": 21.00,
+    "01-02-04": 11.67,
+    "02-03-04": 9.33,
+    "01-03-04": 9.33,
+    "01-04-05": 5.00,
+    "01-03-05": 3.67,
+    "02-03-05": 3.67,
+    "02-03-06": 3.00,
+    "01-04-06": 3.00,
+    "02-04-05": 2.67,
+    "03-04-05": 2.67,
+    "03-05-06": 2.00,
+    "04-05-06": 2.00,
+    "02-05-06": 2.00,
+    "01-02-06": 1.67,
+    "01-05-06": 1.67,
+    "01-03-07": 1.67,
+    "01-02-05": 1.33,
+    "01-03-06": 1.00,
+    "01-02-07": 1.00,
 }
 
+# Janela operacional: últimos 300 concursos oficiais.
 HISTORICAL_SUFFIX_FREQ_PCT: Final[dict[str, float]] = {
-    "23-24-25": 20.87,
-    "22-24-25": 9.75,
-    "22-23-25": 8.56,
-    "22-23-24": 8.10,
-    "21-24-25": 3.80,
-    "21-22-25": 4.20,
-    "21-23-25": 3.85,
-    "21-23-24": 3.23,
-    "21-22-24": 4.17,
-    "21-22-23": 3.77,
-    "20-24-25": 1.70,
-    "20-23-25": 1.51,
-    "20-22-25": 1.67,
-    "20-22-24": 1.86,
-    "20-22-23": 1.27,
-    "20-21-25": 2.15,
-    "20-21-24": 1.37,
-    "20-21-23": 1.59,
-    "20-23-24": 1.62,
-    "19-23-24": 0.65,
+    "23-24-25": 21.67,
+    "22-23-25": 9.33,
+    "22-24-25": 8.67,
+    "22-23-24": 8.00,
+    "21-23-24": 5.00,
+    "21-23-25": 5.00,
+    "21-22-25": 5.00,
+    "21-22-24": 4.00,
+    "21-22-23": 3.33,
+    "21-24-25": 2.67,
+    "20-21-25": 2.67,
+    "20-22-24": 2.00,
+    "13-14-15": 2.00,
+    "20-23-25": 1.67,
+    "20-23-24": 1.67,
+    "19-23-24": 1.33,
+    "20-24-25": 1.33,
+    "19-20-22": 1.33,
+    "19-21-25": 1.00,
 }
 
 ALLOWED_PREFIXES: Final[frozenset[str]] = frozenset(HISTORICAL_PREFIX_FREQ_PCT)
@@ -69,7 +72,9 @@ PatternKind = Literal["prefix", "suffix"]
 
 def historical_freq_pct(pattern: str, *, kind: PatternKind) -> float:
     normalized = str(pattern or "").strip()
-    table = HISTORICAL_PREFIX_FREQ_PCT if kind == "prefix" else HISTORICAL_SUFFIX_FREQ_PCT
+    table = (
+        HISTORICAL_PREFIX_FREQ_PCT if kind == "prefix" else HISTORICAL_SUFFIX_FREQ_PCT
+    )
     return float(table.get(normalized, 0.0) or 0.0)
 
 
@@ -115,7 +120,9 @@ def _pattern_signatures(game: dict) -> tuple[str, str]:
     if prefix and suffix:
         return prefix, suffix
     sig = compute_structural_signatures(list(game.get("numbers") or []))
-    return str(sig.get("prefix_signature") or ""), str(sig.get("suffix_signature") or "")
+    return str(sig.get("prefix_signature") or ""), str(
+        sig.get("suffix_signature") or ""
+    )
 
 
 def pre_filter_pool_diversity(pool: list[dict], *, gp_size: int = 10) -> list[dict]:
@@ -199,9 +206,18 @@ def enforce_gp_diversity_cap(
         relaxed_multiplier = 2
 
         def _fits_relaxed_caps(prefix: str, suffix: str) -> bool:
-            prefix_cap = resolve_pattern_cap(prefix, kind="prefix", gp_size=count) * relaxed_multiplier
-            suffix_cap = resolve_pattern_cap(suffix, kind="suffix", gp_size=count) * relaxed_multiplier
-            return prefix_counts[prefix] < prefix_cap and suffix_counts[suffix] < suffix_cap
+            prefix_cap = (
+                resolve_pattern_cap(prefix, kind="prefix", gp_size=count)
+                * relaxed_multiplier
+            )
+            suffix_cap = (
+                resolve_pattern_cap(suffix, kind="suffix", gp_size=count)
+                * relaxed_multiplier
+            )
+            return (
+                prefix_counts[prefix] < prefix_cap
+                and suffix_counts[suffix] < suffix_cap
+            )
 
         for replacement_pool in completion_sources:
             if len(selected) >= count:
@@ -267,12 +283,16 @@ def compute_pattern_distribution(
         if len(numbers) < 15:
             continue
         sig = compute_structural_signatures(numbers)
-        key = str(sig["prefix_signature"] if kind == "prefix" else sig["suffix_signature"])
+        key = str(
+            sig["prefix_signature"] if kind == "prefix" else sig["suffix_signature"]
+        )
         counter[key] += 1
     total = sum(counter.values())
     if total <= 0:
         return {}
-    return {pattern: round(100.0 * count / total, 2) for pattern, count in counter.items()}
+    return {
+        pattern: round(100.0 * count / total, 2) for pattern, count in counter.items()
+    }
 
 
 def compute_historical_distribution_from_draws(
@@ -310,4 +330,6 @@ def compare_pattern_ratios(
     return rows
 
 
-WALKFORWARD_VALIDATION_SEEDS: Final[tuple[int, ...]] = tuple(1000 + index * 137 for index in range(10))
+WALKFORWARD_VALIDATION_SEEDS: Final[tuple[int, ...]] = tuple(
+    1000 + index * 137 for index in range(10)
+)
