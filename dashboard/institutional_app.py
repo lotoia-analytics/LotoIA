@@ -21769,6 +21769,97 @@ def _load_hits_distribution() -> list[dict[str, int]]:
         return []
 
 
+def _load_jackpots_over_time() -> list[dict[str, Any]]:
+    """Carrega evolução temporal de jackpots por data."""
+    from lotoia.database.database import ReconciliationGame, get_session
+    from sqlalchemy import func, cast, Date
+
+    try:
+        with get_session(DB_PATH) as session:
+            rows = (
+                session.query(
+                    cast(ReconciliationGame.reconciled_at, Date).label("date"),
+                    func.count(ReconciliationGame.id).label("jackpot_count"),
+                )
+                .filter(ReconciliationGame.hits == 15)
+                .filter(ReconciliationGame.reconciled_at.isnot(None))
+                .group_by(cast(ReconciliationGame.reconciled_at, Date))
+                .order_by(cast(ReconciliationGame.reconciled_at, Date))
+                .all()
+            )
+            return [
+                {"date": str(row.date), "jackpots": int(row.jackpot_count)}
+                for row in rows
+            ]
+    except Exception:
+        return []
+
+
+def _load_coverage_over_time() -> list[dict[str, Any]]:
+    """Carrega evolução temporal da cobertura de reconciliação por data."""
+    from lotoia.database.database import GenerationEvent, ReconciliationRun, get_session
+    from sqlalchemy import func, cast, Date
+
+    try:
+        with get_session(DB_PATH) as session:
+            # Buscar geração de eventos por data
+            events_by_date = (
+                session.query(
+                    cast(GenerationEvent.created_at, Date).label("date"),
+                    func.count(GenerationEvent.id).label("total_events"),
+                )
+                .group_by(cast(GenerationEvent.created_at, Date))
+                .order_by(cast(GenerationEvent.created_at, Date))
+                .all()
+            )
+
+            # Buscar reconciliações por data
+            reconciliations_by_date = (
+                session.query(
+                    cast(ReconciliationRun.created_at, Date).label("date"),
+                    func.count(
+                        func.distinct(ReconciliationRun.generation_event_id)
+                    ).label("reconciled_events"),
+                )
+                .group_by(cast(ReconciliationRun.created_at, Date))
+                .order_by(cast(ReconciliationRun.created_at, Date))
+                .all()
+            )
+
+            # Combinar dados
+            result = []
+            event_dict = {str(row.date): row.total_events for row in events_by_date}
+            recon_dict = {
+                str(row.date): row.reconciled_events for row in reconciliations_by_date
+            }
+
+            all_dates = sorted(set(event_dict.keys()) | set(recon_dict.keys()))
+
+            cumulative_events = 0
+            cumulative_reconciled = 0
+
+            for date in all_dates:
+                cumulative_events += event_dict.get(date, 0)
+                cumulative_reconciled += recon_dict.get(date, 0)
+                coverage_pct = (
+                    (cumulative_reconciled / cumulative_events * 100)
+                    if cumulative_events > 0
+                    else 0.0
+                )
+                result.append(
+                    {
+                        "date": date,
+                        "cumulative_events": cumulative_events,
+                        "cumulative_reconciled": cumulative_reconciled,
+                        "coverage_pct": round(coverage_pct, 1),
+                    }
+                )
+
+            return result
+    except Exception:
+        return []
+
+
 def _render_home_metric_card(
     label: str, value: str, *, caption: str = "", value_class: str = ""
 ) -> None:
@@ -22058,6 +22149,81 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
             st.bar_chart(dist_df.set_index("hits"), use_container_width=True)
             st.dataframe(dist_df, hide_index=True, use_container_width=True)
             st.caption("Distribuição de acertos em todos os jogos reconciliados")
+
+    # Gráficos de evolução temporal
+    st.markdown("---")
+    st.markdown("##### 📈 Evolução Temporal")
+
+    tab_jackpots, tab_coverage = st.tabs(
+        ["JACKPOTS ao Longo do Tempo", "Evolução da Cobertura"]
+    )
+
+    with tab_jackpots:
+        jackpots_over_time = _load_jackpots_over_time()
+        if jackpots_over_time:
+            jackpots_df = pd.DataFrame(jackpots_over_time)
+            st.line_chart(
+                jackpots_df.set_index("date")["jackpots"],
+                use_container_width=True,
+                height=300,
+            )
+            st.caption(
+                f"Total acumulado: {sum(j['jackpots'] for j in jackpots_over_time)} JACKPOTS"
+            )
+            st.dataframe(jackpots_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Ainda não há dados de JACKPOTS ao longo do tempo.")
+
+    with tab_coverage:
+        coverage_over_time = _load_coverage_over_time()
+        if coverage_over_time:
+            coverage_df = pd.DataFrame(coverage_over_time)
+
+            # Gráfico de linha da cobertura
+            st.line_chart(
+                coverage_df.set_index("date")[["coverage_pct"]],
+                use_container_width=True,
+                height=300,
+            )
+
+            # Métricas acumuladas
+            metrics_cols = st.columns(3)
+            with metrics_cols[0]:
+                st.metric("Eventos Totais", coverage_df["cumulative_events"].iloc[-1])
+            with metrics_cols[1]:
+                st.metric(
+                    "Eventos Reconciliados",
+                    coverage_df["cumulative_reconciled"].iloc[-1],
+                )
+            with metrics_cols[2]:
+                st.metric(
+                    "Cobertura Atual", f"{coverage_df['coverage_pct'].iloc[-1]:.1f}%"
+                )
+
+            st.dataframe(coverage_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Ainda não há dados de cobertura ao longo do tempo.")
+
+    # Botão para conferir eventos pendentes
+    if coverage["pending_events"] > 0:
+        st.markdown("---")
+        st.markdown("##### 🔧 Ações Rápidas")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info(
+                f"Existem **{coverage['pending_events']} eventos** com "
+                f"**{coverage['pending_games']} jogos** pendentes de reconciliação."
+            )
+        with col2:
+            if st.button(
+                "🔄 Conferir Pendentes",
+                key="home_bulk_reconcile",
+                use_container_width=True,
+                type="primary",
+            ):
+                st.session_state["trigger_bulk_reconciliation"] = True
+                st.rerun()
 
     _render_home_quick_access()
 
