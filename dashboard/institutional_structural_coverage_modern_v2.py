@@ -32,15 +32,31 @@ def _query_postgresql(query: str, params: dict = None) -> list[dict[str, Any]]:
         return []
 
 
-def _load_all_generations_data() -> dict[str, Any]:
-    """Carrega dados de todas as gerações CORE_002 ativas."""
-    # Buscar TODOS os events CORE_002
-    events = _query_postgresql("""
-        SELECT id, created_at, analysis_batch_label
-        FROM generation_events
-        WHERE analysis_batch_label LIKE 'STRUCT_LEI15_CORE_CANDIDATE_002%'
-        ORDER BY created_at DESC
-    """)
+def _load_all_generations_data(format_filter: str | None = None) -> dict[str, Any]:
+    """Carrega dados de todas as gerações CORE_002 ativas com filtro opcional de formato.
+
+    Args:
+        format_filter: "15D" ou "18D" para filtrar por formato. None para todos.
+    """
+    # Buscar events CORE_002 com filtro opcional de formato
+    if format_filter:
+        events = _query_postgresql(
+            """
+            SELECT id, created_at, analysis_batch_label
+            FROM generation_events
+            WHERE analysis_batch_label LIKE 'STRUCT_LEI15_CORE_CANDIDATE_002%'
+              AND analysis_batch_label LIKE :format_pattern
+            ORDER BY created_at DESC
+            """,
+            {"format_pattern": f"%_{format_filter}_%"},
+        )
+    else:
+        events = _query_postgresql("""
+            SELECT id, created_at, analysis_batch_label
+            FROM generation_events
+            WHERE analysis_batch_label LIKE 'STRUCT_LEI15_CORE_CANDIDATE_002%'
+            ORDER BY created_at DESC
+        """)
 
     if not events:
         return {"available": False, "events_count": 0, "games": []}
@@ -266,9 +282,15 @@ def _check_ml_active() -> bool:
 
 
 def _analyze_games(games: list[dict[str, Any]]) -> dict[str, Any]:
-    """Analisa jogos gerados."""
+    """Analisa jogos gerados com detecção automática de formato."""
     if not games:
         return {}
+
+    # Detectar formato (tamanho do cartão) a partir do primeiro jogo
+    sample_numbers = games[0]["numbers"]
+    if isinstance(sample_numbers, str):
+        sample_numbers = json.loads(sample_numbers)
+    card_size = len(sample_numbers)
 
     # Frequência por dezena
     dezena_freq = Counter()
@@ -278,14 +300,14 @@ def _analyze_games(games: list[dict[str, Any]]) -> dict[str, Any]:
             numbers = json.loads(numbers)
         dezena_freq.update(numbers)
 
-    # Paridade (ímpar/par)
+    # Paridade (ímpar/par) - ajustado para o tamanho do cartão
     odd_even = Counter()
     for game in games:
         numbers = game["numbers"]
         if isinstance(numbers, str):
             numbers = json.loads(numbers)
         odd = sum(1 for n in numbers if n % 2 == 1)
-        odd_even[f"{odd}I/{15 - odd}P"] += 1
+        odd_even[f"{odd}I/{card_size - odd}P"] += 1
 
     # Sequências consecutivas
     max_consecutive = 0
@@ -315,6 +337,7 @@ def _analyze_games(games: list[dict[str, Any]]) -> dict[str, Any]:
     score_ml_values = [g["score_ml"] for g in games if g.get("score_ml") is not None]
 
     return {
+        "card_size": card_size,
         "dezena_frequency": dict(dezena_freq),
         "odd_even_distribution": dict(odd_even),
         "max_consecutive": max_consecutive,
@@ -374,9 +397,12 @@ def _render_kpis(
 
 
 def _render_structural_diagnosis(analysis: dict[str, Any]) -> None:
-    """Renderiza diagnóstico estrutural."""
+    """Renderiza diagnóstico estrutural com soma esperada baseada no formato."""
     st.subheader("Diagnóstico Estrutural")
-    st.caption("Análise agregada de todos os jogos gerados pelo CORE_002")
+    card_size = analysis.get("card_size", 15)
+    st.caption(
+        f"Análise agregada de todos os jogos gerados pelo CORE_002 (formato: {card_size} dezenas)"
+    )
 
     col1, col2, col3 = st.columns(3)
 
@@ -384,18 +410,25 @@ def _render_structural_diagnosis(analysis: dict[str, Any]) -> None:
         odd_even = analysis.get("odd_even_distribution", {})
         total_games = sum(odd_even.values())
         if total_games > 0:
-            odd_8 = odd_even.get("8I/7P", 0)
-            odd_7 = odd_even.get("7I/8P", 0)
-            pct_8 = (odd_8 / total_games * 100) if total_games > 0 else 0
-            pct_7 = (odd_7 / total_games * 100) if total_games > 0 else 0
+            # Encontrar as duas distribuições mais comuns
+            sorted_dist = sorted(odd_even.items(), key=lambda x: x[1], reverse=True)
+            top1_key, top1_count = (
+                sorted_dist[0] if len(sorted_dist) > 0 else ("N/A", 0)
+            )
+            top2_key, top2_count = (
+                sorted_dist[1] if len(sorted_dist) > 1 else ("N/A", 0)
+            )
+
+            pct_top1 = (top1_count / total_games * 100) if total_games > 0 else 0
+            pct_top2 = (top2_count / total_games * 100) if total_games > 0 else 0
 
             st.success("✅ Paridade Balanceada")
             st.metric(
                 label="Distribuição",
-                value=f"{pct_8:.0f}% / {pct_7:.0f}%",
-                help=f"8I/7P: {odd_8} jogos · 7I/8P: {odd_7} jogos",
+                value=f"{pct_top1:.0f}% / {pct_top2:.0f}%",
+                help=f"{top1_key}: {top1_count} jogos · {top2_key}: {top2_count} jogos",
             )
-            st.caption("Oficial: ~50% / 50%")
+            st.caption(f"Oficial: ~50% / 50% (formato {card_size}D)")
 
     with col2:
         max_consecutive = analysis.get("max_consecutive", 0)
@@ -407,16 +440,34 @@ def _render_structural_diagnosis(analysis: dict[str, Any]) -> None:
 
     with col3:
         avg_sum = analysis.get("average_sum", 0)
-        deviation = abs(avg_sum - 195)
-        st.success("✅ Distribuição de Soma")
-        st.metric(label="Média", value=f"{avg_sum:.1f}", help="Média dos jogos")
-        st.caption(f"Oficial: ~195 (desvio: {deviation:.1f})")
+        # Soma esperada baseada no formato
+        expected_sum = 195 if card_size == 15 else 234
+        deviation = abs(avg_sum - expected_sum)
+
+        # Threshold baseado no formato
+        threshold = 10 if card_size == 15 else 15
+        status_icon = "✅" if deviation <= threshold else "⚠️"
+
+        if deviation <= threshold:
+            st.success(f"{status_icon} Distribuição de Soma")
+        else:
+            st.warning(f"{status_icon} Distribuição de Soma")
+
+        st.metric(
+            label="Média",
+            value=f"{avg_sum:.1f}",
+            help=f"Média dos jogos (esperado: ~{expected_sum})",
+        )
+        st.caption(f"Oficial: ~{expected_sum} (desvio: {deviation:.1f})")
 
 
 def _render_dezena_frequency(analysis: dict[str, Any]) -> None:
-    """Renderiza gráfico de frequência por dezena."""
+    """Renderiza gráfico de frequência por dezena com indicador de formato."""
+    card_size = analysis.get("card_size", 15)
     st.subheader("Frequência por Dezena")
-    st.caption("Distribuição das 25 dezenas em todos os jogos agregados")
+    st.caption(
+        f"Distribuição das 25 dezenas em todos os jogos agregados (formato: {card_size} dezenas)"
+    )
 
     dezena_freq = analysis.get("dezena_frequency", {})
     if not dezena_freq:
@@ -672,60 +723,58 @@ def _render_recommendations(
 
 
 def render_cobertura_nova() -> None:
-    """Renderiza o painel Cobertura Nova."""
+    """Renderiza o painel Cobertura Nova com abas separadas por formato."""
     st.markdown("### Cobertura Nova")
     st.caption(
-        "Painel dinâmico com ML como sensor informativo — análise agregada de todas as gerações"
+        "Painel dinâmico com ML como sensor informativo — análise separada por formato (15D vs 18D)"
     )
 
-    # Carregar dados
+    # Carregar dados gerais
     with st.spinner("Carregando dados do banco..."):
-        generation_data = _load_all_generations_data()
+        all_data = _load_all_generations_data()  # Todos os formatos
+        data_15d = _load_all_generations_data(format_filter="15D")
+        data_18d = _load_all_generations_data(format_filter="18D")
         conference_stats = _load_conference_stats()
         calib_stats = _load_calibration_stats()
         feedback_stats = _load_feedback_loop_stats()
         ml_active = _check_ml_active()
 
-    if not generation_data.get("available"):
+    if not all_data.get("available"):
         st.warning("Nenhuma geração CORE_002 encontrada")
         return
 
-    games = generation_data.get("games", [])
-    analysis = _analyze_games(games)
-
-    # Header
-    events_count = generation_data.get("events_count", 0)
-    total_games = len(games)
-
-    st.info(f"""
-    **Último Event #{generation_data["event_id"]}** · {generation_data["event_date"].strftime("%d/%m/%Y %H:%M")}
-    
-    Batch: `{generation_data["batch_label"]}`
-    
-    Analisando **{total_games:,} jogos** de **{events_count} gerações** agregadas
-    """)
-
-    # KPIs
-    _render_kpis(conference_stats, generation_data)
+    # KPIs gerais (todos os formatos)
+    _render_kpis(conference_stats, all_data)
 
     st.markdown("---")
 
-    # Diagnóstico estrutural
-    _render_structural_diagnosis(analysis)
+    # Abas separadas por formato
+    tab_all, tab_15d, tab_18d = st.tabs(
+        [
+            f"Todos ({len(all_data.get('games', []))} jogos)",
+            f"15 Dezenas ({len(data_15d.get('games', []))} jogos)",
+            f"18 Dezenas ({len(data_18d.get('games', []))} jogos)",
+        ]
+    )
+
+    with tab_all:
+        _render_format_analysis(all_data, "Todos os Formatos", ml_active)
+
+    with tab_15d:
+        if data_15d.get("available") and data_15d.get("games"):
+            _render_format_analysis(data_15d, "15 Dezenas", ml_active)
+        else:
+            st.info("Nenhuma geração 15D encontrada")
+
+    with tab_18d:
+        if data_18d.get("available") and data_18d.get("games"):
+            _render_format_analysis(data_18d, "18 Dezenas", ml_active)
+        else:
+            st.info("Nenhuma geração 18D encontrada")
 
     st.markdown("---")
 
-    # Frequência por dezena
-    _render_dezena_frequency(analysis)
-
-    st.markdown("---")
-
-    # Score ML como sensor
-    _render_ml_sensor(analysis, ml_active)
-
-    st.markdown("---")
-
-    # Ciclo de aprendizado
+    # Ciclo de aprendizado (comum a todos os formatos)
     _render_learning_cycle(ml_active, calib_stats, feedback_stats, conference_stats)
 
     st.markdown("---")
@@ -736,5 +785,44 @@ def render_cobertura_nova() -> None:
     # Footer
     st.markdown("---")
     st.caption(
-        "Análise baseada em dados reais do PostgreSQL Railway · ML como sensor, não como gate"
+        "Análise baseada em dados reais do PostgreSQL Railway · ML como sensor, não como gate · "
+        "Análises separadas por formato para evitar distorções estatísticas"
     )
+
+
+def _render_format_analysis(
+    generation_data: dict[str, Any], format_name: str, ml_active: bool
+) -> None:
+    """Renderiza análise completa para um formato específico."""
+    games = generation_data.get("games", [])
+    analysis = _analyze_games(games)
+    card_size = analysis.get("card_size", 15)
+
+    # Header do formato
+    if generation_data.get("available"):
+        events_count = generation_data.get("events_count", 0)
+        total_games = len(games)
+
+        st.info(f"""
+        **Formato: {format_name}** · {card_size} dezenas por jogo
+        
+        Último Event #{generation_data.get("event_id", "N/A")} · 
+        {generation_data.get("event_date", "N/A").strftime("%d/%m/%Y %H:%M") if hasattr(generation_data.get("event_date", ""), "strftime") else "N/A"}
+        
+        Batch: `{generation_data.get("batch_label", "N/A")}`
+        
+        Analisando **{total_games:,} jogos** de **{events_count} gerações** agregadas
+        """)
+
+        # Diagnóstico estrutural
+        _render_structural_diagnosis(analysis)
+
+        st.markdown("---")
+
+        # Frequência por dezena
+        _render_dezena_frequency(analysis)
+
+        st.markdown("---")
+
+        # Score ML como sensor
+        _render_ml_sensor(analysis, ml_active)
