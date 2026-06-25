@@ -12,20 +12,16 @@ STRONG_V1_SUFFIXES: tuple[tuple[int, ...], ...] = (
 STRONG_V1_PREFIXES: tuple[tuple[int, ...], ...] = (
     (1, 2, 3),
     (1, 3, 4),
-    (1, 3, 6),
-    (1, 4, 6),
+    (1, 3, 5),
+    (1, 4, 5),
 )
 
 WATCH_PREFIX_PAIRS: tuple[tuple[int, ...], ...] = ((1, 2), (2, 3))
 WATCH_SUFFIX_PAIRS: tuple[tuple[int, ...], ...] = ((22, 24), (24, 25), (22, 25))
 
 # M-CORE-003 — padrões historicamente sobre-representados nos GPs gerados.
-PREFIX_BIAS_GROUP_A: frozenset[str] = frozenset(
-    {"01-03-06", "01-05-06", "03-05-06", "01-05-07"}
-)
-PREFIX_BIAS_GROUP_B: frozenset[str] = frozenset(
-    {"01-04-06", "04-05-06", "02-03-06", "03-04-06"}
-)
+PREFIX_BIAS_GROUP_A: frozenset[str] = frozenset({"01-05-07"})
+PREFIX_BIAS_GROUP_B: frozenset[str] = frozenset()
 SUFFIX_BIAS_GROUP_A: frozenset[str] = frozenset(
     {"20-22-23", "20-23-24", "19-22-23", "21-22-23", "19-23-24"}
 )
@@ -66,8 +62,10 @@ def is_v1_strong_pattern(numbers: list[int]) -> bool:
     sig = compute_structural_signatures(numbers)
     p3 = prefix3(numbers)
     s3 = suffix3(numbers)
-    return p3 in STRONG_V1_PREFIXES or s3 in STRONG_V1_SUFFIXES or (
-        sig["has_prefix_123"] and s3 in STRONG_V1_SUFFIXES
+    return (
+        p3 in STRONG_V1_PREFIXES
+        or s3 in STRONG_V1_SUFFIXES
+        or (sig["has_prefix_123"] and s3 in STRONG_V1_SUFFIXES)
     )
 
 
@@ -116,7 +114,12 @@ def apply_core_traceability_payload(
     relabeling_applied: bool = False,
     relabeling_reason: str | None = None,
 ) -> dict[str, Any]:
-    origin = str(profile_origin or game.get("perfil_origem_real") or game.get("profile_type") or "")
+    origin = str(
+        profile_origin
+        or game.get("perfil_origem_real")
+        or game.get("profile_type")
+        or ""
+    )
     label_final = str(game.get("profile_type") or origin)
     numbers = list(game.get("numbers") or [])
     sig = compute_structural_signatures(numbers)
@@ -158,7 +161,9 @@ def apply_structural_bias_penalty_to_score(
     if not enabled:
         return float(game.get("profile_score", 0) or 0)
     origin = str(game.get("perfil_origem_real") or game.get("profile_type") or "")
-    bias = compute_structural_bias_score(list(game.get("numbers") or []), profile_origin=origin)
+    bias = compute_structural_bias_score(
+        list(game.get("numbers") or []), profile_origin=origin
+    )
     penalty = bias * weight / 100.0
     adjusted = max(0.0, float(game.get("profile_score", 0) or 0) - penalty)
     game["structural_bias_score"] = bias

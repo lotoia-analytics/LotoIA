@@ -22,10 +22,8 @@ STRONG_SUFFIXES: Final[tuple[tuple[int, ...], ...]] = (
 STRONG_PREFIXES: Final[tuple[tuple[int, ...], ...]] = (
     (1, 2, 3),
     (1, 3, 4),
-    (1, 3, 6),
-    (1, 4, 6),
 )
-MIDDLE_BLOCK_DIGITS: Final[tuple[int, ...]] = (6, 8, 14, 15, 16, 18)
+MIDDLE_BLOCK_DIGITS: Final[tuple[int, ...]] = (8, 14, 15, 18)
 PREFERRED_PROFILES: Final[tuple[str, ...]] = ("recorrente", "hibrido")
 
 

@@ -46,7 +46,7 @@ class CoreCandidate001Config:
     hybrid_inherit_min: int = 4
     hybrid_inherit_max: int = 7
     blind_spot_injection: bool = False
-    blind_spot_digits: tuple[int, ...] = (6, 16, 17)
+    blind_spot_digits: tuple[int, ...] = (16, 17)
     blind_spot_slots: int = 2
 
     adjusted_recurrence_scoring: bool = False
@@ -81,7 +81,9 @@ def resolve_variant(batch_label: str | None) -> str:
 
 
 def resolve_candidate_config(batch_label: str | None = None) -> CoreCandidate001Config:
-    base = CoreCandidate001Config(mode=get_candidate_mode(), variant=resolve_variant(batch_label))
+    base = CoreCandidate001Config(
+        mode=get_candidate_mode(), variant=resolve_variant(batch_label)
+    )
     variant = base.variant
     cfg_a = replace(
         base,

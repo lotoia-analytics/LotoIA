@@ -56,7 +56,7 @@ EPOCH_001_EVIDENCE: Final[dict[str, object]] = {
         "02-04-05",
         "02-05-06",
     ],
-    "recurrently_missing_digits": [16, 6, 17, 23, 20, 8, 10, 4],
+    "recurrently_missing_digits": [17, 23, 20, 8, 10, 4],
     "redundancy_similarity_range": (0.799, 0.838),
     "adr_authorization": "IMPLEMENTAR_REALINHAMENTO_ESTRUTURAL_LEI15_V1",
 }
