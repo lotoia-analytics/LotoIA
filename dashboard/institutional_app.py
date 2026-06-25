@@ -11742,6 +11742,44 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
     summary_cols[7].metric("melhor score", f"{best_score:.4f}")
     summary_cols[8].metric("última geração", latest_generation_label)
     summary_cols[9].metric("primeira geração", first_generation_label)
+
+    # Métricas de destaque (jackpots e cobertura)
+    if not generation_df.empty:
+        # Contar jackpots (15 acertos)
+        jackpot_count = int(
+            (generation_df["maior acerto"].fillna(0).astype(int) == 15).sum()
+        )
+        # Contar eventos sem reconciliação
+        unreconciled_events = int(
+            (
+                generation_df["status de conferência"].astype(str) == "Nao conferido"
+            ).sum()
+        )
+        # Calcular cobertura de reconciliação
+        reconciliation_coverage = (
+            f"{((total_generation_events - unreconciled_events) / total_generation_events * 100):.0f}%"
+            if total_generation_events > 0
+            else "0%"
+        )
+
+        highlight_cols = st.columns(4)
+        highlight_cols[0].metric("JACKPOTS (15 acertos)", jackpot_count)
+        highlight_cols[1].metric("Concursos reconciliados", total_contests_reconciled)
+        highlight_cols[2].metric("Cobertura reconciliação", reconciliation_coverage)
+        highlight_cols[3].metric("Eventos pendentes", unreconciled_events)
+
+        # Alerta para eventos pendentes
+        if unreconciled_events > 0:
+            unreconciled_games = int(
+                generation_df[
+                    generation_df["status de conferência"].astype(str)
+                    == "Nao conferido"
+                ]["quantidade real gerada"].sum()
+            )
+            st.warning(
+                f"⚠️ {unreconciled_events} eventos com {unreconciled_games} jogos gerados mas não conferidos"
+            )
+
     _render_scientific_memory_block()
 
     if not generation_df.empty:
@@ -11985,6 +12023,13 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             "maior acerto mínimo", min_value=0, value=0, step=1
         )
 
+        filter_row_3 = st.columns([1, 1, 1])
+        jackpot_only = filter_row_3[0].checkbox(
+            "somente JACKPOTS (15 acertos)", value=False
+        )
+        high_hits_only = filter_row_3[1].checkbox("somente 13+ acertos", value=False)
+        recent_first = filter_row_3[2].checkbox("ordenar por mais recente", value=True)
+
         date_values = pd.to_datetime(
             generation_df["data/hora"], errors="coerce"
         ).dropna()
@@ -12054,6 +12099,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
         filtered_df = filtered_df[
             filtered_df["maior acerto"].astype(int) >= int(min_hits)
         ]
+        if jackpot_only:
+            filtered_df = filtered_df[filtered_df["maior acerto"].astype(int) == 15]
+        if high_hits_only:
+            filtered_df = filtered_df[filtered_df["maior acerto"].astype(int) >= 13]
 
         order_by = st.selectbox(
             "ordenar por", ["data", "maior acerto", "score"], index=0
@@ -12079,9 +12128,10 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
                 ascending=[False, False, False, False],
             )
         else:
+            # Ordenação por data (respeitando recent_first)
             filtered_df = filtered_df.sort_values(
                 by=["data/hora_dt", "generation_event_id"],
-                ascending=[False, False],
+                ascending=[not recent_first, not recent_first],
             )
 
         display_df = filtered_df.copy()
