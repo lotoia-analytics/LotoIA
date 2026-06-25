@@ -31,13 +31,19 @@ MIN_COMPLIANT_POOL_SIZE = 100
 MIN_POOL_COMPLIANCE_RATE = 0.90
 
 
-def resolve_structural_pool_target(*, requested_count: int, min_compliant: int | None = None) -> int:
+def resolve_structural_pool_target(
+    *, requested_count: int, min_compliant: int | None = None
+) -> int:
     """Escala pool conforme ao lote solicitado — evita material insuficiente para anti-clone."""
     requested = max(int(requested_count or 0), 1)
     floor = max(int(min_compliant or MIN_COMPLIANT_POOL_SIZE), MIN_COMPLIANT_POOL_SIZE)
     return max(floor, requested * 3, requested + 75)
+
+
 REFERENCE_CONTEST_WINDOW = 10
-MAX_PREFIX_SUFFIX_SHARE = 0.14
+MAX_PREFIX_SUFFIX_SHARE = (
+    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
+)
 MIN_DEZENA_COVERAGE_RATIO = 0.18
 NEAR_CLONE_OVERLAP_15D = 14
 
@@ -69,7 +75,9 @@ def _generate_compliant_card(
     if len(previous_numbers) < 10:
         return None
     core_numbers = {int(value) for value in policy.get("core_numbers") or CORE_NUMBERS}
-    discouraged = {int(value) for value in policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS}
+    discouraged = {
+        int(value) for value in policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS
+    }
 
     for _ in range(1200):
         repeat_n = rng.randint(7, 10)
@@ -86,7 +94,9 @@ def _generate_compliant_card(
             continue
 
         available_odd = [number for number in range(1, 26, 2) if number not in repeated]
-        available_even = [number for number in range(2, 26, 2) if number not in repeated]
+        available_even = [
+            number for number in range(2, 26, 2) if number not in repeated
+        ]
         if odd_need > len(available_odd) or even_need > len(available_even):
             continue
 
@@ -95,8 +105,12 @@ def _generate_compliant_card(
         safe_odd = [number for number in available_odd if number not in discouraged]
         safe_even = [number for number in available_even if number not in discouraged]
 
-        pick_odd = _pick_with_preference(rng, available_odd, preferred_odd, safe_odd, odd_need)
-        pick_even = _pick_with_preference(rng, available_even, preferred_even, safe_even, even_need)
+        pick_odd = _pick_with_preference(
+            rng, available_odd, preferred_odd, safe_odd, odd_need
+        )
+        pick_even = _pick_with_preference(
+            rng, available_even, preferred_even, safe_even, even_need
+        )
         if pick_odd is None or pick_even is None:
             continue
 
@@ -135,7 +149,9 @@ def _pick_with_preference(
     return chosen
 
 
-def _extract_recent_contests(history: Sequence[Any] | None, *, window: int = REFERENCE_CONTEST_WINDOW) -> list[list[int]]:
+def _extract_recent_contests(
+    history: Sequence[Any] | None, *, window: int = REFERENCE_CONTEST_WINDOW
+) -> list[list[int]]:
     contests: list[list[int]] = []
     for draw in list(history or [])[-window:]:
         numbers = getattr(draw, "numbers", None)
@@ -144,7 +160,9 @@ def _extract_recent_contests(history: Sequence[Any] | None, *, window: int = REF
             continue
         if isinstance(draw, Mapping):
             raw = draw.get("numbers") or draw.get("dezenas") or []
-            contests.append(sorted(int(number) for number in raw if 1 <= int(number) <= 25))
+            contests.append(
+                sorted(int(number) for number in raw if 1 <= int(number) <= 25)
+            )
     return [row for row in contests if len(row) == 15]
 
 
@@ -173,7 +191,9 @@ def _evaluate_pool_against_recent_contests(
         "reference_contest_window": window,
         "reference_contests_count": len(contests),
         "reference_contest_numbers": [contest for contest in contests],
-        "avg_hits_per_contest": round(sum(hit_scores) / len(hit_scores), 4) if hit_scores else 0.0,
+        "avg_hits_per_contest": round(sum(hit_scores) / len(hit_scores), 4)
+        if hit_scores
+        else 0.0,
     }
 
 
@@ -182,8 +202,12 @@ def _pool_diversity_metrics(games: Sequence[Mapping[str, Any]]) -> dict[str, Any
     pool_size = len(cards)
     if pool_size == 0:
         return {"pool_size": 0, "diversity_score": 0.0}
-    prefix3 = Counter(format_dezena_group(compute_prefix(list(card), 3)) for card in cards)
-    suffix3 = Counter(format_dezena_group(compute_suffix(list(card), 3)) for card in cards)
+    prefix3 = Counter(
+        format_dezena_group(compute_prefix(list(card), 3)) for card in cards
+    )
+    suffix3 = Counter(
+        format_dezena_group(compute_suffix(list(card), 3)) for card in cards
+    )
     number_presence = Counter(number for card in cards for number in card)
     prefix_limit = max(3, int(pool_size * MAX_PREFIX_SUFFIX_SHARE))
     suffix_limit = max(3, int(pool_size * MAX_PREFIX_SUFFIX_SHARE))
@@ -197,9 +221,17 @@ def _pool_diversity_metrics(games: Sequence[Mapping[str, Any]]) -> dict[str, Any
         "pool_size": pool_size,
         "top_prefix3": prefix3.most_common(1)[0] if prefix3 else ("", 0),
         "top_suffix3": suffix3.most_common(1)[0] if suffix3 else ("", 0),
-        "prefix_dominant": any(count >= prefix_limit for _, count in prefix3.most_common(3)),
-        "suffix_dominant": any(count >= suffix_limit for _, count in suffix3.most_common(3)),
-        "subcovered_dezenas": [number for number in range(1, 26) if number_presence.get(number, 0) < min_expected],
+        "prefix_dominant": any(
+            count >= prefix_limit for _, count in prefix3.most_common(3)
+        ),
+        "suffix_dominant": any(
+            count >= suffix_limit for _, count in suffix3.most_common(3)
+        ),
+        "subcovered_dezenas": [
+            number
+            for number in range(1, 26)
+            if number_presence.get(number, 0) < min_expected
+        ],
         "near_clone_pairs": near_clone_pairs,
         "diversity_score": round(
             1.0 - (near_clone_pairs / max(pool_size * (pool_size - 1) / 2, 1)),
@@ -219,8 +251,16 @@ def _structural_pool_score(
         return 0.0
     score = float(game.get("profile_score", 0) or 0)
     card_set = set(card)
-    core_present = len(card_set & {int(value) for value in policy.get("core_numbers") or CORE_NUMBERS})
-    discouraged_present = len(card_set & {int(value) for value in policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS})
+    core_present = len(
+        card_set & {int(value) for value in policy.get("core_numbers") or CORE_NUMBERS}
+    )
+    discouraged_present = len(
+        card_set
+        & {
+            int(value)
+            for value in policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS
+        }
+    )
     score += core_present * 0.35
     score -= max(0, discouraged_present - 3) * 0.45
     if selected_cards:
@@ -229,11 +269,19 @@ def _structural_pool_score(
             score -= max(overlaps) * 0.25
     prefix = format_dezena_group(compute_prefix(card, 3))
     suffix = format_dezena_group(compute_suffix(card, 3))
-    prefix_counts = Counter(format_dezena_group(compute_prefix(row, 3)) for row in selected_cards)
-    suffix_counts = Counter(format_dezena_group(compute_suffix(row, 3)) for row in selected_cards)
-    if prefix_counts.get(prefix, 0) >= max(2, int(len(selected_cards) * MAX_PREFIX_SUFFIX_SHARE)):
+    prefix_counts = Counter(
+        format_dezena_group(compute_prefix(row, 3)) for row in selected_cards
+    )
+    suffix_counts = Counter(
+        format_dezena_group(compute_suffix(row, 3)) for row in selected_cards
+    )
+    if prefix_counts.get(prefix, 0) >= max(
+        2, int(len(selected_cards) * MAX_PREFIX_SUFFIX_SHARE)
+    ):
         score -= 0.8
-    if suffix_counts.get(suffix, 0) >= max(2, int(len(selected_cards) * MAX_PREFIX_SUFFIX_SHARE)):
+    if suffix_counts.get(suffix, 0) >= max(
+        2, int(len(selected_cards) * MAX_PREFIX_SUFFIX_SHARE)
+    ):
         score -= 0.8
     return score
 
@@ -257,7 +305,10 @@ def _select_diverse_compliant_pool(
         card = list(_game_signature(game))
         if not card:
             continue
-        if any(len(set(card) & set(other)) >= NEAR_CLONE_OVERLAP_15D for other in selected_cards):
+        if any(
+            len(set(card) & set(other)) >= NEAR_CLONE_OVERLAP_15D
+            for other in selected_cards
+        ):
             continue
         adjusted = dict(game)
         adjusted["structural_pool_score"] = round(
@@ -400,7 +451,8 @@ def build_ml_structural_15d_pool(
         "compliance_rate": round(compliance_rate, 4),
         "min_compliant_required": int(min_compliant),
         "min_compliance_rate_required": MIN_POOL_COMPLIANCE_RATE,
-        "compliance_met": compliance_rate >= MIN_POOL_COMPLIANCE_RATE and len(selected_compliant) >= min_compliant,
+        "compliance_met": compliance_rate >= MIN_POOL_COMPLIANCE_RATE
+        and len(selected_compliant) >= min_compliant,
         "policy_version": POLICY_VERSION,
         "metrics_before": metrics_before,
         "metrics_after": metrics_after,
@@ -408,7 +460,12 @@ def build_ml_structural_15d_pool(
             "issue_count": diagnostics_before.get("issue_count"),
             "diversity_score": round(
                 1.0
-                - float((diagnostics_before.get("redundancy") or {}).get("similaridade_media_entre_jogos", 0) or 0),
+                - float(
+                    (diagnostics_before.get("redundancy") or {}).get(
+                        "similaridade_media_entre_jogos", 0
+                    )
+                    or 0
+                ),
                 4,
             ),
         },
@@ -416,7 +473,12 @@ def build_ml_structural_15d_pool(
             "issue_count": diagnostics_after.get("issue_count"),
             "diversity_score": round(
                 1.0
-                - float((diagnostics_after.get("redundancy") or {}).get("similaridade_media_entre_jogos", 0) or 0),
+                - float(
+                    (diagnostics_after.get("redundancy") or {}).get(
+                        "similaridade_media_entre_jogos", 0
+                    )
+                    or 0
+                ),
                 4,
             ),
         },
@@ -426,7 +488,9 @@ def build_ml_structural_15d_pool(
         "raw_compliant_count": len(compliant) - generated_count,
     }
     if module_params or calibration_plan:
-        from lotoia.ml.authorized_ml_calibration_plan import extract_module_operational_params
+        from lotoia.ml.authorized_ml_calibration_plan import (
+            extract_module_operational_params,
+        )
 
         ops = extract_module_operational_params(calibration_plan)
         mp = dict(module_params or ops.get("modules", {}).get("M-ML-072") or {})
@@ -465,15 +529,28 @@ def build_structural_15d_pool_trace(bundle: Mapping[str, Any] | None) -> dict[st
         "pool_origin": str(source.get("pool_origin") or POOL_ORIGIN_LABEL),
         "structural_pool_applied": bool(source.get("structural_pool_applied")),
         "structural_pool_size": int(source.get("structural_pool_size", 0) or 0),
-        "structural_compliant_pool_size": int(source.get("structural_compliant_pool_size", 0) or 0),
+        "structural_compliant_pool_size": int(
+            source.get("structural_compliant_pool_size", 0) or 0
+        ),
         "compliance_rate": float(source.get("compliance_rate", 0.0) or 0.0),
         "compliance_met": bool(source.get("compliance_met")),
-        "structural_generated_count": int(source.get("structural_generated_count", 0) or 0),
-        "reference_contest_window": int(source.get("reference_contest_window", REFERENCE_CONTEST_WINDOW) or REFERENCE_CONTEST_WINDOW),
-        "confronto_recent_contests": dict(source.get("confronto_recent_contests") or {}),
+        "structural_generated_count": int(
+            source.get("structural_generated_count", 0) or 0
+        ),
+        "reference_contest_window": int(
+            source.get("reference_contest_window", REFERENCE_CONTEST_WINDOW)
+            or REFERENCE_CONTEST_WINDOW
+        ),
+        "confronto_recent_contests": dict(
+            source.get("confronto_recent_contests") or {}
+        ),
         "metrics_before": dict(source.get("metrics_before") or {}),
         "metrics_after": dict(source.get("metrics_after") or {}),
         "calibration_plan_applied": bool(source.get("calibration_plan_applied")),
-        "calibration_operational_trace": list(source.get("calibration_operational_trace") or []),
-        "calibration_module_params": dict(source.get("calibration_module_params") or {}),
+        "calibration_operational_trace": list(
+            source.get("calibration_operational_trace") or []
+        ),
+        "calibration_module_params": dict(
+            source.get("calibration_module_params") or {}
+        ),
     }

@@ -44,7 +44,9 @@ STATUS_ACTIVE = "ML OPERACIONAL SUPERVISIONADO — CALIBRAÇÃO DE SAÍDA ATIVA"
 # Dezenas críticas CORE_002 (observacional — reforço supervisionado, sem mutar Núcleo)
 CRITICAL_DEZENAS: frozenset[int] = frozenset({7, 15, 23})
 DEFAULT_UNDERCOVER_RATIO = 0.18
-DEFAULT_PREFIX_SHARE_LIMIT = 0.14
+DEFAULT_PREFIX_SHARE_LIMIT = (
+    0.21  # Frequência histórica do triplet dominante (últimos 300 concursos: 21,0%)
+)
 DEFAULT_NEAR_DUP_PAIR_RATIO = 0.28
 MISSION_ID_080 = "M-ML-080"
 
@@ -61,6 +63,8 @@ def resolve_near_duplicate_pair_ratio(requested_count: int) -> float:
     if count <= 50:
         return 0.33
     return DEFAULT_NEAR_DUP_PAIR_RATIO
+
+
 DOMINANCE_CALIBRATION_THRESHOLD = 6
 
 
@@ -93,7 +97,9 @@ def resolve_pool_game_size(
     contract: dict[str, Any] = {
         "mission_id": MISSION_ID_FIX_03,
         "requested_game_size": int(game_size) if game_size is not None else None,
-        "requested_count": int(requested_count) if requested_count is not None else None,
+        "requested_count": int(requested_count)
+        if requested_count is not None
+        else None,
         "contract_errors": [],
         "resolved_from": None,
     }
@@ -101,11 +107,17 @@ def resolve_pool_game_size(
     label_size = core_002_batch_label_game_size(batch_label)
     cards = _pool_cards(games)
     card_sizes = {len(card) for card in cards if card}
-    card_size = next(iter(card_sizes)) if len(card_sizes) == 1 and _is_supported_game_size(next(iter(card_sizes))) else None
+    card_size = (
+        next(iter(card_sizes))
+        if len(card_sizes) == 1 and _is_supported_game_size(next(iter(card_sizes)))
+        else None
+    )
     if card_size is None and cards and _is_supported_game_size(len(cards[0])):
         card_size = len(cards[0])
         if len(card_sizes) > 1:
-            contract["contract_errors"].append("cartões com tamanhos mistos; usando primeiro cartão")
+            contract["contract_errors"].append(
+                "cartões com tamanhos mistos; usando primeiro cartão"
+            )
 
     resolved: int | None = None
     if label_size is not None and _is_supported_game_size(label_size):
@@ -173,7 +185,11 @@ def analyze_pool_structural_issues(
     )
     cards = _pool_cards(games)
     pool_size = len(cards)
-    redundancy = compute_gp_redundancy(cards, game_size=int(resolved_size)) if pool_size >= 2 else {}
+    redundancy = (
+        compute_gp_redundancy(cards, game_size=int(resolved_size))
+        if pool_size >= 2
+        else {}
+    )
     issues: list[dict[str, Any]] = []
 
     if pool_size < 2:
@@ -186,9 +202,14 @@ def analyze_pool_structural_issues(
             "issue_count": 0,
         }
 
-    pair_count = int(redundancy.get("pair_count", redundancy.get("pares_possiveis", 0)) or 0)
+    pair_count = int(
+        redundancy.get("pair_count", redundancy.get("pares_possiveis", 0)) or 0
+    )
     near_dup = int(
-        redundancy.get("quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos", 0)) or 0
+        redundancy.get(
+            "quase_repetidos_criticos", redundancy.get("cartoes_quase_repetidos", 0)
+        )
+        or 0
     )
     near_dup_ratio = (near_dup / pair_count) if pair_count > 0 else 0.0
     near_dup_limit = (
@@ -234,7 +255,9 @@ def analyze_pool_structural_issues(
 
     prefix3 = Counter(format_dezena_group(compute_prefix(card, 3)) for card in cards)
     suffix3 = Counter(format_dezena_group(compute_suffix(card, 3)) for card in cards)
-    prefix_limit = max(DOMINANCE_CALIBRATION_THRESHOLD, int(pool_size * DEFAULT_PREFIX_SHARE_LIMIT))
+    prefix_limit = max(
+        DOMINANCE_CALIBRATION_THRESHOLD, int(pool_size * DEFAULT_PREFIX_SHARE_LIMIT)
+    )
     for prefix, count in prefix3.most_common(8):
         if count >= prefix_limit:
             issues.append(
@@ -265,7 +288,9 @@ def analyze_pool_structural_issues(
     from lotoia.ml.ml_operational_hierarchy import resolve_min_coverage_for_count
 
     min_distinct_coverage = resolve_min_coverage_for_count(lot_reference)
-    distinct_present = sum(1 for number in range(1, 26) if int(number_presence.get(number, 0)) > 0)
+    distinct_present = sum(
+        1 for number in range(1, 26) if int(number_presence.get(number, 0)) > 0
+    )
     if distinct_present < min_distinct_coverage:
         issues.append(
             {
@@ -336,11 +361,13 @@ def analyze_pool_structural_issues(
         "issues": issues,
         "issue_count": len(issues),
         "number_presence": {str(k): v for k, v in sorted(number_presence.items())},
-        "prefix_top": [{"estrutura": k, "frequencia": v} for k, v in prefix3.most_common(5)],
-        "suffix_top": [{"estrutura": k, "frequencia": v} for k, v in suffix3.most_common(5)],
+        "prefix_top": [
+            {"estrutura": k, "frequencia": v} for k, v in prefix3.most_common(5)
+        ],
+        "suffix_top": [
+            {"estrutura": k, "frequencia": v} for k, v in suffix3.most_common(5)
+        ],
     }
-
-
 
 
 def _resolve_policy_db_path(event_context: Mapping[str, Any] | None) -> Any:
@@ -387,7 +414,9 @@ def _apply_structural_policy_15d_game_adjustment(
             actions.append(f"penalidade_politica_sequencia={delta:.3f}")
 
     core_numbers = {int(value) for value in list(policy.get("core_numbers") or [])}
-    discouraged_numbers = {int(value) for value in list(policy.get("discouraged_numbers") or [])}
+    discouraged_numbers = {
+        int(value) for value in list(policy.get("discouraged_numbers") or [])
+    }
     card_set = set(numbers)
     core_present = card_set & core_numbers
     discouraged_present = card_set & discouraged_numbers
@@ -398,8 +427,10 @@ def _apply_structural_policy_15d_game_adjustment(
             boost += delta
             actions.append(f"reforco_core_numbers={delta:.3f}")
     if len(discouraged_present) > 3:
-        delta = 0.1 * float(params.get("discourage_penalty_boost", 1.0) or 1.0) * (
-            len(discouraged_present) - 3
+        delta = (
+            0.1
+            * float(params.get("discourage_penalty_boost", 1.0) or 1.0)
+            * (len(discouraged_present) - 3)
         )
         penalty += delta
         actions.append(f"penalidade_discouraged_numbers={delta:.3f}")
@@ -411,7 +442,10 @@ def _apply_structural_policy_15d_game_adjustment(
         "validation": validation,
     }
 
-def _plan_scale(params: Mapping[str, Any] | None, key: str, default: float = 1.0) -> float:
+
+def _plan_scale(
+    params: Mapping[str, Any] | None, key: str, default: float = 1.0
+) -> float:
     if not isinstance(params, Mapping):
         return default
     try:
@@ -459,7 +493,11 @@ def _compute_game_calibration_adjustment(
         max_overlap = max(overlaps)
         critical_overlap = max(size - 1, 13)
         if max_overlap >= critical_overlap:
-            overlap_delta = (max_overlap - (size - 2)) * 0.25 * _plan_scale(plan_params, "max_overlap_penalty")
+            overlap_delta = (
+                (max_overlap - (size - 2))
+                * 0.25
+                * _plan_scale(plan_params, "max_overlap_penalty")
+            )
             penalty += max(overlap_delta, 0.0)
             actions.append(f"penalidade_overlap_maximo={overlap_delta:.3f}")
 
@@ -483,7 +521,11 @@ def _compute_game_calibration_adjustment(
         prefix_scale = _plan_scale(plan_params, "prefix_penalty")
         penalty += 1.0 * prefix_scale
         actions.append(f"penalidade_prefixo_autorizado={prefix3}")
-    elif plan_params and str(plan_params.get("prefixo_alvo") or "") and prefix3 != str(plan_params.get("prefixo_alvo")):
+    elif (
+        plan_params
+        and str(plan_params.get("prefixo_alvo") or "")
+        and prefix3 != str(plan_params.get("prefixo_alvo"))
+    ):
         boost += 0.25 * _plan_scale(plan_params, "diversity_floor_boost")
         actions.append(f"reforco_prefixo_alternativo={prefix3}")
     if suffix3 in excessive_suffixes:
@@ -494,7 +536,11 @@ def _compute_game_calibration_adjustment(
         suffix_scale = _plan_scale(plan_params, "suffix_penalty")
         penalty += 0.9 * suffix_scale
         actions.append(f"penalidade_sufixo_autorizado={suffix3}")
-    elif plan_params and str(plan_params.get("sufixo_alvo") or "") and suffix3 != str(plan_params.get("sufixo_alvo")):
+    elif (
+        plan_params
+        and str(plan_params.get("sufixo_alvo") or "")
+        and suffix3 != str(plan_params.get("sufixo_alvo"))
+    ):
         boost += 0.2 * _plan_scale(plan_params, "diversity_floor_boost")
         actions.append(f"reforco_sufixo_alternativo={suffix3}")
 
@@ -527,7 +573,11 @@ def _compute_game_calibration_adjustment(
     if excessive_dezenas:
         overlap_count = sum(1 for number in card_set if number in excessive_dezenas)
         if overlap_count >= 2:
-            excess_penalty = 0.18 * overlap_count * _plan_scale(plan_params, "redundancy_penalty_boost")
+            excess_penalty = (
+                0.18
+                * overlap_count
+                * _plan_scale(plan_params, "redundancy_penalty_boost")
+            )
             penalty += excess_penalty
             actions.append(f"penalidade_dezenas_excessivas={excess_penalty:.3f}")
 
@@ -607,8 +657,12 @@ def apply_supervised_output_calibration(
     plan_params = dict(plan.get("parametros_sugeridos") or {})
     plan_authorized = bool(plan.get("authorized"))
     context_payload = dict(event_context or {})
-    batch_label = context_payload.get("batch_label") or context_payload.get("analysis_batch_label")
-    requested_count = context_payload.get("requested_count") or context_payload.get("selected_quantity")
+    batch_label = context_payload.get("batch_label") or context_payload.get(
+        "analysis_batch_label"
+    )
+    requested_count = context_payload.get("requested_count") or context_payload.get(
+        "selected_quantity"
+    )
     resolved_size, size_contract = resolve_pool_game_size(
         games,
         batch_label=str(batch_label) if batch_label else None,
@@ -627,24 +681,36 @@ def apply_supervised_output_calibration(
             game_size=size,
             event_context=event_context,
         )
-        if auto_plan.get("auto_structural_calibration") and auto_plan.get("parametros_sugeridos"):
+        if auto_plan.get("auto_structural_calibration") and auto_plan.get(
+            "parametros_sugeridos"
+        ):
             for key, value in dict(auto_plan.get("parametros_sugeridos") or {}).items():
                 plan_params.setdefault(key, value)
             plan_authorized = plan_authorized or bool(auto_plan.get("authorized"))
 
     if is_structural_policy_15d_format(size):
         db_path = _resolve_policy_db_path(event_context)
-        policy_15d = ensure_structural_policy_15d_memory(db_path) if db_path else ensure_structural_policy_15d_memory()
-        previous_contest_numbers = list(context_payload.get("previous_contest_numbers") or [])
+        policy_15d = (
+            ensure_structural_policy_15d_memory(db_path)
+            if db_path
+            else ensure_structural_policy_15d_memory()
+        )
+        previous_contest_numbers = list(
+            context_payload.get("previous_contest_numbers") or []
+        )
         bundle_ctx = dict(context_payload.get("structural_policy_15d_bundle") or {})
         if not previous_contest_numbers:
-            previous_contest_numbers = list(bundle_ctx.get("previous_contest_numbers") or [])
+            previous_contest_numbers = list(
+                bundle_ctx.get("previous_contest_numbers") or []
+            )
         policy_15d_plan = build_structural_policy_15d_calibration_plan(
             bundle_ctx or {"violations": list(bundle_ctx.get("violated_rules") or [])},
             policy_15d,
         )
         if policy_15d_plan.get("parametros_sugeridos"):
-            for key, value in dict(policy_15d_plan.get("parametros_sugeridos") or {}).items():
+            for key, value in dict(
+                policy_15d_plan.get("parametros_sugeridos") or {}
+            ).items():
                 plan_params.setdefault(key, value)
             if policy_15d_plan.get("has_plan"):
                 plan_authorized = True
@@ -663,7 +729,11 @@ def apply_supervised_output_calibration(
     if pool_size == 0:
         return games, empty_bundle
 
-    effective_params = plan_params if plan_authorized or auto_plan.get("auto_structural_calibration") else None
+    effective_params = (
+        plan_params
+        if plan_authorized or auto_plan.get("auto_structural_calibration")
+        else None
+    )
 
     calibrated: list[dict[str, Any]] = []
     actions_summary: list[str] = []
@@ -705,13 +775,17 @@ def apply_supervised_output_calibration(
             "calibration_status": adjustment.get("status"),
         }
         enriched["score_ml_details"] = details
-        actions_summary.extend(enrichment for enrichment in enriched["ml_calibration_actions"])
+        actions_summary.extend(
+            enrichment for enrichment in enriched["ml_calibration_actions"]
+        )
         penalties.append(float(adjustment.get("penalty", 0) or 0))
         boosts.append(float(adjustment.get("boost", 0) or 0))
         status_counts[str(adjustment.get("status", "moderado"))] += 1
         calibrated.append(enriched)
 
-    structural_weight = float((effective_params or {}).get("structural_diversity_weight", 1.0) or 1.0)
+    structural_weight = float(
+        (effective_params or {}).get("structural_diversity_weight", 1.0) or 1.0
+    )
     calibrated.sort(
         key=lambda row: (
             -float(row.get("profile_score", 0) or 0),
@@ -757,11 +831,13 @@ def apply_supervised_output_calibration(
             or action.startswith("reforco_dezena_23")
         ),
         "diversity_score": round(
-            1.0 - float(redundancy_before.get("similaridade_media_entre_jogos", 0) or 0),
+            1.0
+            - float(redundancy_before.get("similaridade_media_entre_jogos", 0) or 0),
             4,
         ),
         "final_ml_score_avg": round(
-            sum(float(row.get("score_ml", 0) or 0) for row in calibrated) / max(len(calibrated), 1),
+            sum(float(row.get("score_ml", 0) or 0) for row in calibrated)
+            / max(len(calibrated), 1),
             4,
         ),
         "batch_status_counts": dict(status_counts),
@@ -777,7 +853,9 @@ def apply_supervised_output_calibration(
         bundle["structural_calibration_memory"] = dict(
             auto_plan.get("structural_calibration_memory") or {}
         )
-        bundle["structural_actions_applied"] = list(auto_plan.get("structural_actions") or [])
+        bundle["structural_actions_applied"] = list(
+            auto_plan.get("structural_actions") or []
+        )
     if plan_authorized:
         bundle["authorized_calibration_plan"] = {
             "mission_id": plan.get("mission_id"),
@@ -795,7 +873,9 @@ def apply_supervised_output_calibration(
             action
             for row in calibrated
             for action in list(row.get("ml_calibration_actions") or [])
-            if "politica" in str(action) or "core_numbers" in str(action) or "discouraged" in str(action)
+            if "politica" in str(action)
+            or "core_numbers" in str(action)
+            or "discouraged" in str(action)
         ]
         bundle["structural_policy_memory_loaded"] = True
         bundle["structural_policy_version"] = policy_15d.get("policy_version")
