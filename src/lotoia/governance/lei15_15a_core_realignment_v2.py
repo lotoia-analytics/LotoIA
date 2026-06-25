@@ -82,6 +82,7 @@ EPOCH_001_V2_EVIDENCE: Final[dict[str, object]] = {
 # Configuration dataclass — V2 thresholds
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True, slots=True)
 class CoreRealignmentV2Config:
     """Authorised thresholds for Core Realignment V2.
@@ -113,24 +114,25 @@ class CoreRealignmentV2Config:
     # -----------------------------------------------------------------------
 
     # Maximum fraction of GP games that may share prefix_3 / prefix_4
-    max_prefix3_ratio: float = 0.15   # V1 was 0.25
-    max_prefix4_ratio: float = 0.20   # V1 was 0.30
+    max_prefix3_ratio: float = 0.15  # V1 was 0.25
+    max_prefix4_ratio: float = 0.20  # V1 was 0.30
 
     # Maximum fraction of GP games that may share suffix_3 / suffix_4
-    max_suffix3_ratio: float = 0.15   # V1 was 0.25
-    max_suffix4_ratio: float = 0.20   # V1 was 0.30
+    max_suffix3_ratio: float = 0.15  # V1 was 0.25
+    max_suffix4_ratio: float = 0.20  # V1 was 0.30
 
     # Weight of concentration penalty per excess ratio unit
     concentration_penalty_weight: float = 55.0  # V1 was 40.0
 
     # -----------------------------------------------------------------------
-    # Coverage bonus (same target digits, stronger bonus)
+    # Coverage bonus (reduced target digits per jun/2026 analysis)
+    # 16 and 06 REMOVED: super-represented (16: 80% vs 55%; 06: 83% vs 62%)
     # -----------------------------------------------------------------------
 
-    target_coverage_digits: tuple[int, ...] = (16, 6, 17, 23, 20, 8, 10, 4)
+    target_coverage_digits: tuple[int, ...] = (17, 23, 20, 8, 10, 4)
 
-    coverage_bonus_per_digit: float = 2.0   # V1 was 1.5
-    max_coverage_bonus: float = 9.0         # V1 was 6.0
+    coverage_bonus_per_digit: float = 2.0  # V1 was 1.5
+    max_coverage_bonus: float = 9.0  # V1 was 6.0
 
     # -----------------------------------------------------------------------
     # Overlap penalty (same as V1 — already well-calibrated)

@@ -32,7 +32,9 @@ class CoreRealignmentV3Config:
 
     concentration_penalty_weight: float = 42.0
 
-    target_coverage_digits: tuple[int, ...] = (16, 6, 17, 23, 20, 8, 10, 4)
+    # 16 and 06 REMOVED (jun/2026): super-represented in generated games
+    # See: frequency analysis of last 300 official contests vs LotoIA
+    target_coverage_digits: tuple[int, ...] = (17, 23, 20, 8, 10, 4)
     coverage_bonus_per_digit: float = 1.5
     max_coverage_bonus: float = 6.0
 
