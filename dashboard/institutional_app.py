@@ -11620,7 +11620,199 @@ def _purge_institutional_history_tables() -> dict[str, Any]:
     }
 
 
+def _bulk_reconcile_pending_events(max_events: int = 50) -> dict[str, Any]:
+    """
+    Reconcilia em lote os eventos pendentes contra os últimos concursos oficiais.
+
+    Args:
+        max_events: Número máximo de eventos a reconciliar por execução
+
+    Returns:
+        Dicionário com resultados da reconciliação em lote
+    """
+    from lotoia.models import (
+        GenerationEvent,
+        GeneratedGame,
+        ReconciliationRun,
+        ReconciliationGame,
+    )
+    from lotoia.db import get_session
+
+    results = {
+        "events_processed": 0,
+        "events_reconciled": 0,
+        "total_games_reconciled": 0,
+        "total_prizes": 0,
+        "errors": [],
+        "reconciled_event_ids": [],
+    }
+
+    try:
+        with get_session(DB_PATH) as session:
+            # Buscar eventos sem reconciliação que têm jogos gerados
+            unreconciled_events = (
+                session.query(GenerationEvent)
+                .outerjoin(
+                    ReconciliationRun,
+                    ReconciliationRun.generation_event_id == GenerationEvent.id,
+                )
+                .filter(ReconciliationRun.id.is_(None))
+                .order_by(GenerationEvent.created_at.desc())
+                .limit(max_events)
+                .all()
+            )
+
+            if not unreconciled_events:
+                return results
+
+            # Buscar últimos concursos oficiais
+            from lotoia.models import LotofacilOfficialHistory
+
+            latest_contests = (
+                session.query(LotofacilOfficialHistory)
+                .order_by(LotofacilOfficialHistory.contest_number.desc())
+                .limit(10)
+                .all()
+            )
+
+            if not latest_contests:
+                results["errors"].append("Nenhum concurso oficial encontrado")
+                return results
+
+            # Para cada evento pendente, reconciliar contra os últimos concursos
+            for event in unreconciled_events:
+                try:
+                    # Buscar jogos gerados para este evento
+                    generated_games = (
+                        session.query(GeneratedGame)
+                        .filter(GeneratedGame.generation_event_id == event.id)
+                        .all()
+                    )
+
+                    if not generated_games:
+                        continue
+
+                    results["events_processed"] += 1
+
+                    # Reconciliar contra cada concurso oficial
+                    for contest in latest_contests:
+                        official_numbers = list(contest.numbers or [])
+                        if not official_numbers:
+                            continue
+
+                        # Calcular acertos para cada jogo
+                        contest_results = []
+                        prize_count = 0
+                        total_hits = 0
+                        best_hits = 0
+
+                        for game in generated_games:
+                            game_numbers = set(game.numbers or [])
+                            official_set = set(official_numbers)
+                            matched = game_numbers & official_set
+                            hits = len(matched)
+
+                            if hits >= 11:
+                                prize_count += 1
+
+                            total_hits += hits
+                            best_hits = max(best_hits, hits)
+
+                            contest_results.append(
+                                {
+                                    "game_index": game.game_index,
+                                    "numbers": game.numbers,
+                                    "hits": hits,
+                                    "matched_numbers": sorted(list(matched)),
+                                    "prize_status": "premiado"
+                                    if hits >= 11
+                                    else "nao_premiado",
+                                    "prize_tier": f"faixa_{hits}" if hits >= 11 else "",
+                                }
+                            )
+
+                        # Criar ReconciliationRun
+                        run = ReconciliationRun(
+                            generation_event_id=event.id,
+                            lead_id=None,
+                            contest_id=contest.contest_number,
+                            source="bulk_reconciliation",
+                            status="reconciled" if contest_results else "sem_jogos",
+                            prize_count=prize_count,
+                            total_hits=total_hits,
+                            best_hits=best_hits,
+                            payload={
+                                "source": "bulk_reconciliation",
+                                "contest_id": contest.contest_number,
+                                "best_hits": best_hits,
+                                "total_hits": total_hits,
+                                "prize_count": prize_count,
+                            },
+                        )
+                        session.add(run)
+                        session.flush()
+
+                        # Criar ReconciliationGames
+                        for game_result in contest_results:
+                            session.add(
+                                ReconciliationGame(
+                                    reconciliation_run_id=run.id,
+                                    generation_event_id=event.id,
+                                    lead_id=None,
+                                    contest_id=contest.contest_number,
+                                    game_index=game_result["game_index"],
+                                    numbers=game_result["numbers"],
+                                    hits=game_result["hits"],
+                                    matched_numbers=game_result["matched_numbers"],
+                                    prize_status=game_result["prize_status"],
+                                    prize_tier=game_result["prize_tier"],
+                                    context_json={
+                                        "source": "bulk_reconciliation",
+                                        "build_marker": BUILD_MARKER,
+                                    },
+                                )
+                            )
+
+                        results["total_games_reconciled"] += len(contest_results)
+                        results["total_prizes"] += prize_count
+
+                    results["events_reconciled"] += 1
+                    results["reconciled_event_ids"].append(event.id)
+
+                except Exception as e:
+                    results["errors"].append(f"Event {event.id}: {str(e)}")
+                    continue
+
+            session.commit()
+
+    except Exception as e:
+        results["errors"].append(f"Erro geral: {str(e)}")
+
+    return results
+
+
 def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
+    # Verificar se deve executar reconciliação em lote
+    if st.session_state.get("trigger_bulk_reconciliation"):
+        st.session_state.pop("trigger_bulk_reconciliation", None)
+        with st.spinner("Conferindo eventos pendentes..."):
+            bulk_result = _bulk_reconcile_pending_events(max_events=50)
+
+        if bulk_result["errors"]:
+            st.error(f"Erros na reconciliação: {', '.join(bulk_result['errors'][:3])}")
+
+        if bulk_result["events_reconciled"] > 0:
+            st.success(
+                f"✅ {bulk_result['events_reconciled']} eventos conferidos com sucesso! "
+                f"{bulk_result['total_games_reconciled']} jogos reconciliados, "
+                f"{bulk_result['total_prizes']} premiações encontradas."
+            )
+        else:
+            st.info("Nenhum evento pendente encontrado para conferir.")
+
+        st.cache_data.clear()
+        st.rerun()
+
     snapshot = _live_institutional_snapshot(snapshot, force_full=True)
     live_counts = _database_snapshot()["counts"]
     st.subheader("Histórico Institucional")
@@ -11779,6 +11971,20 @@ def _render_history_institutional_page(snapshot: dict[str, Any]) -> None:
             st.warning(
                 f"⚠️ {unreconciled_events} eventos com {unreconciled_games} jogos gerados mas não conferidos"
             )
+
+            # Botão para conferir eventos pendentes
+            with st.expander("Conferir eventos pendentes", expanded=False):
+                st.info(
+                    f"Serão conferidos {unreconciled_events} eventos com {unreconciled_games} jogos "
+                    f"contra os últimos concursos oficiais disponíveis."
+                )
+                if st.button(
+                    "🔄 Conferir eventos pendentes agora",
+                    type="primary",
+                    key="bulk_reconcile_pending",
+                ):
+                    st.session_state["trigger_bulk_reconciliation"] = True
+                    st.rerun()
 
     _render_scientific_memory_block()
 
@@ -14317,6 +14523,22 @@ def _persist_generation_snapshot(
             "game_signatures": list(game_signatures),
         }
         event.execution_time_ms = round((time.monotonic() - started_at) * 1000, 2)
+
+        # Calcular ranking_score baseado na qualidade dos jogos gerados
+        if games:
+            scores = []
+            for game in games:
+                final_score = game.get("final_score", {})
+                if isinstance(final_score, dict):
+                    score_value = float(final_score.get("final_score", 0.0) or 0.0)
+                    scores.append(score_value)
+            if scores:
+                event.ranking_score = round(sum(scores) / len(scores), 4)
+            else:
+                event.ranking_score = 0.0
+        else:
+            event.ranking_score = 0.0
+
         try:
             session.commit()
         except IntegrityError as exc:
