@@ -4,7 +4,7 @@ L1 generation_cand_d   — pool CAND-D N-C1..N-C6
 L2 v1_selection_compose — compose_diverse_gp (Realinhamento V1)
 L3 v1_strong_shield     — lei15_core_structural_payload
 L4 anti_clone_gp        — overlap e arquitetura no GP final
-L5 critical_digit_layer — reforço 07/23; penalização contextual 15/25
+L5 critical_digit_layer — reforço 07/12/23; penalização contextual 15/25
 """
 
 from __future__ import annotations
@@ -29,7 +29,11 @@ from lotoia.governance.lei15_core_002_sovereign import (
 
 logger = logging.getLogger(__name__)
 
-_REINFORCE_DIGITS: frozenset[int] = frozenset({7, 12, 16, 23})
+# DEZENAS REFORÇADAS (L5 critical_digit_layer):
+# - 07, 12, 23: dezenas com frequência oficial estável (~60%)
+# - 16 REMOVIDA: super-representada (80% vs 55% oficial = +25pp)
+# Ver: análise de frequência 300 concursos oficiais vs LotoIA (jun/2026)
+_REINFORCE_DIGITS: frozenset[int] = frozenset({7, 12, 23})
 _CONTEXTUAL_DISCOURAGE: frozenset[int] = frozenset({11, 15, 24, 25})
 _NEVER_HARD_BLOCK: frozenset[int] = frozenset({15, 24, 25})
 _GP_MAX_OVERLAP: int = 10
@@ -284,7 +288,9 @@ def compose_sovereign_gp(
 
     filtered_pool = pre_filter_pool_diversity(pool, gp_size=count)
     realign_cfg = get_realignment_config()
-    composed = compose_diverse_gp(filtered_pool, count, realign_cfg, game_size=game_size)
+    composed = compose_diverse_gp(
+        filtered_pool, count, realign_cfg, game_size=game_size
+    )
     for game in composed:
         game["v1_selection_compose_applied"] = True
         game["m_core_003_pre_filter_applied"] = True
@@ -339,10 +345,14 @@ def tag_sovereign_gp_metadata(
         )
         game["lei15_core_002_applied"] = True
         game["sovereign_core_status"] = config.sovereign_core_status or SOVEREIGN_STATUS
-        game["candidate_origin_label"] = config.candidate_origin_label or CANDIDATE_ORIGIN_LABEL
+        game["candidate_origin_label"] = (
+            config.candidate_origin_label or CANDIDATE_ORIGIN_LABEL
+        )
         game.setdefault("generation_cand_d_applied", True)
         game.setdefault("v1_selection_compose_applied", True)
-        game.setdefault("v1_strong_shield_applied", bool(game.get("v1_strong_pattern_shield")))
+        game.setdefault(
+            "v1_strong_shield_applied", bool(game.get("v1_strong_pattern_shield"))
+        )
         game.setdefault("anti_clone_gp_applied", True)
         game.setdefault("critical_digit_layer_applied", True)
         meta = dict(game.get("lei15_core_002_metadata") or {})

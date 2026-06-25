@@ -49,7 +49,13 @@ EPOCH_001_EVIDENCE: Final[dict[str, object]] = {
     "over_represented_prefix_4": ["01-02-03-04", "01-03-04-05"],
     "over_represented_suffix_3": ["22-24-25"],
     "over_represented_suffix_4": ["21-22-24-25"],
-    "under_covered_prefix_3": ["01-05-06", "01-04-06", "01-03-07", "02-04-05", "02-05-06"],
+    "under_covered_prefix_3": [
+        "01-05-06",
+        "01-04-06",
+        "01-03-07",
+        "02-04-05",
+        "02-05-06",
+    ],
     "recurrently_missing_digits": [16, 6, 17, 23, 20, 8, 10, 4],
     "redundancy_similarity_range": (0.799, 0.838),
     "adr_authorization": "IMPLEMENTAR_REALINHAMENTO_ESTRUTURAL_LEI15_V1",
@@ -59,6 +65,7 @@ EPOCH_001_EVIDENCE: Final[dict[str, object]] = {
 # ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class StructuralRealignmentConfig:
@@ -82,7 +89,10 @@ class StructuralRealignmentConfig:
     concentration_penalty_weight: float = 200.0
 
     # Digits recurrently missing from GP; their presence earns a coverage bonus
-    target_coverage_digits: tuple[int, ...] = (16, 6, 17, 23, 20, 8, 10, 4)
+    # NOTA (jun/2026): 16 e 06 foram REMOVIDOS por super-representação
+    # (16: 80% vs 55% oficial; 06: 83% vs 62% oficial)
+    # Ver: análise de frequência 300 concursos oficiais vs LotoIA
+    target_coverage_digits: tuple[int, ...] = (17, 23, 20, 8, 10, 4)
 
     # Bonus per target digit present in a game (capped at max_coverage_bonus)
     coverage_bonus_per_digit: float = 1.5

@@ -1,4 +1,4 @@
-﻿from random import sample
+from random import sample
 import logging
 import os
 from random import Random
@@ -21,8 +21,14 @@ from lotoia.statistics.historical_intelligence import (
     profile_quota,
     profile_score,
 )
-from lotoia.generation.lei15_core_structural_payload import apply_core_traceability_payload
-from lotoia.statistics.generation_trace import persist_stage_snapshot, record_discarded_game, stage_snapshot
+from lotoia.generation.lei15_core_structural_payload import (
+    apply_core_traceability_payload,
+)
+from lotoia.statistics.generation_trace import (
+    persist_stage_snapshot,
+    record_discarded_game,
+    stage_snapshot,
+)
 from lotoia.governance.law15_structural_realignment_v1 import (
     get_realignment_config,
     realignment_is_observable,
@@ -62,7 +68,12 @@ logger = logging.getLogger(__name__)
 
 
 def _filters_disabled() -> bool:
-    return os.getenv("FILTERS_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("FILTERS_DISABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _normalization_pressure_level() -> str:
@@ -272,7 +283,9 @@ def _attach_scores(
         intelligence = profile_score(numbers, history, resolved_profile)
         penalty = _soft_filter_penalty(game)
         intelligence["soft_filter_penalty"] = penalty
-        intelligence["profile_score"] = round(max(0, float(intelligence["profile_score"]) - penalty), 2)
+        intelligence["profile_score"] = round(
+            max(0, float(intelligence["profile_score"]) - penalty), 2
+        )
         game["historical_intelligence"] = intelligence
         game["profile_type"] = resolved_profile
         game["profile_score"] = intelligence["profile_score"]
@@ -300,13 +313,22 @@ def _generate_profile_candidate(
             for number in draw.numbers:
                 counts[number] += 1
         hot_numbers = [
-            number for number, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:12]
+            number
+            for number, _ in sorted(
+                counts.items(), key=lambda item: (-item[1], item[0])
+            )[:12]
         ]
 
     if profile_type == PROFILE_RECURRENT and history and hot_numbers:
-        selected = set(random.sample(sorted(last_numbers), random.randint(8, min(10, len(last_numbers)))))
+        selected = set(
+            random.sample(
+                sorted(last_numbers), random.randint(8, min(10, len(last_numbers)))
+            )
+        )
         available_hot = [number for number in hot_numbers if number not in selected]
-        selected.update(random.sample(available_hot, min(len(available_hot), 15 - len(selected))))
+        selected.update(
+            random.sample(available_hot, min(len(available_hot), 15 - len(selected)))
+        )
         while len(selected) < 15:
             selected.add(random.randint(1, 25))
         return _build_game(list(selected))
@@ -314,14 +336,22 @@ def _generate_profile_candidate(
     if profile_type == PROFILE_CHAOTIC:
         start = random.randint(1, 20)
         selected = set(range(start, min(26, start + random.randint(5, 7))))
-        selected.update(random.choice([range(1, 6), range(6, 11), range(11, 16), range(16, 21), range(21, 26)]))
+        selected.update(
+            random.choice(
+                [range(1, 6), range(6, 11), range(11, 16), range(16, 21), range(21, 26)]
+            )
+        )
         while len(selected) < 15:
             selected.add(random.randint(1, 25))
         return _build_game(list(selected))
 
     selected = set()
     if history:
-        selected.update(random.sample(sorted(last_numbers), random.randint(6, min(9, len(last_numbers)))))
+        selected.update(
+            random.sample(
+                sorted(last_numbers), random.randint(6, min(9, len(last_numbers)))
+            )
+        )
     while len(selected) < 15:
         selected.add(random.randint(1, 25))
     return _build_game(list(selected))
@@ -347,7 +377,9 @@ def _compose_profiled_games(
     quotas = profile_quota(count)
     by_profile = {profile: [] for profile in GENERATION_PROFILE_RATIOS}
     for game in scored_games:
-        by_profile.setdefault(str(game.get("profile_type", PROFILE_HYBRID)), []).append(game)
+        by_profile.setdefault(str(game.get("profile_type", PROFILE_HYBRID)), []).append(
+            game
+        )
 
     selected: list[dict[str, object]] = []
     selected_keys: set[tuple[int, ...]] = set()
@@ -362,7 +394,9 @@ def _compose_profiled_games(
                     metrics={
                         "profile_type": profile,
                         "profile_score": float(game.get("profile_score", 0)),
-                        "final_score": float(game.get("final_score", {}).get("final_score", 0)),
+                        "final_score": float(
+                            game.get("final_score", {}).get("final_score", 0)
+                        ),
                     },
                     profile_type=profile,
                 )
@@ -384,7 +418,9 @@ def _compose_profiled_games(
             selected_keys.add(key)
             profile_selected += 1
             if not game.get("perfil_origem_real"):
-                apply_core_traceability_payload(game, profile_origin=str(game.get("profile_type") or profile))
+                apply_core_traceability_payload(
+                    game, profile_origin=str(game.get("profile_type") or profile)
+                )
 
     if len(selected) < count:
         for game in _rank_profile(scored_games):
@@ -397,7 +433,9 @@ def _compose_profiled_games(
                     metrics={
                         "profile_type": game.get("profile_type", ""),
                         "profile_score": float(game.get("profile_score", 0)),
-                        "final_score": float(game.get("final_score", {}).get("final_score", 0)),
+                        "final_score": float(
+                            game.get("final_score", {}).get("final_score", 0)
+                        ),
                     },
                     profile_type=str(game.get("profile_type", "")),
                 )
@@ -405,7 +443,9 @@ def _compose_profiled_games(
             selected.append(game)
             selected_keys.add(key)
             if not game.get("perfil_origem_real"):
-                apply_core_traceability_payload(game, profile_origin=str(game.get("profile_type") or ""))
+                apply_core_traceability_payload(
+                    game, profile_origin=str(game.get("profile_type") or "")
+                )
             if len(selected) >= count:
                 break
 
@@ -414,22 +454,36 @@ def _compose_profiled_games(
             profile: sum(1 for game in selected if game.get("profile_type") == profile)
             for profile in GENERATION_PROFILE_RATIOS
         }
-        deficits = {profile: quotas.get(profile, 0) - profile_counts.get(profile, 0) for profile in GENERATION_PROFILE_RATIOS}
-        surpluses = {profile: profile_counts.get(profile, 0) - quotas.get(profile, 0) for profile in GENERATION_PROFILE_RATIOS}
+        deficits = {
+            profile: quotas.get(profile, 0) - profile_counts.get(profile, 0)
+            for profile in GENERATION_PROFILE_RATIOS
+        }
+        surpluses = {
+            profile: profile_counts.get(profile, 0) - quotas.get(profile, 0)
+            for profile in GENERATION_PROFILE_RATIOS
+        }
         for deficit_profile, missing in deficits.items():
             while missing > 0:
-                surplus_profile = next((profile for profile, extra in surpluses.items() if extra > 0), None)
+                surplus_profile = next(
+                    (profile for profile, extra in surpluses.items() if extra > 0), None
+                )
                 if surplus_profile is None:
                     break
                 candidate = next(
-                    (game for game in reversed(_rank_profile(selected)) if game.get("profile_type") == surplus_profile),
+                    (
+                        game
+                        for game in reversed(_rank_profile(selected))
+                        if game.get("profile_type") == surplus_profile
+                    ),
                     None,
                 )
                 if candidate is None:
                     break
                 apply_core_traceability_payload(
                     candidate,
-                    profile_origin=str(candidate.get("perfil_origem_real") or surplus_profile),
+                    profile_origin=str(
+                        candidate.get("perfil_origem_real") or surplus_profile
+                    ),
                     relabeling_applied=True,
                     relabeling_reason=f"quota_deficit:{deficit_profile}<=from:{surplus_profile}",
                 )
@@ -445,7 +499,9 @@ def _compose_profiled_games(
         for game in selected:
             apply_core_traceability_payload(
                 game,
-                profile_origin=str(game.get("perfil_origem_real") or game.get("profile_type") or ""),
+                profile_origin=str(
+                    game.get("perfil_origem_real") or game.get("profile_type") or ""
+                ),
                 relabeling_applied=False,
                 relabeling_reason=None,
             )
@@ -465,17 +521,24 @@ def _record_generation_stage(
         metadata={
             "engine_version": "historical_recalibrated_v2",
             "profile_distribution": profile_distribution,
-            "normalization_disabled": os.getenv("NORMALIZATION_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"},
+            "normalization_disabled": os.getenv("NORMALIZATION_DISABLED", "")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"},
         },
     )
     persist_stage_snapshot(snapshot)
 
 
-def _repeated_count(first_game: dict[str, object], second_game: dict[str, object]) -> int:
+def _repeated_count(
+    first_game: dict[str, object], second_game: dict[str, object]
+) -> int:
     return len(set(first_game["numbers"]) & set(second_game["numbers"]))
 
 
-def generate_multiple_games(count: int = 10, max_repeated: int = 9) -> list[dict[str, object]]:
+def generate_multiple_games(
+    count: int = 10, max_repeated: int = 9
+) -> list[dict[str, object]]:
     enforce_legacy_lei15_entry_blocked(source="generate_multiple_games")
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
@@ -500,7 +563,18 @@ def generate_multiple_games(count: int = 10, max_repeated: int = 9) -> list[dict
                 metrics={"max_repeated": max_repeated},
             )
             continue
-        repeated_over_limit = None if _filters_disabled() else next((previous_game for previous_game in games if _repeated_count(game, previous_game) > max_repeated), None)
+        repeated_over_limit = (
+            None
+            if _filters_disabled()
+            else next(
+                (
+                    previous_game
+                    for previous_game in games
+                    if _repeated_count(game, previous_game) > max_repeated
+                ),
+                None,
+            )
+        )
         if repeated_over_limit is not None:
             record_discarded_game(
                 "max_repeated",
@@ -542,7 +616,9 @@ def generate_best_games(
     if count < 1:
         raise ValueError("A quantidade de jogos deve ser maior que zero.")
     if pool_size < count:
-        raise ValueError("O pool de jogos deve ser maior ou igual a quantidade solicitada.")
+        raise ValueError(
+            "O pool de jogos deve ser maior ou igual a quantidade solicitada."
+        )
 
     _routing = enforce_lei15_generation_routing(
         batch_label,
@@ -561,7 +637,9 @@ def generate_best_games(
     _sovereign_cfg = get_core_002_config(batch_label)
     _apply_sovereign = should_apply_core_002(batch_label)
     _candidate_cfg = get_candidate_config(batch_label)
-    _apply_candidate = should_apply_core_candidate_001(batch_label) and not _apply_sovereign
+    _apply_candidate = (
+        should_apply_core_candidate_001(batch_label) and not _apply_sovereign
+    )
 
     if _apply_sovereign:
         from lotoia.generation.lei15_core_002 import build_sovereign_pool
@@ -572,7 +650,9 @@ def generate_best_games(
     elif _apply_candidate:
         from lotoia.generation.lei15_core_candidate_001 import build_candidate_pool
 
-        games = build_candidate_pool(pool_size, seed=seed_offset, history=history, config=_candidate_cfg)
+        games = build_candidate_pool(
+            pool_size, seed=seed_offset, history=history, config=_candidate_cfg
+        )
     else:
         while len(games) < pool_size and attempts < max_attempts:
             attempts += 1
@@ -612,7 +692,9 @@ def generate_best_games(
             seen_games.add(game_key)
 
         if len(games) < pool_size:
-            raise RuntimeError("Nao foi possivel gerar o pool de jogos com os filtros informados.")
+            raise RuntimeError(
+                "Nao foi possivel gerar o pool de jogos com os filtros informados."
+            )
 
     raw_profile_distribution = {
         profile: sum(1 for game in games if game.get("profile_type") == profile)
@@ -620,16 +702,22 @@ def generate_best_games(
     }
     _record_generation_stage("raw_generation", games, history, raw_profile_distribution)
 
-    normalization_disabled = os.getenv("NORMALIZATION_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    normalization_disabled = os.getenv(
+        "NORMALIZATION_DISABLED", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
     if normalization_disabled:
-        _record_generation_stage("post_normalization_disabled", games, history, raw_profile_distribution)
+        _record_generation_stage(
+            "post_normalization_disabled", games, history, raw_profile_distribution
+        )
     else:
         games = rerank_games(games, enabled=ml_enabled)
         rerank_profile_distribution = {
             profile: sum(1 for game in games if game.get("profile_type") == profile)
             for profile in GENERATION_PROFILE_RATIOS
         }
-        _record_generation_stage("post_rerank", games, history, rerank_profile_distribution)
+        _record_generation_stage(
+            "post_rerank", games, history, rerank_profile_distribution
+        )
 
     # --- Structural Realignment V1 hook (feature-flagged) -------------------
     # Rules (see law15_structural_realignment_v1.should_apply_gp_realignment):
@@ -644,12 +732,17 @@ def generate_best_games(
 
     # --- Core Realignment V4 PATTERN PROTECTED hook (pre-ADR) ------------------
     _v4_cfg = get_v4_config()
-    _apply_v4 = should_apply_v4(batch_label) and not _apply_candidate and not _apply_sovereign
+    _apply_v4 = (
+        should_apply_v4(batch_label) and not _apply_candidate and not _apply_sovereign
+    )
 
     # --- Core Realignment V3.1 PROTECTED hook (pre-ADR) ------------------------
     _v3_1_cfg = get_v3_1_config(batch_label)
     _apply_v3_1 = (
-        should_apply_v3_1(batch_label) and not _apply_v4 and not _apply_candidate and not _apply_sovereign
+        should_apply_v3_1(batch_label)
+        and not _apply_v4
+        and not _apply_candidate
+        and not _apply_sovereign
     )
 
     # --- Core Realignment V3 BALANCED hook (ADR-045) ---------------------------
@@ -674,11 +767,17 @@ def generate_best_games(
     )
 
     if realignment_is_observable() and not _apply_sovereign:
-        from lotoia.generation.structural_realignment_v1 import apply_gp_realignment_scoring
+        from lotoia.generation.structural_realignment_v1 import (
+            apply_gp_realignment_scoring,
+        )
+
         games = apply_gp_realignment_scoring(games, _realign_cfg, game_size=count)
         logger.info(
             "[RealignmentV1] mode=%s batch_label=%r apply_gp=%s pool=%d",
-            _realign_cfg.mode, batch_label, _apply_realign, len(games),
+            _realign_cfg.mode,
+            batch_label,
+            _apply_realign,
+            len(games),
         )
 
     _v2_fallback_to_v1 = False
@@ -766,20 +865,26 @@ def generate_best_games(
                     )
                 )
             else:
-                games, _hierarchy_bundle, _mission_bundles = execute_ml_operational_hierarchy(
-                    games,
-                    game_size=_sovereign_game_size,
-                    requested_count=count,
-                    history=history,
-                    seed=seed_offset,
-                    batch_label=batch_label,
-                    calibration_plan=calibration_plan,
-                    event_context=_event_context,
-                    compose_gp=_compose_sovereign_gp_with_sanity,
-                    compose_config=_sovereign_cfg,
+                games, _hierarchy_bundle, _mission_bundles = (
+                    execute_ml_operational_hierarchy(
+                        games,
+                        game_size=_sovereign_game_size,
+                        requested_count=count,
+                        history=history,
+                        seed=seed_offset,
+                        batch_label=batch_label,
+                        calibration_plan=calibration_plan,
+                        event_context=_event_context,
+                        compose_gp=_compose_sovereign_gp_with_sanity,
+                        compose_config=_sovereign_cfg,
+                    )
                 )
-            _structural_pool_bundle = dict(_mission_bundles.get("structural_pool") or {})
-            _diverse_top_slice_bundle = dict(_mission_bundles.get("diverse_top_slice") or {})
+            _structural_pool_bundle = dict(
+                _mission_bundles.get("structural_pool") or {}
+            )
+            _diverse_top_slice_bundle = dict(
+                _mission_bundles.get("diverse_top_slice") or {}
+            )
             _calibration_bundle = dict(_mission_bundles.get("pre_final") or {})
             if _hierarchy_bundle.get("gp_delivery_blocked"):
                 raise MlOperationalHierarchyBlockedError.from_bundle(_hierarchy_bundle)
@@ -825,12 +930,18 @@ def generate_best_games(
             _sovereign_cfg,
             game_size=_sovereign_game_size,
         )
-        _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or {}) if best_games else {}
+        _sanity_bundle = (
+            dict((best_games[0] or {}).get("structural_sovereignty_sanity") or {})
+            if best_games
+            else {}
+        )
         attempt = 0
         working_pool_size = int(pool_size)
         while len(best_games) < count and attempt < 6:
             attempt += 1
-            working_pool_size = max(working_pool_size * 3, count * (5 + attempt * 2), count + 200)
+            working_pool_size = max(
+                working_pool_size * 3, count * (5 + attempt * 2), count + 200
+            )
             logger.warning(
                 "[LEI15_CORE_002] compose_sovereign_gp entregou %d/%d — tentativa %d pool=%d",
                 len(best_games),
@@ -845,7 +956,8 @@ def generate_best_games(
                 config=_sovereign_cfg,
             )
             merged_by_key: dict[tuple[int, ...], dict[str, object]] = {
-                tuple(dict(game).get("numbers") or []): dict(game) for game in compose_pool
+                tuple(dict(game).get("numbers") or []): dict(game)
+                for game in compose_pool
             }
             for game in extra_pool:
                 key = tuple(game.get("numbers") or [])
@@ -859,7 +971,10 @@ def generate_best_games(
                 _sovereign_cfg,
                 game_size=_sovereign_game_size,
             )
-            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or _sanity_bundle)
+            _sanity_bundle = dict(
+                (best_games[0] or {}).get("structural_sovereignty_sanity")
+                or _sanity_bundle
+            )
         if len(best_games) < count:
             from lotoia.ml.structural_policy_15d import is_structural_policy_15d_format
 
@@ -904,7 +1019,10 @@ def generate_best_games(
                 _sovereign_cfg,
                 game_size=_sovereign_game_size,
             )
-            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or _sanity_bundle)
+            _sanity_bundle = dict(
+                (best_games[0] or {}).get("structural_sovereignty_sanity")
+                or _sanity_bundle
+            )
             _gp_candidate_pool = [dict(game) for game in expanded_games]
         if len(best_games) < count:
             raise RuntimeError(
@@ -928,14 +1046,18 @@ def generate_best_games(
             len(best_games[0].get("numbers", []) or []) if best_games else 0
         )
         if is_structural_policy_15d_format(_sovereign_card_size):
-            best_games, _structural_policy_bundle = apply_structural_policy_15d_to_sovereign_batch(
-                best_games,
-                pool_games=games,
-                history=history,
-                required_count=count,
+            best_games, _structural_policy_bundle = (
+                apply_structural_policy_15d_to_sovereign_batch(
+                    best_games,
+                    pool_games=games,
+                    history=history,
+                    required_count=count,
+                )
             )
         if _calibration_bundle and ml_enabled:
-            from lotoia.ml.pre_final_pool_ml_calibration import finalize_pre_final_gp_outcome
+            from lotoia.ml.pre_final_pool_ml_calibration import (
+                finalize_pre_final_gp_outcome,
+            )
 
             _calibration_bundle = finalize_pre_final_gp_outcome(
                 _calibration_bundle,
@@ -973,7 +1095,8 @@ def generate_best_games(
             sum(
                 1
                 for g in best_games
-                if (g.get("realignment_metadata") or {}).get("protected_v1_pattern") is True
+                if (g.get("realignment_metadata") or {}).get("protected_v1_pattern")
+                is True
             ),
         )
     elif _apply_v3_1:
@@ -994,7 +1117,8 @@ def generate_best_games(
             sum(
                 1
                 for g in best_games
-                if (g.get("realignment_metadata") or {}).get("protected_top_score") is True
+                if (g.get("realignment_metadata") or {}).get("protected_top_score")
+                is True
             ),
         )
     elif _apply_v3:
@@ -1008,14 +1132,19 @@ def generate_best_games(
             )
         logger.info(
             "[CoreRealignV3] mode=%s batch_label=%r apply_v3=%s total=%d",
-            _v3_cfg.mode, batch_label, _apply_v3, len(best_games),
+            _v3_cfg.mode,
+            batch_label,
+            _apply_v3,
+            len(best_games),
         )
     elif _apply_v2:
         # V2: two-layer (pool pre-filter + tighter composition)
         from lotoia.generation.core_realignment_v2 import compose_gp_v2
         from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
 
-        best_games, v2_fallback_to_v1 = compose_gp_v2(games, count, _v2_cfg, game_size=count)
+        best_games, v2_fallback_to_v1 = compose_gp_v2(
+            games, count, _v2_cfg, game_size=count
+        )
         if v2_fallback_to_v1:
             logger.warning(
                 "[CoreRealignV2] pool pós-filtro abaixo do mínimo — fallback obrigatório V1",
@@ -1036,10 +1165,15 @@ def generate_best_games(
             )
         logger.info(
             "[CoreRealignV2] mode=%s batch_label=%r apply_v2=%s fallback_v1=%s total=%d",
-            _v2_cfg.mode, batch_label, _apply_v2, v2_fallback_to_v1, len(best_games),
+            _v2_cfg.mode,
+            batch_label,
+            _apply_v2,
+            v2_fallback_to_v1,
+            len(best_games),
         )
     elif _apply_realign:
         from lotoia.generation.structural_realignment_v1 import compose_diverse_gp
+
         best_games = compose_diverse_gp(games, count, _realign_cfg, game_size=count)
     elif _apply_candidate:
         best_games = _compose_profiled_games(
@@ -1061,17 +1195,32 @@ def generate_best_games(
         best_games = _compose_profiled_games(games, count)
 
     if realignment_is_observable() and best_games:
-        from lotoia.generation.structural_realignment_v1 import compute_gp_realignment_metrics
+        from lotoia.generation.structural_realignment_v1 import (
+            compute_gp_realignment_metrics,
+        )
+
         _rm = compute_gp_realignment_metrics(best_games, game_size=count)
         _rm["realignment_applied"] = (
-            _apply_realign or _apply_v2 or _apply_v3 or _apply_v3_1 or _apply_v4 or _apply_sovereign
+            _apply_realign
+            or _apply_v2
+            or _apply_v3
+            or _apply_v3_1
+            or _apply_v4
+            or _apply_sovereign
         )
         _rm["batch_label"] = batch_label
         logger.info(
             "[RealignmentV1] realignment_applied=%s top_p3=%s(%.0f%%) top_s3=%s(%.0f%%) near_dups=%d",
-            _apply_realign or _apply_v2 or _apply_v3 or _apply_v3_1 or _apply_v4 or _apply_sovereign,
-            _rm.get("top_prefix3"), _rm.get("top_prefix3_ratio", 0) * 100,
-            _rm.get("top_suffix3"), _rm.get("top_suffix3_ratio", 0) * 100,
+            _apply_realign
+            or _apply_v2
+            or _apply_v3
+            or _apply_v3_1
+            or _apply_v4
+            or _apply_sovereign,
+            _rm.get("top_prefix3"),
+            _rm.get("top_prefix3_ratio", 0) * 100,
+            _rm.get("top_suffix3"),
+            _rm.get("top_suffix3_ratio", 0) * 100,
             _rm.get("near_duplicate_pairs", 0),
         )
         # Attach GP-level metrics to every game for persistence traceability
@@ -1089,7 +1238,9 @@ def generate_best_games(
             )
             if _apply_sovereign:
                 meta.setdefault("lei15_core_002_applied", True)
-                meta.setdefault("sovereign_core_status", _sovereign_cfg.sovereign_core_status)
+                meta.setdefault(
+                    "sovereign_core_status", _sovereign_cfg.sovereign_core_status
+                )
                 meta.setdefault("v1_selection_compose_applied", True)
                 meta.setdefault("generation_cand_d_applied", True)
                 meta.setdefault("anti_clone_gp_applied", True)
@@ -1143,12 +1294,63 @@ def generate_best_games(
             meta["core_realignment_v4_applied"] = _g["core_realignment_v4_applied"]
             meta["gp_metrics"] = _rm
     # -------------------------------------------------------------------------
+    # FREQUENCY VALIDATION (jun/2026)
+    # Validates dezena frequencies against last 300 official contests
+    # -------------------------------------------------------------------------
+    _frequency_validation_bundle = None
+    if best_games and _apply_sovereign:
+        from lotoia.generation.frequency_validation import validate_and_report
+
+        _freq_game_size = _sovereign_game_size
+        _freq_result = validate_and_report(
+            best_games,
+            history,
+            game_size=_freq_game_size,
+            last=300,
+            tolerance_pp=5.0,
+        )
+        _frequency_validation_bundle = {
+            "applied": True,
+            "is_valid": _freq_result.is_valid,
+            "game_size": _freq_result.game_size,
+            "max_deviation_pp": _freq_result.max_deviation_pp,
+            "avg_deviation_pp": _freq_result.avg_deviation_pp,
+            "violation_count": len(_freq_result.violations),
+            "violations": [
+                {
+                    "dezena": v.dezena,
+                    "actual_pct": round(v.actual_pct, 2),
+                    "expected_pct": round(v.expected_pct, 2),
+                    "deviation_pp": round(v.deviation_pp, 2),
+                }
+                for v in _freq_result.violations
+            ],
+            "summary": _freq_result.summary,
+        }
+        # Attach to each game for traceability
+        for _g in best_games:
+            meta = _g.get("realignment_metadata") or {}
+            meta["frequency_validation"] = _frequency_validation_bundle
+            _g["realignment_metadata"] = meta
+            _g["frequency_validation_applied"] = True
+            _g["frequency_validation_is_valid"] = _freq_result.is_valid
+
+        logger.info(
+            "[FrequencyValidation] game_size=%d valid=%s max_dev=%.1fpp violations=%d",
+            _freq_result.game_size,
+            _freq_result.is_valid,
+            _freq_result.max_deviation_pp,
+            len(_freq_result.violations),
+        )
+    # -------------------------------------------------------------------------
 
     final_profile_distribution = {
         profile: sum(1 for game in best_games if game.get("profile_type") == profile)
         for profile in GENERATION_PROFILE_RATIOS
     }
-    _record_generation_stage("final_output", best_games, history, final_profile_distribution)
+    _record_generation_stage(
+        "final_output", best_games, history, final_profile_distribution
+    )
     profile_counts = {
         profile: sum(1 for game in best_games if game.get("profile_type") == profile)
         for profile in GENERATION_PROFILE_RATIOS
@@ -1173,6 +1375,8 @@ def generate_best_games(
         },
         "generation_routing": _routing.to_dict(),
     }
+    if _frequency_validation_bundle:
+        payload["frequency_validation"] = _frequency_validation_bundle
     if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
         payload["ml_hierarchy_version"] = _hierarchy_bundle.get("ml_hierarchy_version")
         payload["ml_hierarchy_status"] = _hierarchy_bundle.get("ml_hierarchy_status")
@@ -1180,15 +1384,28 @@ def generate_best_games(
         payload["hierarchy_compliance"] = _hierarchy_bundle.get("hierarchy_compliance")
         payload["gp_closure_allowed"] = _hierarchy_bundle.get("gp_closure_allowed")
         payload["gp_quality_tier"] = _hierarchy_bundle.get("gp_quality_tier")
-        payload["gp_quality_reasons"] = list(_hierarchy_bundle.get("gp_quality_reasons") or [])
-        payload["gp_delivery_blocked"] = bool(_hierarchy_bundle.get("gp_delivery_blocked"))
-        payload["agent_routing_mission_id"] = _hierarchy_bundle.get("agent_routing_mission_id")
-        payload["agent_routing_matrix_version"] = _hierarchy_bundle.get("agent_routing_matrix_version")
-        payload["primary_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent") or (
-            (_hierarchy_bundle.get("stage_responsible_agents") or [None])[0]
+        payload["gp_quality_reasons"] = list(
+            _hierarchy_bundle.get("gp_quality_reasons") or []
         )
-        payload["responsible_agents"] = list(_hierarchy_bundle.get("stage_responsible_agents") or [])
-        payload["blocking_responsible_agent"] = _hierarchy_bundle.get("blocking_responsible_agent")
+        payload["gp_delivery_blocked"] = bool(
+            _hierarchy_bundle.get("gp_delivery_blocked")
+        )
+        payload["agent_routing_mission_id"] = _hierarchy_bundle.get(
+            "agent_routing_mission_id"
+        )
+        payload["agent_routing_matrix_version"] = _hierarchy_bundle.get(
+            "agent_routing_matrix_version"
+        )
+        payload["primary_responsible_agent"] = (
+            _hierarchy_bundle.get("blocking_responsible_agent")
+            or ((_hierarchy_bundle.get("stage_responsible_agents") or [None])[0])
+        )
+        payload["responsible_agents"] = list(
+            _hierarchy_bundle.get("stage_responsible_agents") or []
+        )
+        payload["blocking_responsible_agent"] = _hierarchy_bundle.get(
+            "blocking_responsible_agent"
+        )
         payload["institutional_agent_routing_matrix"] = _hierarchy_bundle.get(
             "institutional_agent_routing_matrix"
         )
@@ -1202,48 +1419,86 @@ def generate_best_games(
             payload["internal_recovery_success"] = bool(
                 _recovery_bundle.get("internal_recovery_success")
             )
-            payload["final_gp_delivered"] = bool(_recovery_bundle.get("final_gp_delivered"))
-            payload["best_attempt_metrics"] = dict(_recovery_bundle.get("best_attempt_metrics") or {})
-            payload["attempt_results"] = list(_recovery_bundle.get("attempt_results") or [])
-        merged_hierarchy = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
+            payload["final_gp_delivered"] = bool(
+                _recovery_bundle.get("final_gp_delivered")
+            )
+            payload["best_attempt_metrics"] = dict(
+                _recovery_bundle.get("best_attempt_metrics") or {}
+            )
+            payload["attempt_results"] = list(
+                _recovery_bundle.get("attempt_results") or []
+            )
+        merged_hierarchy = dict(
+            payload.get("calibration_bundle") or _calibration_bundle or {}
+        )
         merged_hierarchy["ml_operational_hierarchy"] = _hierarchy_bundle
         payload["calibration_bundle"] = merged_hierarchy
-    if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+    if _structural_pool_bundle and _structural_pool_bundle.get(
+        "structural_pool_applied"
+    ):
         payload["pool_origin"] = _structural_pool_bundle.get("pool_origin")
-        payload["structural_pool_size"] = _structural_pool_bundle.get("structural_pool_size")
+        payload["structural_pool_size"] = _structural_pool_bundle.get(
+            "structural_pool_size"
+        )
         payload["structural_compliant_pool_size"] = _structural_pool_bundle.get(
             "structural_compliant_pool_size"
         )
-        payload["structural_pool_compliance_rate"] = _structural_pool_bundle.get("compliance_rate")
-        merged_bundle = dict(payload.get("calibration_bundle") or _calibration_bundle or {})
+        payload["structural_pool_compliance_rate"] = _structural_pool_bundle.get(
+            "compliance_rate"
+        )
+        merged_bundle = dict(
+            payload.get("calibration_bundle") or _calibration_bundle or {}
+        )
         merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
         payload["calibration_bundle"] = merged_bundle
     if _calibration_bundle and _calibration_bundle.get("calibration_applied"):
         merged_calibration = dict(_calibration_bundle)
-        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+        if _structural_pool_bundle and _structural_pool_bundle.get(
+            "structural_pool_applied"
+        ):
             merged_calibration["ml_structural_15d_pool"] = _structural_pool_bundle
         if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
             merged_calibration["ml_operational_hierarchy"] = _hierarchy_bundle
         payload["calibration_bundle"] = merged_calibration
         payload["calibration_applied"] = True
-        payload["calibration_engine_role"] = _calibration_bundle.get("calibration_engine_role")
+        payload["calibration_engine_role"] = _calibration_bundle.get(
+            "calibration_engine_role"
+        )
     if _structural_policy_bundle:
         payload["structural_policy_15d_bundle"] = _structural_policy_bundle
         payload["structural_policy_memory_loaded"] = True
         payload["structural_policy_format"] = "15D"
-        payload["structural_policy_version"] = _structural_policy_bundle.get("structural_policy_version")
-        payload["structural_policy_applied"] = bool(_structural_policy_bundle.get("structural_policy_applied"))
-        payload["structural_policy_application_mode"] = _structural_policy_bundle.get("structural_policy_application_mode")
-        payload["applied_rules"] = list(_structural_policy_bundle.get("applied_rules") or [])
-        payload["violated_rules"] = list(_structural_policy_bundle.get("violated_rules") or [])
-        payload["policy_violations"] = list(_structural_policy_bundle.get("policy_violations") or [])
-        payload["policy_compliance_status"] = _structural_policy_bundle.get("policy_compliance_status")
+        payload["structural_policy_version"] = _structural_policy_bundle.get(
+            "structural_policy_version"
+        )
+        payload["structural_policy_applied"] = bool(
+            _structural_policy_bundle.get("structural_policy_applied")
+        )
+        payload["structural_policy_application_mode"] = _structural_policy_bundle.get(
+            "structural_policy_application_mode"
+        )
+        payload["applied_rules"] = list(
+            _structural_policy_bundle.get("applied_rules") or []
+        )
+        payload["violated_rules"] = list(
+            _structural_policy_bundle.get("violated_rules") or []
+        )
+        payload["policy_violations"] = list(
+            _structural_policy_bundle.get("policy_violations") or []
+        )
+        payload["policy_compliance_status"] = _structural_policy_bundle.get(
+            "policy_compliance_status"
+        )
         payload["games_compliant"] = _structural_policy_bundle.get("games_compliant")
-        payload["games_non_compliant"] = _structural_policy_bundle.get("games_non_compliant")
+        payload["games_non_compliant"] = _structural_policy_bundle.get(
+            "games_non_compliant"
+        )
         payload["compliance_rate"] = _structural_policy_bundle.get("compliance_rate")
         payload["lote_alterado"] = _structural_policy_bundle.get("lote_alterado")
         merged_bundle = dict(_calibration_bundle or {})
-        if _structural_pool_bundle and _structural_pool_bundle.get("structural_pool_applied"):
+        if _structural_pool_bundle and _structural_pool_bundle.get(
+            "structural_pool_applied"
+        ):
             merged_bundle["ml_structural_15d_pool"] = _structural_pool_bundle
         if _hierarchy_bundle and _hierarchy_bundle.get("hierarchy_applied"):
             merged_bundle["ml_operational_hierarchy"] = _hierarchy_bundle
@@ -1255,7 +1510,9 @@ def generate_best_games(
         )
 
         if not _sanity_bundle:
-            _sanity_bundle = dict((best_games[0] or {}).get("structural_sovereignty_sanity") or {})
+            _sanity_bundle = dict(
+                (best_games[0] or {}).get("structural_sovereignty_sanity") or {}
+            )
         payload["structural_sovereignty_sanity"] = dict(_sanity_bundle)
         payload["operational_structural_memory_snapshot"] = (
             compute_operational_structural_memory_snapshot(
