@@ -35,6 +35,7 @@ class Core003Pipeline:
         self,
         format: str = "15D",
         calibration: CalibrationPreset = "equilibrado",
+        config: dict[str, Any] | None = None,
     ):
         # Validar formato
         if format not in CORE_003_CONFIG["formats"]:
@@ -52,7 +53,7 @@ class Core003Pipeline:
 
         self.format = format
         self.calibration = calibration
-        self.config = CORE_003_CONFIG
+        self.config = config or CORE_003_CONFIG
         self._metrics: dict[str, Any] = {}
 
     def generate(
@@ -319,72 +320,6 @@ class Core003Pipeline:
                 "[CORE_003] Validação falhou | violations=%s",
                 validation.get("violations", []),
             )
-        avg_overlap = metrics.get("avg_overlap", 0)
-        overlap_valid = overlap_limits["min"] <= avg_overlap <= overlap_limits["max"]
-
-        # Diversity score
-        diversity_score = 1.0 - (avg_overlap / game_size) if game_size > 0 else 0.0
-        diversity_limits = validation_limits["diversity_score"]
-        diversity_valid = diversity_score >= diversity_limits["min"]
-
-        # Construir resultado de validação
-        violations = []
-        warnings = []
-
-        if not triplet_valid:
-            if triplet_pct < triplet_limits["min"]:
-                violations.append(
-                    f"Triplet 01-02-03 muito baixo: {triplet_pct:.1%} (mínimo: {triplet_limits['min']:.1%})"
-                )
-            else:
-                violations.append(
-                    f"Triplet 01-02-03 muito alto: {triplet_pct:.1%} (máximo: {triplet_limits['max']:.1%})"
-                )
-
-        if not overlap_valid:
-            if avg_overlap < overlap_limits["min"]:
-                violations.append(
-                    f"Overlap médio muito baixo: {avg_overlap:.1f} (mínimo: {overlap_limits['min']:.1f})"
-                )
-            else:
-                violations.append(
-                    f"Overlap médio muito alto: {avg_overlap:.1f} (máximo: {overlap_limits['max']:.1f})"
-                )
-
-        if not diversity_valid:
-            warnings.append(
-                f"Diversity score baixo: {diversity_score:.2f} (mínimo: {diversity_limits['min']:.2f})"
-            )
-
-        validation = {
-            "valid": len(violations) == 0,
-            "violations": violations,
-            "warnings": warnings,
-            "format": self.format,
-            "game_size": game_size,
-        }
-
-        self._metrics.update(metrics)
-        self._metrics["diversity_score"] = round(diversity_score, 4)
-        self._metrics["validation"] = validation
-
-        # Log de métricas
-        logger.info(
-            "[CORE_003] Métricas finais | format=%s game_size=%d | "
-            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s",
-            self.format,
-            game_size,
-            triplet_pct * 100,
-            avg_overlap,
-            diversity_score,
-            validation.get("valid", False),
-        )
-
-        if not validation.get("valid"):
-            logger.warning(
-                "[CORE_003] Validação falhou | violations=%s",
-                validation.get("violations", []),
-            )
 
     def get_metrics(self) -> dict[str, Any]:
         """Retorna métricas da última geração."""
@@ -397,6 +332,8 @@ def generate_core_003_games(
     pool_size: int | None = None,
     calibration: CalibrationPreset = "equilibrado",
     target_contest: int | None = None,
+    auto_calibrate: bool = False,
+    version: str | None = None,
 ) -> list[dict[str, Any]]:
     """Função simplificada para gerar jogos CORE_003.
 
@@ -406,16 +343,65 @@ def generate_core_003_games(
         pool_size: Tamanho do pool de candidatos (padrão: count * 3)
         calibration: Preset de calibração (conservador, equilibrado, agressivo)
         target_contest: Concurso alvo (opcional)
+        auto_calibrate: Se deve auto-calibrar baseado em feedback (padrão: False)
+        version: Versão específica do modelo a usar (opcional)
 
     Returns:
         Lista de jogos gerados com métricas estruturais
 
     Example:
-        >>> games = generate_core_003_games(format="15D", count=50, calibration="equilibrado")
-        >>> len(games)
-        50
+        >>> # Uso simples (sem auto-calibração)
+        >>> games = generate_core_003_games(format="15D", count=50)
+
+        >>> # Uso com auto-calibração
+        >>> games = generate_core_003_games(
+        ...     format="15D",
+        ...     count=50,
+        ...     auto_calibrate=True,
+        ... )
+
+        >>> # Uso com versão específica
+        >>> games = generate_core_003_games(
+        ...     format="15D",
+        ...     count=50,
+        ...     version="v3.1.0",
+        ... )
     """
-    pipeline = Core003Pipeline(format=format, calibration=calibration)
+    # Se auto_calibrate está ativo, usar SmartOrchestrator
+    if auto_calibrate:
+        from lotoia.generation.smart_orchestrator import get_orchestrator
+
+        orchestrator = get_orchestrator(format=format, auto_calibrate=True)
+
+        # Calibrar preset baseado em feedback
+        calibrated_preset, adjustments = orchestrator.calibrate_preset(calibration)
+
+        # Aplicar ajustes à configuração
+        config = orchestrator.apply_adjustments_to_config(adjustments)
+
+        # Registrar versão se houve ajustes
+        if adjustments:
+            orchestrator.register_generation_version(
+                preset_used=calibrated_preset,
+                adjustments=adjustments,
+            )
+
+        logger.info(
+            "[CORE_003] Auto-calibração ativa | preset=%s ajustes=%d",
+            calibrated_preset,
+            len(adjustments),
+        )
+
+        # Criar pipeline com configuração ajustada
+        pipeline = Core003Pipeline(
+            format=format,
+            calibration=calibrated_preset,
+            config=config,
+        )
+    else:
+        # Se não há auto-calibração, usar configuração padrão
+        pipeline = Core003Pipeline(format=format, calibration=calibration)
+
     return pipeline.generate(
         count=count, pool_size=pool_size, target_contest=target_contest
     )
