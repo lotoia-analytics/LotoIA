@@ -3868,6 +3868,7 @@ def _classify_generation_visibility(
     scope_payload = {**generation_context, **generation, **operational_fields}
     is_active_reading = is_active_reading_scope(scope_payload)
     base_conference_eligible = is_conference_eligible_scope(scope_payload)
+    # ML é apenas observacional - não bloqueia conferibilidade
     ml_verdict = str(generation.get("ml_verdict") or "").strip().upper()
     ml_verdict_reason = str(
         generation.get("ml_verdict_reason") or generation.get("motivo_principal") or ""
@@ -3878,24 +3879,18 @@ def _classify_generation_visibility(
     official_release_allowed = generation.get("official_release_allowed")
     if official_release_allowed is None and lot_operational_status:
         official_release_allowed = is_official_conference_eligible(generation)
-    elif official_release_allowed is None and ml_verdict:
-        official_release_allowed = is_ml_official_release_allowed(
-            {"ml_verdict": ml_verdict}
-        )
     elif official_release_allowed is None:
         official_release_allowed = True
-    is_ml_verdict_rejected = not bool(official_release_allowed)
+    # ML é apenas observacional - não influencia official_release_allowed
     is_conferible = (
         base_conference_eligible
         and bool(official_release_allowed)
         and is_active_reading
-        and not is_ml_verdict_rejected
     )
     is_analytical_official = (
         is_analytical_official_scope(scope_payload)
         and bool(official_release_allowed)
         and is_active_reading
-        and not is_ml_verdict_rejected
     )
     if not is_active_reading:
         visibility_label = "Fora do escopo ativo"
@@ -3906,11 +3901,6 @@ def _classify_generation_visibility(
             or recommended_action
             or f"lote marcado como {operational_status}"
         )
-        is_conferible = False
-    elif is_ml_verdict_rejected:
-        visibility_label = "Bloqueado — Veredito ML"
-        visibility_kind = "ml_verdict_blocked"
-        visibility_reason = ml_verdict_reason or f"veredito ML: {ml_verdict}"
         is_conferible = False
     elif is_guardian_rejected:
         visibility_label = "Rejeitado pelo Guardião"
@@ -3982,7 +3972,6 @@ def _classify_generation_visibility(
         "ml_verdict_reason": ml_verdict_reason or "-",
         "lot_operational_status": lot_operational_status or "-",
         "official_release_allowed": bool(official_release_allowed),
-        "is_ml_verdict_blocked": is_ml_verdict_rejected,
     }
 
 
@@ -16859,9 +16848,8 @@ def _persist_clean_law15_generation_history(
             "runtime_contract_broken": False,
             "gp_quality_tier": gp_quality_tier,
             "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
-            "official_release_allowed": bool(
-                ml_verdict_payload.get("official_release_allowed")
-            ),
+            # ML é apenas observacional - não afeta official_release_allowed
+            "official_release_allowed": True,
             "hierarchy_delivery_blocked": bool(
                 hierarchy_source.get("gp_delivery_blocked")
                 or result.get("hierarchy_blocked")
@@ -17020,9 +17008,8 @@ def _persist_clean_law15_generation_history(
         "ml_verdict": str(ml_verdict_payload.get("ml_verdict") or ""),
         "ml_verdict_reason": str(ml_verdict_payload.get("ml_verdict_reason") or ""),
         "motivo_principal": str(ml_verdict_payload.get("motivo_principal") or ""),
-        "official_release_allowed": bool(
-            ml_verdict_payload.get("official_release_allowed")
-        ),
+        # ML é apenas observacional - não afeta official_release_allowed
+        "official_release_allowed": True,
         "official_release_label": str(
             ml_verdict_payload.get("official_release_label") or ""
         ),
@@ -17497,9 +17484,7 @@ def _persist_clean_law15_generation_history(
             "official_release_label": str(
                 ml_verdict_payload.get("official_release_label") or ""
             ),
-            "ml_verdict_blocked": not bool(
-                lot_status_context.get("official_release_allowed")
-            ),
+            "ml_verdict_observational": True,  # ML é apenas observacional
             "ml_verdict_next_action": str(ml_verdict_payload.get("next_action") or ""),
             "lot_operational_status": str(
                 lot_status_context.get("lot_operational_status") or ""
