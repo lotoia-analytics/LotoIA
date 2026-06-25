@@ -19088,6 +19088,75 @@ def _render_conference_page(snapshot: dict[str, Any]) -> None:
 
     _render_official_sync_feedback()
 
+    # Entrada manual de resultado oficial (fallback quando API Caixa está bloqueada)
+    with st.expander("Entrada manual de resultado oficial", expanded=False):
+        st.caption(
+            "Use quando a API da Caixa estiver bloqueada (HTTP 403). "
+            "Insira os dados do concurso oficial para persistir no banco."
+        )
+        manual_cols = st.columns([0.2, 0.3, 0.5])
+        with manual_cols[0]:
+            manual_contest = st.number_input(
+                "Concurso",
+                min_value=1,
+                value=int(latest_contest_number + 1)
+                if latest_contest_number > 0
+                else 3719,
+                step=1,
+                key="manual_contest_number",
+            )
+        with manual_cols[1]:
+            manual_date = st.text_input(
+                "Data (dd/mm/aaaa)",
+                value=datetime.now().strftime("%d/%m/%Y"),
+                key="manual_contest_date",
+            )
+        with manual_cols[2]:
+            manual_numbers = st.text_input(
+                "Dezenas (separadas por espaço ou vírgula)",
+                placeholder="01 03 05 07 09 11 13 15 17 19 21 23 25 02 04",
+                key="manual_contest_numbers",
+            )
+        if st.button("Persistir resultado manual", key="manual_contest_save"):
+            try:
+                # Parse dezenas
+                raw_numbers = manual_numbers.replace(",", " ").split()
+                dezenas = sorted(
+                    [int(n) for n in raw_numbers if n.isdigit() and 1 <= int(n) <= 25]
+                )
+                if len(dezenas) != 15:
+                    st.error(
+                        f" Precisam ser exatamente 15 dezenas. Recebidas: {len(dezenas)}"
+                    )
+                else:
+                    # Persistir
+                    repository = ContestRepository(DB_PATH)
+                    contest_record = {
+                        "concurso": int(manual_contest),
+                        "data": manual_date,
+                        "dezenas": [f"{n:02d}" for n in dezenas],
+                        "metadata_json": {
+                            "source": "manual_entry",
+                            "persisted_at": datetime.now(UTC).isoformat(),
+                        },
+                    }
+                    with repository.transaction() as tx:
+                        repository.save_contest(
+                            contest_record, commit=False, session=tx
+                        )
+                    # Confirmar
+                    confirmation = repository.confirm_sync_persistence(
+                        int(manual_contest)
+                    )
+                    if confirmation.get("ok"):
+                        st.success(f"Concurso {manual_contest} persistido com sucesso!")
+                        _cached_latest_official_conference_contest.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"Falha na confirmação: {confirmation}")
+            except Exception as exc:
+                st.error(f"Erro ao persistir: {exc}")
+
     selected_battery_for_result = read_conference_selected_battery() or ""
     check_result = st.session_state.get("institutional_check_result")
     cached_result = (
