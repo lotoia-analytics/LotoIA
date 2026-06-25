@@ -11619,13 +11619,13 @@ def _bulk_reconcile_pending_events(max_events: int = 50) -> dict[str, Any]:
     Returns:
         Dicionário com resultados da reconciliação em lote
     """
-    from lotoia.models import (
+    from lotoia.database.database import (
         GenerationEvent,
         GeneratedGame,
         ReconciliationRun,
         ReconciliationGame,
+        get_session,
     )
-    from lotoia.db import get_session
 
     results = {
         "events_processed": 0,
@@ -11655,7 +11655,7 @@ def _bulk_reconcile_pending_events(max_events: int = 50) -> dict[str, Any]:
                 return results
 
             # Buscar últimos concursos oficiais
-            from lotoia.models import LotofacilOfficialHistory
+            from lotoia.database.database import LotofacilOfficialHistory
 
             latest_contests = (
                 session.query(LotofacilOfficialHistory)
@@ -20887,8 +20887,12 @@ def _render_analytical_page(snapshot: dict[str, Any]) -> None:
         )
     if not generation_history or not historical_rows:
         # Buscar estatísticas do banco para explicar o motivo
-        from lotoia.db import get_session
-        from lotoia.models import GenerationEvent, GeneratedGame, ReconciliationRun
+        from lotoia.database.database import (
+            GenerationEvent,
+            GeneratedGame,
+            ReconciliationRun,
+            get_session,
+        )
 
         try:
             with get_session(DB_PATH) as session:
