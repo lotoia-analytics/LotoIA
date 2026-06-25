@@ -26,12 +26,6 @@ LEGACY_PAGE_ALIASES: dict[str, str] = {
     "generation": "clean_law15_generation",
     "clear_histories": "restricted_controlled_cleanup",
     "delete_history": "restricted_controlled_cleanup",
-    "Central de Diagnósticos ML": "central_ml_diagnostics",
-    "Central ML Assistiva": "central_ml_diagnostics",
-    "central_ml": "central_ml_diagnostics",
-    "ml_diagnostics": "central_ml_diagnostics",
-    "institutional_supervised_ml": "central_ml_diagnostics",
-    "ml_assistive": "central_ml_diagnostics",
     "core_002_read_only": "governance_read_only",
     "Núcleo Lei 15 — CORE_002": "governance_read_only",
     "comparative_history": "structural_coverage",
@@ -50,13 +44,6 @@ LEGACY_PAGE_ALIASES: dict[str, str] = {
     "Métricas HB": "structural_coverage",
     "institutional_simulation_backtesting": "simulation",
     "Simulação Institucional / Backtesting": "simulation",
-    "audit_monitoring_side_leak": "central_ml_diagnostics",
-    "Vazamento Lateral Constitucional": "central_ml_diagnostics",
-    "Vazamento lateral": "central_ml_diagnostics",
-    "audit_monitoring_13_to_14": "central_ml_diagnostics",
-    "Evolução 13 -> 14": "central_ml_diagnostics",
-    "audit_monitoring_14_to_15": "central_ml_diagnostics",
-    "Evolução 14 -> 15": "central_ml_diagnostics",
 }
 
 INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
@@ -71,7 +58,6 @@ INSTITUTIONAL_ALLOWED_PAGES: frozenset[str] = frozenset(
         "history_institutional",
         "structural_coverage",
         "structural_coverage_nova",
-        "central_ml_diagnostics",
         "restricted_controlled_cleanup",
     }
 )
@@ -87,10 +73,6 @@ OFFICIAL_SIDEBAR_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Cobertura Nova", "structural_coverage_nova"),
             ("Simular Resultados", "simulation"),
         ),
-    ),
-    (
-        "Análise",
-        (("Análise ML", "central_ml_diagnostics"),),
     ),
     (
         "Referência",
@@ -145,26 +127,6 @@ ALIAS_ROUTE_ROWS: tuple[dict[str, str], ...] = (
         "alias": "Limpar Históricos",
         "destino": "restricted_controlled_cleanup",
         "motivo": "Label ambíguo — redireciona para limpeza controlada",
-    },
-    {
-        "alias": "Central de Diagnósticos ML",
-        "destino": "central_ml_diagnostics",
-        "motivo": "Label legado — Central ML operacional supervisionada (M-ML-VIS-053B)",
-    },
-    {
-        "alias": "Central ML Assistiva",
-        "destino": "central_ml_diagnostics",
-        "motivo": "M-VIS-057 — redireciona para Central ML Calibração Supervisionada",
-    },
-    {
-        "alias": "ml_diagnostics",
-        "destino": "central_ml_diagnostics",
-        "motivo": "Alias legado — Central ML",
-    },
-    {
-        "alias": "institutional_supervised_ml",
-        "destino": "central_ml_diagnostics",
-        "motivo": "Módulo interno — rota de menu central_ml_diagnostics",
     },
     {
         "alias": "institutional_simulation_backtesting",
@@ -329,7 +291,7 @@ CONSTITUTIONAL_LABELS: tuple[str, ...] = (
     "Conferir Resultados",
     "Simular Resultados",
     "Cobertura Estrutural",
-    "Análise ML",
+    "Cobertura Nova",
     "Histórico Analítico",
     "Histórico Institucional",
     "Painel Inicial Institucional",
@@ -346,7 +308,7 @@ ROUTE_GUARDS: tuple[str, ...] = (
     "public_app fora do escopo deste inventário.",
     "M-VIS-057 — menu lateral enxuto; rotas antigas redirecionam com fallback seguro.",
     "M-UI-MENU-001 — governança e status constitucional ocultos do menu operacional.",
-    "M-UI-CLEAN-001 — Análise ML visível no grupo Análise; geração CORE_002 soberana direta.",
+    "M-UI-CLEAN-001 — Cobertura Nova com ML como sensor informativo; geração CORE_002 soberana direta.",
 )
 
 
