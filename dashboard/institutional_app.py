@@ -21644,6 +21644,131 @@ def _render_hb_geometry_page(state: dict[str, Any]) -> None:
             st.dataframe(csv_frame.tail(20), hide_index=True, use_container_width=True)
 
 
+def _count_total_jackpots() -> int:
+    """Conta total de jogos com 15 acertos (jackpots)."""
+    from lotoia.database.database import ReconciliationGame, get_session
+
+    try:
+        with get_session(DB_PATH) as session:
+            return (
+                session.query(ReconciliationGame)
+                .filter(ReconciliationGame.hits == 15)
+                .count()
+            )
+    except Exception:
+        return 0
+
+
+def _count_events_with_jackpots() -> int:
+    """Conta eventos que têm pelo menos 1 jackpot."""
+    from lotoia.database.database import ReconciliationGame, get_session
+    from sqlalchemy import func
+
+    try:
+        with get_session(DB_PATH) as session:
+            return (
+                session.query(
+                    func.count(func.distinct(ReconciliationGame.generation_event_id))
+                )
+                .filter(ReconciliationGame.hits == 15)
+                .scalar()
+            ) or 0
+    except Exception:
+        return 0
+
+
+def _count_unique_reconciled_contests() -> int:
+    """Conta concursos únicos reconciliados."""
+    from lotoia.database.database import ReconciliationRun, get_session
+
+    try:
+        with get_session(DB_PATH) as session:
+            return (
+                session.query(ReconciliationRun.contest_id)
+                .filter(ReconciliationRun.contest_id.isnot(None))
+                .distinct()
+                .count()
+            )
+    except Exception:
+        return 0
+
+
+def _get_reconciliation_coverage() -> dict[str, Any]:
+    """Calcula cobertura de reconciliação."""
+    from lotoia.database.database import (
+        GenerationEvent,
+        GeneratedGame,
+        ReconciliationRun,
+        get_session,
+    )
+
+    try:
+        with get_session(DB_PATH) as session:
+            total = session.query(GenerationEvent).count()
+            pending_events = (
+                session.query(GenerationEvent)
+                .outerjoin(
+                    ReconciliationRun,
+                    ReconciliationRun.generation_event_id == GenerationEvent.id,
+                )
+                .filter(ReconciliationRun.id.is_(None))
+                .count()
+            )
+            pending_games = (
+                session.query(GeneratedGame)
+                .join(
+                    GenerationEvent,
+                    GenerationEvent.id == GeneratedGame.generation_event_id,
+                )
+                .outerjoin(
+                    ReconciliationRun,
+                    ReconciliationRun.generation_event_id == GenerationEvent.id,
+                )
+                .filter(ReconciliationRun.id.is_(None))
+                .count()
+            )
+            reconciled = total - pending_events
+            coverage = (reconciled / total * 100) if total > 0 else 0
+
+            return {
+                "total": total,
+                "reconciled": reconciled,
+                "pending_events": pending_events,
+                "pending_games": pending_games,
+                "coverage_pct": coverage,
+            }
+    except Exception:
+        return {
+            "total": 0,
+            "reconciled": 0,
+            "pending_events": 0,
+            "pending_games": 0,
+            "coverage_pct": 0.0,
+        }
+
+
+def _load_hits_distribution() -> list[dict[str, int]]:
+    """Carrega distribuição de acertos."""
+    from lotoia.database.database import ReconciliationGame, get_session
+    from sqlalchemy import func
+
+    try:
+        with get_session(DB_PATH) as session:
+            rows = (
+                session.query(
+                    ReconciliationGame.hits,
+                    func.count(ReconciliationGame.id).label("count"),
+                )
+                .filter(ReconciliationGame.hits.isnot(None))
+                .group_by(ReconciliationGame.hits)
+                .order_by(ReconciliationGame.hits.desc())
+                .all()
+            )
+            return [{"hits": int(hits), "count": int(count)} for hits, count in rows]
+    except Exception:
+        return []
+
+
 def _render_home_metric_card(
     label: str, value: str, *, caption: str = "", value_class: str = ""
 ) -> None:
@@ -21840,6 +21965,48 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
             caption=backend,
         )
 
+    # Métricas de destaque (JACKPOTS, Concursos Únicos, Cobertura)
+    total_jackpots = _count_total_jackpots()
+    events_with_jackpots = _count_events_with_jackpots()
+    unique_contests = _count_unique_reconciled_contests()
+    coverage = _get_reconciliation_coverage()
+
+    highlight_cols = st.columns(4)
+    with highlight_cols[0]:
+        _render_home_metric_card(
+            "JACKPOTS (15 acertos)",
+            f"{total_jackpots}",
+            caption=f"{events_with_jackpots} eventos com jackpot",
+            value_class="lotoia-metric-value-accent",
+        )
+    with highlight_cols[1]:
+        _render_home_metric_card(
+            "Concursos Únicos",
+            f"{unique_contests}",
+            caption="concursos reconciliados",
+        )
+    with highlight_cols[2]:
+        _render_home_metric_card(
+            "Cobertura",
+            f"{coverage['coverage_pct']:.1f}%",
+            caption=f"{coverage['reconciled']}/{coverage['total']} eventos",
+        )
+    with highlight_cols[3]:
+        _render_home_metric_card(
+            "Melhor Acerto Global",
+            f"{best_hits} ({total_jackpots} JACKPOTS)",
+            caption="destaque institucional",
+            value_class="lotoia-metric-value-success" if best_hits >= 15 else "",
+        )
+
+    # Alerta para eventos pendentes
+    if coverage["pending_events"] > 0:
+        st.warning(
+            f"⚠️ **{coverage['pending_events']} eventos pendentes** de reconciliação "
+            f"({coverage['pending_games']} jogos). "
+            f"Use o Histórico Institucional para conferir."
+        )
+
     # V3 governance metrics removidos da home (M-UI-CLEAN-001) — referência interna, não operacional
 
     _render_constitutional_status_panel(compact=False)
@@ -21882,6 +22049,16 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
         "CORE_002 soberano ativo (M-OPS-079) | ML reposicionado como ferramenta analítica | "
         "Walk-forward validation ativa | PostgreSQL institucional conectado."
     )
+
+    # Expander com distribuição de acertos
+    hits_distribution = _load_hits_distribution()
+    if hits_distribution:
+        with st.expander("Distribuição de Acertos", expanded=False):
+            dist_df = pd.DataFrame(hits_distribution)
+            st.bar_chart(dist_df.set_index("hits"), use_container_width=True)
+            st.dataframe(dist_df, hide_index=True, use_container_width=True)
+            st.caption("Distribuição de acertos em todos os jogos reconciliados")
+
     _render_home_quick_access()
 
 
