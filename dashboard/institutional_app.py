@@ -21769,6 +21769,27 @@ def _load_hits_distribution() -> list[dict[str, int]]:
         return []
 
 
+def _load_global_best_hits() -> int:
+    """Busca o melhor acerto global de todas as reconciliações.
+
+    Returns:
+        int: Melhor acerto encontrado (15 = JACKPOT)
+    """
+    from lotoia.database.database import ReconciliationGame, get_session
+    from sqlalchemy import func
+
+    try:
+        with get_session(DB_PATH) as session:
+            result = (
+                session.query(func.max(ReconciliationGame.hits))
+                .filter(ReconciliationGame.hits.isnot(None))
+                .scalar()
+            )
+            return int(result) if result else 0
+    except Exception:
+        return 0
+
+
 def _load_jackpots_over_time() -> list[dict[str, Any]]:
     """Carrega evolução temporal de jackpots por data."""
     from lotoia.database.database import ReconciliationGame, get_session
@@ -21944,10 +21965,8 @@ def _render_home_page(snapshot: dict[str, Any]) -> None:
     generated_games = int(live_counts.get("generated_games", 0) or 0)
     generation_events = int(live_counts.get("generation_events", 0) or 0)
     reconciliation_runs = int(live_counts.get("reconciliation_runs", 0) or 0)
-    best_hits = int(
-        latest_generation.get("maior acerto", latest_reconciliation.get("best_hits", 0))
-        or 0
-    )
+    # Busca o melhor acerto GLOBAL de todas as reconciliações (não apenas da última)
+    best_hits = _load_global_best_hits()
     backend = str(snapshot.get("backend", "-") or "-")
     backend_ok = backend.lower() == "postgresql"
     last_reconciliation_date = (
