@@ -8,6 +8,15 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 ## [Não Lançado]
 
 ### Adicionado
+- **Fase 4: Persistência do Feedback no PostgreSQL** (2026-06-25)
+  - Tabela `feedback_history` para armazenar análises pós-concurso
+  - Persiste métricas, sugestões e versões aplicadas
+  - Recupera histórico ao reiniciar sistema
+  - Habilita análise de longo prazo e tendências
+  - Migration script: `scripts/migrations/004_create_feedback_history_table.py`
+  - 12 testes completos em `tests/generation/test_feedback_persistence.py`
+  - Documentação: `docs/architecture/CORE_003_PHASE4_FEEDBACK_PERSISTENCE.md`
+
 - **Testes de Métricas Estruturais** (2026-06-25)
   - 13 testes cobrindo `compute_structural_metrics` e `validate_structural_metrics`
   - Testes de triplet 01-02-03: frequência, limites, bug cap=0
