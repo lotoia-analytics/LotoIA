@@ -1,12 +1,14 @@
 """CORE_003 — Pipeline Simplificado de Geração Estrutural.
 
 Arquitetura consolidada em 4 camadas:
-- L1: Pool Generation (geração base)
+- L1: Pool Generation (geração base — NATIVA por formato, Fase 3)
 - L2: Structural Policy (políticas estruturais consolidadas)
 - L3: Anti-Clone + Diversity (diversidade e anti-duplicação)
-- L4: Critical Digits (reforço de dezenas críticas)
+- L4: Critical Digits (refinamento de dezenas críticas)
 
-Objetivo: Reduzir complexidade de 10 módulos para 4 camadas claras.
+Fase 3: Cada formato (15D, 17D, 18D, 20D, 23D) tem seu próprio
+motor de geração nativo. Formatos sem gerador nativo (16D, 19D, 21D, 22D)
+usam expansão a partir do pool 15D.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lotoia.config.core_003_config import CORE_003_CONFIG, CalibrationPreset
+from lotoia.config.core_003_config import CORE_003_CONFIG, CalibrationPreset, is_native_format
 from lotoia.statistics.structural_metrics_validator import (
     compute_structural_metrics,
     validate_structural_metrics,
@@ -37,14 +39,12 @@ class Core003Pipeline:
         calibration: CalibrationPreset = "equilibrado",
         config: dict[str, Any] | None = None,
     ):
-        # Validar formato
         if format not in CORE_003_CONFIG["formats"]:
             raise ValueError(
                 f"Formato '{format}' não encontrado. "
                 f"Opções disponíveis: {list(CORE_003_CONFIG['formats'].keys())}"
             )
 
-        # Validar preset de calibração
         if calibration not in CORE_003_CONFIG["calibration_presets"]:
             raise ValueError(
                 f"Preset '{calibration}' não encontrado. "
@@ -67,16 +67,18 @@ class Core003Pipeline:
             pool_size = max(count * 3, 100)
 
         logger.info(
-            "[CORE_003] Iniciando geração | format=%s count=%d pool_size=%d calibration=%s",
+            "[CORE_003] Iniciando geração | format=%s count=%d pool_size=%d calibration=%s native=%s",
             self.format,
             count,
             pool_size,
             self.calibration,
+            is_native_format(self.format),
         )
 
-        # L1: Pool Generation
+        # L1: Pool Generation (NATIVO ou expandido)
         pool = self._l1_pool_generation(pool_size)
         self._metrics["pool_size"] = len(pool)
+        self._metrics["native_generation"] = is_native_format(self.format)
 
         # L2: Structural Policy
         pool = self._l2_structural_policy(pool)
@@ -93,64 +95,83 @@ class Core003Pipeline:
         self._compute_final_metrics(gp)
 
         logger.info(
-            "[CORE_003] Geração concluída | gp_size=%d diversity=%.2f overlap=%.1f",
+            "[CORE_003] Geração concluída | gp_size=%d diversity=%.2f overlap=%.1f native=%s",
             len(gp),
             self._metrics.get("diversity_score", 0),
             self._metrics.get("avg_overlap", 0),
+            self._metrics.get("native_generation"),
         )
 
         return gp
 
     def _l1_pool_generation(self, pool_size: int) -> list[dict[str, Any]]:
-        """L1: Gera pool base de candidatos."""
+        """L1: Gera pool base de candidatos.
+        
+        Fase 3: Para formatos nativos (15D, 17D, 18D, 20D, 23D),
+        usa gerador nativo com políticas específicas do formato.
+        Para formatos sem gerador nativo, expande a partir do 15D.
+        """
+        if is_native_format(self.format):
+            return self._l1_native_pool_generation(pool_size)
+        else:
+            return self._l1_expanded_pool_generation(pool_size)
+
+    def _l1_native_pool_generation(self, pool_size: int) -> list[dict[str, Any]]:
+        """L1 nativo: usa gerador nativo do formato."""
+        from lotoia.generation.native_format_generators import get_native_generator
+
+        generator = get_native_generator(self.format)
+        pool = generator.build_pool(pool_size, seed=42, history=[])
+
+        logger.debug(
+            "[CORE_003:L1] Pool NATIVO gerado | format=%s size=%d",
+            self.format,
+            len(pool),
+        )
+        return pool
+
+    def _l1_expanded_pool_generation(self, pool_size: int) -> list[dict[str, Any]]:
+        """L1 expandido: gera 15D e expande para formatos sem gerador nativo."""
         from lotoia.generation.lei15_core_002 import build_sovereign_pool
         from lotoia.governance.lei15_core_002_sovereign import get_core_002_config
 
-        # Obter configuração do formato
         format_config = self.config["formats"][self.format]
         dezenas = format_config["dezenas"]
 
-        # Gerar label do batch baseado no formato
         batch_label = f"STRUCT_LEI15_CORE_CANDIDATE_003_{self.format}_001"
         config = get_core_002_config(batch_label)
 
-        # Gerar pool base (sempre 15D no CORE_002)
         pool_15d = build_sovereign_pool(pool_size, seed=42, history=[], config=config)
 
-        # Se o formato é 15D, retornar direto
         if dezenas == 15:
             logger.debug("[CORE_003:L1] Pool 15D gerado | size=%d", len(pool_15d))
             return pool_15d
 
-        # Para formatos > 15D, expandir jogos de forma inteligente
+        # Expandir jogos de forma inteligente
         pool = []
         for game_15d in pool_15d:
             base_numbers = set(game_15d.get("numbers", []))
-
-            # Adicionar dezenas até atingir o tamanho desejado
             available = [n for n in range(1, 26) if n not in base_numbers]
             needed = dezenas - len(base_numbers)
 
             if needed > 0 and len(available) >= needed:
                 import random
-
-                # Usar seed determinística baseada no jogo original para reprodutibilidade
                 random.seed(hash(tuple(sorted(base_numbers))))
                 extra_numbers = random.sample(available, needed)
                 new_numbers = sorted(list(base_numbers) + extra_numbers)
             else:
                 new_numbers = sorted(list(base_numbers))
 
-            # Criar novo jogo com o tamanho correto
             new_game = game_15d.copy()
             new_game["numbers"] = new_numbers
             new_game["original_size"] = 15
             new_game["expanded_to"] = dezenas
+            new_game["native_generator"] = False
 
             pool.append(new_game)
 
         logger.debug(
-            "[CORE_003:L1] Pool expandido | format=%s base_size=%d expanded_size=%d",
+            "[CORE_003:L1] Pool EXPANDIDO | format=%s base=%d expanded=%d",
             self.format,
             len(pool_15d),
             len(pool),
@@ -164,10 +185,7 @@ class Core003Pipeline:
             pre_filter_pool_diversity,
         )
 
-        # Pré-filtro de diversidade
         filtered = pre_filter_pool_diversity(pool, gp_size=len(pool) // 3)
-
-        # Aplica caps de diversidade
         capped = enforce_gp_diversity_cap(
             filtered,
             pool,
@@ -197,7 +215,6 @@ class Core003Pipeline:
             fallback_pool=pool,
         )
 
-        # Aplica diversidade adicional se necessário
         if len(gp) < count:
             logger.warning(
                 "[CORE_003:L3] GP incompleto | expected=%d actual=%d",
@@ -215,10 +232,8 @@ class Core003Pipeline:
         preset = self.config["calibration_presets"][self.calibration]
         boost_multiplier = preset.get("critical_digit_boost_multiplier", 1.0)
 
-        # Aplica camada crítica
         gp = apply_critical_digit_layer(gp)
 
-        # Ajusta boost conforme preset
         if boost_multiplier != 1.0:
             for game in gp:
                 meta = game.get("lei15_core_002_metadata", {})
@@ -236,21 +251,19 @@ class Core003Pipeline:
         """Computa métricas estruturais finais."""
         metrics = compute_structural_metrics(gp)
 
-        # Obter limites específicos para o formato
         format_config = self.config["formats"][self.format]
         game_size = format_config["dezenas"]
 
-        # Validar com limites específicos do formato
         validation_limits = self.config["validation_limits"]
 
-        # Triplet 01-02-03 (específico por formato)
+        # Triplet 01-02-03
         triplet_limits = validation_limits["triplet_by_format"].get(
             self.format, validation_limits["triplet_by_format"]["15D"]
         )
         triplet_pct = metrics.get("triplet_010203_pct", 0)
         triplet_valid = triplet_limits["min"] <= triplet_pct <= triplet_limits["max"]
 
-        # Overlap específico por formato
+        # Overlap
         overlap_limits = validation_limits["avg_overlap_by_format"].get(
             self.format, validation_limits["avg_overlap_by_format"]["15D"]
         )
@@ -262,7 +275,6 @@ class Core003Pipeline:
         diversity_limits = validation_limits["diversity_score"]
         diversity_valid = diversity_score >= diversity_limits["min"]
 
-        # Construir resultado de validação
         violations = []
         warnings = []
 
@@ -303,16 +315,16 @@ class Core003Pipeline:
         self._metrics["diversity_score"] = round(diversity_score, 4)
         self._metrics["validation"] = validation
 
-        # Log de métricas
         logger.info(
             "[CORE_003] Métricas finais | format=%s game_size=%d | "
-            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s",
+            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s native=%s",
             self.format,
             game_size,
             triplet_pct * 100,
             avg_overlap,
             diversity_score,
             validation.get("valid", False),
+            is_native_format(self.format),
         )
 
         if not validation.get("valid"):
@@ -337,6 +349,9 @@ def generate_core_003_games(
 ) -> list[dict[str, Any]]:
     """Função simplificada para gerar jogos CORE_003.
 
+    Fase 3: Formatos nativos (15D, 17D, 18D, 20D, 23D) usam
+    geradores dedicados. Demais formatos usam expansão 15D.
+
     Args:
         format: Formato do jogo (15D, 17D, etc.)
         count: Quantidade de jogos a gerar
@@ -348,38 +363,14 @@ def generate_core_003_games(
 
     Returns:
         Lista de jogos gerados com métricas estruturais
-
-    Example:
-        >>> # Uso simples (sem auto-calibração)
-        >>> games = generate_core_003_games(format="15D", count=50)
-
-        >>> # Uso com auto-calibração
-        >>> games = generate_core_003_games(
-        ...     format="15D",
-        ...     count=50,
-        ...     auto_calibrate=True,
-        ... )
-
-        >>> # Uso com versão específica
-        >>> games = generate_core_003_games(
-        ...     format="15D",
-        ...     count=50,
-        ...     version="v3.1.0",
-        ... )
     """
-    # Se auto_calibrate está ativo, usar SmartOrchestrator
     if auto_calibrate:
         from lotoia.generation.smart_orchestrator import get_orchestrator
 
         orchestrator = get_orchestrator(format=format, auto_calibrate=True)
-
-        # Calibrar preset baseado em feedback
         calibrated_preset, adjustments = orchestrator.calibrate_preset(calibration)
-
-        # Aplicar ajustes à configuração
         config = orchestrator.apply_adjustments_to_config(adjustments)
 
-        # Registrar versão se houve ajustes
         if adjustments:
             orchestrator.register_generation_version(
                 preset_used=calibrated_preset,
@@ -392,14 +383,12 @@ def generate_core_003_games(
             len(adjustments),
         )
 
-        # Criar pipeline com configuração ajustada
         pipeline = Core003Pipeline(
             format=format,
             calibration=calibrated_preset,
             config=config,
         )
     else:
-        # Se não há auto-calibração, usar configuração padrão
         pipeline = Core003Pipeline(format=format, calibration=calibration)
 
     return pipeline.generate(
