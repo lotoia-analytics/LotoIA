@@ -1,10 +1,12 @@
 """Sistema de Feedback Automático pós-concurso para CORE_003.
 
 Analisa resultados de concursos e sugere ajustes de calibração automaticamente.
+Fase 4: Persistência no PostgreSQL adicionada.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -14,12 +16,189 @@ from lotoia.config.core_003_config import CORE_003_CONFIG
 logger = logging.getLogger(__name__)
 
 
-class PostContestFeedback:
-    """Sistema de feedback automático pós-concurso."""
+def _get_db_connection():
+    """Obtém conexão com o banco de dados PostgreSQL."""
+    try:
+        from sqlalchemy import create_engine
+        from lotoia.config.settings import settings
 
-    def __init__(self):
+        engine = create_engine(settings.database_url)
+        return engine
+    except Exception as e:
+        logger.warning(f"[Feedback] Erro ao conectar ao banco: {e}")
+        return None
+
+
+class PostContestFeedback:
+    """Sistema de feedback automático pós-concurso.
+
+    Fase 4: Agora persiste histórico no PostgreSQL.
+    """
+
+    def __init__(self, persist_to_db: bool = True):
+        """Inicializa o sistema de feedback.
+
+        Args:
+            persist_to_db: Se True, persiste histórico no PostgreSQL (Fase 4)
+        """
         self.suggestions: list[dict[str, Any]] = []
         self.history: list[dict[str, Any]] = []
+        self.persist_to_db = persist_to_db
+
+        # Carregar histórico do banco se disponível
+        if self.persist_to_db:
+            self._load_history_from_db()
+
+    def _save_to_db(self, analysis: dict[str, Any]) -> bool:
+        """Salva análise no banco de dados PostgreSQL.
+
+        Args:
+            analysis: Dicionário com análise do concurso
+
+        Returns:
+            True se salvou com sucesso, False caso contrário
+        """
+        if not self.persist_to_db:
+            return False
+
+        engine = _get_db_connection()
+        if not engine:
+            return False
+
+        try:
+            from sqlalchemy import text
+
+            with engine.connect() as conn:
+                conn.execute(
+                    text("""
+                        INSERT INTO feedback_history 
+                        (contest_number, format, metrics, suggestions, version_applied)
+                        VALUES (:contest_number, :format, :metrics, :suggestions, :version)
+                        ON CONFLICT (contest_number, format) 
+                        DO UPDATE SET 
+                            metrics = EXCLUDED.metrics,
+                            suggestions = EXCLUDED.suggestions,
+                            version_applied = EXCLUDED.version_applied
+                    """),
+                    {
+                        "contest_number": analysis["contest_number"],
+                        "format": analysis["format"],
+                        "metrics": json.dumps(analysis["metrics"]),
+                        "suggestions": json.dumps(analysis["suggestions"]),
+                        "version": analysis.get("version_applied"),
+                    },
+                )
+                conn.commit()
+
+            logger.debug(
+                f"[Feedback] Análise salva no banco: concurso {analysis['contest_number']}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"[Feedback] Erro ao salvar no banco: {e}")
+            return False
+
+    def _load_history_from_db(self) -> bool:
+        """Carrega histórico do banco de dados PostgreSQL.
+
+        Returns:
+            True se carregou com sucesso, False caso contrário
+        """
+        if not self.persist_to_db:
+            return False
+
+        engine = _get_db_connection()
+        if not engine:
+            return False
+
+        try:
+            from sqlalchemy import text
+
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT contest_number, format, metrics, suggestions, 
+                               version_applied, created_at
+                        FROM feedback_history
+                        ORDER BY created_at DESC
+                        LIMIT 100
+                    """)
+                )
+
+                history = []
+                for row in result:
+                    history.append(
+                        {
+                            "contest_number": row.contest_number,
+                            "format": row.format,
+                            "metrics": json.loads(row.metrics),
+                            "suggestions": json.loads(row.suggestions),
+                            "version_applied": row.version_applied,
+                            "timestamp": row.created_at.isoformat(),
+                            "games_analyzed": 0,  # Não persistimos os jogos
+                        }
+                    )
+
+                # Ordenar por concurso (crescente)
+                history.sort(key=lambda x: x["contest_number"])
+                self.history = history
+
+            logger.debug(
+                f"[Feedback] Histórico carregado do banco: {len(history)} análises"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"[Feedback] Erro ao carregar do banco: {e}")
+            return False
+
+    def get_history_from_db(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Retorna histórico do banco de dados.
+
+        Args:
+            limit: Número máximo de registros a retornar
+
+        Returns:
+            Lista de análises do banco
+        """
+        engine = _get_db_connection()
+        if not engine:
+            return []
+
+        try:
+            from sqlalchemy import text
+
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT contest_number, format, metrics, suggestions, 
+                               version_applied, created_at
+                        FROM feedback_history
+                        ORDER BY created_at DESC
+                        LIMIT :limit
+                    """),
+                    {"limit": limit},
+                )
+
+                history = []
+                for row in result:
+                    history.append(
+                        {
+                            "contest_number": row.contest_number,
+                            "format": row.format,
+                            "metrics": json.loads(row.metrics),
+                            "suggestions": json.loads(row.suggestions),
+                            "version_applied": row.version_applied,
+                            "timestamp": row.created_at.isoformat(),
+                        }
+                    )
+
+                return history
+
+        except Exception as e:
+            logger.error(f"[Feedback] Erro ao buscar histórico do banco: {e}")
+            return []
 
     def analyze_contest_result(
         self,
@@ -27,6 +206,7 @@ class PostContestFeedback:
         contest_numbers: list[int],
         generated_games: list[dict[str, Any]],
         format: str = "15D",
+        version_applied: str | None = None,
     ) -> dict[str, Any]:
         """Analisa resultado de concurso e gera sugestões de ajuste.
 
@@ -35,6 +215,7 @@ class PostContestFeedback:
             contest_numbers: Dezenas sorteadas no concurso
             generated_games: Jogos gerados para este concurso
             format: Formato dos jogos (15D, 17D, etc.)
+            version_applied: Versão do modelo aplicada (opcional)
 
         Returns:
             Dicionário com métricas e sugestões
@@ -62,9 +243,15 @@ class PostContestFeedback:
             "metrics": metrics,
             "suggestions": suggestions,
             "games_analyzed": len(generated_games),
+            "version_applied": version_applied,
         }
 
+        # Adicionar ao histórico em memória
         self.history.append(analysis)
+
+        # Persistir no banco de dados (Fase 4)
+        if self.persist_to_db:
+            self._save_to_db(analysis)
 
         # Log de resultados
         logger.info(
