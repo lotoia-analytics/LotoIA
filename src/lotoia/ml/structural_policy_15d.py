@@ -32,17 +32,19 @@ MEMORY_ORIGIN = "institutional_sovereign_base_15d"
 MEMORY_REASON = "política soberana base 15D"
 EXPECTED_IMPACT = (
     "Garantir rastreabilidade e conformidade estrutural dos cartões 15D "
-    "(repetição 7–10, paridade 7/8 ou 8/7, sequência ≤ 6)."
+    "(repetição 7–10, paridade 6/9, 7/8, 8/7 ou 9/6, sequência ≤ 6)."
 )
 
 RULE_REPEAT = "repeticao_7_10"
-RULE_PARITY = "paridade_preferencial_7_8"
+RULE_PARITY = "paridade_preferencial_6_7_8_9"
 RULE_SEQUENCE = "sequencia_maxima_6"
 APPLIED_RULES: tuple[str, ...] = (RULE_REPEAT, RULE_PARITY, RULE_SEQUENCE)
 
-PREFERRED_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((7, 8), (8, 7))
+# Expandido para cobrir 88.7% dos casos reais (últimos 300 concursos)
+# 6/9=9%, 7/8=26.7%, 8/7=34%, 9/6=19%
+PREFERRED_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((6, 9), (7, 8), (8, 7), (9, 6))
 ALLOWED_PARITY_PAIRS: tuple[tuple[int, int], ...] = PREFERRED_PARITY_PAIRS
-NON_COMPLIANT_PARITY_PAIRS: tuple[tuple[int, int], ...] = ((6, 9), (9, 6))
+NON_COMPLIANT_PARITY_PAIRS: tuple[tuple[int, int], ...] = ()
 # Métricas de diagnóstico institucional — não são critérios de conformidade soberana CORE_002.
 CORE_NUMBERS: tuple[int, ...] = (7, 12, 16, 23)
 DISCOURAGED_NUMBERS: tuple[int, ...] = (2, 4, 11, 15, 24, 25)
@@ -59,7 +61,7 @@ def _parity_pairs_as_lists(
 
 
 def normalize_structural_policy_15d_memory(memory: Mapping[str, Any]) -> dict[str, Any]:
-    """Alinha paridade da memória à política soberana (somente 7/8 e 8/7)."""
+    """Alinha paridade da memória à política soberana (6/9, 7/8, 8/7, 9/6)."""
     normalized = dict(memory)
     canonical = _parity_pairs_as_lists(PREFERRED_PARITY_PAIRS)
     normalized["paridade_preferencial"] = canonical
@@ -160,7 +162,9 @@ def validate_game_structural_policy_15d(
         repeat_min = int(resolved_policy.get("repeticao_ultimo_concurso_min", 7) or 7)
         repeat_max = int(resolved_policy.get("repeticao_ultimo_concurso_max", 10) or 10)
         if repeat_count < repeat_min or repeat_count > repeat_max:
-            violations.append(f"repeticao:fora_faixa_{repeat_min}_{repeat_max}:{repeat_count}")
+            violations.append(
+                f"repeticao:fora_faixa_{repeat_min}_{repeat_max}:{repeat_count}"
+            )
 
     parity = _parity_pair(card_numbers)
     preferred_pairs = {
@@ -169,15 +173,19 @@ def validate_game_structural_policy_15d(
         if isinstance(pair, (list, tuple)) and len(pair) >= 2
     }
     if parity not in preferred_pairs:
-        violations.append(f"paridade:fora_preferencial_7_8:{parity[0]}_{parity[1]}")
+        violations.append(f"paridade:fora_preferencial_6_7_8_9:{parity[0]}_{parity[1]}")
 
     sequence_stats = calculate_sequence_stats(card_numbers)
     largest_sequence = int(sequence_stats.get("largest_sequence", 0) or 0)
     sequence_max = int(resolved_policy.get("sequencia_maxima", 6) or 6)
     if largest_sequence > sequence_max:
-        violations.append(f"sequencia:maxima_excedida:{largest_sequence}>{sequence_max}")
+        violations.append(
+            f"sequencia:maxima_excedida:{largest_sequence}>{sequence_max}"
+        )
 
-    core_numbers = _normalize_numbers(resolved_policy.get("core_numbers") or CORE_NUMBERS)
+    core_numbers = _normalize_numbers(
+        resolved_policy.get("core_numbers") or CORE_NUMBERS
+    )
     discouraged_numbers = _normalize_numbers(
         resolved_policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS
     )
@@ -244,7 +252,9 @@ def _enrich_with_validation(
     enriched["structural_policy_memory_loaded"] = True
     enriched["structural_policy_format"] = "15D"
     enriched["structural_policy_version"] = memory.get("policy_version")
-    enriched["policy_compliance_status"] = "compliant" if validation["approved"] else "non_compliant"
+    enriched["policy_compliance_status"] = (
+        "compliant" if validation["approved"] else "non_compliant"
+    )
     return enriched, validation
 
 
@@ -259,7 +269,7 @@ def apply_structural_policy_15d_to_sovereign_batch(
     """Governa o lote final 15D pela conformidade estrutural (M-ML-070-FIX-01).
 
     A política deixa de ser observacional: o lote final prioriza cartões
-    conformes (repetição 7–10, paridade 7/8 ou 8/7, sequência ≤ 6). Cartões não
+    conformes (repetição 7–10, paridade 6/9, 7/8, 8/7 ou 9/6, sequência ≤ 6). Cartões não
     conformes só entram para completar ``required_count`` quando não há conformes
     suficientes, e essa exceção é rastreada em ``non_compliant_kept_reason``.
     """
@@ -311,7 +321,10 @@ def apply_structural_policy_15d_to_sovereign_batch(
         {
             violation
             for game in final_games
-            for violation in list((game.get("structural_policy_15d_validation") or {}).get("violations") or [])
+            for violation in list(
+                (game.get("structural_policy_15d_validation") or {}).get("violations")
+                or []
+            )
         }
     )
     compliant_count = sum(
@@ -328,8 +341,12 @@ def apply_structural_policy_15d_to_sovereign_batch(
         compliance_status = "partial"
     else:
         compliance_status = "empty"
-    compliance_rate = round(compliant_count / len(final_games), 4) if final_games else 0.0
-    lote_alterado = [_game_signature(game) for game in final_games] != original_signatures
+    compliance_rate = (
+        round(compliant_count / len(final_games), 4) if final_games else 0.0
+    )
+    lote_alterado = [
+        _game_signature(game) for game in final_games
+    ] != original_signatures
     non_compliant_kept_reason = (
         "insufficient_compliant_pool" if non_compliant_kept else None
     )
@@ -364,7 +381,9 @@ def persist_structural_policy_15d_memory(
     db_path: Any = DEFAULT_DATABASE_PATH,
     memory: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    payload = normalize_structural_policy_15d_memory(dict(memory or build_structural_policy_15d_memory()))
+    payload = normalize_structural_policy_15d_memory(
+        dict(memory or build_structural_policy_15d_memory())
+    )
     payload["updated_at"] = datetime.now(UTC).isoformat()
     create_database(db_path)
     with get_session(db_path) as session:
@@ -423,9 +442,14 @@ def load_active_structural_policy_15d_memory(
             stored.setdefault("memory_row_id", int(getattr(row, "id", 0) or 0))
             stored.setdefault(
                 "status",
-                str(getattr(row, "structural_status", MEMORY_STATUS_ACTIVE) or MEMORY_STATUS_ACTIVE),
+                str(
+                    getattr(row, "structural_status", MEMORY_STATUS_ACTIVE)
+                    or MEMORY_STATUS_ACTIVE
+                ),
             )
-            stored.setdefault("updated_at", getattr(row, "created_at", datetime.now(UTC)).isoformat())
+            stored.setdefault(
+                "updated_at", getattr(row, "created_at", datetime.now(UTC)).isoformat()
+            )
             if memory_needs_parity_alignment(raw_stored):
                 persist_structural_policy_15d_memory(db_path, stored)
             return stored
@@ -434,10 +458,15 @@ def load_active_structural_policy_15d_memory(
     return build_structural_policy_15d_memory()
 
 
-def ensure_structural_policy_15d_memory(db_path: Any = DEFAULT_DATABASE_PATH) -> dict[str, Any]:
+def ensure_structural_policy_15d_memory(
+    db_path: Any = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
     canonical = build_structural_policy_15d_memory()
     active = load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
-    if active and str(active.get("policy_version") or "") == canonical["policy_version"]:
+    if (
+        active
+        and str(active.get("policy_version") or "") == canonical["policy_version"]
+    ):
         return normalize_structural_policy_15d_memory(active)
     return persist_structural_policy_15d_memory(db_path, canonical)
 
@@ -449,7 +478,9 @@ def resolve_policy_compliance_label(
 ) -> str:
     total_games = max(int(total), 0)
     compliant = max(int(compliant_count), 0)
-    violation_items = [str(item).strip() for item in (violations or []) if str(item).strip()]
+    violation_items = [
+        str(item).strip() for item in (violations or []) if str(item).strip()
+    ]
     if total_games == 0:
         return COMPLIANCE_LABEL_REPROVADO
     if compliant == total_games and not violation_items:
@@ -481,18 +512,26 @@ def _load_games_from_generation_event_ids(
         rows = (
             session.query(GeneratedGame)
             .filter(GeneratedGame.generation_event_id.in_(ids))
-            .order_by(GeneratedGame.generation_event_id.asc(), GeneratedGame.game_index.asc())
+            .order_by(
+                GeneratedGame.generation_event_id.asc(), GeneratedGame.game_index.asc()
+            )
             .all()
         )
         for row in rows:
             context = dict(getattr(row, "context_json", {}) or {})
-            numbers = list(getattr(row, "numbers", []) or context.get("final_card_numbers") or [])
+            numbers = list(
+                getattr(row, "numbers", []) or context.get("final_card_numbers") or []
+            )
             games.append(
                 {
                     "numbers": numbers,
-                    "final_card_numbers": list(context.get("final_card_numbers") or numbers),
+                    "final_card_numbers": list(
+                        context.get("final_card_numbers") or numbers
+                    ),
                     "context_json": context,
-                    "generation_event_id": int(getattr(row, "generation_event_id", 0) or 0),
+                    "generation_event_id": int(
+                        getattr(row, "generation_event_id", 0) or 0
+                    ),
                     "game_index": int(getattr(row, "game_index", 0) or 0),
                 }
             )
@@ -511,7 +550,9 @@ def _resolve_previous_numbers_from_context(
     from_bundle = list(bundle.get("previous_contest_numbers") or [])
     if from_bundle:
         return sorted(int(number) for number in from_bundle)
-    raw = payload.get("previous_contest_numbers") or payload.get("ultimo_concurso_numeros")
+    raw = payload.get("previous_contest_numbers") or payload.get(
+        "ultimo_concurso_numeros"
+    )
     if isinstance(raw, (list, tuple, set)):
         return sorted(int(number) for number in raw if 1 <= int(number) <= 25)
     history = payload.get("history") or payload.get("draw_history")
@@ -578,7 +619,9 @@ def analyze_batch_structural_policy_15d(
         "mission_id": MISSION_ID,
         "policy_version": str(resolved_policy.get("policy_version") or POLICY_VERSION),
         "structural_policy_memory_loaded": True,
-        "structural_policy_version": str(resolved_policy.get("policy_version") or POLICY_VERSION),
+        "structural_policy_version": str(
+            resolved_policy.get("policy_version") or POLICY_VERSION
+        ),
         "structural_policy_applied": bool(previous_numbers),
         "games_total": total_games,
         "games_compliant": compliant_count,
@@ -597,16 +640,22 @@ def analyze_batch_structural_policy_15d(
             "games_below_core_minimum": sum(
                 1
                 for row in per_game
-                if int((row.get("validation") or {}).get("core_present_count", 0) or 0) < CORE_MIN_PRESENT
+                if int((row.get("validation") or {}).get("core_present_count", 0) or 0)
+                < CORE_MIN_PRESENT
             ),
         },
         "discouraged_coverage_stats": {
-            "discouraged_numbers": list(resolved_policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS),
+            "discouraged_numbers": list(
+                resolved_policy.get("discouraged_numbers") or DISCOURAGED_NUMBERS
+            ),
             "hits_by_number": dict(discouraged_hits),
             "games_above_discouraged_limit": sum(
                 1
                 for row in per_game
-                if int((row.get("validation") or {}).get("discouraged_present_count", 0) or 0)
+                if int(
+                    (row.get("validation") or {}).get("discouraged_present_count", 0)
+                    or 0
+                )
                 > DISCOURAGED_MAX_PRESENT
             ),
         },
@@ -629,14 +678,20 @@ def analyze_games_from_context_or_records(
     if not resolved_games:
         context_games = payload.get("games") or payload.get("generated_games")
         if isinstance(context_games, list):
-            resolved_games = [dict(row) for row in context_games if isinstance(row, Mapping)]
+            resolved_games = [
+                dict(row) for row in context_games if isinstance(row, Mapping)
+            ]
     if not resolved_games:
         ge_ids = [
             int(value)
             for value in list(payload.get("generation_event_ids") or [])
             if int(value) > 0
         ]
-        selected_ge = int(payload.get("selected_generation_event_id") or payload.get("generation_event_id") or 0)
+        selected_ge = int(
+            payload.get("selected_generation_event_id")
+            or payload.get("generation_event_id")
+            or 0
+        )
         if selected_ge > 0:
             ge_ids.append(selected_ge)
         resolved_games = _load_games_from_generation_event_ids(db_path, ge_ids)
@@ -653,10 +708,20 @@ def analyze_games_from_context_or_records(
     )
 
 
-def build_structural_policy_15d_diagnosis(analysis: Mapping[str, Any]) -> list[dict[str, Any]]:
+def build_structural_policy_15d_diagnosis(
+    analysis: Mapping[str, Any],
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    violations = [str(item) for item in list(analysis.get("violations") or []) if str(item).strip()]
-    diagnostics = [str(item) for item in list(analysis.get("diagnostics") or []) if str(item).strip()]
+    violations = [
+        str(item)
+        for item in list(analysis.get("violations") or [])
+        if str(item).strip()
+    ]
+    diagnostics = [
+        str(item)
+        for item in list(analysis.get("diagnostics") or [])
+        if str(item).strip()
+    ]
     compliance_label = str(analysis.get("compliance_label") or "")
     games_total = int(analysis.get("games_total", 0) or 0)
     games_compliant = int(analysis.get("games_compliant", 0) or 0)
@@ -670,7 +735,9 @@ def build_structural_policy_15d_diagnosis(analysis: Mapping[str, Any]) -> list[d
                 "causa_provavel": "Repetição, paridade ou sequência fora dos limites institucionais.",
                 "acao_recomendada": "Aplicar calibração supervisionada com penalidades de política 15D.",
                 "impacto_esperado": "Elevar conformidade estrutural sem alterar Lei 15.",
-                "severidade": "alta" if compliance_label == COMPLIANCE_LABEL_REPROVADO else "media",
+                "severidade": "alta"
+                if compliance_label == COMPLIANCE_LABEL_REPROVADO
+                else "media",
                 "violations": violations,
             }
         )
@@ -718,7 +785,9 @@ def build_structural_policy_15d_calibration_plan(
     }
 
     if any("repeticao" in item for item in violations):
-        plan_items.append("Ajustar repetição com último concurso para faixa 7–10 (política 15D).")
+        plan_items.append(
+            "Ajustar repetição com último concurso para faixa 7–10 (política 15D)."
+        )
         impact_items.append("Normalizar repetição estrutural sem violar Lei 15.")
         parametros_sugeridos["repeat_penalty_boost"] = 1.15
         parametros_sugeridos["repeat_target_min"] = int(
@@ -729,7 +798,9 @@ def build_structural_policy_15d_calibration_plan(
         )
 
     if any("paridade" in item for item in violations):
-        plan_items.append("Penalizar paridade fora de 7/8 ou 8/7 (política 15D).")
+        plan_items.append(
+            "Penalizar paridade fora de 6/9, 7/8, 8/7 ou 9/6 (política 15D)."
+        )
         impact_items.append("Aproximar cartões da paridade preferencial institucional.")
         parametros_sugeridos["parity_penalty_boost"] = 1.12
 
@@ -737,16 +808,22 @@ def build_structural_policy_15d_calibration_plan(
         plan_items.append("Penalizar sequências acima do máximo 6 (política 15D).")
         impact_items.append("Reduzir sequências longas nos cartões 15D.")
         parametros_sugeridos["sequence_penalty_boost"] = 1.18
-        parametros_sugeridos["sequence_max_allowed"] = int(resolved_policy.get("sequencia_maxima", 6) or 6)
+        parametros_sugeridos["sequence_max_allowed"] = int(
+            resolved_policy.get("sequencia_maxima", 6) or 6
+        )
 
     if any("core:" in item for item in diagnostics):
         plan_items.append("Reforçar core_numbers institucionais (7, 12, 16, 23).")
         impact_items.append("Elevar presença mínima de dezenas core nos cartões 15D.")
         parametros_sugeridos["core_numbers_boost"] = 1.2
-        parametros_sugeridos["core_numbers"] = list(resolved_policy.get("core_numbers") or CORE_NUMBERS)
+        parametros_sugeridos["core_numbers"] = list(
+            resolved_policy.get("core_numbers") or CORE_NUMBERS
+        )
 
     if any("discouraged:" in item for item in diagnostics):
-        plan_items.append("Penalizar discouraged_numbers acima do limite (política 15D).")
+        plan_items.append(
+            "Penalizar discouraged_numbers acima do limite (política 15D)."
+        )
         impact_items.append("Reduzir concentração de dezenas desencorajadas.")
         parametros_sugeridos["discourage_penalty_boost"] = 1.15
         parametros_sugeridos["discouraged_numbers"] = list(
@@ -794,7 +871,10 @@ def record_structural_policy_batch_memory(
         "recorded_at": datetime.now(UTC).isoformat(),
     }
     merged_policy = {
-        **dict(load_active_structural_policy_15d_memory(db_path, persist_if_missing=False) or {}),
+        **dict(
+            load_active_structural_policy_15d_memory(db_path, persist_if_missing=False)
+            or {}
+        ),
         **policy_payload,
     }
     create_database(db_path)
@@ -813,10 +893,15 @@ def record_structural_policy_batch_memory(
                 unique_games=int(analysis.get("games_compliant", 0) or 0),
                 duplicate_games=max(
                     0,
-                    int(analysis.get("games_total", 0) or 0) - int(analysis.get("games_compliant", 0) or 0),
+                    int(analysis.get("games_total", 0) or 0)
+                    - int(analysis.get("games_compliant", 0) or 0),
                 ),
-                structural_status=str(analysis.get("compliance_label") or MEMORY_STATUS_ACTIVE),
-                scientific_status=str(analysis.get("policy_compliance_status") or MEMORY_STATUS_ACTIVE),
+                structural_status=str(
+                    analysis.get("compliance_label") or MEMORY_STATUS_ACTIVE
+                ),
+                scientific_status=str(
+                    analysis.get("policy_compliance_status") or MEMORY_STATUS_ACTIVE
+                ),
                 scientific_classification="STRUCTURAL_POLICY_15D_BATCH",
                 main_reason=MEMORY_REASON,
                 recommended_action="structural_policy_15d_batch_trace",
@@ -841,15 +926,27 @@ def extract_structural_policy_application_from_context(
     if bundle:
         return {
             "available": True,
-            "structural_policy_memory_loaded": bool(bundle.get("structural_policy_memory_loaded")),
-            "structural_policy_format": str(bundle.get("structural_policy_format") or "15D"),
-            "structural_policy_version": str(bundle.get("structural_policy_version") or ""),
+            "structural_policy_memory_loaded": bool(
+                bundle.get("structural_policy_memory_loaded")
+            ),
+            "structural_policy_format": str(
+                bundle.get("structural_policy_format") or "15D"
+            ),
+            "structural_policy_version": str(
+                bundle.get("structural_policy_version") or ""
+            ),
             "structural_policy_applied": bool(bundle.get("structural_policy_applied")),
-            "structural_policy_application_mode": str(bundle.get("structural_policy_application_mode") or ""),
+            "structural_policy_application_mode": str(
+                bundle.get("structural_policy_application_mode") or ""
+            ),
             "applied_rules": list(bundle.get("applied_rules") or []),
             "violated_rules": list(bundle.get("violated_rules") or []),
-            "policy_violations": list(bundle.get("policy_violations") or bundle.get("violated_rules") or []),
-            "policy_compliance_status": str(bundle.get("policy_compliance_status") or ""),
+            "policy_violations": list(
+                bundle.get("policy_violations") or bundle.get("violated_rules") or []
+            ),
+            "policy_compliance_status": str(
+                bundle.get("policy_compliance_status") or ""
+            ),
             "compliance_label": str(bundle.get("compliance_label") or ""),
             "games_validated": int(bundle.get("games_validated", 0) or 0),
             "games_compliant": int(bundle.get("games_compliant", 0) or 0),
@@ -862,13 +959,21 @@ def extract_structural_policy_application_from_context(
         return {
             "available": True,
             "structural_policy_memory_loaded": True,
-            "structural_policy_format": str(payload.get("structural_policy_format") or "15D"),
-            "structural_policy_version": str(payload.get("structural_policy_version") or ""),
+            "structural_policy_format": str(
+                payload.get("structural_policy_format") or "15D"
+            ),
+            "structural_policy_version": str(
+                payload.get("structural_policy_version") or ""
+            ),
             "structural_policy_applied": bool(payload.get("structural_policy_applied")),
             "applied_rules": list(payload.get("applied_rules") or []),
             "violated_rules": list(payload.get("violated_rules") or []),
-            "policy_violations": list(payload.get("policy_violations") or payload.get("violated_rules") or []),
-            "policy_compliance_status": str(payload.get("policy_compliance_status") or ""),
+            "policy_violations": list(
+                payload.get("policy_violations") or payload.get("violated_rules") or []
+            ),
+            "policy_compliance_status": str(
+                payload.get("policy_compliance_status") or ""
+            ),
             "compliance_label": str(payload.get("compliance_label") or ""),
             "games_validated": int(payload.get("games_validated", 0) or 0),
             "games_compliant": int(payload.get("games_compliant", 0) or 0),
