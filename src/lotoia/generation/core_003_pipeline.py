@@ -1,14 +1,16 @@
 """CORE_003 — Pipeline Simplificado de Geração Estrutural.
 
 Arquitetura consolidada em 4 camadas:
-- L1: Pool Generation (geração base — NATIVA por formato, Fase 3)
+- L1: Pool Generation (multi-estratégia Fase 6 + nativo Fase 3)
 - L2: Structural Policy (políticas estruturais consolidadas)
 - L3: Anti-Clone + Diversity (diversidade e anti-duplicação)
 - L4: Critical Digits (refinamento de dezenas críticas)
 
 Fase 3: Cada formato (15D, 17D, 18D, 20D, 23D) tem seu próprio
-motor de geração nativo. Formatos sem gerador nativo (16D, 19D, 21D, 22D)
-usam expansão a partir do pool 15D.
+motor de geração nativo.
+
+Fase 6: Pool multi-estratégia combina frequência (30%), padrões (25%),
+cobertura (25%) e aleatório (20%) para diversidade real no pool base.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import logging
 from typing import Any
 
 from lotoia.config.core_003_config import CORE_003_CONFIG, CalibrationPreset, is_native_format
+from lotoia.generation.pool_strategies import MultiStrategyPoolGenerator
 from lotoia.statistics.structural_metrics_validator import (
     compute_structural_metrics,
     validate_structural_metrics,
@@ -38,6 +41,8 @@ class Core003Pipeline:
         format: str = "15D",
         calibration: CalibrationPreset = "equilibrado",
         config: dict[str, Any] | None = None,
+        use_multi_strategy: bool = True,
+        strategy_weights: dict[str, float] | None = None,
     ):
         if format not in CORE_003_CONFIG["formats"]:
             raise ValueError(
@@ -55,6 +60,15 @@ class Core003Pipeline:
         self.calibration = calibration
         self.config = config or CORE_003_CONFIG
         self._metrics: dict[str, Any] = {}
+        self.use_multi_strategy = use_multi_strategy
+        self.strategy_weights = strategy_weights
+        
+        # Inicializar gerador multi-estratégia se habilitado
+        self._multi_strategy_generator: MultiStrategyPoolGenerator | None = None
+        if use_multi_strategy:
+            self._multi_strategy_generator = MultiStrategyPoolGenerator(
+                weights=strategy_weights
+            )
 
     def generate(
         self,
@@ -67,18 +81,25 @@ class Core003Pipeline:
             pool_size = max(count * 3, 100)
 
         logger.info(
-            "[CORE_003] Iniciando geração | format=%s count=%d pool_size=%d calibration=%s native=%s",
+            "[CORE_003] Iniciando geração | format=%s count=%d pool_size=%d calibration=%s native=%s multi_strategy=%s",
             self.format,
             count,
             pool_size,
             self.calibration,
             is_native_format(self.format),
+            self.use_multi_strategy,
         )
 
-        # L1: Pool Generation (NATIVO ou expandido)
+        # L1: Pool Generation (MULTI-ESTRATÉGIA + NATIVO ou expandido)
         pool = self._l1_pool_generation(pool_size)
         self._metrics["pool_size"] = len(pool)
         self._metrics["native_generation"] = is_native_format(self.format)
+        self._metrics["multi_strategy"] = self.use_multi_strategy
+        
+        # Métricas de estratégia (Fase 6)
+        if self._multi_strategy_generator:
+            breakdown = self._multi_strategy_generator.get_strategy_breakdown(pool)
+            self._metrics["strategy_breakdown"] = breakdown
 
         # L2: Structural Policy
         pool = self._l2_structural_policy(pool)
@@ -95,11 +116,12 @@ class Core003Pipeline:
         self._compute_final_metrics(gp)
 
         logger.info(
-            "[CORE_003] Geração concluída | gp_size=%d diversity=%.2f overlap=%.1f native=%s",
+            "[CORE_003] Geração concluída | gp_size=%d diversity=%.2f overlap=%.1f native=%s multi_strategy=%s",
             len(gp),
             self._metrics.get("diversity_score", 0),
             self._metrics.get("avg_overlap", 0),
             self._metrics.get("native_generation"),
+            self._metrics.get("multi_strategy"),
         )
 
         return gp
@@ -107,17 +129,40 @@ class Core003Pipeline:
     def _l1_pool_generation(self, pool_size: int) -> list[dict[str, Any]]:
         """L1: Gera pool base de candidatos.
         
-        Fase 3: Para formatos nativos (15D, 17D, 18D, 20D, 23D),
-        usa gerador nativo com políticas específicas do formato.
-        Para formatos sem gerador nativo, expande a partir do 15D.
+        Fase 6: Se multi-estratégia habilitado, combina:
+        - 30% frequency: baseado em frequência histórica
+        - 25% pattern: baseado em padrões estruturais
+        - 25% coverage: baseado em cobertura de dezenas
+        - 20% random: diversidade pura
+        
+        Para formatos nativos (15D, 17D, 18D, 20D, 23D), usa gerador nativo.
+        Para formatos sem nativo, expande a partir do 15D.
         """
-        if is_native_format(self.format):
+        if self.use_multi_strategy and self._multi_strategy_generator:
+            return self._l1_multi_strategy_pool(pool_size)
+        elif is_native_format(self.format):
             return self._l1_native_pool_generation(pool_size)
         else:
             return self._l1_expanded_pool_generation(pool_size)
 
+    def _l1_multi_strategy_pool(self, pool_size: int) -> list[dict[str, Any]]:
+        """L1 multi-estratégia: combina frequência, padrão, cobertura e aleatório."""
+        pool = self._multi_strategy_generator.generate(
+            pool_size,
+            format=self.format,
+            history=[],
+            seed=42,
+        )
+        
+        logger.debug(
+            "[CORE_003:L1] Pool MULTI-ESTRATÉGIA gerado | format=%s size=%d",
+            self.format,
+            len(pool),
+        )
+        return pool
+
     def _l1_native_pool_generation(self, pool_size: int) -> list[dict[str, Any]]:
-        """L1 nativo: usa gerador nativo do formato."""
+        """L1 nativo: usa gerador nativo do formato (Fase 3)."""
         from lotoia.generation.native_format_generators import get_native_generator
 
         generator = get_native_generator(self.format)
@@ -205,7 +250,6 @@ class Core003Pipeline:
         from lotoia.generation.lei15_core_002 import apply_anti_clone_gp
 
         preset = self.config["calibration_presets"][self.calibration]
-        max_overlap = preset.get("max_overlap", 10)
 
         gp = apply_anti_clone_gp(
             pool,
@@ -317,7 +361,7 @@ class Core003Pipeline:
 
         logger.info(
             "[CORE_003] Métricas finais | format=%s game_size=%d | "
-            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s native=%s",
+            "triplet=%.1f%% overlap=%.1f diversity=%.2f valid=%s native=%s multi_strategy=%s",
             self.format,
             game_size,
             triplet_pct * 100,
@@ -325,6 +369,7 @@ class Core003Pipeline:
             diversity_score,
             validation.get("valid", False),
             is_native_format(self.format),
+            self.use_multi_strategy,
         )
 
         if not validation.get("valid"):
@@ -346,20 +391,27 @@ def generate_core_003_games(
     target_contest: int | None = None,
     auto_calibrate: bool = False,
     version: str | None = None,
+    use_multi_strategy: bool = True,
+    strategy_weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Função simplificada para gerar jogos CORE_003.
 
     Fase 3: Formatos nativos (15D, 17D, 18D, 20D, 23D) usam
     geradores dedicados. Demais formatos usam expansão 15D.
+    
+    Fase 6: Pool multi-estratégia combina frequência, padrões,
+    cobertura e aleatório para diversidade real no pool base.
 
     Args:
         format: Formato do jogo (15D, 17D, etc.)
         count: Quantidade de jogos a gerar
-        pool_size: Tamanho do pool de candidatos (padrão: count * 3)
-        calibration: Preset de calibração (conservador, equilibrado, agressivo)
-        target_contest: Concurso alvo (opcional)
-        auto_calibrate: Se deve auto-calibrar baseado em feedback (padrão: False)
-        version: Versão específica do modelo a usar (opcional)
+        pool_size: Tamanho do pool de candidatos
+        calibration: Preset de calibração
+        target_contest: Concurso alvo
+        auto_calibrate: Auto-calibrar baseado em feedback
+        version: Versão específica do modelo
+        use_multi_strategy: Usar pool multi-estratégia (Fase 6)
+        strategy_weights: Pesos customizados para estratégias
 
     Returns:
         Lista de jogos gerados com métricas estruturais
@@ -377,19 +429,20 @@ def generate_core_003_games(
                 adjustments=adjustments,
             )
 
-        logger.info(
-            "[CORE_003] Auto-calibração ativa | preset=%s ajustes=%d",
-            calibrated_preset,
-            len(adjustments),
-        )
-
         pipeline = Core003Pipeline(
             format=format,
             calibration=calibrated_preset,
             config=config,
+            use_multi_strategy=use_multi_strategy,
+            strategy_weights=strategy_weights,
         )
     else:
-        pipeline = Core003Pipeline(format=format, calibration=calibration)
+        pipeline = Core003Pipeline(
+            format=format,
+            calibration=calibration,
+            use_multi_strategy=use_multi_strategy,
+            strategy_weights=strategy_weights,
+        )
 
     return pipeline.generate(
         count=count, pool_size=pool_size, target_contest=target_contest
