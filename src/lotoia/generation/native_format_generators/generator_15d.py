@@ -9,13 +9,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lotoia.generation.native_format_generators.base_generator import BaseNativeGenerator
-from lotoia.generation.native_format_generators.generator_factory import register_generator
+from lotoia.generation.native_format_generators.base_generator import (
+    BaseNativeGenerator,
+)
+from lotoia.generation.native_format_generators.generator_factory import (
+    register_generator,
+)
 
 logger = logging.getLogger(__name__)
 
 # Políticas 15D (baseadas em CORE_002 e structural_policy_15d)
-PARITY_TARGETS_15D: tuple[tuple[int, int], ...] = ((7, 8), (8, 7))
+# Expandido para cobrir 88.7% dos casos reais (últimos 300 concursos)
+# 6/9=9%, 7/8=26.7%, 8/7=34%, 9/6=19%
+PARITY_TARGETS_15D: tuple[tuple[int, int], ...] = ((6, 9), (7, 8), (8, 7), (9, 6))
 REPEAT_MIN_15D = 7
 REPEAT_MAX_15D = 10
 SEQUENCE_MAX_15D = 6
@@ -25,7 +31,7 @@ DISCOURAGED_NUMBERS_15D: tuple[int, ...] = (2, 4, 11, 15, 24, 25)
 
 class Generator15D(BaseNativeGenerator):
     """Gerador nativo para formato 15 dezenas.
-    
+
     Usa o motor soberano CORE_002 (build_sovereign_pool) que já é
     otimizado para 15D com políticas institucionais completas.
     """
@@ -46,7 +52,7 @@ class Generator15D(BaseNativeGenerator):
 
         resolved_seed = int(seed) if seed is not None else 42
         resolved_history = list(history or [])
-        
+
         # Obter configuração soberana CORE_002
         batch_label = "STRUCT_LEI15_CORE_CANDIDATE_003_15D_NATIVE"
         config = get_core_002_config(batch_label)
