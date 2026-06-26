@@ -14315,6 +14315,29 @@ def _persist_generation_snapshot(
             "game_signatures": [],
         }
         game_signatures: list[str] = []
+        # Filtrar duplicatas históricas antes da persistência (M-OPS-081)
+        # Evita IntegrityError ao tentar inserir jogos já persistidos anteriormente
+        from lotoia.governance.output_commander import load_all_output_signatures
+
+        persisted_signatures = load_all_output_signatures(DB_PATH)
+        filtered_games = []
+        duplicates_removed = 0
+        seen_in_batch = set()
+        for game in games:
+            numbers = list(game.get("numbers", []))
+            signature = _game_signature(numbers)
+            # Pular se já persistido historicamente OU se já visto nesta bateria
+            if signature in persisted_signatures or signature in seen_in_batch:
+                duplicates_removed += 1
+                continue
+            seen_in_batch.add(signature)
+            filtered_games.append(game)
+        if duplicates_removed > 0:
+            logger.warning(
+                f"Persistência: {duplicates_removed} jogo(s) duplicado(s) removido(s) "
+                f"de {len(games)} antes da persistência na bateria {batch_id}"
+            )
+        games = filtered_games
         for index, game in enumerate(games, start=1):
             numbers = list(game.get("numbers", []))
             signature = _game_signature(numbers)
