@@ -4,18 +4,20 @@ Camada de orquestração inteligente que conecta:
 - Sistema de Feedback Automático
 - Versionamento de Modelos
 - Pipeline de Geração CORE_003
+- Validação Walk-Forward (Fase 5)
 
 Responsabilidades:
 - Consultar feedback system para ajustar parâmetros
 - Aplicar ajustes automáticos na configuração
 - Selecionar/calibrar preset baseado em histórico
 - Registrar versão quando há mudanças significativas
+- Validar calibração com walk-forward temporal (Fase 5)
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable, Sequence
 
 from lotoia.config.core_003_config import (
     CORE_003_CONFIG,
@@ -28,6 +30,11 @@ from lotoia.generation.post_contest_feedback import (
 )
 from lotoia.generation.model_versioning import ModelVersioning
 from lotoia.statistics.change_detector import ChangeDetector
+from lotoia.validation.walk_forward_validator import (
+    WalkForwardResult,
+    WalkForwardValidationConfig,
+    WalkForwardValidator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +49,7 @@ class SmartOrchestrator:
         self.versioning = ModelVersioning()
         self.change_detector = ChangeDetector(confidence_level=0.95)
         self._adjustments_applied: list[str] = []
+        self._last_walk_forward_result: WalkForwardResult | None = None
 
     def calibrate_preset(
         self,
@@ -90,6 +98,144 @@ class SmartOrchestrator:
         )
 
         return calibrated_preset, adjustments
+
+    def calibrate_preset_temporal(
+        self,
+        base_preset: CalibrationPreset,
+        all_contests: Sequence[int],
+        *,
+        training_contests: Sequence[int] | None = None,
+        validation_contests: Sequence[int] | None = None,
+        generator_fn: Callable | None = None,
+        games_per_contest: int = 10,
+    ) -> tuple[CalibrationPreset, dict[str, Any], WalkForwardResult | None]:
+        """Calibra preset usando validação walk-forward temporal (Fase 5).
+        
+        Este método garante que a calibração não sofra de overfitting temporal,
+        separando explicitamente dados de treino e validação.
+        
+        Args:
+            base_preset: Preset base sugerido pelo usuário
+            all_contests: Lista completa de concursos disponíveis
+            training_contests: Concursos para treino (opcional, usa walk-forward automático)
+            validation_contests: Concursos para validação (opcional)
+            generator_fn: Função para gerar jogos (opcional, usa pipeline CORE_003)
+            games_per_contest: Jogos a gerar por concurso para validação
+        
+        Returns:
+            Tuple com (preset_calibrado, ajustes_aplicados, walk_forward_result)
+        """
+        logger.info(
+            "[Orchestrator] Iniciando calibração temporal | "
+            "base_preset=%s all_contests=%d",
+            base_preset,
+            len(all_contests),
+        )
+        
+        # 1. Calibrar preset base (método existente)
+        calibrated_preset, adjustments = self.calibrate_preset(base_preset)
+        
+        # 2. Executar validação walk-forward se possível
+        walk_forward_result = None
+        if generator_fn is not None:
+            walk_forward_result = self.validate_with_walk_forward(
+                all_contests=all_contests,
+                generator_fn=generator_fn,
+                training_contests=training_contests,
+                validation_contests=validation_contests,
+                games_per_contest=games_per_contest,
+            )
+            
+            # 3. Se validação detectou problemas, ajustar preset
+            if walk_forward_result and not walk_forward_result.is_valid():
+                logger.warning(
+                    "[Orchestrator] Walk-forward detectou problemas | "
+                    "leakage=%s degradation=%s",
+                    walk_forward_result.temporal_leakage_detected,
+                    walk_forward_result.performance_degradation,
+                )
+                
+                # Ajustar para preset mais conservador
+                if calibrated_preset == "agressivo":
+                    calibrated_preset = "equilibrado"
+                    adjustments["walk_forward_adjustment"] = "agressivo → equilibrado"
+                elif calibrated_preset == "equilibrado":
+                    calibrated_preset = "conservador"
+                    adjustments["walk_forward_adjustment"] = "equilibrado → conservador"
+                
+                logger.info(
+                    "[Orchestrator] Preset ajustado por walk-forward: %s",
+                    calibrated_preset,
+                )
+        
+        return calibrated_preset, adjustments, walk_forward_result
+
+    def validate_with_walk_forward(
+        self,
+        all_contests: Sequence[int],
+        generator_fn: Callable,
+        *,
+        training_contests: Sequence[int] | None = None,
+        validation_contests: Sequence[int] | None = None,
+        test_contests: Sequence[int] | None = None,
+        games_per_contest: int = 10,
+        pool_size: int = 100,
+    ) -> WalkForwardResult:
+        """Executa validação walk-forward no pipeline CORE_003.
+        
+        Este método implementa a Fase 5: validação temporal rigorosa que
+        separa explicitamente dados de treino, validação e teste.
+        
+        Args:
+            all_contests: Lista completa de concursos disponíveis
+            generator_fn: Função que gera jogos dado histórico e target_contest
+            training_contests: Concursos para treino (opcional)
+            validation_contests: Concursos para validação (opcional)
+            test_contests: Concursos para teste (opcional)
+            games_per_contest: Jogos a gerar por concurso
+            pool_size: Tamanho do pool de candidatos
+        
+        Returns:
+            Resultado da validação walk-forward
+        """
+        logger.info(
+            "[Orchestrator] Executando validação walk-forward | "
+            "all_contests=%d format=%s",
+            len(all_contests),
+            self.format,
+        )
+        
+        # Construir configuração
+        config = WalkForwardValidationConfig(
+            all_contests=list(all_contests),
+            training_contests=list(training_contests or all_contests[:int(len(all_contests) * 0.7)]),
+            validation_contests=list(validation_contests or all_contests[int(len(all_contests) * 0.7):]),
+            test_contests=list(test_contests or []),
+        )
+        
+        # Executar validação
+        validator = WalkForwardValidator(config)
+        result = validator.validate(
+            generator_fn,
+            games_per_contest=games_per_contest,
+            pool_size=pool_size,
+        )
+        
+        self._last_walk_forward_result = result
+        
+        logger.info(
+            "[Orchestrator] Walk-forward concluído | "
+            "splits=%d games=%d valid=%s",
+            result.total_splits,
+            result.total_games_generated,
+            result.is_valid(),
+        )
+        
+        return result
+    
+    def get_last_walk_forward_result(self) -> WalkForwardResult | None:
+        """Retorna último resultado de validação walk-forward."""
+        return self._last_walk_forward_result
 
     def _apply_suggestions(
         self,
@@ -321,13 +467,28 @@ class SmartOrchestrator:
         Returns:
             Dicionário com informações da orquestração
         """
-        return {
+        summary = {
             "format": self.format,
             "auto_calibrate": self.auto_calibrate,
             "adjustments_applied": self._adjustments_applied,
             "feedback_trend": get_performance_trend(last_n=5),
             "latest_version": self.versioning.get_latest_version(),
         }
+        
+        # Adicionar informações de walk-forward se disponível
+        if self._last_walk_forward_result:
+            summary["walk_forward_validation"] = {
+                "executed": True,
+                "total_splits": self._last_walk_forward_result.total_splits,
+                "total_games": self._last_walk_forward_result.total_games_generated,
+                "is_valid": self._last_walk_forward_result.is_valid(),
+                "temporal_leakage": self._last_walk_forward_result.temporal_leakage_detected,
+                "performance_degradation": self._last_walk_forward_result.performance_degradation,
+            }
+        else:
+            summary["walk_forward_validation"] = {"executed": False}
+        
+        return summary
 
 
 # Instância global
