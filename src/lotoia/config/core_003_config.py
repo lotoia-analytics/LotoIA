@@ -27,6 +27,46 @@ CORE_003_CONFIG: dict[str, Any] = {
         "22D": {"dezenas": 22, "target_contest": None},
         "23D": {"dezenas": 23, "target_contest": None},
     },
+    # Formatos com geradores nativos (Fase 3)
+    "native_formats": {"15D", "17D", "18D", "20D", "23D"},
+    # Políticas nativas por formato (Fase 3 — Geração Nativa)
+    "native_format_policies": {
+        "15D": {
+            "parity_targets": [(7, 8), (8, 7)],
+            "repeat_min": 7,
+            "repeat_max": 10,
+            "sum_range": (180, 220),
+            "overlap_target": 10.0,
+        },
+        "17D": {
+            "parity_targets": [(9, 8), (8, 9)],
+            "repeat_min": 8,
+            "repeat_max": 11,
+            "sum_range": (200, 250),
+            "overlap_target": 11.3,
+        },
+        "18D": {
+            "parity_targets": [(9, 9), (10, 8), (8, 10)],
+            "repeat_min": 8,
+            "repeat_max": 12,
+            "sum_range": (210, 260),
+            "overlap_target": 12.0,
+        },
+        "20D": {
+            "parity_targets": [(10, 10), (11, 9), (9, 11)],
+            "repeat_min": 9,
+            "repeat_max": 14,
+            "sum_range": (230, 280),
+            "overlap_target": 13.3,
+        },
+        "23D": {
+            "parity_targets": [(12, 11), (11, 12)],
+            "repeat_min": 10,
+            "repeat_max": 16,
+            "sum_range": (260, 310),
+            "overlap_target": 15.3,
+        },
+    },
     # Políticas estruturais consolidadas
     "structural_policy": {
         # Triplet 01-02-03: frequência histórica 21%
@@ -98,7 +138,6 @@ CORE_003_CONFIG: dict[str, Any] = {
         },
     },
     # Limites de validação (usados por structural_metrics_validator)
-    # Ajustados por formato, pois overlap esperado varia com tamanho do cartão
     "validation_limits": {
         "triplet_010203_pct": {
             "min": 0.10,
@@ -106,8 +145,6 @@ CORE_003_CONFIG: dict[str, Any] = {
             "target": 0.21,
             "tolerance": 0.06,
         },
-        # Overlap esperado varia com tamanho do cartão
-        # Fórmula: overlap_alvo = game_size * (10/15) ≈ 0.67 * game_size
         "avg_overlap_by_format": {
             "15D": {"min": 7.0, "max": 13.0, "target": 10.0},
             "16D": {"min": 7.5, "max": 14.0, "target": 10.7},
@@ -119,8 +156,6 @@ CORE_003_CONFIG: dict[str, Any] = {
             "22D": {"min": 10.5, "max": 20.0, "target": 14.7},
             "23D": {"min": 11.0, "max": 22.0, "target": 15.3},
         },
-        # Triplet 01-02-03: limites ajustados por formato
-        # Formatos maiores tendem a ter triplet mais alto devido à expansão
         "triplet_by_format": {
             "15D": {"min": 0.10, "max": 0.35, "target": 0.21},
             "16D": {"min": 0.10, "max": 0.50, "target": 0.25},
@@ -138,36 +173,34 @@ CORE_003_CONFIG: dict[str, Any] = {
         },
     },
     # Intervalos de confiança estatística (Fase 1)
-    # Calculados com base em 300 concursos históricos (3419-3718)
-    # Nível de confiança: 95%
     "confidence_intervals": {
         "triplet_010203": {
-            "value": 0.21,  # 63 ocorrências em 300 concursos
-            "confidence_interval": [0.164, 0.256],  # IC 95%
+            "value": 0.21,
+            "confidence_interval": [0.164, 0.256],
             "confidence_level": 0.95,
             "sample_size": 300,
             "margin_of_error": 0.046,
             "last_updated": "2026-06-25",
         },
         "suffix_232425": {
-            "value": 0.2167,  # 65 ocorrências em 300 concursos
-            "confidence_interval": [0.170, 0.263],  # IC 95%
+            "value": 0.2167,
+            "confidence_interval": [0.170, 0.263],
             "confidence_level": 0.95,
             "sample_size": 300,
             "margin_of_error": 0.047,
             "last_updated": "2026-06-25",
         },
         "paridade_8_7": {
-            "value": 0.35,  # Proporção aproximada de jogos com 8 ímpares e 7 pares
-            "confidence_interval": [0.296, 0.404],  # IC 95%
+            "value": 0.35,
+            "confidence_interval": [0.296, 0.404],
             "confidence_level": 0.95,
             "sample_size": 300,
             "margin_of_error": 0.054,
             "last_updated": "2026-06-25",
         },
         "soma_180_220": {
-            "value": 0.60,  # Proporção aproximada de jogos com soma entre 180-220
-            "confidence_interval": [0.545, 0.655],  # IC 95%
+            "value": 0.60,
+            "confidence_interval": [0.545, 0.655],
             "confidence_level": 0.95,
             "sample_size": 300,
             "margin_of_error": 0.055,
@@ -178,17 +211,6 @@ CORE_003_CONFIG: dict[str, Any] = {
 
 
 def get_calibration_preset(preset: CalibrationPreset) -> dict[str, Any]:
-    """Retorna configuração de um preset específico.
-
-    Args:
-        preset: Nome do preset (conservador, equilibrado, agressivo)
-
-    Returns:
-        Dicionário com parâmetros do preset
-
-    Raises:
-        ValueError: Se preset não existir
-    """
     presets = CORE_003_CONFIG["calibration_presets"]
     if preset not in presets:
         raise ValueError(
@@ -199,17 +221,6 @@ def get_calibration_preset(preset: CalibrationPreset) -> dict[str, Any]:
 
 
 def get_format_config(format: str) -> dict[str, Any]:
-    """Retorna configuração de um formato específico.
-
-    Args:
-        format: Formato (15D, 17D, etc.)
-
-    Returns:
-        Dicionário com configuração do formato
-
-    Raises:
-        ValueError: Se formato não existir
-    """
     formats = CORE_003_CONFIG["formats"]
     if format not in formats:
         raise ValueError(
@@ -219,37 +230,35 @@ def get_format_config(format: str) -> dict[str, Any]:
     return formats[format].copy()
 
 
+def get_native_format_policy(format: str) -> dict[str, Any] | None:
+    """Retorna políticas nativas para um formato (Fase 3).
+    
+    Returns:
+        Dict com políticas nativas ou None se formato não tem gerador nativo.
+    """
+    return CORE_003_CONFIG["native_format_policies"].get(format)
+
+
+def is_native_format(format: str) -> bool:
+    """Verifica se formato tem gerador nativo (Fase 3)."""
+    return format in CORE_003_CONFIG["native_formats"]
+
+
 def get_structural_policy() -> dict[str, Any]:
-    """Retorna políticas estruturais consolidadas."""
     return CORE_003_CONFIG["structural_policy"].copy()
 
 
 def get_critical_digits() -> dict[str, Any]:
-    """Retorna configuração de dezenas críticas."""
     return CORE_003_CONFIG["critical_digits"].copy()
 
 
 def get_validation_limits() -> dict[str, Any]:
-    """Retorna limites de validação de métricas."""
     return CORE_003_CONFIG["validation_limits"].copy()
 
 
 def get_confidence_intervals() -> dict[str, Any]:
-    """Retorna intervalos de confiança estatística.
-
-    Returns:
-        Dicionário com intervalos de confiança para métricas estruturais
-    """
     return CORE_003_CONFIG["confidence_intervals"].copy()
 
 
 def get_confidence_interval(metric: str) -> dict[str, Any] | None:
-    """Retorna intervalo de confiança de uma métrica específica.
-
-    Args:
-        metric: Nome da métrica (ex: 'triplet_010203', 'suffix_232425')
-
-    Returns:
-        Dicionário com intervalo de confiança ou None se não existir
-    """
     return CORE_003_CONFIG["confidence_intervals"].get(metric)
