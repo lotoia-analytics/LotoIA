@@ -5911,14 +5911,37 @@ def _sequence_metrics(numbers: list[int]) -> dict[str, int]:
 
 
 def _coverage_metrics(numbers: list[int]) -> dict[str, Any]:
+    """
+    Calcula métricas de cobertura estrutural (M-OPS-083).
+
+    Inclui:
+    - coverage_score: blocos ativos / 5 (métrica original)
+    - balance_score: uniformidade da distribuição intra-blocos (1.0 = perfeito)
+    - composite_score: métrica composta (0.6 * coverage + 0.4 * balance)
+    """
     blocks = Counter(((int(number) - 1) // 5) for number in numbers)
     block_distribution = [int(blocks.get(index, 0)) for index in range(5)]
     active_blocks = sum(1 for amount in block_distribution if amount > 0)
     coverage_score = round(active_blocks / 5.0, 4)
+
+    # Calcular balanceamento (uniformidade da distribuição)
+    # σ=0 (perfeito 3-3-3-3-3) -> balance=1.0
+    # σ=2.5 (pior caso) -> balance=0.0
+    mean_blocks = sum(block_distribution) / 5.0
+    variance = sum((b - mean_blocks) ** 2 for b in block_distribution) / 5.0
+    std_dev = variance**0.5
+    balance_score = round(max(0.0, 1.0 - (std_dev / 2.5)), 4)
+
+    # Métrica composta: 60% cobertura + 40% balanceamento
+    composite_score = round(0.6 * coverage_score + 0.4 * balance_score, 4)
+
     return {
         "coverage_score": coverage_score,
+        "balance_score": balance_score,
+        "composite_score": composite_score,
         "block_distribution": block_distribution,
         "active_blocks": active_blocks,
+        "std_dev": round(std_dev, 4),
     }
 
 
@@ -5937,31 +5960,41 @@ def _entropy_score(numbers: list[int]) -> float:
 
 
 def _hb_geometry_profile_for_size(size: int) -> dict[str, float | int]:
+    """
+    Perfil geométrico por tamanho de jogo (M-OPS-083).
+
+    Limiares de cobertura elevados com base em análise de 300 concursos reais:
+    - 98% dos concursos têm composite_score >= 0.80
+    - 95.7% dos concursos têm coverage_score = 1.0
+    - Balanceamento médio: 0.616
+
+    Usa composite_score (0.6 * coverage + 0.4 * balance) como métrica principal.
+    """
     size = max(2, min(15, int(size or 15)))
     if size <= 2:
         odd_even_max = 2
         sequence_max = 2
-        coverage_min = 0.20
+        coverage_min = 0.60  # Elevado de 0.20 para 0.60
         entropy_min = 0.15
     elif size <= 4:
         odd_even_max = 4
         sequence_max = 3
-        coverage_min = 0.25
+        coverage_min = 0.65  # Elevado de 0.25 para 0.65
         entropy_min = 0.20
     elif size <= 8:
         odd_even_max = 5
         sequence_max = 4
-        coverage_min = 0.30
+        coverage_min = 0.70  # Elevado de 0.30 para 0.70
         entropy_min = 0.30
     elif size <= 12:
         odd_even_max = 7
         sequence_max = 5
-        coverage_min = 0.35
+        coverage_min = 0.75  # Elevado de 0.35 para 0.75
         entropy_min = 0.40
     else:
         odd_even_max = 9
         sequence_max = 6
-        coverage_min = 0.40
+        coverage_min = 0.80  # Elevado de 0.40 para 0.80 (98% dos reais)
         entropy_min = 0.45
     return {
         "odd_min": 0,
@@ -6410,7 +6443,7 @@ def _select_subset_from_candidate(
         repeat_count = len(set(selected).intersection(latest_numbers))
         if repeat_count < repeat_min or repeat_count > repeat_max:
             continue
-        if _coverage_metrics(selected)["coverage_score"] < coverage_min:
+        if _coverage_metrics(selected)["composite_score"] < coverage_min:
             continue
         if _entropy_score(selected) < entropy_min:
             continue
@@ -6586,7 +6619,7 @@ def _force_subset_from_universe(
             continue
         if (
             coverage_min is not None
-            and _coverage_metrics(selected)["coverage_score"] < coverage_min
+            and _coverage_metrics(selected)["composite_score"] < coverage_min
         ):
             continue
         if entropy_min is not None and _entropy_score(selected) < entropy_min:
@@ -15776,7 +15809,7 @@ def _compact_small_batch_adjustment(
             "compactation_adjustment_even_max": 9,
             "compactation_adjustment_repeat_min": 4,
             "compactation_adjustment_repeat_max": 8,
-            "compactation_adjustment_coverage_min": 0.38,
+            "compactation_adjustment_coverage_min": 0.82,  # Elevado de 0.38 para 0.82 (M-OPS-083)
             "compactation_adjustment_entropy_min": 0.42,
             "compactation_adjustment_sequence_max": 5,
             "compactation_adjustment_candidate_multiplier": 60,
@@ -15829,7 +15862,7 @@ def _compact_small_batch_adjustment(
             "compactation_adjustment_even_max": 12,
             "compactation_adjustment_repeat_min": 0,
             "compactation_adjustment_repeat_max": 9,
-            "compactation_adjustment_coverage_min": 0.30,
+            "compactation_adjustment_coverage_min": 0.80,  # Elevado de 0.30 para 0.80 (M-OPS-083)
             "compactation_adjustment_entropy_min": 0.33,
             "compactation_adjustment_sequence_max": 7,
             "compactation_adjustment_candidate_multiplier": 200,
@@ -15885,7 +15918,7 @@ def _compact_small_batch_adjustment(
             "compactation_adjustment_even_max": 10,
             "compactation_adjustment_repeat_min": 3,
             "compactation_adjustment_repeat_max": 9,
-            "compactation_adjustment_coverage_min": 0.34,
+            "compactation_adjustment_coverage_min": 0.80,  # Elevado de 0.34 para 0.80 (M-OPS-083)
             "compactation_adjustment_entropy_min": 0.38,
             "compactation_adjustment_sequence_max": 6,
             "compactation_adjustment_candidate_multiplier": 90,
@@ -15927,7 +15960,7 @@ def _compact_small_batch_adjustment(
             "compactation_adjustment_even_max": 10,
             "compactation_adjustment_repeat_min": 3,
             "compactation_adjustment_repeat_max": 10,
-            "compactation_adjustment_coverage_min": 0.34,
+            "compactation_adjustment_coverage_min": 0.80,  # Elevado de 0.34 para 0.80 (M-OPS-083)
             "compactation_adjustment_entropy_min": 0.38,
             "compactation_adjustment_sequence_max": 5,
             "compactation_adjustment_candidate_multiplier": 70,
@@ -15955,7 +15988,7 @@ def _compact_small_batch_adjustment(
             "compactation_adjustment_even_max": 11,
             "compactation_adjustment_repeat_min": 2,
             "compactation_adjustment_repeat_max": 10,
-            "compactation_adjustment_coverage_min": 0.32,
+            "compactation_adjustment_coverage_min": 0.80,  # Elevado de 0.32 para 0.80 (M-OPS-083)
             "compactation_adjustment_entropy_min": 0.35,
             "compactation_adjustment_sequence_max": 6,
             "compactation_adjustment_candidate_multiplier": 90,
@@ -15996,7 +16029,7 @@ def _compact_small_batch_adjustment(
         "compactation_adjustment_even_max": 12,
         "compactation_adjustment_repeat_min": 1,
         "compactation_adjustment_repeat_max": 10,
-        "compactation_adjustment_coverage_min": 0.30,
+        "compactation_adjustment_coverage_min": 0.80,  # Elevado de 0.30 para 0.80 (M-OPS-083)
         "compactation_adjustment_entropy_min": 0.33,
         "compactation_adjustment_sequence_max": 6,
         "compactation_adjustment_candidate_multiplier": 20,

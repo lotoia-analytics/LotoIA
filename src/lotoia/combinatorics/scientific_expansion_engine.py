@@ -108,6 +108,14 @@ def _overlap_count(first: Sequence[int], second: Sequence[int]) -> int:
 
 
 def _spread_score(numbers: Sequence[int]) -> dict[str, float]:
+    """
+    Calcula métricas de dispersão e cobertura estrutural (M-OPS-083).
+
+    Inclui:
+    - cluster_dispersion: blocos ativos / 5 (cobertura binária original)
+    - balance_score: uniformidade da distribuição intra-blocos (1.0 = perfeito)
+    - coverage_score: métrica composta (0.6 * cluster + 0.4 * balance)
+    """
     normalized = tuple(sorted(int(number) for number in numbers))
     if not normalized:
         return {
@@ -117,6 +125,7 @@ def _spread_score(numbers: Sequence[int]) -> dict[str, float]:
             "gap_balance": 0.0,
             "center_balance": 0.0,
             "cluster_dispersion": 0.0,
+            "balance_score": 0.0,
             "coverage_score": 0.0,
             "structural_distance": 0.0,
         }
@@ -127,12 +136,34 @@ def _spread_score(numbers: Sequence[int]) -> dict[str, float]:
     low_high_balance = 1.0 - abs((low / len(normalized)) - 0.5) * 2.0
     frame = len(normalized) - sum(1 for number in normalized if 9 <= number <= 17)
     frame_balance = 1.0 - abs((frame / len(normalized)) - 0.5) * 2.0
-    center_balance = 1.0 - abs((sum(1 for number in normalized if 9 <= number <= 17) / len(normalized)) - 0.5) * 2.0
+    center_balance = (
+        1.0
+        - abs(
+            (sum(1 for number in normalized if 9 <= number <= 17) / len(normalized))
+            - 0.5
+        )
+        * 2.0
+    )
     gap_balance = 1.0
     if gaps:
         gap_avg = sum(gaps) / len(gaps)
-        gap_balance = max(0.0, 1.0 - abs(gap_avg - 1.0) / max(1.0, len(normalized) / 3.0))
-    cluster_dispersion = max(0.0, min(1.0, len({number // 5 for number in normalized}) / 5.0))
+        gap_balance = max(
+            0.0, 1.0 - abs(gap_avg - 1.0) / max(1.0, len(normalized) / 3.0)
+        )
+    cluster_dispersion = max(
+        0.0, min(1.0, len({number // 5 for number in normalized}) / 5.0)
+    )
+
+    # Calcular balanceamento (uniformidade da distribuição intra-blocos)
+    block_counts = [0] * 5
+    for number in normalized:
+        block_counts[(number - 1) // 5] += 1
+    mean_blocks = sum(block_counts) / 5.0
+    variance = sum((b - mean_blocks) ** 2 for b in block_counts) / 5.0
+    std_dev = variance**0.5
+    balance_score = max(0.0, 1.0 - (std_dev / 2.5))
+
+    # Métrica composta: 60% cluster_dispersion + 40% balance_score
     coverage_score = max(
         0.0,
         min(
@@ -142,7 +173,7 @@ def _spread_score(numbers: Sequence[int]) -> dict[str, float]:
             + (frame_balance * 0.15)
             + (center_balance * 0.15)
             + (gap_balance * 0.1)
-            + (cluster_dispersion * 0.1),
+            + ((0.6 * cluster_dispersion + 0.4 * balance_score) * 0.1),
         ),
     )
     structural_distance = max(0.0, min(1.0, spread * 0.5 + cluster_dispersion * 0.5))
@@ -153,12 +184,15 @@ def _spread_score(numbers: Sequence[int]) -> dict[str, float]:
         "gap_balance": round(gap_balance, 4),
         "center_balance": round(center_balance, 4),
         "cluster_dispersion": round(cluster_dispersion, 4),
+        "balance_score": round(balance_score, 4),
         "coverage_score": round(coverage_score, 4),
         "structural_distance": round(structural_distance, 4),
     }
 
 
-def _candidate_metrics(numbers: Sequence[int], history: Sequence[DrawLike]) -> dict[str, Any]:
+def _candidate_metrics(
+    numbers: Sequence[int], history: Sequence[DrawLike]
+) -> dict[str, Any]:
     normalized = tuple(sorted(int(number) for number in numbers))
     profile_type = classify_profile(list(normalized), list(history))
     intelligence = profile_score(list(normalized), list(history), profile_type)
@@ -214,7 +248,9 @@ def _scientific_score(candidate: dict[str, Any]) -> float:
     return round(max(0.0, min(100.0, score)), 2)
 
 
-def _sample_combinations(selected: tuple[int, ...], total: int, *, limit: int, max_runtime_seconds: float) -> list[tuple[int, ...]]:
+def _sample_combinations(
+    selected: tuple[int, ...], total: int, *, limit: int, max_runtime_seconds: float
+) -> list[tuple[int, ...]]:
     started = perf_counter()
     sampled: list[tuple[int, ...]] = []
     if total <= limit * 4:
@@ -282,8 +318,12 @@ def _pool_compression_metrics(
     filtered_count = len(filtered_rows)
     premium_count = len(premium_rows)
     initial_hashes = [_hash_signature(numbers) for numbers in initial_rows]
-    filtered_hashes = [_hash_signature(_signature_source(numbers)) for numbers in filtered_rows]
-    premium_hashes = [_hash_signature(_signature_source(numbers)) for numbers in premium_rows]
+    filtered_hashes = [
+        _hash_signature(_signature_source(numbers)) for numbers in filtered_rows
+    ]
+    premium_hashes = [
+        _hash_signature(_signature_source(numbers)) for numbers in premium_rows
+    ]
     initial_unique = len(set(initial_hashes))
     filtered_unique = len(set(filtered_hashes))
     premium_unique = len(set(premium_hashes))
@@ -293,10 +333,18 @@ def _pool_compression_metrics(
         for signature in filtered_hashes:
             distribution[signature] = distribution.get(signature, 0) + 1
         dominant_hash_frequency = max(distribution.values())
-    unique_ratio_before_gate = round(filtered_unique / filtered_count, 4) if filtered_count else 0.0
-    unique_ratio_after_gate = round(premium_unique / premium_count, 4) if premium_count else 0.0
-    structural_collision_rate = round(1.0 - unique_ratio_before_gate, 4) if filtered_count else 0.0
-    rerank_compression_ratio = round(premium_count / filtered_count, 4) if filtered_count else 0.0
+    unique_ratio_before_gate = (
+        round(filtered_unique / filtered_count, 4) if filtered_count else 0.0
+    )
+    unique_ratio_after_gate = (
+        round(premium_unique / premium_count, 4) if premium_count else 0.0
+    )
+    structural_collision_rate = (
+        round(1.0 - unique_ratio_before_gate, 4) if filtered_count else 0.0
+    )
+    rerank_compression_ratio = (
+        round(premium_count / filtered_count, 4) if filtered_count else 0.0
+    )
     return {
         "candidate_space_size": initial_count,
         "initial_candidate_count": initial_count,
@@ -357,7 +405,9 @@ def select_premium_expansive_games(
         if candidate["partial_match_max"] >= 13:
             filtered_count += 1
             continue
-        if candidate["spread"]["coverage_score"] < 0.35:
+        if (
+            candidate["spread"]["coverage_score"] < 0.80
+        ):  # Elevado de 0.35 para 0.80 (M-OPS-083)
             filtered_count += 1
             continue
 
@@ -396,11 +446,20 @@ def select_premium_expansive_games(
     for candidate in ranked_candidates:
         if len(premium_games) >= premium_limit:
             break
-        overlaps = [len(set(candidate["numbers"]).intersection(previous["numbers"])) for previous in premium_games]
-        hamming_distances = [_hamming_distance(candidate["numbers"], previous["numbers"]) for previous in premium_games]
+        overlaps = [
+            len(set(candidate["numbers"]).intersection(previous["numbers"]))
+            for previous in premium_games
+        ]
+        hamming_distances = [
+            _hamming_distance(candidate["numbers"], previous["numbers"])
+            for previous in premium_games
+        ]
         if overlaps and max(overlaps) > active_config.max_overlap_between_games:
             continue
-        if hamming_distances and min(hamming_distances) < active_config.minimum_hamming_distance:
+        if (
+            hamming_distances
+            and min(hamming_distances) < active_config.minimum_hamming_distance
+        ):
             continue
         premium_games.append(candidate)
 
@@ -415,27 +474,46 @@ def select_premium_expansive_games(
     if not premium_games and ranked_candidates:
         premium_games = ranked_candidates[: min(premium_limit, len(ranked_candidates))]
 
-    compression_metrics = _pool_compression_metrics(candidate_pool, ranked_candidates, premium_games)
+    compression_metrics = _pool_compression_metrics(
+        candidate_pool, ranked_candidates, premium_games
+    )
 
     if premium_games:
         premium_overlaps: list[float] = []
         premium_distances: list[float] = []
         for index, first in enumerate(premium_games):
             for second in premium_games[index + 1 :]:
-                premium_overlaps.append(len(set(first["numbers"]).intersection(second["numbers"])) / SIMPLE_GAME_SIZE)
-                premium_distances.append(_hamming_distance(first["numbers"], second["numbers"]) / (SIMPLE_GAME_SIZE * 2))
-        overlap_mean = round(sum(premium_overlaps) / len(premium_overlaps), 4) if premium_overlaps else 0.0
-        unique_ratio = round(len({tuple(row["numbers"]) for row in premium_games}) / len(premium_games), 4)
+                premium_overlaps.append(
+                    len(set(first["numbers"]).intersection(second["numbers"]))
+                    / SIMPLE_GAME_SIZE
+                )
+                premium_distances.append(
+                    _hamming_distance(first["numbers"], second["numbers"])
+                    / (SIMPLE_GAME_SIZE * 2)
+                )
+        overlap_mean = (
+            round(sum(premium_overlaps) / len(premium_overlaps), 4)
+            if premium_overlaps
+            else 0.0
+        )
+        unique_ratio = round(
+            len({tuple(row["numbers"]) for row in premium_games}) / len(premium_games),
+            4,
+        )
         rerank_entropy = 0.0
         distribution: dict[str, int] = {}
         for row in premium_games:
-            distribution[row["profile_type"]] = distribution.get(row["profile_type"], 0) + 1
+            distribution[row["profile_type"]] = (
+                distribution.get(row["profile_type"], 0) + 1
+            )
         for count in distribution.values():
             share = count / len(premium_games)
             if share:
                 rerank_entropy -= share * log2(share)
         max_entropy = log2(len(distribution)) if len(distribution) > 1 else 1.0
-        rerank_entropy = round((rerank_entropy / max_entropy) if max_entropy else 0.0, 4)
+        rerank_entropy = round(
+            (rerank_entropy / max_entropy) if max_entropy else 0.0, 4
+        )
         structural_diversity_score = round(
             max(
                 0.0,
@@ -444,18 +522,33 @@ def select_premium_expansive_games(
                     (1.0 - overlap_mean) * 0.4
                     + unique_ratio * 0.2
                     + rerank_entropy * 0.2
-                    + (sum(row["diversity_index"] for row in premium_games) / len(premium_games)) * 0.2,
+                    + (
+                        sum(row["diversity_index"] for row in premium_games)
+                        / len(premium_games)
+                    )
+                    * 0.2,
                 ),
             ),
             4,
         )
         premium_concentration_index = round(
-            sum(float(row["scientific_score"]) for row in premium_games[: min(5, len(premium_games))])
+            sum(
+                float(row["scientific_score"])
+                for row in premium_games[: min(5, len(premium_games))]
+            )
             / max(1.0, sum(float(row["scientific_score"]) for row in premium_games)),
             4,
         )
-        avg_distance = round(sum(premium_distances) / len(premium_distances), 4) if premium_distances else 0.0
-        avg_score = round(sum(float(row["scientific_score"]) for row in premium_games) / len(premium_games), 4)
+        avg_distance = (
+            round(sum(premium_distances) / len(premium_distances), 4)
+            if premium_distances
+            else 0.0
+        )
+        avg_score = round(
+            sum(float(row["scientific_score"]) for row in premium_games)
+            / len(premium_games),
+            4,
+        )
     else:
         overlap_mean = 0.0
         unique_ratio = 0.0
@@ -474,12 +567,36 @@ def select_premium_expansive_games(
         stopped_reason = "sampled_pool"
 
     metrics = {
-        "diversity_index": round(sum(row["diversity_index"] for row in premium_games) / len(premium_games), 4) if premium_games else 0.0,
-        "overlap_score": round(sum(row["overlap_score"] for row in premium_games) / len(premium_games), 4) if premium_games else 0.0,
-        "coverage_score": round(sum(row["coverage_score"] for row in premium_games) / len(premium_games), 4) if premium_games else 0.0,
+        "diversity_index": round(
+            sum(row["diversity_index"] for row in premium_games) / len(premium_games), 4
+        )
+        if premium_games
+        else 0.0,
+        "overlap_score": round(
+            sum(row["overlap_score"] for row in premium_games) / len(premium_games), 4
+        )
+        if premium_games
+        else 0.0,
+        "coverage_score": round(
+            sum(row["coverage_score"] for row in premium_games) / len(premium_games), 4
+        )
+        if premium_games
+        else 0.0,
         "structural_distance": avg_distance,
-        "entropy_score": round(sum(float(row["entropy_score"]) for row in premium_games) / len(premium_games), 4) if premium_games else 0.0,
-        "cluster_dispersion": round(sum(float(row["cluster_dispersion"]) for row in premium_games) / len(premium_games), 4) if premium_games else 0.0,
+        "entropy_score": round(
+            sum(float(row["entropy_score"]) for row in premium_games)
+            / len(premium_games),
+            4,
+        )
+        if premium_games
+        else 0.0,
+        "cluster_dispersion": round(
+            sum(float(row["cluster_dispersion"]) for row in premium_games)
+            / len(premium_games),
+            4,
+        )
+        if premium_games
+        else 0.0,
         "overlap_mean": overlap_mean,
         "unique_ratio": unique_ratio,
         "rerank_entropy": rerank_entropy,
