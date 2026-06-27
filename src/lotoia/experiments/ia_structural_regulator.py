@@ -192,7 +192,9 @@ def _structural_observation(
     filtered_count = len(ranked_candidates)
     ranked_count = len(ranked_candidates)
     premium_count = len(premium_games)
-    numbers = [int(number) for row in ranked_candidates for number in row.get("numbers", [])]
+    numbers = [
+        int(number) for row in ranked_candidates for number in row.get("numbers", [])
+    ]
     numbers_counter = Counter(numbers)
     dominant_numbers = [
         {"number": number, "frequency": count}
@@ -219,11 +221,17 @@ def _structural_observation(
     max_entropy = log2(len(distribution)) if len(distribution) > 1 else 1.0
     pool_entropy_score = round((entropy / max_entropy) if max_entropy else 0.0, 4)
     unique_ratio_real = round(len(distribution) / max(1, len(ranked_candidates)), 4)
-    overlap_mean = _pairwise_overlap_mean([row.get("numbers", []) for row in ranked_candidates])
-    average_distance = _pairwise_distance_mean([row.get("numbers", []) for row in ranked_candidates])
+    overlap_mean = _pairwise_overlap_mean(
+        [row.get("numbers", []) for row in ranked_candidates]
+    )
+    average_distance = _pairwise_distance_mean(
+        [row.get("numbers", []) for row in ranked_candidates]
+    )
     structural_collision_rate = round(1.0 - unique_ratio_real, 4)
     concentration_index = round(
-        max((count / max(1, len(numbers))) for count in numbers_counter.values()) if numbers_counter else 0.0,
+        max((count / max(1, len(numbers))) for count in numbers_counter.values())
+        if numbers_counter
+        else 0.0,
         4,
     )
     return StructuralPoolObservation(
@@ -244,16 +252,27 @@ def _structural_observation(
     )
 
 
-def _structural_adjusted_score(candidate: dict[str, Any], observation: StructuralPoolObservation) -> float:
+def _structural_adjusted_score(
+    candidate: dict[str, Any], observation: StructuralPoolObservation
+) -> float:
     scientific = float(candidate.get("scientific_score", 0.0) or 0.0)
-    diversity = float(candidate.get("diversity_index", candidate.get("diversity_score", 0.0)) or 0.0)
+    diversity = float(
+        candidate.get("diversity_index", candidate.get("diversity_score", 0.0)) or 0.0
+    )
     coverage = float(candidate.get("coverage_score", 0.0) or 0.0)
     recurrence = float(candidate.get("recurrence_score", 0.0) or 0.0)
     entropy = float(candidate.get("entropy_score", 0.0) or 0.0)
     cluster_dispersion = float(candidate.get("cluster_dispersion", 0.0) or 0.0)
-    structural_distance = float(candidate.get("spread", {}).get("structural_distance", 0.0) or 0.0)
-    dominant_penalty = observation.concentration_index * 8.0 + observation.structural_collision_rate * 12.0
-    exploration_boost = (1.0 - observation.entropy) * 10.0 + (1.0 - observation.cluster_dispersion) * 6.0
+    structural_distance = float(
+        candidate.get("spread", {}).get("structural_distance", 0.0) or 0.0
+    )
+    dominant_penalty = (
+        observation.concentration_index * 8.0
+        + observation.structural_collision_rate * 12.0
+    )
+    exploration_boost = (1.0 - observation.entropy) * 10.0 + (
+        1.0 - observation.cluster_dispersion
+    ) * 6.0
     return round(
         max(
             0.0,
@@ -274,11 +293,20 @@ def _structural_adjusted_score(candidate: dict[str, Any], observation: Structura
     )
 
 
-def _structural_adjusted_score_moderate(candidate: dict[str, Any], observation: StructuralPoolObservation) -> float:
+def _structural_adjusted_score_moderate(
+    candidate: dict[str, Any], observation: StructuralPoolObservation
+) -> float:
     base = _structural_adjusted_score(candidate, observation)
-    compression_signal = observation.concentration_index * 0.25 + observation.structural_collision_rate * 0.35
-    exploration_signal = (1.0 - observation.entropy) * 0.25 + (1.0 - observation.cluster_dispersion) * 0.15
-    return round(max(0.0, min(100.0, base + (compression_signal + exploration_signal) * 10.0)), 2)
+    compression_signal = (
+        observation.concentration_index * 0.25
+        + observation.structural_collision_rate * 0.35
+    )
+    exploration_signal = (1.0 - observation.entropy) * 0.25 + (
+        1.0 - observation.cluster_dispersion
+    ) * 0.15
+    return round(
+        max(0.0, min(100.0, base + (compression_signal + exploration_signal) * 10.0)), 2
+    )
 
 
 def _build_structural_candidate_pool(
@@ -292,7 +320,12 @@ def _build_structural_candidate_pool(
     selected = validate_scientific_expanded_numbers(numbers)
     normalized_history = _normalize_history(history)
     total = comb(len(selected), SIMPLE_GAME_SIZE)
-    premium_limit = min(premium_limit, DEFAULT_PREFERRED_PREMIUM_LIMITS.get(len(selected), (premium_limit, premium_limit))[1])
+    premium_limit = min(
+        premium_limit,
+        DEFAULT_PREFERRED_PREMIUM_LIMITS.get(
+            len(selected), (premium_limit, premium_limit)
+        )[1],
+    )
     config = ScientificExpansionConfig(
         max_runtime_seconds=max_runtime_seconds,
         max_candidates=max_candidates,
@@ -308,7 +341,9 @@ def _build_structural_candidate_pool(
     filtered_count = 0
     for combo in candidate_pool:
         candidate = _candidate_metrics(combo, normalized_history)
-        if candidate["max_sequence_length"] >= _scientific_sequence_limit(len(selected)):
+        if candidate["max_sequence_length"] >= _scientific_sequence_limit(
+            len(selected)
+        ):
             filtered_count += 1
             continue
         if candidate["block_density"] >= 6:
@@ -317,7 +352,9 @@ def _build_structural_candidate_pool(
         if candidate["partial_match_max"] >= 13:
             filtered_count += 1
             continue
-        if candidate["spread"]["coverage_score"] < 0.35:
+        if (
+            candidate["spread"]["coverage_score"] < 0.80
+        ):  # Elevado de 0.35 para 0.80 (M-OPS-083)
             filtered_count += 1
             continue
         candidate["scientific_score"] = _scientific_score(candidate)
@@ -355,11 +392,20 @@ def _build_structural_candidate_pool(
     for candidate in ranked_candidates:
         if len(premium_games) >= premium_limit:
             break
-        overlaps = [len(set(candidate["numbers"]).intersection(previous["numbers"])) for previous in premium_games]
-        hamming_distances = [_hamming_distance(candidate["numbers"], previous["numbers"]) for previous in premium_games]
+        overlaps = [
+            len(set(candidate["numbers"]).intersection(previous["numbers"]))
+            for previous in premium_games
+        ]
+        hamming_distances = [
+            _hamming_distance(candidate["numbers"], previous["numbers"])
+            for previous in premium_games
+        ]
         if overlaps and max(overlaps) > config.max_overlap_between_games:
             continue
-        if hamming_distances and min(hamming_distances) < config.minimum_hamming_distance:
+        if (
+            hamming_distances
+            and min(hamming_distances) < config.minimum_hamming_distance
+        ):
             continue
         premium_games.append(candidate)
 
@@ -380,14 +426,40 @@ def _build_structural_candidate_pool(
         "post_filter_count": len(ranked_candidates),
         "post_rerank_count": len(ranked_candidates),
         "final_gate_count": len(premium_games),
-        "unique_hash_count_before_gate": len({tuple(row["numbers"]) for row in ranked_candidates}),
-        "unique_hash_count_after_gate": len({tuple(row["numbers"]) for row in premium_games}),
-        "unique_ratio_before_gate": round(len({tuple(row["numbers"]) for row in ranked_candidates}) / max(1, len(ranked_candidates)), 4),
-        "unique_ratio_after_gate": round(len({tuple(row["numbers"]) for row in premium_games}) / max(1, len(premium_games)), 4),
-        "structural_collision_rate": round(1.0 - (len({tuple(row["numbers"]) for row in ranked_candidates}) / max(1, len(ranked_candidates))), 4),
-        "rerank_compression_ratio": round(len(premium_games) / max(1, len(ranked_candidates)), 4),
+        "unique_hash_count_before_gate": len(
+            {tuple(row["numbers"]) for row in ranked_candidates}
+        ),
+        "unique_hash_count_after_gate": len(
+            {tuple(row["numbers"]) for row in premium_games}
+        ),
+        "unique_ratio_before_gate": round(
+            len({tuple(row["numbers"]) for row in ranked_candidates})
+            / max(1, len(ranked_candidates)),
+            4,
+        ),
+        "unique_ratio_after_gate": round(
+            len({tuple(row["numbers"]) for row in premium_games})
+            / max(1, len(premium_games)),
+            4,
+        ),
+        "structural_collision_rate": round(
+            1.0
+            - (
+                len({tuple(row["numbers"]) for row in ranked_candidates})
+                / max(1, len(ranked_candidates))
+            ),
+            4,
+        ),
+        "rerank_compression_ratio": round(
+            len(premium_games) / max(1, len(ranked_candidates)), 4
+        ),
         "dominant_hash_frequency": max(
-            (count for count in Counter(tuple(row["numbers"]) for row in ranked_candidates).values()),
+            (
+                count
+                for count in Counter(
+                    tuple(row["numbers"]) for row in ranked_candidates
+                ).values()
+            ),
             default=0,
         ),
         "pool_entropy_score": 0.0,
@@ -395,14 +467,18 @@ def _build_structural_candidate_pool(
 
     observation = _structural_observation(ranked_candidates, premium_games)
     compression_metrics["pool_entropy_score"] = observation.pool_entropy_score
-    return ranked_candidates, premium_games, {
-        "compression_metrics": compression_metrics,
-        "observation": observation.as_dict(),
-        "candidate_pool_count": len(candidate_pool),
-        "filtered_count": filtered_count,
-        "total_combinations": total,
-        "premium_limit": premium_limit,
-    }
+    return (
+        ranked_candidates,
+        premium_games,
+        {
+            "compression_metrics": compression_metrics,
+            "observation": observation.as_dict(),
+            "candidate_pool_count": len(candidate_pool),
+            "filtered_count": filtered_count,
+            "total_combinations": total,
+            "premium_limit": premium_limit,
+        },
+    )
 
 
 def _summarize_games(
@@ -435,10 +511,14 @@ def _summarize_games(
         "unique_ratio_real": round(len(distribution) / max(1, len(numbers)), 4),
         "dominant_numbers": [
             {"number": number, "frequency": count}
-            for number, count in Counter(number for game in numbers for number in game).most_common(10)
+            for number, count in Counter(
+                number for game in numbers for number in game
+            ).most_common(10)
         ],
         "cluster_dispersion": round(
-            len({(number - 1) // 5 for game in numbers for number in game}) / 5.0 if numbers else 0.0,
+            len({(number - 1) // 5 for game in numbers for number in game}) / 5.0
+            if numbers
+            else 0.0,
             4,
         ),
         "average_distance": round(
@@ -490,7 +570,9 @@ def _persist_csv(path: Path, rows: Sequence[dict[str, Any]]) -> None:
 
 def _persist_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def run_ia_structural_experiment(
@@ -539,11 +621,15 @@ def run_ia_structural_experiment(
         moderate_candidates = []
         for candidate in ranked_candidates:
             lightweight_candidate = dict(candidate)
-            lightweight_candidate["ia_structural_score"] = _structural_adjusted_score(lightweight_candidate, observation)
+            lightweight_candidate["ia_structural_score"] = _structural_adjusted_score(
+                lightweight_candidate, observation
+            )
             light_candidates.append(lightweight_candidate)
 
             moderate_candidate = dict(candidate)
-            moderate_candidate["ia_structural_score"] = _structural_adjusted_score_moderate(moderate_candidate, observation)
+            moderate_candidate["ia_structural_score"] = (
+                _structural_adjusted_score_moderate(moderate_candidate, observation)
+            )
             moderate_candidates.append(moderate_candidate)
 
         sort_key = lambda row: (
@@ -560,13 +646,19 @@ def run_ia_structural_experiment(
         ia_structural_selected = light_candidates[:games_count]
         ia_structural_moderate_selected = moderate_candidates[:games_count]
         if len(ia_structural_selected) < games_count:
-            ia_structural_selected = light_candidates[: min(games_count, len(light_candidates))]
+            ia_structural_selected = light_candidates[
+                : min(games_count, len(light_candidates))
+            ]
         if len(ia_structural_moderate_selected) < games_count:
-            ia_structural_moderate_selected = moderate_candidates[: min(games_count, len(moderate_candidates))]
+            ia_structural_moderate_selected = moderate_candidates[
+                : min(games_count, len(moderate_candidates))
+            ]
 
         baseline_summary = _summarize_games(baseline_selected, target)
         ia_structural_summary = _summarize_games(ia_structural_selected, target)
-        ia_structural_moderate_summary = _summarize_games(ia_structural_moderate_selected, target)
+        ia_structural_moderate_summary = _summarize_games(
+            ia_structural_moderate_selected, target
+        )
         signature_source = {
             "contest": target.contest,
             "seed": seed,
@@ -577,7 +669,9 @@ def run_ia_structural_experiment(
             "ia_structural_moderate": ia_structural_moderate_summary,
         }
         observability_signature = hashlib.sha256(
-            json.dumps(signature_source, sort_keys=True, ensure_ascii=False).encode("utf-8")
+            json.dumps(signature_source, sort_keys=True, ensure_ascii=False).encode(
+                "utf-8"
+            )
         ).hexdigest()
 
         per_contest.append(
@@ -586,11 +680,18 @@ def run_ia_structural_experiment(
                 baseline=baseline_summary,
                 ia_structural=ia_structural_summary,
                 delta_average_hits=round(
-                    ia_structural_summary["average_hits"] - baseline_summary["average_hits"],
+                    ia_structural_summary["average_hits"]
+                    - baseline_summary["average_hits"],
                     4,
                 ),
-                delta_11_plus=int(ia_structural_summary["hits_11_plus"] - baseline_summary["hits_11_plus"]),
-                delta_12_plus=int(ia_structural_summary["hits_12_plus"] - baseline_summary["hits_12_plus"]),
+                delta_11_plus=int(
+                    ia_structural_summary["hits_11_plus"]
+                    - baseline_summary["hits_11_plus"]
+                ),
+                delta_12_plus=int(
+                    ia_structural_summary["hits_12_plus"]
+                    - baseline_summary["hits_12_plus"]
+                ),
                 observational_signature=observability_signature,
             )
         )
@@ -600,60 +701,101 @@ def run_ia_structural_experiment(
                 "contest": target.contest,
                 "baseline_average_hits": baseline_summary["average_hits"],
                 "ia_structural_average_hits": ia_structural_summary["average_hits"],
-                "ia_structural_moderate_average_hits": ia_structural_moderate_summary["average_hits"],
-                "delta_average_hits": round(ia_structural_summary["average_hits"] - baseline_summary["average_hits"], 4),
+                "ia_structural_moderate_average_hits": ia_structural_moderate_summary[
+                    "average_hits"
+                ],
+                "delta_average_hits": round(
+                    ia_structural_summary["average_hits"]
+                    - baseline_summary["average_hits"],
+                    4,
+                ),
                 "delta_moderate_average_hits": round(
-                    ia_structural_moderate_summary["average_hits"] - baseline_summary["average_hits"],
+                    ia_structural_moderate_summary["average_hits"]
+                    - baseline_summary["average_hits"],
                     4,
                 ),
                 "baseline_11_plus": baseline_summary["hits_11_plus"],
                 "ia_structural_11_plus": ia_structural_summary["hits_11_plus"],
-                "ia_structural_moderate_11_plus": ia_structural_moderate_summary["hits_11_plus"],
-                "delta_11_plus": int(ia_structural_summary["hits_11_plus"] - baseline_summary["hits_11_plus"]),
+                "ia_structural_moderate_11_plus": ia_structural_moderate_summary[
+                    "hits_11_plus"
+                ],
+                "delta_11_plus": int(
+                    ia_structural_summary["hits_11_plus"]
+                    - baseline_summary["hits_11_plus"]
+                ),
                 "delta_moderate_11_plus": int(
-                    ia_structural_moderate_summary["hits_11_plus"] - baseline_summary["hits_11_plus"]
+                    ia_structural_moderate_summary["hits_11_plus"]
+                    - baseline_summary["hits_11_plus"]
                 ),
                 "baseline_12_plus": baseline_summary["hits_12_plus"],
                 "ia_structural_12_plus": ia_structural_summary["hits_12_plus"],
-                "ia_structural_moderate_12_plus": ia_structural_moderate_summary["hits_12_plus"],
-                "delta_12_plus": int(ia_structural_summary["hits_12_plus"] - baseline_summary["hits_12_plus"]),
+                "ia_structural_moderate_12_plus": ia_structural_moderate_summary[
+                    "hits_12_plus"
+                ],
+                "delta_12_plus": int(
+                    ia_structural_summary["hits_12_plus"]
+                    - baseline_summary["hits_12_plus"]
+                ),
                 "delta_moderate_12_plus": int(
-                    ia_structural_moderate_summary["hits_12_plus"] - baseline_summary["hits_12_plus"]
+                    ia_structural_moderate_summary["hits_12_plus"]
+                    - baseline_summary["hits_12_plus"]
                 ),
                 "baseline_overlap": baseline_summary["average_overlap"],
                 "ia_structural_overlap": ia_structural_summary["average_overlap"],
-                "ia_structural_moderate_overlap": ia_structural_moderate_summary["average_overlap"],
+                "ia_structural_moderate_overlap": ia_structural_moderate_summary[
+                    "average_overlap"
+                ],
                 "baseline_entropy": baseline_summary["entropy"],
                 "ia_structural_entropy": ia_structural_summary["entropy"],
-                "ia_structural_moderate_entropy": ia_structural_moderate_summary["entropy"],
+                "ia_structural_moderate_entropy": ia_structural_moderate_summary[
+                    "entropy"
+                ],
                 "baseline_unique_ratio_real": baseline_summary["unique_ratio_real"],
-                "ia_structural_unique_ratio_real": ia_structural_summary["unique_ratio_real"],
-                "ia_structural_moderate_unique_ratio_real": ia_structural_moderate_summary["unique_ratio_real"],
+                "ia_structural_unique_ratio_real": ia_structural_summary[
+                    "unique_ratio_real"
+                ],
+                "ia_structural_moderate_unique_ratio_real": ia_structural_moderate_summary[
+                    "unique_ratio_real"
+                ],
             }
         )
 
-        per_contest_moderate.append({
-            "contest": target.contest,
-            "baseline": baseline_summary,
-            "ia_structural": ia_structural_summary,
-            "ia_structural_moderate": ia_structural_moderate_summary,
-        })
+        per_contest_moderate.append(
+            {
+                "contest": target.contest,
+                "baseline": baseline_summary,
+                "ia_structural": ia_structural_summary,
+                "ia_structural_moderate": ia_structural_moderate_summary,
+            }
+        )
 
     baseline_hits = [row.baseline["average_hits"] for row in per_contest]
     ia_structural_hits = [row.ia_structural["average_hits"] for row in per_contest]
-    ia_structural_moderate_hits = [row["ia_structural_moderate"]["average_hits"] for row in per_contest_moderate]
+    ia_structural_moderate_hits = [
+        row["ia_structural_moderate"]["average_hits"] for row in per_contest_moderate
+    ]
     baseline_11_plus = [row.baseline["hits_11_plus"] for row in per_contest]
     ia_structural_11_plus = [row.ia_structural["hits_11_plus"] for row in per_contest]
-    ia_structural_moderate_11_plus = [row["ia_structural_moderate"]["hits_11_plus"] for row in per_contest_moderate]
+    ia_structural_moderate_11_plus = [
+        row["ia_structural_moderate"]["hits_11_plus"] for row in per_contest_moderate
+    ]
     baseline_12_plus = [row.baseline["hits_12_plus"] for row in per_contest]
     ia_structural_12_plus = [row.ia_structural["hits_12_plus"] for row in per_contest]
-    ia_structural_moderate_12_plus = [row["ia_structural_moderate"]["hits_12_plus"] for row in per_contest_moderate]
+    ia_structural_moderate_12_plus = [
+        row["ia_structural_moderate"]["hits_12_plus"] for row in per_contest_moderate
+    ]
     baseline_overlap = [row.baseline["average_overlap"] for row in per_contest]
-    ia_structural_overlap = [row.ia_structural["average_overlap"] for row in per_contest]
-    ia_structural_moderate_overlap = [row["ia_structural_moderate"]["average_overlap"] for row in per_contest_moderate]
+    ia_structural_overlap = [
+        row.ia_structural["average_overlap"] for row in per_contest
+    ]
+    ia_structural_moderate_overlap = [
+        row["ia_structural_moderate"]["average_overlap"] for row in per_contest_moderate
+    ]
     baseline_entropy = [row.baseline["entropy"] for row in per_contest]
     ia_structural_entropy = [row.ia_structural["entropy"] for row in per_contest]
-    ia_structural_moderate_entropy = [row["ia_structural_moderate"]["entropy"] for row in per_contest_moderate]
+    ia_structural_moderate_entropy = [
+        row["ia_structural_moderate"]["entropy"] for row in per_contest_moderate
+    ]
 
     summary = {
         "baseline": {
@@ -662,7 +804,11 @@ def run_ia_structural_experiment(
             "hits_12_plus": int(sum(baseline_12_plus)),
             "average_overlap": round(_mean(baseline_overlap), 4),
             "entropy": round(_mean(baseline_entropy), 4),
-            "unique_ratio_real": round(_mean([row.baseline["unique_ratio_real"] for row in per_contest]), 4) if per_contest else 0.0,
+            "unique_ratio_real": round(
+                _mean([row.baseline["unique_ratio_real"] for row in per_contest]), 4
+            )
+            if per_contest
+            else 0.0,
             "standard_deviation": round(_safe_pstdev(baseline_hits), 4),
         },
         "ia_structural": {
@@ -671,7 +817,12 @@ def run_ia_structural_experiment(
             "hits_12_plus": int(sum(ia_structural_12_plus)),
             "average_overlap": round(_mean(ia_structural_overlap), 4),
             "entropy": round(_mean(ia_structural_entropy), 4),
-            "unique_ratio_real": round(_mean([row.ia_structural["unique_ratio_real"] for row in per_contest]), 4) if per_contest else 0.0,
+            "unique_ratio_real": round(
+                _mean([row.ia_structural["unique_ratio_real"] for row in per_contest]),
+                4,
+            )
+            if per_contest
+            else 0.0,
             "standard_deviation": round(_safe_pstdev(ia_structural_hits), 4),
         },
         "ia_structural_moderate": {
@@ -681,7 +832,12 @@ def run_ia_structural_experiment(
             "average_overlap": round(_mean(ia_structural_moderate_overlap), 4),
             "entropy": round(_mean(ia_structural_moderate_entropy), 4),
             "unique_ratio_real": round(
-                _mean([row["ia_structural_moderate_unique_ratio_real"] for row in replay_rows]),
+                _mean(
+                    [
+                        row["ia_structural_moderate_unique_ratio_real"]
+                        for row in replay_rows
+                    ]
+                ),
                 4,
             )
             if replay_rows
@@ -692,7 +848,9 @@ def run_ia_structural_experiment(
             "average_hits": round(_mean(ia_structural_hits) - _mean(baseline_hits), 4),
             "hits_11_plus": int(sum(ia_structural_11_plus) - sum(baseline_11_plus)),
             "hits_12_plus": int(sum(ia_structural_12_plus) - sum(baseline_12_plus)),
-            "average_overlap": round(_mean(ia_structural_overlap) - _mean(baseline_overlap), 4),
+            "average_overlap": round(
+                _mean(ia_structural_overlap) - _mean(baseline_overlap), 4
+            ),
             "entropy": round(_mean(ia_structural_entropy) - _mean(baseline_entropy), 4),
             "unique_ratio_real": round(
                 _mean([row.ia_structural["unique_ratio_real"] for row in per_contest])
@@ -703,13 +861,28 @@ def run_ia_structural_experiment(
             else 0.0,
         },
         "delta_moderate": {
-            "average_hits": round(_mean(ia_structural_moderate_hits) - _mean(baseline_hits), 4),
-            "hits_11_plus": int(sum(ia_structural_moderate_11_plus) - sum(baseline_11_plus)),
-            "hits_12_plus": int(sum(ia_structural_moderate_12_plus) - sum(baseline_12_plus)),
-            "average_overlap": round(_mean(ia_structural_moderate_overlap) - _mean(baseline_overlap), 4),
-            "entropy": round(_mean(ia_structural_moderate_entropy) - _mean(baseline_entropy), 4),
+            "average_hits": round(
+                _mean(ia_structural_moderate_hits) - _mean(baseline_hits), 4
+            ),
+            "hits_11_plus": int(
+                sum(ia_structural_moderate_11_plus) - sum(baseline_11_plus)
+            ),
+            "hits_12_plus": int(
+                sum(ia_structural_moderate_12_plus) - sum(baseline_12_plus)
+            ),
+            "average_overlap": round(
+                _mean(ia_structural_moderate_overlap) - _mean(baseline_overlap), 4
+            ),
+            "entropy": round(
+                _mean(ia_structural_moderate_entropy) - _mean(baseline_entropy), 4
+            ),
             "unique_ratio_real": round(
-                _mean([row["ia_structural_moderate_unique_ratio_real"] for row in replay_rows])
+                _mean(
+                    [
+                        row["ia_structural_moderate_unique_ratio_real"]
+                        for row in replay_rows
+                    ]
+                )
                 - _mean([row.baseline["unique_ratio_real"] for row in per_contest]),
                 4,
             )
