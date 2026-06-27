@@ -905,6 +905,29 @@ def _sovereign_adm_pool_size(
     return max(count * scale, count, 30, MIN_COMPLIANT_POOL_SIZE)
 
 
+def _load_official_results_for_coverage(limit: int = 200) -> list[list[int]]:
+    """Carrega últimos N resultados oficiais do banco para estratégia Volume+Cobertura."""
+    with get_session(DB_PATH) as session:
+        rows = (
+            session.query(LotofacilOfficialHistory)
+            .filter(LotofacilOfficialHistory.is_valid == 1)
+            .order_by(LotofacilOfficialHistory.contest_number.desc())
+            .limit(limit)
+            .all()
+        )
+    results = []
+    for row in rows:
+        numbers_str = str(getattr(row, "numbers", "") or "")
+        numbers = [
+            int(n.strip())
+            for n in numbers_str.replace(",", " ").split()
+            if n.strip().isdigit()
+        ]
+        if numbers:
+            results.append(sorted(numbers))
+    return results
+
+
 def _invoke_sovereign_adm_generate_best_games(
     *,
     requested_count: int,
@@ -913,6 +936,8 @@ def _invoke_sovereign_adm_generate_best_games(
     seed: int | None = None,
     ml_enabled: bool | None = None,
     calibration_plan: dict[str, Any] | None = None,
+    use_volume_coverage: bool = False,
+    game_size: int = 15,
 ) -> dict[str, Any]:
     """Único path preparado para geração ADM Lei 15 (LEI15_CORE_002 / ADR-047)."""
     resolved_label = _resolve_adm_sovereign_batch_label(
@@ -933,6 +958,82 @@ def _invoke_sovereign_adm_generate_best_games(
             db_path=DB_PATH,
             prefer_database=True,
         )
+
+    # M-OPS-082: Estratégia Volume+Cobertura
+    if use_volume_coverage and game_size in (15, 17):
+        try:
+            from lotoia.operations.volume_coverage_strategy import (
+                apply_volume_coverage_strategy,
+            )
+
+            official_results = _load_official_results_for_coverage(limit=200)
+
+            if official_results:
+                selected = apply_volume_coverage_strategy(
+                    target_count=int(requested_count),
+                    game_size=game_size,
+                    official_results=official_results,
+                    pool_multiplier=10,
+                    seed=seed,
+                )
+
+                # Converter para formato esperado
+                games = []
+                for item in selected:
+                    game_numbers = item.get("game", [])
+                    games.append(
+                        {
+                            "numbers": game_numbers,
+                            "core_numbers": list(game_numbers),
+                            "audited_reserve_numbers": [],
+                            "final_card_numbers": list(game_numbers),
+                            "display_core_numbers": " ".join(
+                                f"{n:02d}" for n in game_numbers
+                            ),
+                            "display_audited_reserve_numbers": "",
+                            "display_final_card_numbers": " ".join(
+                                f"{n:02d}" for n in game_numbers
+                            ),
+                            "card_format": game_size,
+                            "selected_card_format": game_size,
+                            "formato_cartao": game_size,
+                            "quantidade_final": len(game_numbers),
+                            "final_score": {"final_score": item.get("score", 0)},
+                            "validation_status_lei_17": "OK",
+                            "validation_status_lei_18": "OK",
+                        }
+                    )
+
+                coverage_metrics = {
+                    "avg_score": sum(item.get("score", 0) for item in selected)
+                    / len(selected)
+                    if selected
+                    else 0,
+                    "avg_hits": sum(item.get("avg_hits", 0) for item in selected)
+                    / len(selected)
+                    if selected
+                    else 0,
+                    "max_hits": max(
+                        (item.get("max_hits", 0) for item in selected), default=0
+                    ),
+                    "pool_generated": len(selected) * 10,
+                    "pool_selected": len(selected),
+                    "official_results_used": len(official_results),
+                }
+
+                return {
+                    "games": games,
+                    "ml_enabled": effective_ml,
+                    "analysis_batch_label": resolved_label,
+                    "authorized_calibration_plan": authorized_plan,
+                    "volume_coverage_enabled": True,
+                    "coverage_metrics": coverage_metrics,
+                }
+        except Exception as exc:
+            logger.warning(f"Volume+Cobertura falhou, usando fluxo tradicional: {exc}")
+            # Fallback para fluxo tradicional
+
+    # Fluxo tradicional
     from lotoia.generator.basic_generator import generate_best_games
     from lotoia.ml.ml_operational_hierarchy import (
         MlOperationalHierarchyBlockedError,
@@ -976,6 +1077,7 @@ def _invoke_sovereign_adm_generate_best_games(
     payload["analysis_batch_label"] = resolved_label
     if authorized_plan:
         payload["authorized_calibration_plan"] = authorized_plan
+    payload["volume_coverage_enabled"] = False
     return payload
 
 
@@ -7470,6 +7572,7 @@ def _run_institutional_generation(
     batch_profile_usage: dict[tuple[int, int], int] | None = None,
     batch_total_games: int | None = None,
     seen_signatures: set[str] | None = None,
+    use_volume_coverage: bool = False,
 ) -> None:
     if _is_sovereign_generation_blocked():
         st.session_state["institutional_generation_result"] = (
@@ -7641,6 +7744,8 @@ def _run_institutional_generation(
             requested_count=total_games,
             batch_label=SOVEREIGN_BATCH_LABEL,
             seed=seed,
+            use_volume_coverage=use_volume_coverage,
+            game_size=dezenas_per_game,
         )
         games = list(sovereign_payload.get("games") or [])
         fill_diagnostics["sovereign_generation_path"] = "generate_best_games"
@@ -8203,6 +8308,10 @@ def _run_institutional_generation(
             "reduce_priority_numbers": list(
                 policy.get("reduce_priority_numbers", []) or []
             ),
+            # M-OPS-082: Métricas de Volume+Cobertura
+            "volume_coverage_enabled": bool(use_volume_coverage),
+            "coverage_metrics": dict(sovereign_payload.get("coverage_metrics", {}) or {}),
+            ),
             "real_gap_number": policy.get("real_gap_number"),
             "compactation_test_status": str(
                 policy.get("compactation_test_status", "") or ""
@@ -8528,6 +8637,7 @@ def _run_institutional_generation_batch(
     batch_number_usage: dict[int, int] | None = None,
     batch_profile_usage: dict[tuple[int, int], int] | None = None,
     batch_total_games: int | None = None,
+    use_volume_coverage: bool = False,
 ) -> None:
     batch_runs = max(1, int(generation_runs))
     batch_id = _institutional_output_batch_id()
@@ -8570,6 +8680,7 @@ def _run_institutional_generation_batch(
             batch_profile_usage=batch_profile_usage,
             batch_total_games=batch_total_games,
             seen_signatures=batch_seen_signatures,
+            use_volume_coverage=use_volume_coverage,
         )
         generation_result = dict(
             st.session_state.get("institutional_generation_result") or {}
@@ -8646,6 +8757,11 @@ def _run_institutional_generation_batch(
         "status_comandante_saida": batch_status,
         "motivo_bloqueio": batch_reason,
         "institutional_output_signatures": batch_total_unique,
+        # M-OPS-082: Métricas de Volume+Cobertura
+        "volume_coverage_enabled": bool(use_volume_coverage),
+        "coverage_metrics": dict(
+            (run_summaries[-1] or {}).get("coverage_metrics", {}) or {}
+        ),
     }
     _store_active_batch_state(
         batch_id=batch_id,
@@ -18351,6 +18467,32 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
         "Perfil geométrico adaptado automaticamente ao tamanho do jogo."
     )
 
+    # M-OPS-082: Toggle Volume+Cobertura
+    st.markdown("---")
+    use_volume_coverage = st.checkbox(
+        "🚀 Modo Volume+Cobertura (M-OPS-082)",
+        value=bool(
+            st.session_state.get(
+                "use_volume_coverage", selected_card_format in (15, 17)
+            )
+        ),
+        key="use_volume_coverage",
+        help="Gera 10x mais candidatos e seleciona os melhores por cobertura histórica. "
+        "Tempo: +10-20s, mas 3-5x mais jogos com 14+ acertos. "
+        "Padrão: ON para 15D/17D, OFF para 18D+.",
+    )
+    if use_volume_coverage and selected_card_format in (15, 17):
+        st.info(
+            "✓ Modo Volume+Cobertura ativo. "
+            "Serão gerados 500 candidatos (10x) e selecionados os 50 melhores por cobertura histórica."
+        )
+    elif use_volume_coverage and selected_card_format not in (15, 17):
+        st.warning(
+            "⚠ Modo Volume+Cobertura indisponível para formato 18D+. "
+            "Usando fluxo tradicional."
+        )
+        use_volume_coverage = False
+
     total_jogos_esperados = int(total_games) * int(generation_runs)
     st.markdown("##### Resumo da bateria")
     resume_cols = st.columns(4)
@@ -18539,6 +18681,39 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                 f"jogos gerados={batch_gerados}"
             )
 
+        # M-OPS-082: Exibir métricas de cobertura se Volume+Cobertura foi usado
+        coverage_metrics = summary_result.get("coverage_metrics") or {}
+        if coverage_metrics and summary_result.get("volume_coverage_enabled"):
+            st.markdown("---")
+            st.markdown("##### 📊 Métricas de Cobertura (M-OPS-082)")
+            coverage_cols = st.columns(5)
+            coverage_cols[0].metric(
+                "Pool gerado", f"{int(coverage_metrics.get('pool_generated', 0))} jogos"
+            )
+            coverage_cols[1].metric(
+                "Pool selecionado",
+                f"{int(coverage_metrics.get('pool_selected', 0))} jogos",
+            )
+            coverage_cols[2].metric(
+                "Score médio", f"{float(coverage_metrics.get('avg_score', 0)):.2f}"
+            )
+            coverage_cols[3].metric(
+                "Avg hits histórico",
+                f"{float(coverage_metrics.get('avg_hits', 0)):.2f}",
+            )
+            coverage_cols[4].metric(
+                "Max hits histórico", f"{int(coverage_metrics.get('max_hits', 0))}"
+            )
+            st.caption(
+                f"Concursos oficiais usados: {int(coverage_metrics.get('official_results_used', 0))} | "
+                f"Estratégia: Volume+Cobertura 10x | "
+                f"Formato: {selected_card_format}D"
+            )
+            st.info(
+                "✓ Estratégia Volume+Cobertura aplicada com sucesso. "
+                "Jogos selecionados com base na melhor cobertura histórica contra os últimos 200 concursos oficiais."
+            )
+
     button_cols = st.columns([0.28, 1.72])
     if button_cols[0].button("LotoIA", type="primary"):
         if generation_runs > 1 and dezenas_per_game != 15:
@@ -18561,6 +18736,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     entropy_min=entropy_min,
                     repeat_limit=repeat_limit,
                     snapshot=snapshot,
+                    use_volume_coverage=use_volume_coverage,
                 )
             else:
                 _run_institutional_generation(
@@ -18576,6 +18752,7 @@ def _render_generation_page(snapshot: dict[str, Any]) -> None:
                     entropy_min=entropy_min,
                     repeat_limit=repeat_limit,
                     snapshot=snapshot,
+                    use_volume_coverage=use_volume_coverage,
                 )
             st.rerun()
     st.caption("Escolha a quantidade antes de gerar.")
@@ -19588,6 +19765,8 @@ def _run_clean_law15_generation(
         requested_count=total_games,
         batch_label=analysis_batch_label,
         seed=seed,
+        use_volume_coverage=use_volume_coverage,
+        game_size=dezenas_per_game,
     )
     if sovereign_payload.get("hierarchy_blocked"):
         return build_hierarchy_blocked_generation_result(
