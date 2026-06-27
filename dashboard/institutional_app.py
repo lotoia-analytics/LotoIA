@@ -8310,7 +8310,8 @@ def _run_institutional_generation(
             ),
             # M-OPS-082: Métricas de Volume+Cobertura
             "volume_coverage_enabled": bool(use_volume_coverage),
-            "coverage_metrics": dict(sovereign_payload.get("coverage_metrics", {}) or {}),
+            "coverage_metrics": dict(
+                sovereign_payload.get("coverage_metrics", {}) or {}
             ),
             "real_gap_number": policy.get("real_gap_number"),
             "compactation_test_status": str(
