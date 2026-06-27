@@ -19762,12 +19762,15 @@ def _run_clean_law15_generation(
         target_contest
     )
 
+    # M-OPS-082: Obter flag de Volume+Cobertura do session_state
+    use_volume_coverage = bool(st.session_state.get("use_volume_coverage", False))
+
     sovereign_payload = _invoke_sovereign_adm_generate_best_games(
         requested_count=total_games,
         batch_label=analysis_batch_label,
         seed=seed,
         use_volume_coverage=use_volume_coverage,
-        game_size=dezenas_per_game,
+        game_size=resolved_card_format,
     )
     if sovereign_payload.get("hierarchy_blocked"):
         return build_hierarchy_blocked_generation_result(
