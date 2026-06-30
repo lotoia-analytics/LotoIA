@@ -1,5 +1,6 @@
 """Módulo de configuração centralizada do LotoIA."""
 
+from lotoia.config.settings import settings
 from lotoia.config.structural_policy_config import (
     CONFIG_VERSION,
     CRITICAL_DIGITS,
@@ -10,6 +11,7 @@ from lotoia.config.structural_policy_config import (
 )
 
 __all__ = [
+    "settings",
     "CONFIG_VERSION",
     "CRITICAL_DIGITS",
     "DEFAULT_PREFIX_SHARE_LIMIT",
