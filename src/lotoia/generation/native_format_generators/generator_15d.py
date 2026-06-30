@@ -46,8 +46,9 @@ class Generator15D(BaseNativeGenerator):
         seed: int | None = None,
         history: list[object] | None = None,
     ) -> list[dict[str, Any]]:
-        """Gera pool nativo 15D via CORE_002 soberano."""
+        """Gera pool nativo 15D via CORE_002 soberano + L6 balance filter."""
         from lotoia.generation.lei15_core_002 import build_sovereign_pool
+        from lotoia.generation.lei15_core_balance_filter import apply_balance_filter
         from lotoia.governance.lei15_core_002_sovereign import get_core_002_config
 
         resolved_seed = int(seed) if seed is not None else 42
@@ -61,6 +62,39 @@ class Generator15D(BaseNativeGenerator):
         pool = build_sovereign_pool(
             pool_size, seed=resolved_seed, history=resolved_history, config=config
         )
+
+        # L6: Aplicar filtro de balanceamento estrutural (M-OPS-083)
+        # Garante composite_score >= 0.80 (98% dos concursos reais)
+        pool = apply_balance_filter(pool, threshold=0.80, min_balance=0.50)
+
+        # Se o filtro reduziu muito o pool, gerar mais candidatos
+        if len(pool) < pool_size:
+            logger.warning(
+                "[15D] Pool reduzido pelo balance filter: %d < %d. "
+                "Gerando pool adicional...",
+                len(pool),
+                pool_size,
+            )
+            # Gerar pool adicional com seed diferente
+            additional_pool = build_sovereign_pool(
+                pool_size * 2,
+                seed=resolved_seed + 1000,
+                history=resolved_history,
+                config=config,
+            )
+            additional_pool = apply_balance_filter(
+                additional_pool, threshold=0.80, min_balance=0.50
+            )
+
+            # Combinar pools (evitando duplicatas)
+            existing_keys = {tuple(g.get("numbers", [])) for g in pool}
+            for game in additional_pool:
+                key = tuple(game.get("numbers", []))
+                if key not in existing_keys:
+                    pool.append(game)
+                    existing_keys.add(key)
+                    if len(pool) >= pool_size:
+                        break
 
         # Log estruturado
         generated_count = len(pool)
